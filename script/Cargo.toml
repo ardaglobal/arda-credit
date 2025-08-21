@@ -1,0 +1,31 @@
+[package]
+default-run = "demo-vapp"
+edition     = "2021"
+license     = "MIT"
+name        = "arda-credit-script"
+version     = "0.0.1"
+
+# Default package for `cargo run` (local SP1 unit testing)
+# Provides fast local SP1 unit testing with Core proofs
+# The CLI functionality has been moved to the cli/ directory
+
+# Default binary for the main package
+[[bin]]
+name = "demo-vapp"
+path = "src/bin/main.rs"
+
+[dependencies]
+# Core computation (for types)
+arithmetic-lib = { path = "../lib", package = "lib" }
+
+# SP1 SDK for local proving
+sp1-sdk = { workspace = true }
+
+# Utilities
+alloy-sol-types    = { workspace = true }
+eyre               = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[build-dependencies]
+sp1-build = { workspace = true }

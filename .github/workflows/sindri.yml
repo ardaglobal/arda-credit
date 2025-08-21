@@ -1,0 +1,62 @@
+name: Sindri Zero-Knowledge Circuit CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
+jobs:
+  lint-compile-deploy:
+    runs-on: ubuntu-latest
+    env:
+      SINDRI_API_KEY: ${{ secrets.SINDRI_API_KEY }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        id: setup-node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Sindri CLI Tool
+        run: |
+          npm install -g sindri@latest
+
+      - name: Lint Circuit
+        run: |
+          sindri lint
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Install SP1 Toolchain
+        run: |
+          curl -L https://sp1.succinct.xyz | bash
+          ~/.sp1/bin/sp1up
+          echo "$HOME/.sp1/bin" >> $GITHUB_PATH
+
+      - name: Build SP1 Program
+        run: |
+          cd program
+          cargo prove build --output-directory ../build
+
+      - name: Get Branch Name
+        id: branch-name
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "branch=${{ github.head_ref }}" >> $GITHUB_OUTPUT
+            echo "tag=pr-${{ github.event.number }}-${{ github.head_ref }}" >> $GITHUB_OUTPUT
+          else
+            branch=${GITHUB_REF#refs/heads/}
+            echo "branch=$branch" >> $GITHUB_OUTPUT
+            echo "tag=$branch-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy Circuit to Sindri
+        run: |
+          sindri deploy --tag "${{ steps.branch-name.outputs.tag }}"

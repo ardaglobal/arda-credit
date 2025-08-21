@@ -1,0 +1,21 @@
+[profile.default]
+fs_permissions = [ { access = "read-write", path = "./" } ]
+
+[rpc_endpoints]
+# The RPC URLs are modified versions of the default for testing initialization.
+arbitrum_one_sepolia    = "https://sepolia-rollup.arbitrum.io/rpc/"                               # Adds a trailing slash.
+mainnet                 = "https://eth-mainnet.alchemyapi.io/v2/WV407BEiBmjNJfKo9Uo_55u0z0ITyCOX" # Different API key.
+needs_undefined_env_var = "${UNDEFINED_RPC_URL_PLACEHOLDER}"
+optimism_sepolia        = "https://sepolia.optimism.io/"                                          # Adds a trailing slash.
+
+[fmt]
+# These are all the `forge fmt` defaults.
+bracket_spacing              = false
+ignore                       = [ "src/console.sol", "src/console2.sol" ]
+int_types                    = 'long'
+line_length                  = 120
+multiline_func_header        = 'attributes_first'
+number_underscore            = 'preserve'
+quote_style                  = 'double'
+single_line_statement_blocks = 'preserve'
+tab_width                    = 4

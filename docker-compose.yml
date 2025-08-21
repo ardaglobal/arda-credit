@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: arithmetic_postgres
+    environment:
+      POSTGRES_DB: arithmetic_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    # Production: Use pre-built image from GitHub Container Registry
+    image: ghcr.io/ardaglobal/demo-vapp:latest
+    
+    container_name: arithmetic_server
+    env_file:
+      - .env  # Load environment variables from .env file
+    environment:
+      # Override/add specific environment variables
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/arithmetic_db
+      - RUST_LOG=${RUST_LOG:-info}
+      - SERVER_PORT=${SERVER_PORT:-8080}
+      # Pass through Sindri configuration from host environment or .env file
+      - SINDRI_API_KEY=${SINDRI_API_KEY}
+      - SINDRI_CIRCUIT_TAG=${SINDRI_CIRCUIT_TAG:-latest}
+      # Ethereum configuration from host environment or .env file
+      - ETHEREUM_RPC_URL=${ETHEREUM_RPC_URL}
+      - ETHEREUM_CONTRACT_ADDRESS=${ETHEREUM_CONTRACT_ADDRESS}
+      - ETHEREUM_WALLET_PRIVATE_KEY=${ETHEREUM_WALLET_PRIVATE_KEY}
+      - ETHEREUM_DEPLOYER_ADDRESS=${ETHEREUM_DEPLOYER_ADDRESS}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -1,0 +1,21 @@
+[profile.default]
+fs_permissions = [ { access = "read-write", path = "./" } ]
+
+[rpc_endpoints]
+# The RPC URLs are modified versions of the default for testing initialization.
+arbitrum_one_goerli     = "https://goerli-rollup.arbitrum.io/rpc/"                        # Adds a trailing slash.
+mainnet                 = "https://mainnet.infura.io/v3/7a8769b798b642f6933f2ed52042bd70" # Different API key.
+needs_undefined_env_var = "${UNDEFINED_RPC_URL_PLACEHOLDER}"
+optimism_goerli         = "https://goerli.optimism.io/"                                   # Adds a trailing slash.
+
+[fmt]
+# These are all the `forge fmt` defaults.
+bracket_spacing              = false
+ignore                       = [ "src/console.sol", "src/console2.sol" ]
+int_types                    = 'long'
+line_length                  = 120
+multiline_func_header        = 'attributes_first'
+number_underscore            = 'preserve'
+quote_style                  = 'double'
+single_line_statement_blocks = 'preserve'
+tab_width                    = 4

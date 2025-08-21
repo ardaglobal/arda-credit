@@ -1,0 +1,14 @@
+[package]
+edition = "2021"
+name    = "sp1-contracts"
+version = "0.2.0"
+
+[[bin]]
+name = "artifacts"
+path = "src/bin/artifacts.rs"
+
+[dependencies]
+anyhow  = "1.0.86"
+dotenv  = "0.15.0"
+log     = "0.4.21"
+sp1-sdk = "5.0.0"
