@@ -9,6 +9,64 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
 
+// ============================================================================
+// LOAN TERMS - Configurable loan parameters
+// ============================================================================
+
+/// Configurable loan terms (zkVM compatible)
+///
+/// This struct allows you to configure loan terms such as interest rate and term length.
+/// It provides sensible defaults but allows customization for different loan products.
+///
+/// # Examples
+///
+/// ```rust
+/// use lib::{LoanTerms, GlobalLoanState};
+///
+/// // Use default terms (7.5% APR, 36 months)
+/// let default_state = GlobalLoanState::new();
+///
+/// // Create custom terms (12% APR, 60 months)
+/// let custom_terms = LoanTerms::new(1200, 60);
+/// let custom_state = GlobalLoanState::with_loan_terms(custom_terms);
+///
+/// // Update terms on existing state
+/// let mut state = GlobalLoanState::new();
+/// let new_terms = LoanTerms::new(500, 24); // 5% APR, 2 years
+/// state.set_loan_terms(new_terms);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoanTerms {
+    /// Interest rate in basis points (e.g., 750 = 7.5% APR)
+    pub interest_rate: u32,
+    /// Loan term in months (e.g., 36 = 3 years)
+    pub term_months: u16,
+}
+
+impl Default for LoanTerms {
+    fn default() -> Self {
+        Self {
+            interest_rate: 750, // Default 7.5% APR (750 basis points)
+            term_months: 36,    // Default 3 year term
+        }
+    }
+}
+
+impl LoanTerms {
+    /// Create new loan terms with custom values
+    pub fn new(interest_rate: u32, term_months: u16) -> Self {
+        Self {
+            interest_rate,
+            term_months,
+        }
+    }
+
+    /// Calculate maturity date based on origination time and term
+    pub fn calculate_maturity_date(&self, originated_at: u64) -> u64 {
+        originated_at + (self.term_months as u64 * 30 * 24 * 60 * 60)
+    }
+}
+
 /// Loan status throughout lifecycle
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
@@ -94,7 +152,7 @@ impl LoanState {
         &mut self,
         transaction: &LoanTransaction,
         users: &HashMap<[u8; 32], User>,
-        loan_terms: &crate::loan_types::LoanTerms,
+        loan_terms: &LoanTerms,
     ) -> Result<(), LoanError> {
         if transaction.transaction_type != TransactionType::LoanOrigination {
             return Err(LoanError::InvalidTransactionType);
@@ -282,18 +340,18 @@ mod tests {
             user_id: borrower_id,
             user_type: UserType::Investor,
             kyc_status: KycStatus::Approved,
-            kyc_submitted_at: 1234567890,
-            kyc_verified_at: 1234567900,
-            created_at: 1234567880,
+            kyc_submitted_at: 1_234_567_890,
+            kyc_verified_at: 1_234_567_900,
+            created_at: 1_234_567_880,
         };
 
         let lender = User {
             user_id: lender_id,
             user_type: UserType::Lender,
             kyc_status: KycStatus::Approved,
-            kyc_submitted_at: 1234567890,
-            kyc_verified_at: 1234567900,
-            created_at: 1234567880,
+            kyc_submitted_at: 1_234_567_890,
+            kyc_verified_at: 1_234_567_900,
+            created_at: 1_234_567_880,
         };
 
         users.insert(borrower_id, borrower);
@@ -319,7 +377,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanOrigination,
             amount,
-            created_at: 1234567920,
+            created_at: 1_234_567_920,
             metadata: MetadataArray::from_bytes(&metadata),
         }
     }
@@ -338,7 +396,7 @@ mod tests {
             10000, // $100.00
         );
 
-        let loan_terms = crate::loan_types::LoanTerms::default();
+        let loan_terms = LoanTerms::default();
         let result = loan_state.process_loan_origination(&transaction, &users, &loan_terms);
         assert!(result.is_ok());
 
@@ -362,7 +420,7 @@ mod tests {
             lender_id,
             10000,
         );
-        let loan_terms = crate::loan_types::LoanTerms::default();
+        let loan_terms = LoanTerms::default();
         loan_state
             .process_loan_origination(&origination, &users, &loan_terms)
             .unwrap();
@@ -374,7 +432,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanPayment,
             amount: 5000, // $50.00 payment
-            created_at: 1234567930,
+            created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
 
@@ -400,7 +458,7 @@ mod tests {
             lender_id,
             10000,
         );
-        let loan_terms = crate::loan_types::LoanTerms::default();
+        let loan_terms = LoanTerms::default();
         loan_state
             .process_loan_origination(&origination, &users, &loan_terms)
             .unwrap();
@@ -412,7 +470,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanPayment,
             amount: 10000, // Full payment
-            created_at: 1234567930,
+            created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
 
@@ -439,7 +497,7 @@ mod tests {
             lender_id,
             10000,
         );
-        let loan_terms = crate::loan_types::LoanTerms::default();
+        let loan_terms = LoanTerms::default();
         loan_state
             .process_loan_origination(&origination, &users, &loan_terms)
             .unwrap();
@@ -450,7 +508,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanPayment,
             amount: 10000, // Full payment
-            created_at: 1234567930,
+            created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
         loan_state
@@ -464,7 +522,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanCloseout,
             amount: 0,
-            created_at: 1234567940,
+            created_at: 1_234_567_940,
             metadata: MetadataArray::empty(),
         };
 
@@ -489,7 +547,7 @@ mod tests {
             lender_id,
             10000,
         );
-        let loan_terms = crate::loan_types::LoanTerms::default();
+        let loan_terms = LoanTerms::default();
         loan_state
             .process_loan_origination(&origination, &users, &loan_terms)
             .unwrap();
@@ -501,7 +559,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanCloseout,
             amount: 0,
-            created_at: 1234567940,
+            created_at: 1_234_567_940,
             metadata: MetadataArray::empty(),
         };
 
@@ -526,7 +584,7 @@ mod tests {
             lender_id,
             10000,
         );
-        let loan_terms = crate::loan_types::LoanTerms::default();
+        let loan_terms = LoanTerms::default();
         loan_state
             .process_loan_origination(&origination, &users, &loan_terms)
             .unwrap();
@@ -538,7 +596,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanPayment,
             amount: 15000, // More than outstanding balance
-            created_at: 1234567930,
+            created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
 

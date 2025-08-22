@@ -4,8 +4,8 @@
 //! the SP1 zkVM. It processes batches of mixed transaction types while maintaining
 //! privacy guarantees.
 
+use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
-use crate::loan_types::LoanTerms;
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
 use crate::user::{User, UserError, UserState};
 use serde::{Deserialize, Serialize};

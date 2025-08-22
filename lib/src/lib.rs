@@ -5,9 +5,7 @@ pub mod loan;
 pub mod loan_processor;
 pub mod transactions;
 pub mod user;
-
-// Legacy loan_types module - keeping for backward compatibility but deprecated
-pub mod loan_types;
+pub mod utils;
 
 // Proof module only available for host-side operations
 #[cfg(feature = "sp1")]
@@ -29,12 +27,10 @@ sol! {
 pub use loan_processor::{process_loan_batch, GlobalLoanState, ProcessingError};
 
 // Re-export from new modules
-pub use loan::{Loan, LoanError, LoanStatus};
+pub use loan::{Loan, LoanError, LoanStatus, LoanTerms};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};
-
-// Legacy re-exports from loan_types for backward compatibility
-pub use loan_types::{LoanTerms, cents_to_decimal, decimal_to_cents, hash_uuid};
+pub use utils::{cents_to_decimal, decimal_to_cents, hash_uuid};
 
 // Keep the old LoanState type alias for backward compatibility
 pub type LoanState = GlobalLoanState;
