@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Image 
 
 on:
   push:
@@ -14,7 +14,9 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on:
+      # AWS Codebuild Trigger
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
     permissions:
       contents: read
       packages: write
@@ -23,13 +25,19 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           driver-opts: |
             network=host
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Container Registry
         uses: docker/login-action@v3
@@ -65,7 +73,7 @@ jobs:
 
       - name: Build and push Docker image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
@@ -73,17 +81,13 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ steps.platforms.outputs.platforms }}
-          cache-from: |
-            type=gha,scope=build-cache
-            type=gha,scope=deps-cache
-          cache-to: |
-            type=gha,mode=max,scope=build-cache
-            type=gha,mode=max,scope=deps-cache
+          # Remove GitHub cache dependency - CodeBuild uses its built-in Docker layer caching
+          # See: https://docs.aws.amazon.com/codebuild/latest/userguide/specify-caching-local.html
           build-args: |
             BUILDKIT_INLINE_CACHE=1
 
       - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v1
         if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
