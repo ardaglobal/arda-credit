@@ -908,16 +908,16 @@ impl BackgroundBatchProcessor {
         let public_values = Bytes::from(proof_data.public_values.clone());
 
         // Log decoded values for debugging
-        if proof_data.public_values.len() == 64 {
+        if proof_data.public_values.len() >= 128 { // Updated length for LoanBatchPublicValues
             use alloy_sol_types::SolType;
-            use arithmetic_lib::PublicValuesStruct;
+            use arithmetic_lib::LoanBatchPublicValues;
 
-            match PublicValuesStruct::abi_decode(&proof_data.public_values) {
+            match LoanBatchPublicValues::abi_decode(&proof_data.public_values) {
                 Ok(decoded) => {
                     info!("✅ Using ABI-encoded public values (contract expects this format)");
                     info!(
-                        "   Decoded: initial_balance={}, final_balance={}",
-                        decoded.initial_balance, decoded.final_balance
+                        "   Decoded: previous_state_root={:?}, new_state_root={:?}, transaction_count={}, batch_timestamp={}",
+                        decoded.previous_state_root, decoded.new_state_root, decoded.transaction_count, decoded.batch_timestamp
                     );
                 }
                 Err(e) => {

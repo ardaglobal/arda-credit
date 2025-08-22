@@ -525,7 +525,7 @@ mod edge_case_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use arithmetic_lib::{addition, PublicValuesStruct};
+    use arithmetic_lib::{LoanBatchPublicValues};
     use tracing_test::traced_test;
 
     #[tokio::test]
@@ -578,36 +578,25 @@ mod integration_tests {
             .await
             .expect("Failed to create test database");
 
-        // Test that our database operations work with the PublicValuesStruct format
-        let a = 15;
-        let b = 25;
-        let computed_amount = addition(a, b);
+        // Test that our database operations work with the loan batch format
+        let test_amount = 10000; // $100.00 in cents
 
-        // Create a PublicValuesStruct like the zkVM would (only final_balance is public)
-        let public_values = PublicValuesStruct {
-            initial_balance: 0,
-            final_balance: computed_amount,
-        };
-
-        // Submit using computed amount (a and b are private inputs, not stored)
-        let transaction = submit_transaction(&test_db.pool, public_values.final_balance)
+        // Submit using the test amount 
+        let transaction = submit_transaction(&test_db.pool, test_amount)
             .await
-            .expect("Failed to submit PublicValuesStruct transaction");
+            .expect("Failed to submit transaction");
 
         // Retrieve and verify
         let pending_transactions = get_pending_transactions(&test_db.pool)
             .await
-            .expect("Failed to retrieve PublicValuesStruct transaction");
+            .expect("Failed to retrieve transaction");
 
         assert_eq!(pending_transactions.len(), 1);
         let stored_transaction = &pending_transactions[0];
 
-        // Verify the amount matches the PublicValuesStruct final_balance
-        assert_eq!(stored_transaction.amount, public_values.final_balance);
+        // Verify the amount matches our test amount
+        assert_eq!(stored_transaction.amount, test_amount);
         assert_eq!(stored_transaction.id, transaction.id);
-
-        // Verify the computation was correct
-        assert_eq!(addition(a, b), stored_transaction.amount);
     }
 
     #[tokio::test]

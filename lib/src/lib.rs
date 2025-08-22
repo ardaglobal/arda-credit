@@ -1,7 +1,12 @@
 use alloy_sol_types::sol;
 
-// Loan-specific types and operations
+// Separated modules for better maintainability
+pub mod transactions;
+pub mod user;
+pub mod loan;
 pub mod loan_processor;
+
+// Legacy loan_types module - keeping for backward compatibility but deprecated
 pub mod loan_types;
 
 // Proof module only available for host-side operations
@@ -20,6 +25,18 @@ sol! {
     }
 }
 
-// Re-export loan processing types for convenience
-pub use loan_processor::*;
-pub use loan_types::*;
+// Re-export core processing functions and state
+pub use loan_processor::{GlobalLoanState, ProcessingError, process_loan_batch};
+
+// Re-export from new modules
+pub use transactions::*;
+pub use user::{User, UserType, KycStatus, UserError, UserState};
+pub use loan::{Loan, LoanStatus, LoanError};
+
+// Legacy re-exports from loan_types for backward compatibility
+pub use loan_types::{
+    hash_uuid, decimal_to_cents, cents_to_decimal
+};
+
+// Keep the old LoanState type alias for backward compatibility
+pub type LoanState = GlobalLoanState;
