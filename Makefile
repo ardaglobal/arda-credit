@@ -77,6 +77,38 @@ docker-push: docker-build
 	@echo "✅ Image pushed successfully!"
 	@echo "🚀 Published: $(REGISTRY)/$(OWNER)/$(IMAGE_NAME):$(DOCKER_TAG)"
 
+## docker-lint: Lint Dockerfiles using hadolint
+.PHONY: docker-lint
+docker-lint:
+	@echo "🔍 Linting Dockerfiles with hadolint..."
+	@command -v hadolint >/dev/null 2>&1 || { \
+		echo "❌ hadolint not found. Installing..."; \
+		if command -v brew >/dev/null 2>&1; then \
+			brew install hadolint; \
+		elif command -v apt-get >/dev/null 2>&1; then \
+			sudo apt-get update && sudo apt-get install -y wget && \
+			wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 && \
+			chmod +x /usr/local/bin/hadolint; \
+		elif command -v yum >/dev/null 2>&1; then \
+			sudo yum install -y wget && \
+			wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64 && \
+			chmod +x /usr/local/bin/hadolint; \
+		else \
+			echo "❌ Unsupported package manager. Please install hadolint manually: https://github.com/hadolint/hadolint#install"; \
+			exit 1; \
+		fi; \
+	}
+	hadolint Dockerfile
+	@echo "✅ Dockerfile linting completed"
+
+## docker-lint-fix: Lint and show suggestions to fix Dockerfile issues
+.PHONY: docker-lint-fix
+docker-lint-fix:
+	@echo "🔧 Linting Dockerfiles with detailed suggestions..."
+	@command -v hadolint >/dev/null 2>&1 || { echo "❌ hadolint not found. Run 'make docker-lint' first to install."; exit 1; }
+	hadolint --format tty Dockerfile || true
+	@echo "💡 See https://github.com/hadolint/hadolint/wiki/DL4006 for rule explanations"
+
 ## test: Run all tests
 .PHONY: test
 test:
