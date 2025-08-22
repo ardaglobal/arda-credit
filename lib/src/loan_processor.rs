@@ -38,6 +38,19 @@ pub enum ProcessingError {
 
     #[error("Duplicate loan: {loan_id:?}")]
     DuplicateLoan { loan_id: [u8; 32] },
+
+    #[error("Invalid timestamp: {timestamp} is outside acceptable range (must be between {min_timestamp} and {max_timestamp})")]
+    InvalidTimestamp {
+        timestamp: u64,
+        min_timestamp: u64,
+        max_timestamp: u64,
+    },
+
+    #[error("Transaction timestamp {transaction_timestamp} cannot be older than current state timestamp {state_timestamp}")]
+    TimestampGoesBackward {
+        transaction_timestamp: u64,
+        state_timestamp: u64,
+    },
 }
 
 /// Global state for loan processing (maintains user and loan state)
@@ -78,6 +91,9 @@ impl LoanState {
         &mut self,
         transaction: &LoanTransaction,
     ) -> Result<(), ProcessingError> {
+        // Validate transaction with current state context
+        validate_transaction_with_state(transaction, self)?;
+
         match transaction.transaction_type {
             TransactionType::UserRegistration => self.process_user_registration(transaction),
             TransactionType::KycSubmission => self.process_kyc_submission(transaction),
@@ -96,6 +112,12 @@ impl LoanState {
 
     /// Process a batch of transactions
     pub fn process_batch(&mut self, batch: &LoanBatch) -> Result<(), ProcessingError> {
+        // Validate batch timestamp bounds
+        validate_timestamp_bounds(batch.created_at)?;
+        
+        // Validate temporal ordering within the batch
+        validate_batch_temporal_ordering(batch)?;
+        
         for transaction in &batch.transactions {
             self.process_transaction(transaction)?;
         }
@@ -329,6 +351,14 @@ pub fn process_loan_batch(
     batch: &LoanBatch,
 ) -> Result<LoanState, ProcessingError> {
     let mut state = initial_state;
+    // Additional validation: ensure batch timestamp is not older than current state
+    if batch.created_at < state.last_updated {
+        return Err(ProcessingError::TimestampGoesBackward {
+            transaction_timestamp: batch.created_at,
+            state_timestamp: state.last_updated,
+        });
+    }
+    
     state.process_batch(batch)?;
     Ok(state)
 }
@@ -358,6 +388,69 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
         _ => {}
     }
 
+    // Validate timestamp bounds for production safety
+    validate_timestamp_bounds(transaction.created_at)?;
+
+    Ok(())
+}
+
+/// Validate a loan transaction with state context for temporal ordering
+pub fn validate_transaction_with_state(
+    transaction: &LoanTransaction,
+    current_state: &LoanState,
+) -> Result<(), ProcessingError> {
+    // Run basic validation first
+    validate_transaction(transaction)?;
+
+    // Validate temporal ordering - transaction cannot be older than current state
+    if transaction.created_at < current_state.last_updated {
+        return Err(ProcessingError::TimestampGoesBackward {
+            transaction_timestamp: transaction.created_at,
+            state_timestamp: current_state.last_updated,
+        });
+    }
+
+    Ok(())
+}
+
+/// Validate that a timestamp is within reasonable bounds for production use
+fn validate_timestamp_bounds(timestamp: u64) -> Result<(), ProcessingError> {
+    // Define reasonable bounds for loan system timestamps
+    // Min: January 1, 2020 (1577836800)
+    // Max: January 1, 2030 (1893456000) - 10 years from now for reasonable future limit
+    const MIN_TIMESTAMP: u64 = 1577836800; // Jan 1, 2020
+    const MAX_TIMESTAMP: u64 = 1893456000; // Jan 1, 2030
+    
+    if timestamp < MIN_TIMESTAMP || timestamp > MAX_TIMESTAMP {
+        return Err(ProcessingError::InvalidTimestamp {
+            timestamp,
+            min_timestamp: MIN_TIMESTAMP,
+            max_timestamp: MAX_TIMESTAMP,
+        });
+    }
+    
+    Ok(())
+}
+
+/// Validate temporal ordering within a batch of transactions
+fn validate_batch_temporal_ordering(batch: &LoanBatch) -> Result<(), ProcessingError> {
+    let mut prev_timestamp = 0u64;
+    
+    for transaction in &batch.transactions {
+        // Ensure transactions within batch are not going backwards in time
+        if transaction.created_at < prev_timestamp {
+            return Err(ProcessingError::TimestampGoesBackward {
+                transaction_timestamp: transaction.created_at,
+                state_timestamp: prev_timestamp,
+            });
+        }
+        
+        // Validate each transaction's timestamp bounds
+        validate_timestamp_bounds(transaction.created_at)?;
+        
+        prev_timestamp = transaction.created_at;
+    }
+    
     Ok(())
 }
 
@@ -379,7 +472,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1000,
+            created_at: 1640995200, // January 1, 2022 - valid timestamp
             metadata,
         };
 
@@ -405,7 +498,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1000,
+            created_at: 1640995200, // January 1, 2022
             metadata,
         };
         state.process_transaction(&reg_tx).unwrap();
@@ -417,7 +510,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
-            created_at: 2000,
+            created_at: 1640995300, // 100 seconds later
             metadata: MetadataArray::empty(),
         };
         state.process_transaction(&kyc_submit_tx).unwrap();
@@ -432,7 +525,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycVerification,
             amount: 0,
-            created_at: 3000,
+            created_at: 1640995400, // 200 seconds after start
             metadata: verify_metadata,
         };
         state.process_transaction(&kyc_verify_tx).unwrap();
@@ -440,5 +533,137 @@ mod tests {
         let user = state.get_user(&user_id).unwrap();
         assert_eq!(user.kyc_status, KycStatus::Approved);
         assert!(user.is_kyc_approved());
+    }
+
+    #[test]
+    fn test_timestamp_validation_bounds() {
+        // Test valid timestamp (within bounds)
+        let valid_transaction = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: 1640995200, // January 1, 2022 - valid
+            metadata: MetadataArray::empty(),
+        };
+        assert!(validate_transaction(&valid_transaction).is_ok());
+
+        // Test invalid timestamp (too old)
+        let old_transaction = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: 1000000000, // September 9, 2001 - too old
+            metadata: MetadataArray::empty(),
+        };
+        assert!(validate_transaction(&old_transaction).is_err());
+
+        // Test invalid timestamp (too far in future)
+        let future_transaction = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: 2000000000, // May 18, 2033 - too far in future
+            metadata: MetadataArray::empty(),
+        };
+        assert!(validate_transaction(&future_transaction).is_err());
+    }
+
+    #[test]
+    fn test_temporal_ordering_validation() {
+        let mut state = LoanState::new();
+        state.last_updated = 2000;
+
+        // Test transaction newer than state (valid)
+        let newer_transaction = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: 1640995200, // Valid timestamp after state
+            metadata: MetadataArray::empty(),
+        };
+        assert!(validate_transaction_with_state(&newer_transaction, &state).is_ok());
+
+        // Test transaction older than state (invalid)
+        let older_transaction = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: 1000, // Before state timestamp
+            metadata: MetadataArray::empty(),
+        };
+        assert!(validate_transaction_with_state(&older_transaction, &state).is_err());
+    }
+
+    #[test]
+    fn test_batch_temporal_ordering() {
+        // Test valid batch with properly ordered timestamps
+        let transactions = vec![
+            LoanTransaction {
+                transaction_id: [1u8; 32],
+                user_id: [1u8; 32],
+                loan_id: [0u8; 32],
+                transaction_type: TransactionType::UserRegistration,
+                amount: 0,
+                created_at: 1640995200, // Base time
+                metadata: MetadataArray::empty(),
+            },
+            LoanTransaction {
+                transaction_id: [2u8; 32],
+                user_id: [2u8; 32],
+                loan_id: [0u8; 32],
+                transaction_type: TransactionType::UserRegistration,
+                amount: 0,
+                created_at: 1640995300, // 100 seconds later
+                metadata: MetadataArray::empty(),
+            },
+        ];
+
+        let valid_batch = LoanBatch {
+            batch_id: [1u8; 32],
+            transactions,
+            previous_state_root: [0u8; 32],
+            created_at: 1640995200,
+        };
+        assert!(validate_batch_temporal_ordering(&valid_batch).is_ok());
+
+        // Test invalid batch with backwards timestamps
+        let invalid_transactions = vec![
+            LoanTransaction {
+                transaction_id: [1u8; 32],
+                user_id: [1u8; 32],
+                loan_id: [0u8; 32],
+                transaction_type: TransactionType::UserRegistration,
+                amount: 0,
+                created_at: 1640995300, // Later time first
+                metadata: MetadataArray::empty(),
+            },
+            LoanTransaction {
+                transaction_id: [2u8; 32],
+                user_id: [2u8; 32],
+                loan_id: [0u8; 32],
+                transaction_type: TransactionType::UserRegistration,
+                amount: 0,
+                created_at: 1640995200, // Earlier time second - invalid!
+                metadata: MetadataArray::empty(),
+            },
+        ];
+
+        let invalid_batch = LoanBatch {
+            batch_id: [1u8; 32],
+            transactions: invalid_transactions,
+            previous_state_root: [0u8; 32],
+            created_at: 1640995200,
+        };
+        assert!(validate_batch_temporal_ordering(&invalid_batch).is_err());
     }
 }
