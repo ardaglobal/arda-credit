@@ -88,22 +88,22 @@ pub enum TransactionType {
 // ============================================================================
 
 /// Configurable loan terms (zkVM compatible)
-/// 
+///
 /// This struct allows you to configure loan terms such as interest rate and term length.
 /// It provides sensible defaults but allows customization for different loan products.
-/// 
+///
 /// # Examples
-/// 
+///
 /// ```rust
 /// use lib::{LoanTerms, LoanState};
-/// 
+///
 /// // Use default terms (7.5% APR, 36 months)
 /// let default_state = LoanState::new();
-/// 
+///
 /// // Create custom terms (12% APR, 60 months)
 /// let custom_terms = LoanTerms::new(1200, 60);
 /// let custom_state = LoanState::with_loan_terms(custom_terms);
-/// 
+///
 /// // Update terms on existing state
 /// let mut state = LoanState::new();
 /// let new_terms = LoanTerms::new(500, 24); // 5% APR, 2 years
