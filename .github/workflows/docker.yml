@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build and Push Docker Image 
 
 on:
   push:
@@ -14,7 +14,9 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on:
+      # AWS Codebuild Trigger
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
     permissions:
       contents: read
       packages: write
@@ -31,7 +33,13 @@ jobs:
           driver-opts: |
             network=host
 
-      - name: Log in to Container Registry
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GH Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -73,12 +81,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ steps.platforms.outputs.platforms }}
-          cache-from: |
-            type=gha,scope=build-cache
-            type=gha,scope=deps-cache
-          cache-to: |
-            type=gha,mode=max,scope=build-cache
-            type=gha,mode=max,scope=deps-cache
+          # Remove GitHub cache dependency - CodeBuild uses its built-in Docker layer caching
+          # See: https://docs.aws.amazon.com/codebuild/latest/userguide/specify-caching-local.html
           build-args: |
             BUILDKIT_INLINE_CACHE=1
 
