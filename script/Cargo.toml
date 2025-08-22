@@ -21,6 +21,12 @@ arithmetic-lib = { path = "../lib", package = "lib" }
 # SP1 SDK for local proving
 sp1-sdk = { workspace = true }
 
+# Sindri integration
+sindri = { workspace = true }
+
+# Command line argument parsing
+clap = { workspace = true, features = ["derive"] }
+
 # Utilities
 alloy-sol-types    = { workspace = true }
 eyre               = { workspace = true }

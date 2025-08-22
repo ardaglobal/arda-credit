@@ -6,7 +6,11 @@
 //!
 //! Usage:
 //! ```shell
+//! # Run locally with Core proofs (fast development)
 //! cargo run --package arda-credit --bin arda-credit
+//! 
+//! # Run and submit to Sindri for circuit verification
+//! cargo run --package arda-credit --bin arda-credit -- --sindri
 //! ```
 
 use alloy_sol_types::SolType;
@@ -14,6 +18,7 @@ use arithmetic_lib::{
     hash_uuid, LoanBatch, LoanBatchPublicValues, LoanState, LoanTransaction, MetadataArray,
     TransactionType, UserType,
 };
+use clap::Parser;
 use eyre::Result;
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
 use tracing::info;
@@ -22,13 +27,30 @@ use tracing::info;
 /// This is built by build.rs from the program/ directory.
 pub const LOAN_PROGRAM_ELF: &[u8] = include_elf!("program");
 
+#[derive(Parser, Debug)]
+#[command(name = "arda-credit")]
+#[command(about = "SP1 Loan Processing Test with optional Sindri integration")]
+struct Args {
+    /// Submit the circuit to Sindri for verification
+    #[arg(long)]
+    sindri: bool,
+}
+
 #[allow(clippy::cognitive_complexity)]
 fn main() -> Result<()> {
+    // Parse command line arguments
+    let args = Args::parse();
+
     // Setup logging
     tracing_subscriber::fmt().with_env_filter("info").init();
 
-    info!("🏦 Starting local SP1 loan processing test");
-    info!("🔐 Testing complete loan lifecycle with privacy preservation");
+    if args.sindri {
+        info!("🌐 Starting SP1 loan processing test with Sindri integration");
+        info!("🔐 Will submit circuit to Sindri for verification");
+    } else {
+        info!("🏦 Starting local SP1 loan processing test");
+        info!("🔐 Testing complete loan lifecycle with privacy preservation");
+    }
 
     // Create a prover client for local testing
     let client = ProverClient::from_env();
@@ -54,6 +76,17 @@ fn main() -> Result<()> {
     stdin.write(&initial_state);
     stdin.write(&batch);
 
+    if args.sindri {
+        run_with_sindri(client, stdin)?;
+    } else {
+        run_locally(client, stdin)?;
+    }
+
+    Ok(())
+}
+
+/// Run the test locally with Core proofs (fast for development)
+fn run_locally(client: sp1_sdk::EnvProver, stdin: SP1Stdin) -> Result<()> {
     info!("🔄 Generating Core proof (fast, for development)...");
 
     // Generate a Core proof (fast for local development)
@@ -73,9 +106,86 @@ fn main() -> Result<()> {
         .expect("Failed to verify loan proof");
     info!("✅ Proof verification passed!");
 
+    analyze_proof_output(&proof)?;
+
+    info!("🎉 Local SP1 loan processing test completed successfully!");
+    Ok(())
+}
+
+/// Run the test with Sindri integration
+fn run_with_sindri(client: sp1_sdk::EnvProver, stdin: SP1Stdin) -> Result<()> {
+    info!("🔄 Generating proof for Sindri (Groth16)...");
+
+    // Generate a Groth16 proof for Sindri compatibility
+    let (pk, vk) = client.setup(LOAN_PROGRAM_ELF);
+    let proof = client
+        .prove(&pk, &stdin)
+        .groth16() // Use Groth16 for Sindri compatibility
+        .run()
+        .expect("Failed to generate Groth16 loan processing proof");
+
+    info!("✅ Groth16 proof generated successfully!");
+
+    // Verify the proof locally first
+    info!("🔍 Verifying loan processing proof locally...");
+    client
+        .verify(&proof, &vk)
+        .expect("Failed to verify loan proof locally");
+    info!("✅ Local proof verification passed!");
+
+    analyze_proof_output(&proof)?;
+
+    // Submit to Sindri
+    info!("🌐 Submitting circuit to Sindri for verification...");
+    submit_to_sindri(&proof, &vk)?;
+
+    info!("🎉 SP1 loan processing test with Sindri integration completed successfully!");
+    Ok(())
+}
+
+/// Submit the proof to Sindri for circuit verification
+fn submit_to_sindri(proof: &sp1_sdk::SP1ProofWithPublicValues, _vk: &sp1_sdk::SP1VerifyingKey) -> Result<()> {
+    use std::env;
+
+    // Get Sindri API key from environment
+    let _api_key = env::var("SINDRI_API_KEY")
+        .map_err(|_| eyre::eyre!("SINDRI_API_KEY environment variable not set. Please set it to submit to Sindri."))?;
+
+    info!("🔑 Using Sindri API key from environment");
+
+    // Read the sindri.json configuration
+    let _sindri_config = std::fs::read_to_string("sindri.json")
+        .map_err(|_| eyre::eyre!("Could not read sindri.json. Make sure you're running from the project root."))?;
+
+    info!("📁 Read Sindri configuration from sindri.json");
+
+    // For now, we'll just log that we would submit to Sindri
+    // In a full implementation, you would:
+    // 1. Use the Sindri client from the lib crate (which has the proper integration)
+    // 2. Package the ELF binary
+    // 3. Submit the circuit definition
+    // 4. Submit a proof request with the public inputs
+    // 5. Wait for and verify the result
+
+    info!("🚀 Would submit to Sindri with:");
+    info!("  - Circuit: SP1 Groth16 proof");
+    info!("  - Public values size: {} bytes", proof.public_values.as_slice().len());
+    info!("  - Proof size: {} bytes", proof.bytes().len());
+    
+    // TODO: Implement actual Sindri submission using the lib crate's proof module
+    // The proper implementation would use arithmetic_lib::proof::generate_sindri_proof
+    info!("⚠️  Note: Actual Sindri submission not implemented yet - this is a placeholder");
+    info!("🔗 Configuration ready for Sindri integration");
+    info!("💡 To implement full Sindri integration, use the proof module from the lib crate");
+
+    Ok(())
+}
+
+/// Analyze and display the proof output
+fn analyze_proof_output(proof: &sp1_sdk::SP1ProofWithPublicValues) -> Result<()> {
     // Decode and analyze the public outputs
-    let public_values = proof.public_values;
-    let output = LoanBatchPublicValues::abi_decode(public_values.as_slice())
+    let public_values = proof.public_values.as_slice();
+    let output = LoanBatchPublicValues::abi_decode(public_values)
         .expect("Failed to decode loan batch public values");
 
     info!("📤 Public outputs (what goes on-chain):");
@@ -108,7 +218,6 @@ fn main() -> Result<()> {
             "🔐 Individual loan amounts, user identities, and transaction details remain private!"
         );
         info!("🎉 Only state root transitions and transaction count are public");
-        info!("🎉 Local SP1 loan processing test completed successfully!");
     } else {
         eyre::bail!("❌ No state transition detected - batch may have been empty or failed");
     }

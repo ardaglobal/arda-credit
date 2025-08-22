@@ -838,9 +838,11 @@ name = "arda-credit"
 version = "0.0.1"
 dependencies = [
  "alloy-sol-types",
+ "clap",
  "eyre",
  "hex",
  "lib",
+ "sindri",
  "sp1-build",
  "sp1-sdk",
  "tracing",
