@@ -77,7 +77,7 @@ humantime = "2"
 
 [dev-dependencies]
 axum-test          = "17.3.0"
-tempfile           = "3.10"
+tempfile           = "3.21"
 tracing-subscriber = "0.3"
 tracing-test       = "0.2"
 uuid               = { version = "1.0", features = [ "v4" ] }
