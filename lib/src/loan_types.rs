@@ -99,9 +99,8 @@ pub fn cents_to_decimal(cents: u64) -> rust_decimal::Decimal {
 // These re-exports maintain compatibility with existing code.
 // New code should import directly from the specific modules.
 
-pub use crate::transactions::{
-    TransactionType, LoanTransaction, LoanBatch, MetadataArray, 
-    InternalLoanBatchPublicValues
-};
-pub use crate::user::{User, UserType, KycStatus};
 pub use crate::loan::{Loan, LoanStatus};
+pub use crate::transactions::{
+    InternalLoanBatchPublicValues, LoanBatch, LoanTransaction, MetadataArray, TransactionType,
+};
+pub use crate::user::{KycStatus, User, UserType};

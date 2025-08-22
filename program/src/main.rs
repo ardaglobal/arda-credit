@@ -15,7 +15,7 @@ sp1_zkvm::entrypoint!(main);
 use alloy_sol_types::private::FixedBytes;
 use alloy_sol_types::SolType;
 use arda_credit_lib::{
-    process_loan_batch, validate_transaction, LoanBatch, LoanBatchPublicValues, GlobalLoanState,
+    process_loan_batch, validate_transaction, GlobalLoanState, LoanBatch, LoanBatchPublicValues,
 };
 use sha2::{Digest, Sha256};
 

@@ -188,7 +188,10 @@ mod tests {
     use super::*;
     use crate::transactions::MetadataArray;
 
-    fn create_test_user_registration_transaction(user_id: [u8; 32], user_type: u8) -> LoanTransaction {
+    fn create_test_user_registration_transaction(
+        user_id: [u8; 32],
+        user_type: u8,
+    ) -> LoanTransaction {
         LoanTransaction {
             transaction_id: [1u8; 32],
             user_id,
@@ -232,10 +235,12 @@ mod tests {
     fn test_kyc_submission() {
         let mut user_state = UserState::new();
         let user_id = [1u8; 32];
-        
+
         // First register user
         let registration_transaction = create_test_user_registration_transaction(user_id, 1);
-        user_state.process_user_registration(&registration_transaction).unwrap();
+        user_state
+            .process_user_registration(&registration_transaction)
+            .unwrap();
 
         // Then submit KYC
         let kyc_transaction = LoanTransaction {
@@ -260,10 +265,12 @@ mod tests {
     fn test_kyc_verification_approval() {
         let mut user_state = UserState::new();
         let user_id = [1u8; 32];
-        
+
         // Setup: Register user and submit KYC
         let registration_transaction = create_test_user_registration_transaction(user_id, 1);
-        user_state.process_user_registration(&registration_transaction).unwrap();
+        user_state
+            .process_user_registration(&registration_transaction)
+            .unwrap();
 
         let kyc_submission = LoanTransaction {
             transaction_id: [2u8; 32],

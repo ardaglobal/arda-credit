@@ -94,6 +94,7 @@ impl LoanState {
         &mut self,
         transaction: &LoanTransaction,
         users: &HashMap<[u8; 32], User>,
+        loan_terms: &crate::loan_types::LoanTerms,
     ) -> Result<(), LoanError> {
         if transaction.transaction_type != TransactionType::LoanOrigination {
             return Err(LoanError::InvalidTransactionType);
@@ -115,11 +116,9 @@ impl LoanState {
         lender_id.copy_from_slice(&metadata[32..64]);
 
         // Verify both parties are KYC'd
-        let borrower = users
-            .get(&borrower_id)
-            .ok_or(UserError::UserNotFound {
-                user_id: borrower_id,
-            })?;
+        let borrower = users.get(&borrower_id).ok_or(UserError::UserNotFound {
+            user_id: borrower_id,
+        })?;
         let lender = users
             .get(&lender_id)
             .ok_or(UserError::UserNotFound { user_id: lender_id })?;
@@ -130,7 +129,9 @@ impl LoanState {
             }));
         }
         if !lender.is_kyc_approved() {
-            return Err(LoanError::UserError(UserError::KycNotApproved { user_id: lender_id }));
+            return Err(LoanError::UserError(UserError::KycNotApproved {
+                user_id: lender_id,
+            }));
         }
 
         // Create new loan
@@ -140,12 +141,12 @@ impl LoanState {
             lender_id,
             principal_amount: transaction.amount,
             outstanding_balance: transaction.amount,
-            interest_rate: 750, // Default 7.5% APR (750 basis points)
-            term_months: 36,    // Default 3 year term
+            interest_rate: loan_terms.interest_rate,
+            term_months: loan_terms.term_months,
             loan_status: LoanStatus::Originated,
             originated_at: transaction.created_at,
             funded_at: 0,
-            maturity_date: transaction.created_at + (36 * 30 * 24 * 60 * 60), // 36 months
+            maturity_date: loan_terms.calculate_maturity_date(transaction.created_at),
         };
 
         self.loans.insert(loan_id, loan);
@@ -170,7 +171,9 @@ impl LoanState {
             .get(&payer_id)
             .ok_or(UserError::UserNotFound { user_id: payer_id })?;
         if !payer.is_kyc_approved() {
-            return Err(LoanError::UserError(UserError::KycNotApproved { user_id: payer_id }));
+            return Err(LoanError::UserError(UserError::KycNotApproved {
+                user_id: payer_id,
+            }));
         }
 
         let loan = self
@@ -229,7 +232,9 @@ impl LoanState {
             .get(&closer_id)
             .ok_or(UserError::UserNotFound { user_id: closer_id })?;
         if !closer.is_kyc_approved() {
-            return Err(LoanError::UserError(UserError::KycNotApproved { user_id: closer_id }));
+            return Err(LoanError::UserError(UserError::KycNotApproved {
+                user_id: closer_id,
+            }));
         }
 
         let loan = self
@@ -266,7 +271,7 @@ impl Default for LoanState {
 mod tests {
     use super::*;
     use crate::transactions::MetadataArray;
-    use crate::user::{UserType, KycStatus};
+    use crate::user::{KycStatus, UserType};
 
     fn setup_test_users() -> (HashMap<[u8; 32], User>, [u8; 32], [u8; 32]) {
         let mut users = HashMap::new();
@@ -333,7 +338,8 @@ mod tests {
             10000, // $100.00
         );
 
-        let result = loan_state.process_loan_origination(&transaction, &users);
+        let loan_terms = crate::loan_types::LoanTerms::default();
+        let result = loan_state.process_loan_origination(&transaction, &users, &loan_terms);
         assert!(result.is_ok());
 
         let loan = loan_state.get_loan(&loan_id).unwrap();
@@ -356,7 +362,10 @@ mod tests {
             lender_id,
             10000,
         );
-        loan_state.process_loan_origination(&origination, &users).unwrap();
+        let loan_terms = crate::loan_types::LoanTerms::default();
+        loan_state
+            .process_loan_origination(&origination, &users, &loan_terms)
+            .unwrap();
 
         // Then make payment
         let payment_transaction = LoanTransaction {
@@ -391,7 +400,10 @@ mod tests {
             lender_id,
             10000,
         );
-        loan_state.process_loan_origination(&origination, &users).unwrap();
+        let loan_terms = crate::loan_types::LoanTerms::default();
+        loan_state
+            .process_loan_origination(&origination, &users, &loan_terms)
+            .unwrap();
 
         // Full payment
         let payment_transaction = LoanTransaction {
@@ -427,7 +439,10 @@ mod tests {
             lender_id,
             10000,
         );
-        loan_state.process_loan_origination(&origination, &users).unwrap();
+        let loan_terms = crate::loan_types::LoanTerms::default();
+        loan_state
+            .process_loan_origination(&origination, &users, &loan_terms)
+            .unwrap();
 
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
@@ -438,7 +453,9 @@ mod tests {
             created_at: 1234567930,
             metadata: MetadataArray::empty(),
         };
-        loan_state.process_loan_payment(&payment_transaction, &users).unwrap();
+        loan_state
+            .process_loan_payment(&payment_transaction, &users)
+            .unwrap();
 
         // Now closeout
         let closeout_transaction = LoanTransaction {
@@ -472,7 +489,10 @@ mod tests {
             lender_id,
             10000,
         );
-        loan_state.process_loan_origination(&origination, &users).unwrap();
+        let loan_terms = crate::loan_types::LoanTerms::default();
+        loan_state
+            .process_loan_origination(&origination, &users, &loan_terms)
+            .unwrap();
 
         // Try to closeout without paying off
         let closeout_transaction = LoanTransaction {
@@ -486,7 +506,10 @@ mod tests {
         };
 
         let result = loan_state.process_loan_closeout(&closeout_transaction, &users);
-        assert!(matches!(result, Err(LoanError::InvalidLoanStateTransition { .. })));
+        assert!(matches!(
+            result,
+            Err(LoanError::InvalidLoanStateTransition { .. })
+        ));
     }
 
     #[test]
@@ -503,7 +526,10 @@ mod tests {
             lender_id,
             10000,
         );
-        loan_state.process_loan_origination(&origination, &users).unwrap();
+        let loan_terms = crate::loan_types::LoanTerms::default();
+        loan_state
+            .process_loan_origination(&origination, &users, &loan_terms)
+            .unwrap();
 
         // Try to overpay
         let payment_transaction = LoanTransaction {
@@ -517,6 +543,9 @@ mod tests {
         };
 
         let result = loan_state.process_loan_payment(&payment_transaction, &users);
-        assert!(matches!(result, Err(LoanError::InsufficientLoanBalance { .. })));
+        assert!(matches!(
+            result,
+            Err(LoanError::InsufficientLoanBalance { .. })
+        ));
     }
 }

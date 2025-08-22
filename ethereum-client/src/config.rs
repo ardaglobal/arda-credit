@@ -82,7 +82,7 @@ impl Config {
 
         let ethereum_contract = env::var("ARDA_CREDIT_CONTRACT_ADDRESS")
             .map_err(|_| {
-                                  EthereumError::Config("ARDA_CREDIT_CONTRACT_ADDRESS is required".to_string())
+                EthereumError::Config("ARDA_CREDIT_CONTRACT_ADDRESS is required".to_string())
             })?
             .parse::<Address>()
             .map_err(|e| EthereumError::InvalidAddress(format!("Invalid contract address: {e}")))?;

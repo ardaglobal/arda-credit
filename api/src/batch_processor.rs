@@ -875,7 +875,8 @@ impl BackgroundBatchProcessor {
             "📥 Fetching real proof data from Sindri for proof ID: {}",
             sindri_proof_id
         );
-        let proof_data = match arda_credit_lib::proof::get_sindri_proof_data(sindri_proof_id).await {
+        let proof_data = match arda_credit_lib::proof::get_sindri_proof_data(sindri_proof_id).await
+        {
             Ok(data) => {
                 info!("✅ Successfully retrieved proof data from Sindri");
                 info!("   Proof size: {} bytes", data.proof_bytes.len());
@@ -908,7 +909,8 @@ impl BackgroundBatchProcessor {
         let public_values = Bytes::from(proof_data.public_values.clone());
 
         // Log decoded values for debugging
-        if proof_data.public_values.len() >= 128 { // Updated length for LoanBatchPublicValues
+        if proof_data.public_values.len() >= 128 {
+            // Updated length for LoanBatchPublicValues
             use alloy_sol_types::SolType;
             use arda_credit_lib::LoanBatchPublicValues;
 

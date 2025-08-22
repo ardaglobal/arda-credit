@@ -4,7 +4,7 @@
 //! the SP1 zkVM. It processes batches of mixed transaction types while maintaining
 //! privacy guarantees.
 
-use crate::loan::{LoanError, Loan};
+use crate::loan::{Loan, LoanError};
 use crate::loan_types::LoanTerms;
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
 use crate::user::{User, UserError, UserState};
@@ -101,32 +101,44 @@ impl GlobalLoanState {
 
         match transaction.transaction_type {
             TransactionType::UserRegistration => {
-                let mut user_state = UserState { users: self.users.clone() };
+                let mut user_state = UserState {
+                    users: self.users.clone(),
+                };
                 user_state.process_user_registration(transaction)?;
                 self.users = user_state.users;
             }
             TransactionType::KycSubmission => {
-                let mut user_state = UserState { users: self.users.clone() };
+                let mut user_state = UserState {
+                    users: self.users.clone(),
+                };
                 user_state.process_kyc_submission(transaction)?;
                 self.users = user_state.users;
             }
             TransactionType::KycVerification => {
-                let mut user_state = UserState { users: self.users.clone() };
+                let mut user_state = UserState {
+                    users: self.users.clone(),
+                };
                 user_state.process_kyc_verification(transaction)?;
                 self.users = user_state.users;
             }
             TransactionType::LoanOrigination => {
-                let mut loan_state = crate::loan::LoanState { loans: self.loans.clone() };
-                loan_state.process_loan_origination(transaction, &self.users)?;
+                let mut loan_state = crate::loan::LoanState {
+                    loans: self.loans.clone(),
+                };
+                loan_state.process_loan_origination(transaction, &self.users, &self.loan_terms)?;
                 self.loans = loan_state.loans;
             }
             TransactionType::LoanPayment => {
-                let mut loan_state = crate::loan::LoanState { loans: self.loans.clone() };
+                let mut loan_state = crate::loan::LoanState {
+                    loans: self.loans.clone(),
+                };
                 loan_state.process_loan_payment(transaction, &self.users)?;
                 self.loans = loan_state.loans;
             }
             TransactionType::LoanCloseout => {
-                let mut loan_state = crate::loan::LoanState { loans: self.loans.clone() };
+                let mut loan_state = crate::loan::LoanState {
+                    loans: self.loans.clone(),
+                };
                 loan_state.process_loan_closeout(transaction, &self.users)?;
                 self.loans = loan_state.loans;
             }
@@ -152,7 +164,6 @@ impl GlobalLoanState {
         }
         Ok(())
     }
-
 
     /// Get user by ID (read-only)
     pub fn get_user(&self, user_id: &[u8; 32]) -> Option<&User> {
@@ -196,7 +207,13 @@ pub fn process_loan_batch(
 /// Validate a loan transaction before processing
 pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), ProcessingError> {
     // Use the validation from the transactions module
-    crate::transactions::validate_transaction(transaction).map_err(|_| ProcessingError::InvalidTransactionType)
+    crate::transactions::validate_transaction(transaction)
+        .map_err(|_| ProcessingError::InvalidTransactionType)?;
+
+    // Additional validation for timestamp bounds
+    validate_timestamp_bounds(transaction.created_at)?;
+
+    Ok(())
 }
 
 /// Validate a loan transaction with state context for temporal ordering
@@ -317,7 +334,7 @@ mod tests {
     #[test]
     fn test_full_loan_lifecycle() {
         let mut state = GlobalLoanState::new();
-        
+
         let borrower_id = [1u8; 32];
         let lender_id = [2u8; 32];
         let loan_id = [10u8; 32];
@@ -325,14 +342,14 @@ mod tests {
         // 1. Register users
         let borrower_reg = create_test_user_registration(borrower_id, 1); // Investor
         let lender_reg = create_test_user_registration(lender_id, 2); // Lender
-        
+
         state.process_transaction(&borrower_reg).unwrap();
         state.process_transaction(&lender_reg).unwrap();
 
         // 2. KYC verification
         let borrower_kyc = create_kyc_verification(borrower_id, true);
         let lender_kyc = create_kyc_verification(lender_id, true);
-        
+
         state.process_transaction(&borrower_kyc).unwrap();
         state.process_transaction(&lender_kyc).unwrap();
 
@@ -356,7 +373,7 @@ mod tests {
             user_id: borrower_id,
             loan_id,
             transaction_type: TransactionType::LoanPayment,
-            amount: 25000, // Partial payment
+            amount: 25000,          // Partial payment
             created_at: 1640995500, // January 1, 2022 - valid timestamp
             metadata: MetadataArray::empty(),
         };
@@ -372,7 +389,7 @@ mod tests {
             user_id: borrower_id,
             loan_id,
             transaction_type: TransactionType::LoanPayment,
-            amount: 25000, // Final payment
+            amount: 25000,          // Final payment
             created_at: 1640995600, // January 1, 2022 - valid timestamp
             metadata: MetadataArray::empty(),
         };
@@ -397,14 +414,14 @@ mod tests {
         let loan = state.get_loan(&loan_id).unwrap();
         assert_eq!(loan.loan_status, LoanStatus::Closed);
 
-        // Verify transaction count  
+        // Verify transaction count
         assert_eq!(state.transaction_count, 8); // 2 registrations + 2 KYC verifications + 1 origination + 2 payments + 1 closeout
     }
 
     #[test]
     fn test_loan_origination_without_kyc_fails() {
         let mut state = GlobalLoanState::new();
-        
+
         let borrower_id = [1u8; 32];
         let lender_id = [2u8; 32];
         let loan_id = [10u8; 32];
@@ -412,21 +429,26 @@ mod tests {
         // Register users but don't KYC them
         let borrower_reg = create_test_user_registration(borrower_id, 1);
         let lender_reg = create_test_user_registration(lender_id, 2);
-        
+
         state.process_transaction(&borrower_reg).unwrap();
         state.process_transaction(&lender_reg).unwrap();
 
         // Try to originate loan without KYC
         let loan_origination = create_loan_origination(loan_id, borrower_id, lender_id, 50000);
         let result = state.process_transaction(&loan_origination);
-        
-        assert!(matches!(result, Err(ProcessingError::LoanError(LoanError::UserError(UserError::KycNotApproved { .. })))));
+
+        assert!(matches!(
+            result,
+            Err(ProcessingError::LoanError(LoanError::UserError(
+                UserError::KycNotApproved { .. }
+            )))
+        ));
     }
 
     #[test]
     fn test_process_batch() {
         let mut state = GlobalLoanState::new();
-        
+
         let borrower_id = [1u8; 32];
         let lender_id = [2u8; 32];
 
@@ -444,10 +466,10 @@ mod tests {
 
         let result = state.process_batch(&batch);
         assert!(result.is_ok());
-        
+
         assert_eq!(state.users.len(), 2);
         assert_eq!(state.transaction_count, 4);
-        
+
         // Verify both users are KYC approved
         assert!(state.get_user(&borrower_id).unwrap().is_kyc_approved());
         assert!(state.get_user(&lender_id).unwrap().is_kyc_approved());

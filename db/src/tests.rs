@@ -582,7 +582,7 @@ mod integration_tests {
         // Test that our database operations work with the loan batch format
         let test_amount = 10000; // $100.00 in cents
 
-        // Submit using the test amount 
+        // Submit using the test amount
         let transaction = submit_transaction(&test_db.pool, test_amount)
             .await
             .expect("Failed to submit transaction");
