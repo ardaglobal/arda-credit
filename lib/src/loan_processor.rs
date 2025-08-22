@@ -561,7 +561,7 @@ mod tests {
     fn test_configurable_loan_terms() {
         // Test with custom loan terms
         let custom_terms = LoanTerms::new(1200, 60); // 12% APR, 5 year term
-        let mut state = LoanState::with_loan_terms(custom_terms.clone());
+        let mut state = LoanState::with_loan_terms(custom_terms);
 
         let borrower_id = [1u8; 32];
         let lender_id = [2u8; 32];
@@ -575,13 +575,14 @@ mod tests {
         loan_metadata.as_mut_bytes()[0..32].copy_from_slice(&borrower_id);
         loan_metadata.as_mut_bytes()[32..64].copy_from_slice(&lender_id);
 
+        let base_timestamp = 1_640_995_200; // January 1, 2022
         let loan_tx = LoanTransaction {
             transaction_id: [10u8; 32],
             user_id: lender_id,
             loan_id,
             transaction_type: TransactionType::LoanOrigination,
-            amount: 10_000_00, // $10,000 in cents
-            created_at: 5000,
+            amount: 1_000_000, // $10,000 in cents
+            created_at: base_timestamp + 5000,
             metadata: loan_metadata,
         };
 
@@ -591,11 +592,11 @@ mod tests {
         let loan = state.get_loan(&loan_id).unwrap();
         assert_eq!(loan.interest_rate, 1200); // Custom 12% APR
         assert_eq!(loan.term_months, 60); // Custom 5 year term
-        assert_eq!(loan.principal_amount, 10_000_00);
-        assert_eq!(loan.outstanding_balance, 10_000_00);
+        assert_eq!(loan.principal_amount, 1_000_000);
+        assert_eq!(loan.outstanding_balance, 1_000_000);
 
         // Verify maturity date calculation
-        let expected_maturity = 5000 + (60_u64 * 30 * 24 * 60 * 60); // 60 months
+        let expected_maturity = (base_timestamp + 5000) + (60_u64 * 30 * 24 * 60 * 60); // 60 months
         assert_eq!(loan.maturity_date, expected_maturity);
 
         // Test with default loan terms
@@ -612,6 +613,8 @@ mod tests {
 
     /// Helper function to set up KYC'd users for testing
     fn setup_kycd_users(state: &mut LoanState, borrower_id: [u8; 32], lender_id: [u8; 32]) {
+        let base_timestamp = 1_640_995_200; // January 1, 2022
+
         // Register borrower
         let mut borrower_metadata = MetadataArray::empty();
         borrower_metadata.as_mut_bytes()[0] = UserType::Investor as u8;
@@ -621,7 +624,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1000,
+            created_at: base_timestamp + 1000,
             metadata: borrower_metadata,
         };
         state.process_transaction(&borrower_reg_tx).unwrap();
@@ -635,7 +638,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1100,
+            created_at: base_timestamp + 1100,
             metadata: lender_metadata,
         };
         state.process_transaction(&lender_reg_tx).unwrap();
@@ -647,7 +650,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
-            created_at: 2000,
+            created_at: base_timestamp + 2000,
             metadata: MetadataArray::empty(),
         };
         state.process_transaction(&borrower_kyc_submit_tx).unwrap();
@@ -659,7 +662,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
-            created_at: 2100,
+            created_at: base_timestamp + 2100,
             metadata: MetadataArray::empty(),
         };
         state.process_transaction(&lender_kyc_submit_tx).unwrap();
@@ -673,7 +676,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycVerification,
             amount: 0,
-            created_at: 3000,
+            created_at: base_timestamp + 3000,
             metadata: borrower_verify_metadata,
         };
         state.process_transaction(&borrower_kyc_verify_tx).unwrap();
@@ -687,11 +690,12 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycVerification,
             amount: 0,
-            created_at: 3100,
+            created_at: base_timestamp + 3100,
             metadata: lender_verify_metadata,
         };
         state.process_transaction(&lender_kyc_verify_tx).unwrap();
     }
+    #[test]
     fn test_timestamp_validation_bounds() {
         // Test valid timestamp (within bounds)
         let valid_transaction = LoanTransaction {
