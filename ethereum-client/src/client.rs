@@ -178,7 +178,7 @@ impl EthereumClient {
             .connect_http(config.network.rpc_url.clone());
 
         let contracts = ContractAddresses::new(
-            config.contract.arithmetic_contract,
+            config.contract.arda_credit_contract,
             config.contract.verifier_contract,
         );
 
@@ -1290,7 +1290,7 @@ impl EthereumClient {
             .connect_http(config.network.rpc_url.clone());
 
         let contracts = ContractAddresses::new(
-            config.contract.arithmetic_contract,
+            config.contract.arda_credit_contract,
             config.contract.verifier_contract,
         );
 

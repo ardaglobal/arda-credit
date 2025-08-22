@@ -14,14 +14,14 @@ sp1_zkvm::entrypoint!(main);
 
 use alloy_sol_types::private::FixedBytes;
 use alloy_sol_types::SolType;
-use arithmetic_lib::{
-    process_loan_batch, validate_transaction, LoanBatch, LoanBatchPublicValues, LoanState,
+use arda_credit_lib::{
+    process_loan_batch, validate_transaction, GlobalLoanState, LoanBatch, LoanBatchPublicValues,
 };
 use sha2::{Digest, Sha256};
 
 pub fn main() {
     // Read the initial loan state from the prover
-    let initial_state = sp1_zkvm::io::read::<LoanState>();
+    let initial_state = sp1_zkvm::io::read::<GlobalLoanState>();
 
     // Read the loan batch to process
     let batch = sp1_zkvm::io::read::<LoanBatch>();

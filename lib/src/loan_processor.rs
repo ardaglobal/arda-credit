@@ -4,7 +4,10 @@
 //! the SP1 zkVM. It processes batches of mixed transaction types while maintaining
 //! privacy guarantees.
 
-use crate::loan_types::*;
+use crate::loan::LoanTerms;
+use crate::loan::{Loan, LoanError};
+use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
+use crate::user::{User, UserError, UserState};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -12,32 +15,14 @@ use thiserror::Error;
 /// Errors that can occur during loan processing
 #[derive(Error, Debug, Clone)]
 pub enum ProcessingError {
-    #[error("User not found: {user_id:?}")]
-    UserNotFound { user_id: [u8; 32] },
+    #[error("User error: {0}")]
+    UserError(#[from] UserError),
 
-    #[error("Loan not found: {loan_id:?}")]
-    LoanNotFound { loan_id: [u8; 32] },
-
-    #[error("KYC not approved for user: {user_id:?}")]
-    KycNotApproved { user_id: [u8; 32] },
-
-    #[error("Invalid loan state transition: {current_status:?} -> {requested_operation:?}")]
-    InvalidLoanStateTransition {
-        current_status: LoanStatus,
-        requested_operation: TransactionType,
-    },
-
-    #[error("Insufficient loan balance: requested {amount}, available {balance}")]
-    InsufficientLoanBalance { amount: u64, balance: u64 },
+    #[error("Loan error: {0}")]
+    LoanError(#[from] LoanError),
 
     #[error("Invalid transaction type for operation")]
     InvalidTransactionType,
-
-    #[error("Duplicate user registration: {user_id:?}")]
-    DuplicateUser { user_id: [u8; 32] },
-
-    #[error("Duplicate loan: {loan_id:?}")]
-    DuplicateLoan { loan_id: [u8; 32] },
 
     #[error("Invalid timestamp: {timestamp} is outside acceptable range (must be between {min_timestamp} and {max_timestamp})")]
     InvalidTimestamp {
@@ -55,7 +40,7 @@ pub enum ProcessingError {
 
 /// Global state for loan processing (maintains user and loan state)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LoanState {
+pub struct GlobalLoanState {
     /// All users in the system
     pub users: HashMap<[u8; 32], User>,
 
@@ -72,7 +57,7 @@ pub struct LoanState {
     pub last_updated: u64,
 }
 
-impl Default for LoanState {
+impl Default for GlobalLoanState {
     fn default() -> Self {
         Self {
             users: HashMap::new(),
@@ -84,7 +69,7 @@ impl Default for LoanState {
     }
 }
 
-impl LoanState {
+impl GlobalLoanState {
     /// Create a new empty loan state with default loan terms
     pub fn new() -> Self {
         Self::default()
@@ -115,13 +100,49 @@ impl LoanState {
         validate_transaction_with_state(transaction, self)?;
 
         match transaction.transaction_type {
-            TransactionType::UserRegistration => self.process_user_registration(transaction),
-            TransactionType::KycSubmission => self.process_kyc_submission(transaction),
-            TransactionType::KycVerification => self.process_kyc_verification(transaction),
-            TransactionType::LoanOrigination => self.process_loan_origination(transaction),
-            TransactionType::LoanPayment => self.process_loan_payment(transaction),
-            TransactionType::LoanCloseout => self.process_loan_closeout(transaction),
-        }?;
+            TransactionType::UserRegistration => {
+                let mut user_state = UserState {
+                    users: self.users.clone(),
+                };
+                user_state.process_user_registration(transaction)?;
+                self.users = user_state.users;
+            }
+            TransactionType::KycSubmission => {
+                let mut user_state = UserState {
+                    users: self.users.clone(),
+                };
+                user_state.process_kyc_submission(transaction)?;
+                self.users = user_state.users;
+            }
+            TransactionType::KycVerification => {
+                let mut user_state = UserState {
+                    users: self.users.clone(),
+                };
+                user_state.process_kyc_verification(transaction)?;
+                self.users = user_state.users;
+            }
+            TransactionType::LoanOrigination => {
+                let mut loan_state = crate::loan::LoanState {
+                    loans: self.loans.clone(),
+                };
+                loan_state.process_loan_origination(transaction, &self.users, &self.loan_terms)?;
+                self.loans = loan_state.loans;
+            }
+            TransactionType::LoanPayment => {
+                let mut loan_state = crate::loan::LoanState {
+                    loans: self.loans.clone(),
+                };
+                loan_state.process_loan_payment(transaction, &self.users)?;
+                self.loans = loan_state.loans;
+            }
+            TransactionType::LoanCloseout => {
+                let mut loan_state = crate::loan::LoanState {
+                    loans: self.loans.clone(),
+                };
+                loan_state.process_loan_closeout(transaction, &self.users)?;
+                self.loans = loan_state.loans;
+            }
+        }
 
         // Update global state
         self.transaction_count += 1;
@@ -142,208 +163,6 @@ impl LoanState {
             self.process_transaction(transaction)?;
         }
         Ok(())
-    }
-
-    /// State Transition 1: User Registration
-    fn process_user_registration(
-        &mut self,
-        transaction: &LoanTransaction,
-    ) -> Result<(), ProcessingError> {
-        let user_id = transaction.user_id;
-
-        // Check for duplicate registration
-        if self.users.contains_key(&user_id) {
-            return Err(ProcessingError::DuplicateUser { user_id });
-        }
-
-        // Decode user data from metadata
-        let user_type = match transaction.metadata.as_bytes()[0] {
-            1 => UserType::Investor,
-            2 => UserType::Lender,
-            _ => return Err(ProcessingError::InvalidTransactionType),
-        };
-
-        // Create new user
-        let user = User {
-            user_id,
-            user_type,
-            kyc_status: KycStatus::NotSubmitted,
-            kyc_submitted_at: 0,
-            kyc_verified_at: 0,
-            created_at: transaction.created_at,
-        };
-
-        self.users.insert(user_id, user);
-        Ok(())
-    }
-
-    /// State Transition 2: KYC Submission
-    fn process_kyc_submission(
-        &mut self,
-        transaction: &LoanTransaction,
-    ) -> Result<(), ProcessingError> {
-        let user_id = transaction.user_id;
-
-        let user = self
-            .users
-            .get_mut(&user_id)
-            .ok_or(ProcessingError::UserNotFound { user_id })?;
-
-        // Update KYC status to pending
-        user.kyc_status = KycStatus::Pending;
-        user.kyc_submitted_at = transaction.created_at;
-
-        Ok(())
-    }
-
-    /// State Transition 3: KYC Verification (admin operation)
-    fn process_kyc_verification(
-        &mut self,
-        transaction: &LoanTransaction,
-    ) -> Result<(), ProcessingError> {
-        let user_id = transaction.user_id;
-
-        let user = self
-            .users
-            .get_mut(&user_id)
-            .ok_or(ProcessingError::UserNotFound { user_id })?;
-
-        // Decode verification result from metadata
-        let approved = transaction.metadata.as_bytes()[0] == 1;
-
-        user.kyc_status = if approved {
-            KycStatus::Approved
-        } else {
-            KycStatus::Rejected
-        };
-        user.kyc_verified_at = transaction.created_at;
-
-        Ok(())
-    }
-
-    /// State Transition 4: Loan Origination
-    fn process_loan_origination(
-        &mut self,
-        transaction: &LoanTransaction,
-    ) -> Result<(), ProcessingError> {
-        let loan_id = transaction.loan_id;
-        let _initiator_id = transaction.user_id;
-
-        // Check for duplicate loan
-        if self.loans.contains_key(&loan_id) {
-            return Err(ProcessingError::DuplicateLoan { loan_id });
-        }
-
-        // Decode loan participants from metadata (borrower_id and lender_id)
-        let metadata = transaction.metadata.as_bytes();
-        let mut borrower_id = [0u8; 32];
-        let mut lender_id = [0u8; 32];
-        borrower_id.copy_from_slice(&metadata[0..32]);
-        lender_id.copy_from_slice(&metadata[32..64]);
-
-        // Verify both parties are KYC'd
-        let borrower = self
-            .users
-            .get(&borrower_id)
-            .ok_or(ProcessingError::UserNotFound {
-                user_id: borrower_id,
-            })?;
-        let lender = self
-            .users
-            .get(&lender_id)
-            .ok_or(ProcessingError::UserNotFound { user_id: lender_id })?;
-
-        if !borrower.is_kyc_approved() {
-            return Err(ProcessingError::KycNotApproved {
-                user_id: borrower_id,
-            });
-        }
-        if !lender.is_kyc_approved() {
-            return Err(ProcessingError::KycNotApproved { user_id: lender_id });
-        }
-
-        // Create new loan
-        let loan = Loan {
-            loan_id,
-            borrower_id,
-            lender_id,
-            principal_amount: transaction.amount,
-            outstanding_balance: transaction.amount,
-            interest_rate: self.loan_terms.interest_rate,
-            term_months: self.loan_terms.term_months,
-            loan_status: LoanStatus::Originated,
-            originated_at: transaction.created_at,
-            funded_at: 0,
-            maturity_date: self
-                .loan_terms
-                .calculate_maturity_date(transaction.created_at),
-        };
-
-        self.loans.insert(loan_id, loan);
-        Ok(())
-    }
-
-    /// State Transition 5: Loan Payment
-    fn process_loan_payment(
-        &mut self,
-        transaction: &LoanTransaction,
-    ) -> Result<(), ProcessingError> {
-        let loan_id = transaction.loan_id;
-        let payment_amount = transaction.amount;
-
-        let loan = self
-            .loans
-            .get_mut(&loan_id)
-            .ok_or(ProcessingError::LoanNotFound { loan_id })?;
-
-        // Verify loan can accept payments
-        if !loan.can_accept_payment() {
-            return Err(ProcessingError::InvalidLoanStateTransition {
-                current_status: loan.loan_status,
-                requested_operation: TransactionType::LoanPayment,
-            });
-        }
-
-        // Apply payment
-        if payment_amount >= loan.outstanding_balance {
-            // Full payoff
-            loan.outstanding_balance = 0;
-            loan.loan_status = LoanStatus::PaidOff;
-        } else {
-            // Partial payment
-            loan.outstanding_balance -= payment_amount;
-            if loan.loan_status == LoanStatus::Originated {
-                loan.loan_status = LoanStatus::Active;
-                loan.funded_at = transaction.created_at;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// State Transition 6: Loan Closeout
-    fn process_loan_closeout(
-        &mut self,
-        transaction: &LoanTransaction,
-    ) -> Result<(), ProcessingError> {
-        let loan_id = transaction.loan_id;
-
-        let loan = self
-            .loans
-            .get_mut(&loan_id)
-            .ok_or(ProcessingError::LoanNotFound { loan_id })?;
-
-        // Verify loan can be closed
-        match loan.loan_status {
-            LoanStatus::PaidOff => {
-                loan.loan_status = LoanStatus::Closed;
-                Ok(())
-            }
-            _ => Err(ProcessingError::InvalidLoanStateTransition {
-                current_status: loan.loan_status,
-                requested_operation: TransactionType::LoanCloseout,
-            }),
-        }
     }
 
     /// Get user by ID (read-only)
@@ -369,9 +188,9 @@ impl LoanState {
 
 /// Process a complete loan batch and return the state transition
 pub fn process_loan_batch(
-    initial_state: LoanState,
+    initial_state: GlobalLoanState,
     batch: &LoanBatch,
-) -> Result<LoanState, ProcessingError> {
+) -> Result<GlobalLoanState, ProcessingError> {
     let mut state = initial_state;
     // Additional validation: ensure batch timestamp is not older than current state
     if batch.created_at < state.last_updated {
@@ -387,30 +206,11 @@ pub fn process_loan_batch(
 
 /// Validate a loan transaction before processing
 pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), ProcessingError> {
-    // Basic validation
-    match transaction.transaction_type {
-        TransactionType::LoanOrigination | TransactionType::LoanPayment => {
-            if transaction.amount == 0 {
-                return Err(ProcessingError::InvalidTransactionType);
-            }
-        }
-        _ => {}
-    }
+    // Use the validation from the transactions module
+    crate::transactions::validate_transaction(transaction)
+        .map_err(|_| ProcessingError::InvalidTransactionType)?;
 
-    // Validate all zeros loan_id for non-loan transactions
-    let zero_loan_id = [0u8; 32];
-    match transaction.transaction_type {
-        TransactionType::UserRegistration
-        | TransactionType::KycSubmission
-        | TransactionType::KycVerification => {
-            if transaction.loan_id != zero_loan_id {
-                return Err(ProcessingError::InvalidTransactionType);
-            }
-        }
-        _ => {}
-    }
-
-    // Validate timestamp bounds for production safety
+    // Additional validation for timestamp bounds
     validate_timestamp_bounds(transaction.created_at)?;
 
     Ok(())
@@ -419,7 +219,7 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
 /// Validate a loan transaction with state context for temporal ordering
 pub fn validate_transaction_with_state(
     transaction: &LoanTransaction,
-    current_state: &LoanState,
+    current_state: &GlobalLoanState,
 ) -> Result<(), ProcessingError> {
     // Run basic validation first
     validate_transaction(transaction)?;
@@ -476,92 +276,210 @@ fn validate_batch_temporal_ordering(batch: &LoanBatch) -> Result<(), ProcessingE
     Ok(())
 }
 
+// Re-export the old LoanState name for backward compatibility
+pub type LoanState = GlobalLoanState;
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::loan::LoanStatus;
+    use crate::transactions::MetadataArray;
+    use crate::user::{KycStatus, UserType};
 
-    #[test]
-    fn test_user_registration() {
-        let mut state = LoanState::new();
-        let user_id = [1u8; 32];
-
-        let mut metadata = MetadataArray::empty();
-        metadata.as_mut_bytes()[0] = 1; // Investor
-
-        let transaction = LoanTransaction {
+    fn create_test_user_registration(user_id: [u8; 32], user_type: u8) -> LoanTransaction {
+        LoanTransaction {
             transaction_id: [1u8; 32],
             user_id,
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
             created_at: 1640995200, // January 1, 2022 - valid timestamp
-            metadata,
-        };
-
-        state.process_transaction(&transaction).unwrap();
-
-        let user = state.get_user(&user_id).unwrap();
-        assert_eq!(user.user_type, UserType::Investor);
-        assert_eq!(user.kyc_status, KycStatus::NotSubmitted);
+            metadata: MetadataArray::from_bytes(&[user_type]),
+        }
     }
 
-    #[test]
-    fn test_kyc_flow() {
-        let mut state = LoanState::new();
-        let user_id = [1u8; 32];
-
-        // Register user first
-        let mut metadata = MetadataArray::empty();
-        metadata.as_mut_bytes()[0] = 2; // Lender
-
-        let reg_tx = LoanTransaction {
-            transaction_id: [1u8; 32],
-            user_id,
-            loan_id: [0u8; 32],
-            transaction_type: TransactionType::UserRegistration,
-            amount: 0,
-            created_at: 1640995200, // January 1, 2022
-            metadata,
-        };
-        state.process_transaction(&reg_tx).unwrap();
-
-        // Submit KYC
-        let kyc_submit_tx = LoanTransaction {
+    fn create_kyc_verification(user_id: [u8; 32], approved: bool) -> LoanTransaction {
+        LoanTransaction {
             transaction_id: [2u8; 32],
-            user_id,
-            loan_id: [0u8; 32],
-            transaction_type: TransactionType::KycSubmission,
-            amount: 0,
-            created_at: 1640995300, // 100 seconds later
-            metadata: MetadataArray::empty(),
-        };
-        state.process_transaction(&kyc_submit_tx).unwrap();
-
-        // Verify KYC
-        let mut verify_metadata = MetadataArray::empty();
-        verify_metadata.as_mut_bytes()[0] = 1; // Approved
-
-        let kyc_verify_tx = LoanTransaction {
-            transaction_id: [3u8; 32],
             user_id,
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycVerification,
             amount: 0,
-            created_at: 1640995400, // 200 seconds after start
-            metadata: verify_metadata,
-        };
-        state.process_transaction(&kyc_verify_tx).unwrap();
+            created_at: 1640995300, // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::from_bytes(&[if approved { 1 } else { 0 }]),
+        }
+    }
 
-        let user = state.get_user(&user_id).unwrap();
-        assert_eq!(user.kyc_status, KycStatus::Approved);
-        assert!(user.is_kyc_approved());
+    fn create_loan_origination(
+        loan_id: [u8; 32],
+        borrower_id: [u8; 32],
+        lender_id: [u8; 32],
+        amount: u64,
+    ) -> LoanTransaction {
+        let mut metadata = vec![0u8; 64];
+        metadata[0..32].copy_from_slice(&borrower_id);
+        metadata[32..64].copy_from_slice(&lender_id);
+
+        LoanTransaction {
+            transaction_id: [3u8; 32],
+            user_id: borrower_id,
+            loan_id,
+            transaction_type: TransactionType::LoanOrigination,
+            amount,
+            created_at: 1640995400, // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::from_bytes(&metadata),
+        }
+    }
+
+    #[test]
+    fn test_full_loan_lifecycle() {
+        let mut state = GlobalLoanState::new();
+
+        let borrower_id = [1u8; 32];
+        let lender_id = [2u8; 32];
+        let loan_id = [10u8; 32];
+
+        // 1. Register users
+        let borrower_reg = create_test_user_registration(borrower_id, 1); // Investor
+        let lender_reg = create_test_user_registration(lender_id, 2); // Lender
+
+        state.process_transaction(&borrower_reg).unwrap();
+        state.process_transaction(&lender_reg).unwrap();
+
+        // 2. KYC verification
+        let borrower_kyc = create_kyc_verification(borrower_id, true);
+        let lender_kyc = create_kyc_verification(lender_id, true);
+
+        state.process_transaction(&borrower_kyc).unwrap();
+        state.process_transaction(&lender_kyc).unwrap();
+
+        // Verify users are registered and KYC approved
+        let borrower = state.get_user(&borrower_id).unwrap();
+        let lender = state.get_user(&lender_id).unwrap();
+        assert_eq!(borrower.kyc_status, KycStatus::Approved);
+        assert_eq!(lender.kyc_status, KycStatus::Approved);
+
+        // 3. Loan origination
+        let loan_origination = create_loan_origination(loan_id, borrower_id, lender_id, 50000);
+        state.process_transaction(&loan_origination).unwrap();
+
+        let loan = state.get_loan(&loan_id).unwrap();
+        assert_eq!(loan.loan_status, LoanStatus::Originated);
+        assert_eq!(loan.principal_amount, 50000);
+
+        // 4. Loan payment
+        let payment = LoanTransaction {
+            transaction_id: [4u8; 32],
+            user_id: borrower_id,
+            loan_id,
+            transaction_type: TransactionType::LoanPayment,
+            amount: 25000,          // Partial payment
+            created_at: 1640995500, // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::empty(),
+        };
+        state.process_transaction(&payment).unwrap();
+
+        let loan = state.get_loan(&loan_id).unwrap();
+        assert_eq!(loan.loan_status, LoanStatus::Active); // Now active
+        assert_eq!(loan.outstanding_balance, 25000);
+
+        // 5. Final payment
+        let final_payment = LoanTransaction {
+            transaction_id: [5u8; 32],
+            user_id: borrower_id,
+            loan_id,
+            transaction_type: TransactionType::LoanPayment,
+            amount: 25000,          // Final payment
+            created_at: 1640995600, // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::empty(),
+        };
+        state.process_transaction(&final_payment).unwrap();
+
+        let loan = state.get_loan(&loan_id).unwrap();
+        assert_eq!(loan.loan_status, LoanStatus::PaidOff);
+        assert_eq!(loan.outstanding_balance, 0);
+
+        // 6. Loan closeout
+        let closeout = LoanTransaction {
+            transaction_id: [6u8; 32],
+            user_id: lender_id,
+            loan_id,
+            transaction_type: TransactionType::LoanCloseout,
+            amount: 0,
+            created_at: 1640995700, // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::empty(),
+        };
+        state.process_transaction(&closeout).unwrap();
+
+        let loan = state.get_loan(&loan_id).unwrap();
+        assert_eq!(loan.loan_status, LoanStatus::Closed);
+
+        // Verify transaction count
+        assert_eq!(state.transaction_count, 8); // 2 registrations + 2 KYC verifications + 1 origination + 2 payments + 1 closeout
+    }
+
+    #[test]
+    fn test_loan_origination_without_kyc_fails() {
+        let mut state = GlobalLoanState::new();
+
+        let borrower_id = [1u8; 32];
+        let lender_id = [2u8; 32];
+        let loan_id = [10u8; 32];
+
+        // Register users but don't KYC them
+        let borrower_reg = create_test_user_registration(borrower_id, 1);
+        let lender_reg = create_test_user_registration(lender_id, 2);
+
+        state.process_transaction(&borrower_reg).unwrap();
+        state.process_transaction(&lender_reg).unwrap();
+
+        // Try to originate loan without KYC
+        let loan_origination = create_loan_origination(loan_id, borrower_id, lender_id, 50000);
+        let result = state.process_transaction(&loan_origination);
+
+        assert!(matches!(
+            result,
+            Err(ProcessingError::LoanError(LoanError::UserError(
+                UserError::KycNotApproved { .. }
+            )))
+        ));
+    }
+
+    #[test]
+    fn test_process_batch() {
+        let mut state = GlobalLoanState::new();
+
+        let borrower_id = [1u8; 32];
+        let lender_id = [2u8; 32];
+
+        let batch = LoanBatch {
+            batch_id: [100u8; 32],
+            transactions: vec![
+                create_test_user_registration(borrower_id, 1),
+                create_test_user_registration(lender_id, 2),
+                create_kyc_verification(borrower_id, true),
+                create_kyc_verification(lender_id, true),
+            ],
+            previous_state_root: [0u8; 32],
+            created_at: 1640995200, // January 1, 2022 - valid timestamp
+        };
+
+        let result = state.process_batch(&batch);
+        assert!(result.is_ok());
+
+        assert_eq!(state.users.len(), 2);
+        assert_eq!(state.transaction_count, 4);
+
+        // Verify both users are KYC approved
+        assert!(state.get_user(&borrower_id).unwrap().is_kyc_approved());
+        assert!(state.get_user(&lender_id).unwrap().is_kyc_approved());
     }
 
     #[test]
     fn test_configurable_loan_terms() {
         // Test with custom loan terms
         let custom_terms = LoanTerms::new(1200, 60); // 12% APR, 5 year term
-        let mut state = LoanState::with_loan_terms(custom_terms);
+        let mut state = GlobalLoanState::with_loan_terms(custom_terms);
 
         let borrower_id = [1u8; 32];
         let lender_id = [2u8; 32];
@@ -600,7 +518,7 @@ mod tests {
         assert_eq!(loan.maturity_date, expected_maturity);
 
         // Test with default loan terms
-        let mut default_state = LoanState::new();
+        let mut default_state = GlobalLoanState::new();
         assert_eq!(default_state.loan_terms.interest_rate, 750); // Default 7.5%
         assert_eq!(default_state.loan_terms.term_months, 36); // Default 3 years
 
@@ -612,7 +530,7 @@ mod tests {
     }
 
     /// Helper function to set up KYC'd users for testing
-    fn setup_kycd_users(state: &mut LoanState, borrower_id: [u8; 32], lender_id: [u8; 32]) {
+    fn setup_kycd_users(state: &mut GlobalLoanState, borrower_id: [u8; 32], lender_id: [u8; 32]) {
         let base_timestamp = 1_640_995_200; // January 1, 2022
 
         // Register borrower
@@ -736,7 +654,7 @@ mod tests {
 
     #[test]
     fn test_temporal_ordering_validation() {
-        let mut state = LoanState::new();
+        let mut state = GlobalLoanState::new();
         state.last_updated = 2000;
 
         // Test transaction newer than state (valid)

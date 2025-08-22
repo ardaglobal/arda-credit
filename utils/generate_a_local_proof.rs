@@ -1,7 +1,7 @@
 use sp1_sdk::{include_elf, utils, HashableKey, ProverClient, SP1Stdin};
 
 /// The ELF we want to execute inside the zkVM.
-pub const ARITHMETIC_ELF: &[u8] = include_elf!("program");
+pub const ARDA_CREDIT_ELF: &[u8] = include_elf!("program");
 
 fn main() {
     // Setup logging.
@@ -17,7 +17,7 @@ fn main() {
 
     // Set up the pk and vk.
     let client = ProverClient::from_env();
-    let (pk, vk) = client.setup(ARITHMETIC_ELF);
+    let (pk, vk) = client.setup(ARDA_CREDIT_ELF);
     println!("vk: {:?}", vk.bytes32());
 
     // Generate the Groth16 proof.
@@ -37,7 +37,7 @@ fn main() {
 
     // Save the proof.
     proof
-        .save("arithmetic-groth16.bin")
+        .save("arda-credit-groth16.bin")
         .expect("saving proof failed");
 
     println!("successfully generated and verified proof for the program!");

@@ -126,7 +126,7 @@ fn check_contract_configuration(config: &Config) {
     info!("📋 Contract Configuration:");
     info!(
         "  - Arithmetic Contract: {}",
-        config.contract.arithmetic_contract
+        config.contract.arda_credit_contract
     );
     info!(
         "  - Verifier Contract: {}",

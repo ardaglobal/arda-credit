@@ -1,9 +1,9 @@
 services:
   postgres:
     image: postgres:15
-    container_name: arithmetic_postgres
+    container_name: arda_credit_postgres
     environment:
-      POSTGRES_DB: arithmetic_db
+      POSTGRES_DB: arda_credit_db
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
@@ -20,12 +20,12 @@ services:
     # Production: Use pre-built image from GitHub Container Registry
     image: ghcr.io/ardaglobal/arda-credit:latest
     
-    container_name: arithmetic_server
+    container_name: arda_credit_server
     env_file:
       - .env  # Load environment variables from .env file
     environment:
       # Override/add specific environment variables
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/arithmetic_db
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/arda_credit_db
       - RUST_LOG=${RUST_LOG:-info}
       - SERVER_PORT=${SERVER_PORT:-8080}
       # Pass through Sindri configuration from host environment or .env file

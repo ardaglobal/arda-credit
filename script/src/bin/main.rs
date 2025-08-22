@@ -10,7 +10,7 @@
 //! ```
 
 use alloy_sol_types::SolType;
-use arithmetic_lib::{
+use arda_credit_lib::{
     hash_uuid, LoanBatch, LoanBatchPublicValues, LoanState, LoanTransaction, MetadataArray,
     TransactionType, UserType,
 };

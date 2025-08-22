@@ -525,7 +525,8 @@ mod edge_case_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use arithmetic_lib::{addition, PublicValuesStruct};
+    // Note: LoanBatchPublicValues not currently used in these tests but available if needed
+    // use arda_credit_lib::{LoanBatchPublicValues};
     use tracing_test::traced_test;
 
     #[tokio::test]
@@ -540,12 +541,12 @@ mod integration_tests {
         let mut submitted_amounts = vec![];
 
         for (a, b) in test_cases {
-            // Use the actual arithmetic function from the lib to compute amount
-            let computed_amount = addition(a, b);
+            // Use simple arithmetic for test amounts (loan processing doesn't need addition function)
+            let computed_amount = a + b;
             submitted_amounts.push(computed_amount);
 
             // Submit the transaction with the computed amount
-            let transaction = submit_transaction(&test_db.pool, computed_amount)
+            let transaction = submit_transaction(&test_db.pool, computed_amount as i32)
                 .await
                 .expect("Failed to submit integration test transaction");
 
@@ -578,36 +579,25 @@ mod integration_tests {
             .await
             .expect("Failed to create test database");
 
-        // Test that our database operations work with the PublicValuesStruct format
-        let a = 15;
-        let b = 25;
-        let computed_amount = addition(a, b);
+        // Test that our database operations work with the loan batch format
+        let test_amount = 10000; // $100.00 in cents
 
-        // Create a PublicValuesStruct like the zkVM would (only final_balance is public)
-        let public_values = PublicValuesStruct {
-            initial_balance: 0,
-            final_balance: computed_amount,
-        };
-
-        // Submit using computed amount (a and b are private inputs, not stored)
-        let transaction = submit_transaction(&test_db.pool, public_values.final_balance)
+        // Submit using the test amount
+        let transaction = submit_transaction(&test_db.pool, test_amount)
             .await
-            .expect("Failed to submit PublicValuesStruct transaction");
+            .expect("Failed to submit transaction");
 
         // Retrieve and verify
         let pending_transactions = get_pending_transactions(&test_db.pool)
             .await
-            .expect("Failed to retrieve PublicValuesStruct transaction");
+            .expect("Failed to retrieve transaction");
 
         assert_eq!(pending_transactions.len(), 1);
         let stored_transaction = &pending_transactions[0];
 
-        // Verify the amount matches the PublicValuesStruct final_balance
-        assert_eq!(stored_transaction.amount, public_values.final_balance);
+        // Verify the amount matches our test amount
+        assert_eq!(stored_transaction.amount, test_amount);
         assert_eq!(stored_transaction.id, transaction.id);
-
-        // Verify the computation was correct
-        assert_eq!(addition(a, b), stored_transaction.amount);
     }
 
     #[tokio::test]
@@ -628,7 +618,7 @@ mod integration_tests {
 
         // Phase 1: zkVM execution and transaction submission (simulated)
         for (a, b) in &zkvm_computations {
-            let amount = addition(*a, *b); // Simulate zkVM computation
+            let amount = a + b; // Simulate simple computation for testing
             expected_amounts.push(amount);
 
             // System submits the transaction amount
