@@ -1,34 +1,25 @@
 use alloy_sol_types::sol;
 
+// Loan-specific types and operations
+pub mod loan_processor;
+pub mod loan_types;
+
 // Proof module only available for host-side operations
 #[cfg(feature = "sp1")]
 pub mod proof;
 
 sol! {
-    /// The public values encoded as a struct that can be easily deserialized inside Solidity.
-    /// In true zero-knowledge fashion, only the initial and final balances are public.
-    /// The individual transactions remain private within the zkVM execution.
-    struct PublicValuesStruct {
-        int32 initial_balance;
-        int32 final_balance;
+    /// Loan batch public values - what gets committed on-chain for loan processing
+    /// Individual loan details, amounts, and user identities remain private.
+    struct LoanBatchPublicValues {
+        bytes32 previous_state_root;     // Previous Merkle state root
+        bytes32 new_state_root;          // New Merkle state root
+        uint32 transaction_count;        // Number of transactions processed
+        uint64 batch_timestamp;          // When batch was created
+        bytes32 transaction_types_hash;  // Hash of transaction types (for transparency)
     }
 }
 
-/// Compute the result of the arithmetic operation (wrapping around on overflows), using normal Rust code.
-#[must_use]
-pub const fn addition(a: i32, b: i32) -> i32 {
-    a.wrapping_add(b)
-}
-
-/// Process a series of addition transactions starting from an initial balance.
-///
-/// This function applies each transaction in sequence and returns the final balance.
-/// All intermediate steps remain private - only initial and final balances are exposed.
-#[must_use]
-pub fn process_transactions(initial_balance: i32, transactions: &[i32]) -> i32 {
-    let mut balance = initial_balance;
-    for &transaction in transactions {
-        balance = addition(balance, transaction);
-    }
-    balance
-}
+// Re-export loan processing types for convenience
+pub use loan_processor::*;
+pub use loan_types::*;

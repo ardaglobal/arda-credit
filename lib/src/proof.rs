@@ -4,7 +4,7 @@
 //! and verification that can be used by both the CLI script and API server.
 //! It consolidates the feature-rich logic from the script implementation.
 
-use crate::PublicValuesStruct;
+use crate::LoanBatchPublicValues;
 use alloy_sol_types::SolType;
 use serde::{Deserialize, Serialize};
 use sindri::integrations::sp1_v5::SP1ProofInfo;
@@ -59,24 +59,24 @@ pub struct ProofGenerationResponse {
     pub proof_info: ProofInfoResponse,
 }
 
-/// Request for proof verification
+/// Request for proof verification (loan batch)
 #[derive(Debug, Clone)]
 pub struct ProofVerificationRequest {
     pub proof_id: String,
-    pub expected_initial_balance: i32,
-    pub expected_final_balance: i32,
+    pub expected_transaction_count: u32,
+    pub expected_batch_timestamp: u64,
 }
 
-/// Response from proof verification
+/// Response from proof verification (loan batch)
 #[derive(Debug, Clone)]
 pub struct ProofVerificationResponse {
     pub is_valid: bool,
     pub cryptographic_proof_valid: bool,
-    pub balances_match_expected: bool,
-    pub actual_initial_balance: Option<i32>,
-    pub actual_final_balance: Option<i32>,
-    pub expected_initial_balance: i32,
-    pub expected_final_balance: i32,
+    pub batch_details_match_expected: bool,
+    pub actual_transaction_count: Option<u32>,
+    pub actual_batch_timestamp: Option<u64>,
+    pub expected_transaction_count: u32,
+    pub expected_batch_timestamp: u64,
     pub verification_message: String,
     pub verification_time_ms: u64,
 }
@@ -174,7 +174,7 @@ pub async fn generate_batch_proof(
 
     // Get circuit name with configurable tag from environment
     let circuit_tag = std::env::var("SINDRI_CIRCUIT_TAG").unwrap_or_else(|_| "latest".to_string());
-    let circuit_name = format!("demo-vapp:{circuit_tag}");
+    let circuit_name = format!("arda-credit:{circuit_tag}");
 
     info!("📋 Using circuit: {} (tag: {})", circuit_name, circuit_tag);
     info!("🔑 Checking SINDRI_API_KEY availability...");
@@ -292,7 +292,7 @@ pub async fn generate_sindri_proof(
 
     // Get circuit name with configurable tag from environment
     let circuit_tag = std::env::var("SINDRI_CIRCUIT_TAG").unwrap_or_else(|_| "latest".to_string());
-    let circuit_name = format!("demo-vapp:{circuit_tag}");
+    let circuit_name = format!("arda-credit:{circuit_tag}");
 
     info!("📋 Using circuit: {} (tag: {})", circuit_name, circuit_tag);
 
@@ -381,11 +381,11 @@ pub async fn verify_sindri_proof(
         return Ok(ProofVerificationResponse {
             is_valid: false,
             cryptographic_proof_valid: false,
-            balances_match_expected: false,
-            actual_initial_balance: None,
-            actual_final_balance: None,
-            expected_initial_balance: request.expected_initial_balance,
-            expected_final_balance: request.expected_final_balance,
+            batch_details_match_expected: false,
+            actual_transaction_count: None,
+            actual_batch_timestamp: None,
+            expected_transaction_count: request.expected_transaction_count,
+            expected_batch_timestamp: request.expected_batch_timestamp,
             verification_message: format!("Proof not ready. Status: {:?}", proof_info.status),
             verification_time_ms: start_time
                 .elapsed()
@@ -413,11 +413,11 @@ pub async fn verify_sindri_proof(
         return Ok(ProofVerificationResponse {
             is_valid: false,
             cryptographic_proof_valid: false,
-            balances_match_expected: false,
-            actual_initial_balance: None,
-            actual_final_balance: None,
-            expected_initial_balance: request.expected_initial_balance,
-            expected_final_balance: request.expected_final_balance,
+            batch_details_match_expected: false,
+            actual_transaction_count: None,
+            actual_batch_timestamp: None,
+            expected_transaction_count: request.expected_transaction_count,
+            expected_batch_timestamp: request.expected_batch_timestamp,
             verification_message: "Cryptographic proof verification failed".to_string(),
             verification_time_ms: start_time
                 .elapsed()
@@ -427,27 +427,29 @@ pub async fn verify_sindri_proof(
         });
     }
 
-    // Verification successful - now validate the balance transition
-    let decoded = PublicValuesStruct::abi_decode(sp1_proof.public_values.as_slice())
+    // Verification successful - now validate the loan batch details
+    let decoded = LoanBatchPublicValues::abi_decode(sp1_proof.public_values.as_slice())
         .map_err(|e| ProofError::PublicValuesDecodeError(e.to_string()))?;
 
-    let actual_initial_balance = decoded.initial_balance;
-    let actual_final_balance = decoded.final_balance;
-    let balances_match_expected = actual_initial_balance == request.expected_initial_balance
-        && actual_final_balance == request.expected_final_balance;
-    let is_valid = cryptographic_proof_valid && balances_match_expected;
+    let actual_transaction_count = decoded.transaction_count;
+    let actual_batch_timestamp = decoded.batch_timestamp;
+    let batch_details_match_expected = actual_transaction_count
+        == request.expected_transaction_count
+        && actual_batch_timestamp == request.expected_batch_timestamp;
+    let is_valid = cryptographic_proof_valid && batch_details_match_expected;
 
     let verification_message = if is_valid {
         format!(
-            "✅ CONTINUOUS BALANCE TRACKING VERIFIED: {actual_initial_balance} -> {actual_final_balance} (cryptographically verified)"
+            "✅ LOAN BATCH PROCESSING VERIFIED: {} transactions processed at timestamp {} (cryptographically verified)",
+            actual_transaction_count, actual_batch_timestamp
         )
     } else {
         format!(
-            "❌ Balance transition verification failed: Expected {} -> {}, got {} -> {}",
-            request.expected_initial_balance,
-            request.expected_final_balance,
-            actual_initial_balance,
-            actual_final_balance
+            "❌ Loan batch verification failed: Expected {} txs @ {}, got {} txs @ {}",
+            request.expected_transaction_count,
+            request.expected_batch_timestamp,
+            actual_transaction_count,
+            actual_batch_timestamp
         )
     };
 
@@ -456,11 +458,11 @@ pub async fn verify_sindri_proof(
     Ok(ProofVerificationResponse {
         is_valid,
         cryptographic_proof_valid,
-        balances_match_expected,
-        actual_initial_balance: Some(actual_initial_balance),
-        actual_final_balance: Some(actual_final_balance),
-        expected_initial_balance: request.expected_initial_balance,
-        expected_final_balance: request.expected_final_balance,
+        batch_details_match_expected,
+        actual_transaction_count: Some(actual_transaction_count),
+        actual_batch_timestamp: Some(actual_batch_timestamp),
+        expected_transaction_count: request.expected_transaction_count,
+        expected_batch_timestamp: request.expected_batch_timestamp,
         verification_message,
         verification_time_ms: start_time
             .elapsed()

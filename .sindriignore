@@ -23,3 +23,13 @@ ADS/
 
 # DB
 /db
+.sqlx
+
+# Contracts
+contracts
+
+# Eth Client
+ethereum-client
+
+# Local Utils
+utils
