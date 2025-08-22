@@ -57,11 +57,11 @@ if echo "SELECT 1" | psql "$DATABASE_URL" > /dev/null 2>&1; then
         echo "❌ sindri_proofs table missing"
     fi
     
-    # Check arithmetic_transactions table  
-    if echo "SELECT COUNT(*) FROM arithmetic_transactions LIMIT 1" | psql "$DATABASE_URL" > /dev/null 2>&1; then
-        echo "✅ arithmetic_transactions table exists"
+    # Check credit_transactions table  
+    if echo "SELECT COUNT(*) FROM credit_transactions LIMIT 1" | psql "$DATABASE_URL" > /dev/null 2>&1; then
+        echo "✅ credit_transactions table exists"
     else
-        echo "❌ arithmetic_transactions table missing"
+        echo "❌ credit_transactions table missing"
     fi
     
 else

@@ -14,7 +14,7 @@ sp1_zkvm::entrypoint!(main);
 
 use alloy_sol_types::private::FixedBytes;
 use alloy_sol_types::SolType;
-use arithmetic_lib::{
+use lib::{
     process_loan_batch, validate_transaction, LoanBatch, LoanBatchPublicValues, LoanState,
 };
 use sha2::{Digest, Sha256};

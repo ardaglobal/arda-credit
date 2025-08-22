@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Arithmetic} from "../src/Arithmetic.sol";
+import {Credit} from "../src/Credit.sol";
 import {IStateManager} from "../src/interfaces/IStateManager.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -10,7 +10,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 contract StateManagementTest is Test {
     using stdJson for string;
 
-    Arithmetic public arithmetic;
+    Credit public credit;
     address public verifier;
 
     // Test constants
@@ -76,12 +76,12 @@ contract StateManagementTest is Test {
         unauthorizedUser = makeAddr("unauthorizedUser");
         reader = makeAddr("reader");
 
-        // Deploy verifier and arithmetic contract
+        // Deploy verifier and credit contract
         verifier = address(new SP1VerifierGateway(address(1)));
-        arithmetic = new Arithmetic(verifier, groth16Fixture.vkey);
+        credit = new Credit(verifier, groth16Fixture.vkey);
 
         // Grant authorization to test poster
-        arithmetic.setAuthorization(authorizedPoster, true);
+        credit.setAuthorization(authorizedPoster, true);
 
         // Mock the verifier to always return true for successful verification
         vm.mockCall(
@@ -145,7 +145,7 @@ contract StateManagementTest is Test {
             block.timestamp
         );
 
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -153,12 +153,12 @@ contract StateManagementTest is Test {
         );
 
         // Verify state was stored
-        bytes32 storedState = arithmetic.getCurrentState(STATE_ID_1);
+        bytes32 storedState = credit.getCurrentState(STATE_ID_1);
         assertEq(storedState, NEW_STATE_1, "State should be updated correctly");
 
         // Verify proof was stored
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        bytes memory storedProof = arithmetic.getStoredProof(proofId);
+        bytes memory storedProof = credit.getStoredProof(proofId);
         assertEq(
             storedProof,
             groth16Fixture.proof,
@@ -166,7 +166,7 @@ contract StateManagementTest is Test {
         );
 
         // Verify result was stored
-        bytes memory storedResult = arithmetic.getStoredResult(proofId);
+        bytes memory storedResult = credit.getStoredResult(proofId);
         assertEq(
             storedResult,
             groth16Fixture.publicValues,
@@ -175,7 +175,7 @@ contract StateManagementTest is Test {
 
         // Verify proof is marked as verified
         assertTrue(
-            arithmetic.isProofVerified(proofId),
+            credit.isProofVerified(proofId),
             "Proof should be marked as verified"
         );
     }
@@ -183,7 +183,7 @@ contract StateManagementTest is Test {
     function test_GetCurrentState_ExistingState_ReturnsCorrectState() public {
         // First update a state
         vm.prank(authorizedPoster);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -191,7 +191,7 @@ contract StateManagementTest is Test {
         );
 
         // Test reading the state
-        bytes32 currentState = arithmetic.getCurrentState(STATE_ID_1);
+        bytes32 currentState = credit.getCurrentState(STATE_ID_1);
         assertEq(
             currentState,
             NEW_STATE_1,
@@ -200,7 +200,7 @@ contract StateManagementTest is Test {
     }
 
     function test_GetCurrentState_NonExistentState_ReturnsZero() public {
-        bytes32 currentState = arithmetic.getCurrentState(STATE_ID_1);
+        bytes32 currentState = credit.getCurrentState(STATE_ID_1);
         assertEq(
             currentState,
             bytes32(0),
@@ -211,7 +211,7 @@ contract StateManagementTest is Test {
     function test_GetStoredProof_ExistingProof_ReturnsCorrectProof() public {
         // Store a proof first
         vm.prank(authorizedPoster);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -220,7 +220,7 @@ contract StateManagementTest is Test {
 
         // Test reading the proof
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        bytes memory storedProof = arithmetic.getStoredProof(proofId);
+        bytes memory storedProof = credit.getStoredProof(proofId);
         assertEq(
             storedProof,
             groth16Fixture.proof,
@@ -231,7 +231,7 @@ contract StateManagementTest is Test {
     function test_GetStoredResult_ExistingResult_ReturnsCorrectResult() public {
         // Store a result first
         vm.prank(authorizedPoster);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -240,7 +240,7 @@ contract StateManagementTest is Test {
 
         // Test reading the result
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        bytes memory storedResult = arithmetic.getStoredResult(proofId);
+        bytes memory storedResult = credit.getStoredResult(proofId);
         assertEq(
             storedResult,
             groth16Fixture.publicValues,
@@ -280,7 +280,7 @@ contract StateManagementTest is Test {
             block.timestamp
         );
 
-        bool[] memory successes = arithmetic.batchUpdateStates(
+        bool[] memory successes = credit.batchUpdateStates(
             stateIds,
             newStates,
             proofs,
@@ -293,12 +293,12 @@ contract StateManagementTest is Test {
 
         // Verify states were stored
         assertEq(
-            arithmetic.getCurrentState(STATE_ID_1),
+            credit.getCurrentState(STATE_ID_1),
             NEW_STATE_1,
             "First state should be updated"
         );
         assertEq(
-            arithmetic.getCurrentState(STATE_ID_2),
+            credit.getCurrentState(STATE_ID_2),
             NEW_STATE_2,
             "Second state should be updated"
         );
@@ -307,13 +307,13 @@ contract StateManagementTest is Test {
     function test_BatchReadStates_ExistingStates_ReturnsCorrectStates() public {
         // Setup test states
         vm.startPrank(authorizedPoster);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
             groth16Fixture.publicValues
         );
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_2,
             NEW_STATE_2,
             plonkFixture.proof,
@@ -327,7 +327,7 @@ contract StateManagementTest is Test {
         stateIds[1] = STATE_ID_2;
 
         // Test batch read
-        bytes32[] memory states = arithmetic.batchReadStates(stateIds);
+        bytes32[] memory states = credit.batchReadStates(stateIds);
 
         assertEq(states.length, 2, "Should return two states");
         assertEq(states[0], NEW_STATE_1, "First state should be correct");
@@ -341,8 +341,8 @@ contract StateManagementTest is Test {
         bytes[] memory results = new bytes[](2);
 
         vm.prank(authorizedPoster);
-        vm.expectRevert(Arithmetic.InvalidArrayLength.selector);
-        arithmetic.batchUpdateStates(stateIds, newStates, proofs, results);
+        vm.expectRevert(Credit.InvalidArrayLength.selector);
+        credit.batchUpdateStates(stateIds, newStates, proofs, results);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -352,7 +352,7 @@ contract StateManagementTest is Test {
     function test_GetProofById_ExistingProof_ReturnsProofAndTrue() public {
         // Store a proof first
         vm.prank(authorizedPoster);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -360,7 +360,7 @@ contract StateManagementTest is Test {
         );
 
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        (bytes memory proof, bool exists) = arithmetic.getProofById(proofId);
+        (bytes memory proof, bool exists) = credit.getProofById(proofId);
 
         assertTrue(exists, "Proof should exist");
         assertEq(proof, groth16Fixture.proof, "Should return correct proof");
@@ -368,7 +368,7 @@ contract StateManagementTest is Test {
 
     function test_GetProofById_NonExistentProof_ReturnsEmptyAndFalse() public {
         bytes32 fakeProofId = keccak256("fake-proof");
-        (bytes memory proof, bool exists) = arithmetic.getProofById(
+        (bytes memory proof, bool exists) = credit.getProofById(
             fakeProofId
         );
 
@@ -379,7 +379,7 @@ contract StateManagementTest is Test {
     function test_IsProofVerified_VerifiedProof_ReturnsTrue() public {
         // Store a verified proof
         vm.prank(authorizedPoster);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -388,7 +388,7 @@ contract StateManagementTest is Test {
 
         bytes32 proofId = keccak256(groth16Fixture.proof);
         assertTrue(
-            arithmetic.isProofVerified(proofId),
+            credit.isProofVerified(proofId),
             "Proof should be verified"
         );
     }
@@ -396,7 +396,7 @@ contract StateManagementTest is Test {
     function test_IsProofVerified_NonExistentProof_ReturnsFalse() public {
         bytes32 fakeProofId = keccak256("fake-proof");
         assertFalse(
-            arithmetic.isProofVerified(fakeProofId),
+            credit.isProofVerified(fakeProofId),
             "Non-existent proof should not be verified"
         );
     }
@@ -406,7 +406,7 @@ contract StateManagementTest is Test {
     {
         // Store a verified proof
         vm.prank(authorizedPoster);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -414,7 +414,7 @@ contract StateManagementTest is Test {
         );
 
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        (bool verified, bytes memory result) = arithmetic.getVerificationResult(
+        (bool verified, bytes memory result) = credit.getVerificationResult(
             proofId
         );
 
@@ -432,8 +432,8 @@ contract StateManagementTest is Test {
 
     function test_UpdateState_UnauthorizedUser_Reverts() public {
         vm.prank(unauthorizedUser);
-        vm.expectRevert(Arithmetic.UnauthorizedAccess.selector);
-        arithmetic.updateState(
+        vm.expectRevert(Credit.UnauthorizedAccess.selector);
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -443,7 +443,7 @@ contract StateManagementTest is Test {
 
     function test_UpdateState_Owner_Success() public {
         vm.prank(owner);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -458,8 +458,8 @@ contract StateManagementTest is Test {
         bytes[] memory results = new bytes[](1);
 
         vm.prank(unauthorizedUser);
-        vm.expectRevert(Arithmetic.UnauthorizedAccess.selector);
-        arithmetic.batchUpdateStates(stateIds, newStates, proofs, results);
+        vm.expectRevert(Credit.UnauthorizedAccess.selector);
+        credit.batchUpdateStates(stateIds, newStates, proofs, results);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -483,7 +483,7 @@ contract StateManagementTest is Test {
 
         vm.prank(authorizedPoster);
         vm.expectRevert();
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             invalidProof,
@@ -491,7 +491,7 @@ contract StateManagementTest is Test {
         );
 
         // Verify state was not updated
-        bytes32 storedState = arithmetic.getCurrentState(STATE_ID_1);
+        bytes32 storedState = credit.getCurrentState(STATE_ID_1);
         assertEq(
             storedState,
             bytes32(0),
@@ -501,14 +501,14 @@ contract StateManagementTest is Test {
 
     function test_ReadProofDetails_NonExistentProof_Reverts() public {
         bytes32 fakeProofId = keccak256("fake-proof");
-        vm.expectRevert(Arithmetic.ProofNotFound.selector);
-        arithmetic.readProofDetails(fakeProofId);
+        vm.expectRevert(Credit.ProofNotFound.selector);
+        credit.readProofDetails(fakeProofId);
     }
 
     function test_GetProofMetadata_NonExistentProof_Reverts() public {
         bytes32 fakeProofId = keccak256("fake-proof");
-        vm.expectRevert(Arithmetic.ProofNotFound.selector);
-        arithmetic.getProofMetadata(fakeProofId);
+        vm.expectRevert(Credit.ProofNotFound.selector);
+        credit.getProofMetadata(fakeProofId);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -519,7 +519,7 @@ contract StateManagementTest is Test {
         vm.prank(authorizedPoster);
 
         uint256 gasBefore = gasleft();
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -550,7 +550,7 @@ contract StateManagementTest is Test {
             uniqueProof[uniqueProof.length - 1] = bytes1(uint8(i));
 
             uint256 gasBefore = gasleft();
-            arithmetic.updateState(
+            credit.updateState(
                 stateId,
                 newState,
                 uniqueProof,
@@ -562,8 +562,8 @@ contract StateManagementTest is Test {
         vm.stopPrank();
 
         // Reset contract state for batch test
-        arithmetic = new Arithmetic(verifier, groth16Fixture.vkey);
-        arithmetic.setAuthorization(authorizedPoster, true);
+        credit = new Credit(verifier, groth16Fixture.vkey);
+        credit.setAuthorization(authorizedPoster, true);
 
         // Test batch update
         bytes32[] memory stateIds = new bytes32[](3);
@@ -584,7 +584,7 @@ contract StateManagementTest is Test {
 
         vm.prank(authorizedPoster);
         uint256 batchGasBefore = gasleft();
-        arithmetic.batchUpdateStates(stateIds, newStates, proofs, results);
+        credit.batchUpdateStates(stateIds, newStates, proofs, results);
         uint256 batchUpdateGas = batchGasBefore - gasleft();
 
         console.log("Gas used for 3 single updates:", singleUpdateGas);
@@ -601,13 +601,13 @@ contract StateManagementTest is Test {
     function test_Gas_StateReading() public {
         // Setup some states
         vm.startPrank(authorizedPoster);
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
             groth16Fixture.publicValues
         );
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_2,
             NEW_STATE_2,
             plonkFixture.proof,
@@ -617,7 +617,7 @@ contract StateManagementTest is Test {
 
         // Test single state reads
         uint256 gasBefore = gasleft();
-        arithmetic.getCurrentState(STATE_ID_1);
+        credit.getCurrentState(STATE_ID_1);
         uint256 singleReadGas = gasBefore - gasleft();
 
         // Test batch state reads
@@ -626,7 +626,7 @@ contract StateManagementTest is Test {
         stateIds[1] = STATE_ID_2;
 
         gasBefore = gasleft();
-        arithmetic.batchReadStates(stateIds);
+        credit.batchReadStates(stateIds);
         uint256 batchReadGas = gasBefore - gasleft();
 
         console.log("Gas used for single state read:", singleReadGas);
@@ -641,7 +641,7 @@ contract StateManagementTest is Test {
         vm.prank(authorizedPoster);
 
         uint256 gasBefore = gasleft();
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -654,7 +654,7 @@ contract StateManagementTest is Test {
         // Now test reading the proof
         gasBefore = gasleft();
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        arithmetic.getStoredProof(proofId);
+        credit.getStoredProof(proofId);
         uint256 readGas = gasBefore - gasleft();
 
         console.log("Gas used for proof reading:", readGas);
@@ -685,7 +685,7 @@ contract StateManagementTest is Test {
         results[0] = groth16Fixture.publicValues;
         results[1] = plonkFixture.publicValues;
 
-        bool[] memory successes = arithmetic.batchUpdateStates(
+        bool[] memory successes = credit.batchUpdateStates(
             stateIds,
             newStates,
             proofs,
@@ -698,7 +698,7 @@ contract StateManagementTest is Test {
 
         // 2. Reader queries states
         vm.prank(reader);
-        bytes32[] memory readStates = arithmetic.batchReadStates(stateIds);
+        bytes32[] memory readStates = credit.batchReadStates(stateIds);
 
         assertEq(readStates[0], NEW_STATE_1, "First state should be readable");
         assertEq(readStates[1], NEW_STATE_2, "Second state should be readable");
@@ -708,16 +708,16 @@ contract StateManagementTest is Test {
         bytes32 proofId2 = keccak256(plonkFixture.proof);
 
         assertTrue(
-            arithmetic.isProofVerified(proofId1),
+            credit.isProofVerified(proofId1),
             "First proof should be verified"
         );
         assertTrue(
-            arithmetic.isProofVerified(proofId2),
+            credit.isProofVerified(proofId2),
             "Second proof should be verified"
         );
 
         // 4. Check metadata
-        Arithmetic.ProofMetadata memory metadata1 = arithmetic.getProofMetadata(
+        Credit.ProofMetadata memory metadata1 = credit.getProofMetadata(
             proofId1
         );
         assertEq(
@@ -738,7 +738,7 @@ contract StateManagementTest is Test {
         vm.startPrank(authorizedPoster);
 
         // First update
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -746,7 +746,7 @@ contract StateManagementTest is Test {
         );
 
         // Second update with different proof
-        arithmetic.updateState(
+        credit.updateState(
             STATE_ID_1,
             NEW_STATE_2,
             plonkFixture.proof,
@@ -757,20 +757,20 @@ contract StateManagementTest is Test {
 
         // Verify current state is latest
         assertEq(
-            arithmetic.getCurrentState(STATE_ID_1),
+            credit.getCurrentState(STATE_ID_1),
             NEW_STATE_2,
             "Current state should be latest"
         );
 
         // Verify history length
         assertEq(
-            arithmetic.getStateHistoryLength(STATE_ID_1),
+            credit.getStateHistoryLength(STATE_ID_1),
             2,
             "Should have 2 states in history"
         );
 
         // Verify history contents
-        bytes32[] memory history = arithmetic.readStateHistory(STATE_ID_1, 0);
+        bytes32[] memory history = credit.readStateHistory(STATE_ID_1, 0);
         assertEq(history.length, 2, "History should contain 2 states");
         assertEq(
             history[0],

@@ -61,7 +61,7 @@ uuid = { workspace = true, features = [ "serde", "v4" ], optional = true }
 
 # Local dependencies
 arithmetic-db  = { path = "../db", package = "db" }
-arithmetic-lib = { path = "../lib", package = "lib" }
+lib            = { path = "../lib" }
 
 # Sindri integration
 sindri = { workspace = true }

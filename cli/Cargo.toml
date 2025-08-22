@@ -28,7 +28,7 @@ tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 # Local verification dependencies
 alloy-primitives = { workspace = true }
 alloy-sol-types  = { workspace = true }
-arithmetic-lib   = { path = "../lib", package = "lib" }
+lib              = { path = "../lib" }
 hex              = { workspace = true }
 
 # API types for consistent response parsing

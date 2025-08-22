@@ -454,7 +454,7 @@ mod edge_case_tests {
 
     #[tokio::test]
     #[traced_test]
-    async fn test_arithmetic_validation_with_incorrect_results() {
+    async fn test_credit_validation_with_incorrect_results() {
         let test_db = TestDatabase::new()
             .await
             .expect("Failed to create test database");
@@ -525,22 +525,22 @@ mod edge_case_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use arithmetic_lib::{addition, PublicValuesStruct};
+    use lib::{addition, PublicValuesStruct};
     use tracing_test::traced_test;
 
     #[tokio::test]
     #[traced_test]
-    async fn test_integration_with_arithmetic_lib() {
+    async fn test_integration_with_lib() {
         let test_db = TestDatabase::new()
             .await
             .expect("Failed to create test database");
 
-        // Use the actual arithmetic library to compute amounts for testing
+        // Use the actual credit library to compute amounts for testing
         let test_cases = vec![(5, 10), (25, 75), (-10, 30), (0, 0), (i32::MAX / 2, 1000)];
         let mut submitted_amounts = vec![];
 
         for (a, b) in test_cases {
-            // Use the actual arithmetic function from the lib to compute amount
+            // Use the actual credit function from the lib to compute amount
             let computed_amount = addition(a, b);
             submitted_amounts.push(computed_amount);
 

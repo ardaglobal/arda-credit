@@ -1,6 +1,6 @@
 # Database Migrations
 
-This directory contains SQLx database migrations for the arithmetic-db package.
+This directory contains SQLx database migrations for the credit-db package.
 
 ## Migration Files
 
@@ -12,7 +12,7 @@ Migrations are versioned SQL files that are applied in order. Each migration fil
 
 ## Current Migrations
 
-- `001_create_arithmetic_transactions.sql` - Creates the initial arithmetic_transactions table with indexes
+- `001_create_credit_transactions.sql` - Creates the initial credit_transactions table with indexes
 
 ## Running Migrations
 

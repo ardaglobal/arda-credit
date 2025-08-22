@@ -9,7 +9,7 @@ pub struct TestDatabase {
 
 impl TestDatabase {
     pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let database_name = format!("test_arithmetic_{}", Uuid::new_v4().simple());
+        let database_name = format!("test_credit_{}", Uuid::new_v4().simple());
 
         // Use hardcoded admin connection for simplicity
         let admin_url = "postgresql://postgres:password@127.0.0.1:5432/postgres";

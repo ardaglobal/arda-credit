@@ -3,7 +3,7 @@ use alloy_sol_types::sol;
 
 sol! {
     #[sol(rpc)]
-    interface IArithmetic {
+    interface ICredit {
         struct ProofMetadata {
             bytes32 proofId;
             bytes32 stateId;
@@ -78,7 +78,7 @@ sol! {
 
         function getProofSubmitter(bytes32 proofId) external view returns (address submitter);
 
-        function verifyArithmeticProof(
+        function verifyCreditProof(
             bytes calldata publicValues,
             bytes calldata proofBytes
         ) external view returns (int32);
@@ -95,7 +95,7 @@ sol! {
 
         function verifier() external view returns (address);
 
-        function arithmeticProgramVKey() external view returns (bytes32);
+        function creditProgramVKey() external view returns (bytes32);
 
         #[derive(Debug, PartialEq, Eq)]
         event StateUpdated(
@@ -191,20 +191,20 @@ sol! {
     }
 }
 
-pub use IArithmetic::{IArithmeticCalls, IArithmeticInstance};
+pub use ICredit::{ICreditCalls, ICreditInstance};
 pub use ISP1Verifier::{ISP1VerifierCalls, ISP1VerifierInstance};
 
 #[derive(Debug, Clone)]
 pub struct ContractAddresses {
-    pub arithmetic: Address,
+    pub credit: Address,
     pub verifier: Address,
 }
 
 impl ContractAddresses {
     #[must_use]
-    pub const fn new(arithmetic: Address, verifier: Address) -> Self {
+    pub const fn new(credit: Address, verifier: Address) -> Self {
         Self {
-            arithmetic,
+            credit,
             verifier,
         }
     }

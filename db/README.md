@@ -1,6 +1,6 @@
 # Database Module
 
-PostgreSQL integration for arithmetic computation storage and ADS (Authenticated Data Structure) operations with Indexed Merkle Trees.
+PostgreSQL integration for credit computation storage and ADS (Authenticated Data Structure) operations with Indexed Merkle Trees.
 
 ## Features
 
@@ -16,7 +16,7 @@ PostgreSQL integration for arithmetic computation storage and ADS (Authenticated
 
 ### Core Tables
 
-- **`arithmetic_transactions`**: Basic arithmetic computations
+- **`credit_transactions`**: Basic credit computations
 - **`incoming_transactions`**: Pending batch processing queue
 - **`proof_batches`**: Batch metadata with ZK proof references
 - **`nullifiers`**: IMT nullifier values with tree structure
@@ -55,11 +55,11 @@ Before running tests or operations:
      ```
    - **Database URL**: Set environment variable:
      ```bash
-     export DATABASE_URL="postgres://postgres:password@localhost:5432/arithmetic_db"
+     export DATABASE_URL="postgres://postgres:password@localhost:5432/credit_db"
      ```
      Or use `.env` file:
      ```
-     DATABASE_URL=postgres://postgres:password@localhost:5432/arithmetic_db
+     DATABASE_URL=postgres://postgres:password@localhost:5432/credit_db
      ```
 
 ## Testing
@@ -119,7 +119,7 @@ $ cargo test
 
 running 15 tests
 test tests::db_tests::test_init_db_success ... ok
-test tests::db_tests::test_store_arithmetic_transaction ... ok
+test tests::db_tests::test_store_credit_transaction ... ok
 test tests::db_tests::test_get_transactions_by_result_empty ... ok
 test tests::db_tests::test_concurrent_operations ... ok
 test error_tests::error_handling_tests::test_boundary_values ... ok
@@ -133,7 +133,7 @@ test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 ### Core Functions
 
 - `init_db()`: Initialize database connection pool and run migrations
-- `store_arithmetic_transaction(pool, a, b, result)`: Store an arithmetic transaction
+- `store_credit_transaction(pool, a, b, result)`: Store a credit transaction
 - `get_value_by_result(pool, result)`: Get first transaction by result value
 - `get_transactions_by_result(pool, result)`: Get all transactions by result value
 

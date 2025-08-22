@@ -26,7 +26,7 @@ pub struct NetworkConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractConfig {
-    pub arithmetic_contract: Address,
+    pub credit_contract: Address,
     pub verifier_contract: Address,
     pub deployment_block: Option<u64>,
 }
@@ -140,7 +140,7 @@ impl Config {
                 is_testnet: Self::is_testnet(chain_id),
             },
             contract: ContractConfig {
-                arithmetic_contract: ethereum_contract,
+                credit_contract: ethereum_contract,
                 verifier_contract,
                 deployment_block: env::var("DEPLOYMENT_BLOCK")
                     .ok()
@@ -230,7 +230,7 @@ impl Config {
             ));
         }
 
-        if self.contract.arithmetic_contract == Address::ZERO {
+        if self.contract.credit_contract == Address::ZERO {
             return Err(EthereumError::Config(
                 "Ethereum contract address is required".to_string(),
             ));
@@ -258,7 +258,7 @@ impl Default for Config {
                 is_testnet: true,
             },
             contract: ContractConfig {
-                arithmetic_contract: Address::ZERO,
+                credit_contract: Address::ZERO,
                 verifier_contract: Address::ZERO,
                 deployment_block: None,
             },

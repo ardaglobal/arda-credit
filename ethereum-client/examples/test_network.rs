@@ -70,15 +70,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.network.chain_id
     );
 
-    if config.contract.arithmetic_contract != Address::ZERO {
-        println!("📝 Contract: {}", config.contract.arithmetic_contract);
+    if config.contract.credit_contract != Address::ZERO {
+        println!("📝 Contract: {}", config.contract.credit_contract);
         println!(
             "🔗 Sepolia Explorer: https://sepolia.etherscan.io/address/{}",
-            config.contract.arithmetic_contract
+            config.contract.credit_contract
         );
         println!(
             "🔗 Mainnet Explorer: https://etherscan.io/address/{}",
-            config.contract.arithmetic_contract
+            config.contract.credit_contract
         );
     }
 

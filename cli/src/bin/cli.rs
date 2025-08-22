@@ -36,7 +36,7 @@ use std::time::Instant;
 use tracing::error;
 
 // Import new batch processing API types
-use arithmetic_api::BatchApiClient;
+use credit_api::BatchApiClient;
 use ethereum_client::{config::Config, EthereumClient};
 
 #[derive(Parser)]
@@ -487,7 +487,7 @@ async fn download_proof(
             println!("   Proof ID: {}", proof_id);
 
             // Fetch actual proof data from Sindri
-            match arithmetic_lib::proof::get_sindri_proof_data(&proof_id).await {
+            match lib::proof::get_sindri_proof_data(&proof_id).await {
                 Ok(proof_data) => {
                     let download_data = serde_json::json!({
                         "batch_id": batch_id,
@@ -792,7 +792,7 @@ async fn query_verification_key(verbose: bool) -> Result<()> {
     if verbose {
         println!(
             "📍 Contract address: {}",
-            ethereum_config.contract.arithmetic_contract
+            ethereum_config.contract.credit_contract
         );
         println!("📡 RPC URL: {}", ethereum_config.network.rpc_url);
     }

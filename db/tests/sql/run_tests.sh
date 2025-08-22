@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 if [ -z "$DATABASE_URL" ]; then
     echo -e "${RED}ERROR: DATABASE_URL environment variable is not set${NC}"
     echo "Please set it to your PostgreSQL connection string:"
-    echo 'export DATABASE_URL="postgresql://postgres:password@localhost:5432/arithmetic_db"'
+    echo 'export DATABASE_URL="postgresql://postgres:password@localhost:5432/credit_db"'
     exit 1
 fi
 

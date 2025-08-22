@@ -98,7 +98,7 @@ CREATE OR REPLACE FUNCTION create_batch(batch_size INTEGER DEFAULT 10) ... SELEC
   - `get_contract_submission_data` prepares public/private payloads; no code submits to an EVM contract.
 
 - Duplication/legacy code likely unused or confusing:
-  - `db/src/background_processor.rs` processes `arithmetic_transactions` (table dropped in migration 009), likely dead.
+  - `db/src/background_processor.rs` processes `credit_transactions` (table dropped in migration 009), likely dead.
   - Two IMT implementations exist: `db/src/merkle_tree.rs` and `db/src/merkle_tree_32.rs` with different batch APIs. Only one is used; the other seems experimental.
   - `db/src/vapp_integration.rs` defines a generalized vApp integration with services and compliance hooks; doesn’t appear wired into the API path.
   - `BATCH_UNIFICATION_COMPLETE.md` indicates unification, but some legacy paths remain in the codebase.

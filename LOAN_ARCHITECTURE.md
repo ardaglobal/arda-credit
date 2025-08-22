@@ -118,7 +118,7 @@ CREATE TABLE loans (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Loan transactions table (replaces existing arithmetic_transactions)
+-- Loan transactions table (replaces existing credit_transactions)
 CREATE TABLE loan_transactions (
     transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(user_id),

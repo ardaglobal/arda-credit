@@ -17,7 +17,7 @@ use tracing::{info, instrument};
 
 use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
 use crate::rest::{ApiConfig, ApiState};
-use arithmetic_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
+use credit_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -93,7 +93,7 @@ impl ApiServer {
 
         // Initialize database connection
         let pool = if let Some(url) = database_url {
-            arithmetic_db::init_db_with_url(&url).await?
+            credit_db::init_db_with_url(&url).await?
         } else {
             init_db().await?
         };

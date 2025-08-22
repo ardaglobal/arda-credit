@@ -9,11 +9,11 @@ struct PublicValuesStruct {
     int32 final_balance;
 }
 
-/// @title Arithmetic.
+/// @title Credit.
 /// @author Arda Global
 /// @notice This contract implements verification of batch processing proofs with continuous balance tracking.
 ///         Individual transactions remain private while only initial and final balances are public.
-contract Arithmetic is EventHelpers {
+contract Credit is EventHelpers {
     /// @notice The address of the SP1 verifier contract.
     /// @dev This can either be a specific SP1Verifier for a specific version, or the
     ///      SP1VerifierGateway which can be used to verify proofs for any version of SP1.
@@ -21,8 +21,8 @@ contract Arithmetic is EventHelpers {
     ///      https://github.com/succinctlabs/sp1-contracts/tree/main/contracts/deployments
     address public verifier;
 
-    /// @notice The verification key for the arithmetic program.
-    bytes32 public arithmeticProgramVKey;
+    /// @notice The verification key for the credit program.
+    bytes32 public creditProgramVKey;
 
     /// @notice Store state by state ID.
     mapping(bytes32 => bytes32) public currentState;
@@ -200,9 +200,9 @@ contract Arithmetic is EventHelpers {
         _;
     }
 
-    constructor(address _verifier, bytes32 _arithmeticProgramVKey) {
+    constructor(address _verifier, bytes32 _creditProgramVKey) {
         verifier = _verifier;
-        arithmeticProgramVKey = _arithmeticProgramVKey;
+        creditProgramVKey = _creditProgramVKey;
         owner = msg.sender;
         authorizedPosters[msg.sender] = true;
         emit AuthorizationChanged(msg.sender, true);
@@ -211,12 +211,12 @@ contract Arithmetic is EventHelpers {
     /// @notice The entrypoint for verifying the proof of a batch processing operation.
     /// @param _proofBytes The encoded proof.
     /// @param _publicValues The encoded public values containing initial and final balance.
-    function verifyArithmeticProof(
+    function verifyCreditProof(
         bytes calldata _publicValues,
         bytes calldata _proofBytes
     ) public view returns (int32) {
         ISP1Verifier(verifier).verifyProof(
-            arithmeticProgramVKey,
+            creditProgramVKey,
             _publicValues,
             _proofBytes
         );
@@ -240,7 +240,7 @@ contract Arithmetic is EventHelpers {
     ) external onlyAuthorized {
         // Verify the proof first
         ISP1Verifier(verifier).verifyProof(
-            arithmeticProgramVKey,
+            creditProgramVKey,
             publicValues,
             proof
         );
@@ -392,7 +392,7 @@ contract Arithmetic is EventHelpers {
 
         // Cache frequently accessed values to reduce external calls
         address cachedVerifier = verifier;
-        bytes32 cachedVKey = arithmeticProgramVKey;
+        bytes32 cachedVKey = creditProgramVKey;
         address cachedSender = msg.sender;
         uint256 cachedTimestamp = block.timestamp;
 
@@ -872,9 +872,9 @@ contract Arithmetic is EventHelpers {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the current program verification key used by this contract.
-    /// @return vKey The 32-byte verification key for the arithmetic program.
+    /// @return vKey The 32-byte verification key for the credit program.
     function getProgramVerificationKey() external view returns (bytes32 vKey) {
-        return arithmeticProgramVKey;
+        return creditProgramVKey;
     }
 
     /// @notice Check if a given verification key matches the contract's program vkey.
@@ -883,7 +883,7 @@ contract Arithmetic is EventHelpers {
     function isValidProgramVerificationKey(
         bytes32 vKey
     ) external view returns (bool matches) {
-        return vKey == arithmeticProgramVKey;
+        return vKey == creditProgramVKey;
     }
 
     /// @notice Get verification key information for debugging.
@@ -894,7 +894,7 @@ contract Arithmetic is EventHelpers {
         view
         returns (bytes32 contractVKey, address verifierAddress)
     {
-        return (arithmeticProgramVKey, verifier);
+        return (creditProgramVKey, verifier);
     }
 
     /// @notice Validate that a proof would be accepted by this contract (without executing).
@@ -910,13 +910,13 @@ contract Arithmetic is EventHelpers {
         bytes calldata proof
     ) external view returns (bool isValid, string memory message) {
         // Check if the verification key matches
-        if (expectedVKey != arithmeticProgramVKey) {
+        if (expectedVKey != creditProgramVKey) {
             return (
                 false,
                 string(
                     abi.encodePacked(
                         "Verification key mismatch. Expected: 0x",
-                        _bytes32ToHex(arithmeticProgramVKey),
+                        _bytes32ToHex(creditProgramVKey),
                         ", Got: 0x",
                         _bytes32ToHex(expectedVKey)
                     )

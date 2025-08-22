@@ -2,11 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Arithmetic} from "../src/Arithmetic.sol";
+import {Credit} from "../src/Credit.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 
-contract ArithmeticEventSystemTest is Test {
-    Arithmetic public arithmetic;
+contract CreditEventSystemTest is Test {
+    Credit public credit;
     address public verifier;
     address public user1 = address(0x1);
     address public user2 = address(0x2);
@@ -15,11 +15,11 @@ contract ArithmeticEventSystemTest is Test {
     
     function setUp() public {
         verifier = address(new SP1VerifierGateway(address(1)));
-        arithmetic = new Arithmetic(verifier, TEST_VKEY);
+        credit = new Credit(verifier, TEST_VKEY);
         
         // Grant authorization to test users
-        arithmetic.setAuthorization(user1, true);
-        arithmetic.setAuthorization(user2, true);
+        credit.setAuthorization(user1, true);
+        credit.setAuthorization(user2, true);
     }
     
     function testStateUpdatedEvent() public {
@@ -40,7 +40,7 @@ contract ArithmeticEventSystemTest is Test {
         emit StateUpdated(stateId, newState, proofId, user1, block.timestamp);
         
         vm.prank(user1);
-        arithmetic.updateState(stateId, newState, proof, result);
+        credit.updateState(stateId, newState, proof, result);
     }
     
     function testProofStoredEvent() public {
@@ -61,7 +61,7 @@ contract ArithmeticEventSystemTest is Test {
         emit ProofStored(proofId, stateId, user1, block.timestamp);
         
         vm.prank(user1);
-        arithmetic.updateState(stateId, newState, proof, result);
+        credit.updateState(stateId, newState, proof, result);
     }
     
     function testProofVerifiedEvent() public {
@@ -82,7 +82,7 @@ contract ArithmeticEventSystemTest is Test {
         emit ProofVerified(proofId, true, new bytes(0), block.timestamp);
         
         vm.prank(user1);
-        arithmetic.updateState(stateId, newState, proof, result);
+        credit.updateState(stateId, newState, proof, result);
     }
     
     function testBatchStateUpdatedEvent() public {
@@ -111,7 +111,7 @@ contract ArithmeticEventSystemTest is Test {
         emit BatchStateUpdated(stateIds, newStates, user1, block.timestamp);
         
         vm.prank(user1);
-        arithmetic.batchUpdateStates(stateIds, newStates, proofs, results);
+        credit.batchUpdateStates(stateIds, newStates, proofs, results);
     }
     
     function testStateReadRequestedEvent() public {
@@ -125,14 +125,14 @@ contract ArithmeticEventSystemTest is Test {
         );
         
         vm.prank(user1);
-        arithmetic.updateState(stateId, keccak256("new-state"), "proof", "result");
+        credit.updateState(stateId, keccak256("new-state"), "proof", "result");
         
         // Expect the StateReadRequested event
         vm.expectEmit(true, true, true, true);
         emit StateReadRequested(stateId, user2, block.timestamp);
         
         vm.prank(user2);
-        arithmetic.readCurrentState(stateId);
+        credit.readCurrentState(stateId);
     }
     
     function testProofReadRequestedEvent() public {
@@ -148,19 +148,19 @@ contract ArithmeticEventSystemTest is Test {
         );
         
         vm.prank(user1);
-        arithmetic.updateState(stateId, keccak256("new-state"), proof, "result");
+        credit.updateState(stateId, keccak256("new-state"), proof, "result");
         
         // Expect the ProofReadRequested event
         vm.expectEmit(true, true, true, true);
         emit ProofReadRequested(proofId, user2, block.timestamp);
         
         vm.prank(user2);
-        arithmetic.getProofById(proofId);
+        credit.getProofById(proofId);
     }
     
     function testEventStatisticsTracking() public {
         // Initial stats should be zero
-        Arithmetic.EventStats memory initialStats = arithmetic.getEventStats();
+        Credit.EventStats memory initialStats = credit.getEventStats();
         assertEq(initialStats.totalStateUpdates, 0);
         assertEq(initialStats.totalProofStored, 0);
         
@@ -173,10 +173,10 @@ contract ArithmeticEventSystemTest is Test {
         
         bytes32 stateId = keccak256("stats-test-state");
         vm.prank(user1);
-        arithmetic.updateState(stateId, keccak256("new-state"), "proof", "result");
+        credit.updateState(stateId, keccak256("new-state"), "proof", "result");
         
         // Check updated stats
-        Arithmetic.EventStats memory updatedStats = arithmetic.getEventStats();
+        Credit.EventStats memory updatedStats = credit.getEventStats();
         assertEq(updatedStats.totalStateUpdates, 1);
         assertEq(updatedStats.totalProofStored, 1);
         assertEq(updatedStats.lastEventTimestamp, block.timestamp);
@@ -184,7 +184,7 @@ contract ArithmeticEventSystemTest is Test {
     
     function testEventCountBySubmitter() public {
         // Initial count should be zero
-        assertEq(arithmetic.getEventCountBySubmitter(user1), 0);
+        assertEq(credit.getEventCountBySubmitter(user1), 0);
         
         vm.mockCall(
             verifier,
@@ -196,7 +196,7 @@ contract ArithmeticEventSystemTest is Test {
         for (uint i = 0; i < 3; i++) {
             bytes32 stateId = keccak256(abi.encodePacked("submitter-test-", i));
             vm.prank(user1);
-            arithmetic.updateState(
+            credit.updateState(
                 stateId, 
                 keccak256(abi.encodePacked("new-state-", i)), 
                 abi.encodePacked("proof-", i), 
@@ -205,14 +205,14 @@ contract ArithmeticEventSystemTest is Test {
         }
         
         // Should have count for each state update + proof stored
-        assertTrue(arithmetic.getEventCountBySubmitter(user1) >= 3);
+        assertTrue(credit.getEventCountBySubmitter(user1) >= 3);
     }
     
     function testEventCountByStateId() public {
         bytes32 stateId = keccak256("state-count-test");
         
         // Initial count should be zero
-        assertEq(arithmetic.getEventCountByStateId(stateId), 0);
+        assertEq(credit.getEventCountByStateId(stateId), 0);
         
         vm.mockCall(
             verifier,
@@ -222,17 +222,17 @@ contract ArithmeticEventSystemTest is Test {
         
         // Post state update
         vm.prank(user1);
-        arithmetic.updateState(stateId, keccak256("new-state"), "proof", "result");
+        credit.updateState(stateId, keccak256("new-state"), "proof", "result");
         
         // Should have incremented count
-        assertTrue(arithmetic.getEventCountByStateId(stateId) >= 1);
+        assertTrue(credit.getEventCountByStateId(stateId) >= 1);
     }
     
     function testDailyEventCounts() public {
         uint256 today = block.timestamp / 86400;
         
         // Initial daily count should be zero
-        assertEq(arithmetic.getDailyEventCount(today), 0);
+        assertEq(credit.getDailyEventCount(today), 0);
         
         vm.mockCall(
             verifier,
@@ -242,7 +242,7 @@ contract ArithmeticEventSystemTest is Test {
         
         // Post state update
         vm.prank(user1);
-        arithmetic.updateState(
+        credit.updateState(
             keccak256("daily-test"), 
             keccak256("new-state"), 
             "proof", 
@@ -250,14 +250,14 @@ contract ArithmeticEventSystemTest is Test {
         );
         
         // Should have incremented daily count
-        assertTrue(arithmetic.getDailyEventCount(today) >= 1);
+        assertTrue(credit.getDailyEventCount(today) >= 1);
     }
     
     function testTimeRangeInfo() public {
         uint256 startTime = block.timestamp >= 86400 ? block.timestamp - 86400 : 0;
         uint256 endTime = block.timestamp;
         
-        (bool isValid, uint256 dayCount) = arithmetic.getTimeRangeInfo(startTime, endTime);
+        (bool isValid, uint256 dayCount) = credit.getTimeRangeInfo(startTime, endTime);
         assertTrue(isValid);
         
         // Calculate expected day count using same logic as contract: endDay - startDay + 1
@@ -267,7 +267,7 @@ contract ArithmeticEventSystemTest is Test {
         assertEq(dayCount, expectedDayCount);
         
         // Test invalid range
-        (bool invalidRange,) = arithmetic.getTimeRangeInfo(endTime, startTime);
+        (bool invalidRange,) = credit.getTimeRangeInfo(endTime, startTime);
         assertFalse(invalidRange);
     }
     
@@ -276,7 +276,7 @@ contract ArithmeticEventSystemTest is Test {
         uint256 endTime = block.timestamp + 1;
         
         // Should start with zero events in range
-        assertEq(arithmetic.getEventCountInRange(startTime, endTime), 0);
+        assertEq(credit.getEventCountInRange(startTime, endTime), 0);
         
         vm.mockCall(
             verifier,
@@ -286,7 +286,7 @@ contract ArithmeticEventSystemTest is Test {
         
         // Post an event
         vm.prank(user1);
-        arithmetic.updateState(
+        credit.updateState(
             keccak256("range-test"), 
             keccak256("new-state"), 
             "proof", 
@@ -294,21 +294,21 @@ contract ArithmeticEventSystemTest is Test {
         );
         
         // Should now have events in the range
-        assertTrue(arithmetic.getEventCountInRange(startTime, endTime + 86400) >= 1);
+        assertTrue(credit.getEventCountInRange(startTime, endTime + 86400) >= 1);
     }
     
     function testReadEventTrackingToggle() public {
         // Only owner can toggle
-        vm.expectRevert(Arithmetic.UnauthorizedAccess.selector);
+        vm.expectRevert(Credit.UnauthorizedAccess.selector);
         vm.prank(user1);
-        arithmetic.setReadEventTracking(false);
+        credit.setReadEventTracking(false);
         
         // Owner should be able to toggle
-        arithmetic.setReadEventTracking(false);
-        assertTrue(!arithmetic.readEventTrackingEnabled());
+        credit.setReadEventTracking(false);
+        assertTrue(!credit.readEventTrackingEnabled());
         
-        arithmetic.setReadEventTracking(true);
-        assertTrue(arithmetic.readEventTrackingEnabled());
+        credit.setReadEventTracking(true);
+        assertTrue(credit.readEventTrackingEnabled());
     }
     
     // Events to match the contract

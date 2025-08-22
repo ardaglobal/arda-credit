@@ -7,8 +7,8 @@ use tracing::{info, instrument, warn};
 
 use crate::rest::{ApiConfig, ApiState};
 use crate::server::{ApiServer, ApiServerConfig};
-use arithmetic_db::ads_service::IndexedMerkleTreeADS;
-use arithmetic_db::vapp_integration::VAppAdsIntegration;
+use credit_db::ads_service::IndexedMerkleTreeADS;
+use credit_db::vapp_integration::VAppAdsIntegration;
 
 // ============================================================================
 // VAPP SERVER INTEGRATION

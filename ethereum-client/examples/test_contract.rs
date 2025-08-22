@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = EthereumClient::new(config.clone()).await?;
 
     println!("✅ Client created successfully");
-    println!("  Contract: {}", config.contract.arithmetic_contract);
+    println!("  Contract: {}", config.contract.credit_contract);
 
     if let Some(signer) = &config.signer {
         println!("  Signer: {}", signer.address);

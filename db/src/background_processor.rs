@@ -26,7 +26,7 @@ impl Default for ProcessorConfig {
     }
 }
 
-/// Background processor that converts arithmetic transactions to nullifiers in the indexed Merkle tree
+/// Background processor that converts credit transactions to nullifiers in the indexed Merkle tree
 pub struct BackgroundProcessor {
     pool: PgPool,
     config: ProcessorConfig,
@@ -82,9 +82,9 @@ impl BackgroundProcessor {
         }
     }
 
-    /// Process a batch of new arithmetic transactions
+    /// Process a batch of new credit transactions
     pub async fn process_batch(&mut self) -> DbResult<usize> {
-        debug!("Checking for new arithmetic transactions...");
+        debug!("Checking for new credit transactions...");
 
         let transactions = self.fetch_new_transactions().await?;
 
@@ -94,7 +94,7 @@ impl BackgroundProcessor {
         }
 
         info!(
-            "Processing {} new arithmetic transactions",
+            "Processing {} new credit transactions",
             transactions.len()
         );
 

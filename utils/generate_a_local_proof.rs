@@ -37,7 +37,7 @@ fn main() {
 
     // Save the proof.
     proof
-        .save("arithmetic-groth16.bin")
+        .save("credit-groth16.bin")
         .expect("saving proof failed");
 
     println!("successfully generated and verified proof for the program!");

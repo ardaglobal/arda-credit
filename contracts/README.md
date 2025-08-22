@@ -1,6 +1,6 @@
 # SP1 Arithmetic Contracts
 
-Smart contracts for zero-knowledge arithmetic proof verification with comprehensive state management built on [SP1](https://github.com/succinctlabs/sp1) and [SP1VerifierGateway](https://github.com/succinctlabs/sp1-contracts/blob/main/contracts/src/SP1VerifierGateway.sol).
+Smart contracts for zero-knowledge credit proof verification with comprehensive state management built on [SP1](https://github.com/succinctlabs/sp1) and [SP1VerifierGateway](https://github.com/succinctlabs/sp1-contracts/blob/main/contracts/src/SP1VerifierGateway.sol).
 
 ## Contract Architecture
 
@@ -33,22 +33,22 @@ forge test --match-contract ProofReaderTest
 
 ## Usage
 
-The Arithmetic contract provides complete state management with ZK proof verification:
+The Credit contract provides complete state management with ZK proof verification:
 
 ```solidity
 // Update state with ZK proof verification
-arithmetic.updateState(stateId, newState, proof, publicValues);
+credit.updateState(stateId, newState, proof, publicValues);
 
 // Read current state
-bytes32 currentState = arithmetic.getCurrentState(stateId);
+bytes32 currentState = credit.getCurrentState(stateId);
 
 // Batch operations (gas efficient)
-arithmetic.batchUpdateStates(stateIds, newStates, proofs, results);
-bytes32[] memory states = arithmetic.batchReadStates(stateIds);
+credit.batchUpdateStates(stateIds, newStates, proofs, results);
+bytes32[] memory states = credit.batchReadStates(stateIds);
 
 // Proof verification
-bool verified = arithmetic.isProofVerified(proofId);
-bytes memory storedProof = arithmetic.getStoredProof(proofId);
+bool verified = credit.isProofVerified(proofId);
+bytes memory storedProof = credit.getStoredProof(proofId);
 ```
 
 See `examples/README.md` for detailed integration patterns and best practices.
@@ -71,7 +71,7 @@ Note: you can use either the [SP1VerifierGateway](https://github.com/succinctlab
 
 This step is required for the contract to be able to verify proofs.
 
-Find your program verification key by going into the `../script` directory and running `RUST_LOG=info cargo run --package arithmetic-script --release -- --vkey`, which will print an output like:
+Find your program verification key by going into the `../script` directory and running `RUST_LOG=info cargo run --package arda-credit --release -- --vkey`, which will print an output like:
 
 > Program Verification Key: 0x00620892344c310c32a74bf0807a5c043964264e4f37c96a10ad12b5c9214e0e
 
@@ -128,7 +128,7 @@ The following secrets need to be configured in your GitHub repository:
 
 #### Core Secrets
 - `ETHEREUM_WALLET_PRIVATE_KEY`: The private key of the deployer account
-- `PROGRAM_VKEY`: The program verification key (get this by running `cargo run --package arithmetic-script --release -- --vkey` in the `../script` directory)
+- `PROGRAM_VKEY`: The program verification key (get this by running `cargo run --package arda-credit --release -- --vkey` in the `../script` directory)
 
 #### Sepolia Network Secrets
 - `SEPOLIA_RPC_URL`: RPC URL for Sepolia testnet

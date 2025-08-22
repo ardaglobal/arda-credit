@@ -330,7 +330,7 @@ async fn main() -> Result<()> {
                 println!("  Result size: {} bytes", result_bytes.len());
                 println!("  Result data: 0x{}", hex::encode(&result_bytes));
 
-                // Try to decode as arithmetic result if it's 4 bytes (int32)
+                // Try to decode as credit result if it's 4 bytes (int32)
                 if result_bytes.len() == 4 {
                     let int_result = i32::from_be_bytes([
                         result_bytes[0],

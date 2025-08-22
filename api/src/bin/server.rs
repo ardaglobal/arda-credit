@@ -9,7 +9,7 @@
 //! ```
 
 use api::{ApiConfig, ApiServer, ApiServerConfig};
-use arithmetic_db::init_db;
+use credit_db::init_db;
 use clap::Parser;
 use tracing::{error, info};
 

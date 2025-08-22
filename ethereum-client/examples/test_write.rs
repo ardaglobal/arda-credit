@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(signer) = &config.signer {
         println!("🔐 Signer: {}", signer.address);
-        println!("📝 Contract: {}", config.contract.arithmetic_contract);
+        println!("📝 Contract: {}", config.contract.credit_contract);
     }
 
     // First, let's check if our signer is authorized

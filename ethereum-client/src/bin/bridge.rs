@@ -31,7 +31,7 @@ enum Commands {
     Test,
     /// Submit a specific proof by result value
     Submit {
-        /// The arithmetic result to submit proof for
+        /// The credit result to submit proof for
         #[arg(short, long)]
         result: i32,
     },
@@ -126,7 +126,7 @@ fn check_contract_configuration(config: &Config) {
     info!("📋 Contract Configuration:");
     info!(
         "  - Arithmetic Contract: {}",
-        config.contract.arithmetic_contract
+        config.contract.credit_contract
     );
     info!(
         "  - Verifier Contract: {}",
@@ -241,7 +241,7 @@ async fn run_single_submission(
 async fn query_proof_by_result(pool: &PgPool, result: i32) -> Result<Option<String>> {
     let query = r"
         SELECT sp.proof_id
-        FROM arithmetic_transactions at
+        FROM credit_transactions at
         INNER JOIN sindri_proofs sp ON sp.result = at.result
         WHERE at.result = $1 AND sp.status = 'Ready'
         LIMIT 1
@@ -332,7 +332,7 @@ impl<'a> UnifiedBridge<'a> {
     async fn query_ready_proofs(&self) -> Result<Vec<(i32, String)>> {
         let query = r"
             SELECT DISTINCT at.result, sp.proof_id
-            FROM arithmetic_transactions at
+            FROM credit_transactions at
             INNER JOIN sindri_proofs sp ON sp.result = at.result
             WHERE sp.status = 'Ready'
             LIMIT 10

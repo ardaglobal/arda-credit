@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
                 hex::encode(result.as_ref().unwrap().as_ref())
             );
 
-            // Try to decode as arithmetic result
+            // Try to decode as credit result
             if result.as_ref().unwrap().len() == 4 {
                 let int_result = i32::from_be_bytes([
                     result.as_ref().unwrap().as_ref()[0],
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
                     result.as_ref().unwrap().as_ref()[2],
                     result.as_ref().unwrap().as_ref()[3],
                 ]);
-                println!("   Decoded as arithmetic result: {int_result}");
+                println!("   Decoded as credit result: {int_result}");
             }
             println!("💡 This is the public output that the proof verifies");
         }
