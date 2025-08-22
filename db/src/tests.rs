@@ -525,7 +525,8 @@ mod edge_case_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use arithmetic_lib::{LoanBatchPublicValues};
+    // Note: LoanBatchPublicValues not currently used in these tests but available if needed
+    // use arda_credit_lib::{LoanBatchPublicValues};
     use tracing_test::traced_test;
 
     #[tokio::test]
@@ -540,12 +541,12 @@ mod integration_tests {
         let mut submitted_amounts = vec![];
 
         for (a, b) in test_cases {
-            // Use the actual arithmetic function from the lib to compute amount
-            let computed_amount = addition(a, b);
+            // Use simple arithmetic for test amounts (loan processing doesn't need addition function)
+            let computed_amount = a + b;
             submitted_amounts.push(computed_amount);
 
             // Submit the transaction with the computed amount
-            let transaction = submit_transaction(&test_db.pool, computed_amount)
+            let transaction = submit_transaction(&test_db.pool, computed_amount as i32)
                 .await
                 .expect("Failed to submit integration test transaction");
 
@@ -617,7 +618,7 @@ mod integration_tests {
 
         // Phase 1: zkVM execution and transaction submission (simulated)
         for (a, b) in &zkvm_computations {
-            let amount = addition(*a, *b); // Simulate zkVM computation
+            let amount = a + b; // Simulate simple computation for testing
             expected_amounts.push(amount);
 
             // System submits the transaction amount

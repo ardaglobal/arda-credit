@@ -113,7 +113,7 @@ forge-test:
 	cd contracts && forge test
 	@echo "✅ Smart contract tests completed"
 
-## deploy-contract: Deploy Arithmetic smart contract
+## deploy-contract: Deploy Arda Credit smart contract
 # Required environment variables:
 #   ETHEREUM_RPC_URL     - RPC endpoint URL (e.g., Alchemy, Infura)
 #   ETHEREUM_WALLET_PRIVATE_KEY         - Private key for deployment (without 0x prefix)
@@ -121,7 +121,7 @@ forge-test:
 #   PROGRAM_VKEY        - Program verification key
 .PHONY: deploy-contract
 deploy-contract:
-	@echo "Deploying Arithmetic smart contract..."
+	@echo "Deploying Arda Credit smart contract..."
 	@echo "🔍 Checking required environment variables..."
 	@if [ -z "$$ETHEREUM_RPC_URL" ]; then \
 		echo "❌ ETHEREUM_RPC_URL is required"; \
@@ -209,7 +209,7 @@ initDB:
 	@# Check if DATABASE_URL is set, use default if not
 	@if [ -z "$$DATABASE_URL" ]; then \
 		echo "ℹ️  DATABASE_URL not set, using default..."; \
-		export DATABASE_URL="postgresql://postgres:password@localhost:5432/arithmetic_db"; \
+		export DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db"; \
 	fi
 	@echo "📍 Using database: $$DATABASE_URL"
 	@echo ""
@@ -229,11 +229,11 @@ initDB:
 	@echo ""
 	@# Run database migrations
 	@echo "📦 Running database migrations..."
-	@cd db && DATABASE_URL="postgresql://postgres:password@localhost:5432/arithmetic_db" sqlx migrate run
+	@cd db && DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db" sqlx migrate run
 	@echo ""
 	@# Generate SQLx cache
 	@echo "💾 Generating SQLx cache for offline mode..."
-	@DATABASE_URL="postgresql://postgres:password@localhost:5432/arithmetic_db" cargo sqlx prepare --workspace
+	@DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db" cargo sqlx prepare --workspace
 	@echo ""
 	@# Stop PostgreSQL database
 	@echo "🛑 Stopping PostgreSQL database..."

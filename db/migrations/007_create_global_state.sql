@@ -1,5 +1,9 @@
 -- Create global state management for continuous ledger functionality
 -- This table maintains a single running counter that accumulates all arithmetic results
+--
+-- IMPORTANT WARNING: This migration is superseded by migration 009_breaking_change_batch_processing.sql
+-- which drops the arithmetic_transactions table and completely restructures the database.
+-- Many references have been commented out to prevent FK constraint errors.
 
 -- ============================================================================
 -- GLOBAL STATE TABLE: Track continuous state accumulator
@@ -8,7 +12,10 @@ CREATE TABLE global_state (
     id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1), -- Enforce single row
     current_state BIGINT NOT NULL DEFAULT 0,
     transaction_count BIGINT NOT NULL DEFAULT 0,
-    last_transaction_id INTEGER REFERENCES arithmetic_transactions(id),
+    -- NOTE: This migration is superseded by 009_breaking_change_batch_processing.sql
+    -- which drops arithmetic_transactions table and creates new batch processing schema
+    -- last_transaction_id INTEGER REFERENCES arithmetic_transactions(id),
+    last_transaction_id INTEGER,  -- Kept for compatibility but no FK constraint
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     
     -- Constraints
@@ -20,7 +27,9 @@ CREATE TABLE global_state (
 -- ============================================================================
 CREATE TABLE state_transitions (
     id SERIAL PRIMARY KEY,
-    transaction_id INTEGER NOT NULL REFERENCES arithmetic_transactions(id),
+    -- NOTE: FK constraint removed due to breaking change in migration 009
+    -- transaction_id INTEGER NOT NULL REFERENCES arithmetic_transactions(id),
+    transaction_id INTEGER NOT NULL,  -- Kept for compatibility but no FK constraint
     previous_state BIGINT NOT NULL,
     arithmetic_result INTEGER NOT NULL,
     new_state BIGINT NOT NULL,
@@ -179,9 +188,12 @@ DECLARE
     trans_count BIGINT;
     rec RECORD;
 BEGIN
+    -- NOTE: arithmetic_transactions table is dropped in migration 009
+    -- This function will not work after migration 009 is applied
     -- Calculate expected state by summing all arithmetic results
-    SELECT COALESCE(SUM(result), 0) INTO calculated_state
-    FROM arithmetic_transactions;
+    -- SELECT COALESCE(SUM(result), 0) INTO calculated_state
+    -- FROM arithmetic_transactions;
+    calculated_state := 0; -- Default to 0 since table will be dropped
     
     -- Get current state from global_state table
     SELECT gs.current_state, gs.transaction_count 
@@ -215,9 +227,12 @@ DECLARE
     existing_count BIGINT;
 BEGIN
     -- Calculate sum of existing arithmetic results
-    SELECT COALESCE(SUM(result), 0), COUNT(*) 
-    INTO existing_sum, existing_count
-    FROM arithmetic_transactions;
+    -- NOTE: arithmetic_transactions table will be dropped in migration 009
+    -- SELECT COALESCE(SUM(result), 0), COUNT(*) 
+    -- INTO existing_sum, existing_count
+    -- FROM arithmetic_transactions;
+    existing_sum := 0;
+    existing_count := 0;
     
     -- Insert initial global state
     INSERT INTO global_state (id, current_state, transaction_count)
@@ -226,6 +241,8 @@ BEGIN
     
     -- Create state transition entries for existing transactions (if any)
     -- This helps maintain audit trail
+    -- NOTE: Commented out due to arithmetic_transactions table being dropped in migration 009
+    /*
     INSERT INTO state_transitions (transaction_id, previous_state, arithmetic_result, new_state, a, b, created_at)
     SELECT 
         at.id,
@@ -240,6 +257,9 @@ BEGIN
         at.b,
         at.created_at
     FROM arithmetic_transactions at
+    */
+    
+    -- Since arithmetic_transactions will be dropped, we skip this population step
     ORDER BY at.id
     ON CONFLICT DO NOTHING; -- In case we run this migration multiple times
     

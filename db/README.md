@@ -16,7 +16,7 @@ PostgreSQL integration for arithmetic computation storage and ADS (Authenticated
 
 ### Core Tables
 
-- **`arithmetic_transactions`**: Basic arithmetic computations
+- **`loan_transactions`**: Loan transaction processing (replaces old arithmetic_transactions)
 - **`incoming_transactions`**: Pending batch processing queue
 - **`proof_batches`**: Batch metadata with ZK proof references
 - **`nullifiers`**: IMT nullifier values with tree structure
@@ -55,11 +55,11 @@ Before running tests or operations:
      ```
    - **Database URL**: Set environment variable:
      ```bash
-     export DATABASE_URL="postgres://postgres:password@localhost:5432/arithmetic_db"
+     export DATABASE_URL="postgres://postgres:password@localhost:5432/arda_credit_db"
      ```
      Or use `.env` file:
      ```
-     DATABASE_URL=postgres://postgres:password@localhost:5432/arithmetic_db
+     DATABASE_URL=postgres://postgres:password@localhost:5432/arda_credit_db
      ```
 
 ## Testing

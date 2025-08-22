@@ -47,7 +47,7 @@ struct Cli {
     /// API server base URL
     #[arg(
         long,
-        env = "ARITHMETIC_API_URL",
+        env = "ARDA_CREDIT_API_URL",
         default_value = "http://localhost:8080"
     )]
     api_url: String,
@@ -487,7 +487,7 @@ async fn download_proof(
             println!("   Proof ID: {}", proof_id);
 
             // Fetch actual proof data from Sindri
-            match arithmetic_lib::proof::get_sindri_proof_data(&proof_id).await {
+            match arda_credit_lib::proof::get_sindri_proof_data(&proof_id).await {
                 Ok(proof_data) => {
                     let download_data = serde_json::json!({
                         "batch_id": batch_id,

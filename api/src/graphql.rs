@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use tracing::{info, instrument};
 
 use crate::rest::ApiState;
-use arithmetic_db::ads_service::{AdsError, AuthenticatedDataStructure};
-use arithmetic_db::vapp_integration::VAppError;
+use arda_credit_db::ads_service::{AdsError, AuthenticatedDataStructure};
+use arda_credit_db::vapp_integration::VAppError;
 
 // ============================================================================
 // GRAPHQL SCHEMA TYPES

@@ -26,7 +26,7 @@ pub struct NetworkConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractConfig {
-    pub arithmetic_contract: Address,
+    pub arda_credit_contract: Address,
     pub verifier_contract: Address,
     pub deployment_block: Option<u64>,
 }
@@ -80,9 +80,9 @@ impl Config {
             .map_err(|e| EthereumError::Config(format!("Invalid ETHEREUM_RPC_URL: {e}")))?;
         let ws_url = Self::build_ws_url_from_rpc(&rpc_url).ok();
 
-        let ethereum_contract = env::var("ETHEREUM_CONTRACT_ADDRESS")
+        let ethereum_contract = env::var("ARDA_CREDIT_CONTRACT_ADDRESS")
             .map_err(|_| {
-                EthereumError::Config("ETHEREUM_CONTRACT_ADDRESS is required".to_string())
+                                  EthereumError::Config("ARDA_CREDIT_CONTRACT_ADDRESS is required".to_string())
             })?
             .parse::<Address>()
             .map_err(|e| EthereumError::InvalidAddress(format!("Invalid contract address: {e}")))?;
@@ -140,7 +140,7 @@ impl Config {
                 is_testnet: Self::is_testnet(chain_id),
             },
             contract: ContractConfig {
-                arithmetic_contract: ethereum_contract,
+                arda_credit_contract: ethereum_contract,
                 verifier_contract,
                 deployment_block: env::var("DEPLOYMENT_BLOCK")
                     .ok()
@@ -230,7 +230,7 @@ impl Config {
             ));
         }
 
-        if self.contract.arithmetic_contract == Address::ZERO {
+        if self.contract.arda_credit_contract == Address::ZERO {
             return Err(EthereumError::Config(
                 "Ethereum contract address is required".to_string(),
             ));
@@ -258,7 +258,7 @@ impl Default for Config {
                 is_testnet: true,
             },
             contract: ContractConfig {
-                arithmetic_contract: Address::ZERO,
+                arda_credit_contract: Address::ZERO,
                 verifier_contract: Address::ZERO,
                 deployment_block: None,
             },

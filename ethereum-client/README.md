@@ -38,7 +38,7 @@ Configure your environment variables:
 ```env
 # Required
 ETHEREUM_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_api_key_here
-ARITHMETIC_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
+ARDA_CREDIT_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
 VERIFIER_CONTRACT_ADDRESS=0x0987654321098765432109876543210987654321
 
 # Optional
@@ -185,7 +185,7 @@ async fn get_network_stats(&self) -> Result<NetworkStats>
 | `ETHEREUM_RPC_URL` | Ethereum RPC endpoint URL | ✓ | - |
 | `ETHEREUM_NETWORK` | Network name | - | `sepolia` |
 | `CHAIN_ID` | Chain ID | - | Auto-detected |
-| `ARITHMETIC_CONTRACT_ADDRESS` | Main contract address | ✓ | - |
+| `ARDA_CREDIT_CONTRACT_ADDRESS` | Main contract address | ✓ | - |
 | `VERIFIER_CONTRACT_ADDRESS` | SP1 verifier address | ✓ | - |
 | `ETHEREUM_WALLET_PRIVATE_KEY` | Private key for signing | - | - |
 | `ETHEREUM_DEPLOYER_ADDRESS` | Address that deployed the contract (must match private key) | - | - |

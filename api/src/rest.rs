@@ -12,7 +12,7 @@ use sqlx::{Error as SqlxError, PgPool};
 use tracing::{error, info, instrument, warn};
 
 use crate::batch_processor::BatchProcessorHandle;
-use arithmetic_db::{
+use arda_credit_db::{
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
     get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
     ContractSubmissionData, IndexedMerkleTreeADS,

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument};
 
-use arithmetic_db::{
+use arda_credit_db::{
     get_pending_transactions, store_ads_state_commit, AuthenticatedDataStructure,
     IncomingTransaction, IndexedMerkleTreeADS, ProofBatch,
 };
@@ -208,7 +208,7 @@ impl UnifiedBatchService {
         transactions: &[IncomingTransaction],
     ) -> Result<Option<ProofBatch>, String> {
         // For now, use the existing create_batch logic but limit to exact transactions
-        match arithmetic_db::create_batch(&self.pool, Some(transactions.len() as i32)).await {
+        match arda_credit_db::create_batch(&self.pool, Some(transactions.len() as i32)).await {
             Ok(batch) => Ok(batch),
             Err(e) => Err(format!("Database error: {}", e)),
         }

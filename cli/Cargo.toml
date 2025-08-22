@@ -28,8 +28,8 @@ tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 # Local verification dependencies
 alloy-primitives = { workspace = true }
 alloy-sol-types  = { workspace = true }
-arithmetic-lib   = { path = "../lib", package = "lib" }
+arda-credit-lib  = { path = "../lib", package = "lib" }
 hex              = { workspace = true }
 
 # API types for consistent response parsing
-arithmetic-api = { path = "../api", package = "api", default-features = false }
+arda-credit-api = { path = "../api", package = "api", default-features = false }

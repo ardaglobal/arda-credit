@@ -16,11 +16,11 @@ use tracing::{debug, error, info, instrument, warn};
 
 use crate::rest::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
-use arithmetic_db::{
+use arda_credit_db::{
     get_batch_by_id, get_pending_transactions, get_proven_unposted_batches,
     mark_batch_posted_to_contract, update_batch_proof, IndexedMerkleTreeADS,
 };
-use arithmetic_lib::proof::{generate_batch_proof, BatchProofGenerationRequest, ProofSystem};
+use arda_credit_lib::proof::{generate_batch_proof, BatchProofGenerationRequest, ProofSystem};
 use ethereum_client::{Config as EthConfig, EthereumClient};
 
 // ============================================================================
@@ -613,7 +613,7 @@ impl BackgroundBatchProcessor {
         batch_id: i32,
         proof_id: &str,
     ) -> Result<(), String> {
-        use arithmetic_lib::proof::get_sindri_proof_info;
+        use arda_credit_lib::proof::get_sindri_proof_info;
 
         match get_sindri_proof_info(proof_id).await {
             Ok(proof_info) => {
@@ -860,7 +860,7 @@ impl BackgroundBatchProcessor {
     async fn submit_batch_to_contract(
         _pool: &PgPool,
         eth_client: &EthereumClient,
-        batch: &arithmetic_db::ProofBatch,
+        batch: &arda_credit_db::ProofBatch,
     ) -> Result<(), String> {
         info!("🚀 Submitting batch {} to smart contract", batch.id);
 
@@ -875,7 +875,7 @@ impl BackgroundBatchProcessor {
             "📥 Fetching real proof data from Sindri for proof ID: {}",
             sindri_proof_id
         );
-        let proof_data = match arithmetic_lib::proof::get_sindri_proof_data(sindri_proof_id).await {
+        let proof_data = match arda_credit_lib::proof::get_sindri_proof_data(sindri_proof_id).await {
             Ok(data) => {
                 info!("✅ Successfully retrieved proof data from Sindri");
                 info!("   Proof size: {} bytes", data.proof_bytes.len());
@@ -910,7 +910,7 @@ impl BackgroundBatchProcessor {
         // Log decoded values for debugging
         if proof_data.public_values.len() >= 128 { // Updated length for LoanBatchPublicValues
             use alloy_sol_types::SolType;
-            use arithmetic_lib::LoanBatchPublicValues;
+            use arda_credit_lib::LoanBatchPublicValues;
 
             match LoanBatchPublicValues::abi_decode(&proof_data.public_values) {
                 Ok(decoded) => {
