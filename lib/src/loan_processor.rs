@@ -49,6 +49,9 @@ pub struct LoanState {
     /// All loans in the system
     pub loans: HashMap<[u8; 32], Loan>,
 
+    /// Configurable loan terms
+    pub loan_terms: LoanTerms,
+
     /// Transaction counter for ordering
     pub transaction_count: u64,
 
@@ -61,6 +64,7 @@ impl Default for LoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
+            loan_terms: LoanTerms::default(),
             transaction_count: 0,
             last_updated: 0,
         }
@@ -68,9 +72,25 @@ impl Default for LoanState {
 }
 
 impl LoanState {
-    /// Create a new empty loan state
+    /// Create a new empty loan state with default loan terms
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create a new loan state with custom loan terms
+    pub fn with_loan_terms(loan_terms: LoanTerms) -> Self {
+        Self {
+            users: HashMap::new(),
+            loans: HashMap::new(),
+            loan_terms,
+            transaction_count: 0,
+            last_updated: 0,
+        }
+    }
+
+    /// Update loan terms configuration
+    pub fn set_loan_terms(&mut self, loan_terms: LoanTerms) {
+        self.loan_terms = loan_terms;
     }
 
     /// Process a single transaction and update state
@@ -227,12 +247,12 @@ impl LoanState {
             lender_id,
             principal_amount: transaction.amount,
             outstanding_balance: transaction.amount,
-            interest_rate: 750, // Default 7.5% APR (750 basis points)
-            term_months: 36,    // Default 3 year term
+            interest_rate: self.loan_terms.interest_rate,
+            term_months: self.loan_terms.term_months,
             loan_status: LoanStatus::Originated,
             originated_at: transaction.created_at,
             funded_at: 0,
-            maturity_date: transaction.created_at + (36 * 30 * 24 * 60 * 60), // 36 months
+            maturity_date: self.loan_terms.calculate_maturity_date(transaction.created_at),
         };
 
         self.loans.insert(loan_id, loan);
@@ -440,5 +460,141 @@ mod tests {
         let user = state.get_user(&user_id).unwrap();
         assert_eq!(user.kyc_status, KycStatus::Approved);
         assert!(user.is_kyc_approved());
+    }
+
+    #[test]
+    fn test_configurable_loan_terms() {
+        // Test with custom loan terms
+        let custom_terms = LoanTerms::new(1200, 60); // 12% APR, 5 year term
+        let mut state = LoanState::with_loan_terms(custom_terms.clone());
+        
+        let borrower_id = [1u8; 32];
+        let lender_id = [2u8; 32];
+        let loan_id = [3u8; 32];
+        
+        // Register and KYC both users
+        setup_kycd_users(&mut state, borrower_id, lender_id);
+        
+        // Create loan origination transaction
+        let mut loan_metadata = MetadataArray::empty();
+        loan_metadata.as_mut_bytes()[0..32].copy_from_slice(&borrower_id);
+        loan_metadata.as_mut_bytes()[32..64].copy_from_slice(&lender_id);
+        
+        let loan_tx = LoanTransaction {
+            transaction_id: [10u8; 32],
+            user_id: lender_id,
+            loan_id,
+            transaction_type: TransactionType::LoanOrigination,
+            amount: 10_000_00, // $10,000 in cents
+            created_at: 5000,
+            metadata: loan_metadata,
+        };
+        
+        state.process_transaction(&loan_tx).unwrap();
+        
+        // Verify loan uses custom terms
+        let loan = state.get_loan(&loan_id).unwrap();
+        assert_eq!(loan.interest_rate, 1200); // Custom 12% APR
+        assert_eq!(loan.term_months, 60);     // Custom 5 year term
+        assert_eq!(loan.principal_amount, 10_000_00);
+        assert_eq!(loan.outstanding_balance, 10_000_00);
+        
+        // Verify maturity date calculation
+        let expected_maturity = 5000 + (60_u64 * 30 * 24 * 60 * 60); // 60 months
+        assert_eq!(loan.maturity_date, expected_maturity);
+        
+        // Test with default loan terms
+        let mut default_state = LoanState::new();
+        assert_eq!(default_state.loan_terms.interest_rate, 750); // Default 7.5%
+        assert_eq!(default_state.loan_terms.term_months, 36);    // Default 3 years
+        
+        // Test updating loan terms on existing state
+        let new_terms = LoanTerms::new(500, 24); // 5% APR, 2 year term
+        default_state.set_loan_terms(new_terms);
+        assert_eq!(default_state.loan_terms.interest_rate, 500);
+        assert_eq!(default_state.loan_terms.term_months, 24);
+    }
+    
+    /// Helper function to set up KYC'd users for testing
+    fn setup_kycd_users(state: &mut LoanState, borrower_id: [u8; 32], lender_id: [u8; 32]) {
+        // Register borrower
+        let mut borrower_metadata = MetadataArray::empty();
+        borrower_metadata.as_mut_bytes()[0] = UserType::Investor as u8;
+        let borrower_reg_tx = LoanTransaction {
+            transaction_id: [4u8; 32],
+            user_id: borrower_id,
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: 1000,
+            metadata: borrower_metadata,
+        };
+        state.process_transaction(&borrower_reg_tx).unwrap();
+        
+        // Register lender
+        let mut lender_metadata = MetadataArray::empty();
+        lender_metadata.as_mut_bytes()[0] = UserType::Lender as u8;
+        let lender_reg_tx = LoanTransaction {
+            transaction_id: [5u8; 32],
+            user_id: lender_id,
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: 1100,
+            metadata: lender_metadata,
+        };
+        state.process_transaction(&lender_reg_tx).unwrap();
+        
+        // Submit KYC for borrower
+        let borrower_kyc_submit_tx = LoanTransaction {
+            transaction_id: [6u8; 32],
+            user_id: borrower_id,
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::KycSubmission,
+            amount: 0,
+            created_at: 2000,
+            metadata: MetadataArray::empty(),
+        };
+        state.process_transaction(&borrower_kyc_submit_tx).unwrap();
+        
+        // Submit KYC for lender
+        let lender_kyc_submit_tx = LoanTransaction {
+            transaction_id: [7u8; 32],
+            user_id: lender_id,
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::KycSubmission,
+            amount: 0,
+            created_at: 2100,
+            metadata: MetadataArray::empty(),
+        };
+        state.process_transaction(&lender_kyc_submit_tx).unwrap();
+        
+        // Verify KYC for borrower
+        let mut borrower_verify_metadata = MetadataArray::empty();
+        borrower_verify_metadata.as_mut_bytes()[0] = 1; // Approved
+        let borrower_kyc_verify_tx = LoanTransaction {
+            transaction_id: [8u8; 32],
+            user_id: borrower_id,
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::KycVerification,
+            amount: 0,
+            created_at: 3000,
+            metadata: borrower_verify_metadata,
+        };
+        state.process_transaction(&borrower_kyc_verify_tx).unwrap();
+        
+        // Verify KYC for lender
+        let mut lender_verify_metadata = MetadataArray::empty();
+        lender_verify_metadata.as_mut_bytes()[0] = 1; // Approved
+        let lender_kyc_verify_tx = LoanTransaction {
+            transaction_id: [9u8; 32],
+            user_id: lender_id,
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::KycVerification,
+            amount: 0,
+            created_at: 3100,
+            metadata: lender_verify_metadata,
+        };
+        state.process_transaction(&lender_kyc_verify_tx).unwrap();
     }
 }
