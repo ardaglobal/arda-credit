@@ -114,10 +114,10 @@ impl LoanState {
     pub fn process_batch(&mut self, batch: &LoanBatch) -> Result<(), ProcessingError> {
         // Validate batch timestamp bounds
         validate_timestamp_bounds(batch.created_at)?;
-        
+
         // Validate temporal ordering within the batch
         validate_batch_temporal_ordering(batch)?;
-        
+
         for transaction in &batch.transactions {
             self.process_transaction(transaction)?;
         }
@@ -358,7 +358,7 @@ pub fn process_loan_batch(
             state_timestamp: state.last_updated,
         });
     }
-    
+
     state.process_batch(batch)?;
     Ok(state)
 }
@@ -420,7 +420,7 @@ fn validate_timestamp_bounds(timestamp: u64) -> Result<(), ProcessingError> {
     // Max: January 1, 2030 (1893456000) - 10 years from now for reasonable future limit
     const MIN_TIMESTAMP: u64 = 1577836800; // Jan 1, 2020
     const MAX_TIMESTAMP: u64 = 1893456000; // Jan 1, 2030
-    
+
     if timestamp < MIN_TIMESTAMP || timestamp > MAX_TIMESTAMP {
         return Err(ProcessingError::InvalidTimestamp {
             timestamp,
@@ -428,14 +428,14 @@ fn validate_timestamp_bounds(timestamp: u64) -> Result<(), ProcessingError> {
             max_timestamp: MAX_TIMESTAMP,
         });
     }
-    
+
     Ok(())
 }
 
 /// Validate temporal ordering within a batch of transactions
 fn validate_batch_temporal_ordering(batch: &LoanBatch) -> Result<(), ProcessingError> {
     let mut prev_timestamp = 0u64;
-    
+
     for transaction in &batch.transactions {
         // Ensure transactions within batch are not going backwards in time
         if transaction.created_at < prev_timestamp {
@@ -444,13 +444,13 @@ fn validate_batch_temporal_ordering(batch: &LoanBatch) -> Result<(), ProcessingE
                 state_timestamp: prev_timestamp,
             });
         }
-        
+
         // Validate each transaction's timestamp bounds
         validate_timestamp_bounds(transaction.created_at)?;
-        
+
         prev_timestamp = transaction.created_at;
     }
-    
+
     Ok(())
 }
 
