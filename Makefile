@@ -3,10 +3,10 @@
 
 REGISTRY ?= ghcr.io
 OWNER ?= ardaglobal
-IMAGE_NAME ?= demo-vapp
+IMAGE_NAME ?= arda-credit
 DOCKER_TAG ?= $(shell whoami)-dev
 PLATFORM ?= linux/amd64
-APPNAME ?= demo-vapp
+APPNAME ?= arda-credit
 
 
 ## help: Get more info on make commands.

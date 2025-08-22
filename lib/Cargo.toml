@@ -12,6 +12,11 @@ serde           = { version = "1.0", features = [ "derive" ] }
 serde_json      = "1.0"
 thiserror       = "1.0"
 
+# Additional dependencies for loan types
+rust_decimal = { workspace = true }
+sha2         = { workspace = true }
+uuid         = { workspace = true }
+
 # SP1 dependencies (for host-side proof operations)
 sindri  = { version = "0.3.1", features = [ "sp1-v5" ], optional = true }
 sp1-sdk = { version = "5.2.1", optional = true }

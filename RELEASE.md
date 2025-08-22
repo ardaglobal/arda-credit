@@ -1,6 +1,6 @@
 # Release Management Strategy
 
-This document outlines the comprehensive release management strategy for the demo-vapp repository, which contains three distinct but interconnected components that require coordinated versioning.
+This document outlines the comprehensive release management strategy for the arda-credit repository, which contains three distinct but interconnected components that require coordinated versioning.
 
 ## Component Overview
 
@@ -91,7 +91,7 @@ This document outlines the comprehensive release management strategy for the dem
 
 #### Pre-Release Checklist
 - [ ] Specify contract and program versions in release notes
-- [ ] Update Docker images: `docker build -t demo-vapp:vX.Y.Z .`
+- [ ] Update Docker images: `docker build -t arda-credit:vX.Y.Z .`
 - [ ] Database migration testing
 - [ ] Integration testing with specified contract/program versions
 - [ ] Load testing
@@ -109,15 +109,15 @@ This document outlines the comprehensive release management strategy for the dem
 
 3. **Build and push Docker images**:
    ```bash
-   docker build -t ghcr.io/ardaglobal/demo-vapp:v3.4.5 .
-   docker push ghcr.io/ardaglobal/demo-vapp:v3.4.5
+   docker build -t ghcr.io/ardaglobal/arda-credit:v3.4.5 .
+   docker push ghcr.io/ardaglobal/arda-credit:v3.4.5
    ```
 
 4. **Update docker-compose.yml**:
    ```yaml
    services:
      server:
-       image: ghcr.io/ardaglobal/demo-vapp:v3.4.5
+       image: ghcr.io/ardaglobal/arda-credit:v3.4.5
    ```
 
 5. **Create GitHub release** with comprehensive release notes
@@ -308,4 +308,4 @@ docker-compose up -d
 - **Verification**: Verify signatures and checksums for all artifacts
 - **Incident response**: Have procedures for security-related rollbacks
 
-This release strategy ensures coordinated, traceable, and reliable deployments across all components of the demo-vapp ecosystem while maintaining the flexibility to release components independently when appropriate.
+This release strategy ensures coordinated, traceable, and reliable deployments across all components of the arda-credit ecosystem while maintaining the flexibility to release components independently when appropriate.
