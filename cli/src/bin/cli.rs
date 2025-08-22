@@ -36,7 +36,7 @@ use std::time::Instant;
 use tracing::error;
 
 // Import new batch processing API types
-use arithmetic_api::BatchApiClient;
+use arda_credit_api::BatchApiClient;
 use ethereum_client::{config::Config, EthereumClient};
 
 #[derive(Parser)]
@@ -792,7 +792,7 @@ async fn query_verification_key(verbose: bool) -> Result<()> {
     if verbose {
         println!(
             "📍 Contract address: {}",
-            ethereum_config.contract.arithmetic_contract
+            ethereum_config.contract.arda_credit_contract
         );
         println!("📡 RPC URL: {}", ethereum_config.network.rpc_url);
     }
