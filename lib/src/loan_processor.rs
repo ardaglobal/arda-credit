@@ -45,13 +45,13 @@ pub enum ProcessingError {
 pub struct LoanState {
     /// All users in the system
     pub users: HashMap<[u8; 32], User>,
-    
+
     /// All loans in the system
     pub loans: HashMap<[u8; 32], Loan>,
-    
+
     /// Transaction counter for ordering
     pub transaction_count: u64,
-    
+
     /// Last update timestamp
     pub last_updated: u64,
 }
@@ -74,32 +74,23 @@ impl LoanState {
     }
 
     /// Process a single transaction and update state
-    pub fn process_transaction(&mut self, transaction: &LoanTransaction) -> Result<(), ProcessingError> {
+    pub fn process_transaction(
+        &mut self,
+        transaction: &LoanTransaction,
+    ) -> Result<(), ProcessingError> {
         match transaction.transaction_type {
-            TransactionType::UserRegistration => {
-                self.process_user_registration(transaction)
-            }
-            TransactionType::KycSubmission => {
-                self.process_kyc_submission(transaction)
-            }
-            TransactionType::KycVerification => {
-                self.process_kyc_verification(transaction)
-            }
-            TransactionType::LoanOrigination => {
-                self.process_loan_origination(transaction)
-            }
-            TransactionType::LoanPayment => {
-                self.process_loan_payment(transaction)
-            }
-            TransactionType::LoanCloseout => {
-                self.process_loan_closeout(transaction)
-            }
+            TransactionType::UserRegistration => self.process_user_registration(transaction),
+            TransactionType::KycSubmission => self.process_kyc_submission(transaction),
+            TransactionType::KycVerification => self.process_kyc_verification(transaction),
+            TransactionType::LoanOrigination => self.process_loan_origination(transaction),
+            TransactionType::LoanPayment => self.process_loan_payment(transaction),
+            TransactionType::LoanCloseout => self.process_loan_closeout(transaction),
         }?;
 
         // Update global state
         self.transaction_count += 1;
         self.last_updated = transaction.created_at;
-        
+
         Ok(())
     }
 
@@ -112,7 +103,10 @@ impl LoanState {
     }
 
     /// State Transition 1: User Registration
-    fn process_user_registration(&mut self, transaction: &LoanTransaction) -> Result<(), ProcessingError> {
+    fn process_user_registration(
+        &mut self,
+        transaction: &LoanTransaction,
+    ) -> Result<(), ProcessingError> {
         let user_id = transaction.user_id;
 
         // Check for duplicate registration
@@ -142,10 +136,15 @@ impl LoanState {
     }
 
     /// State Transition 2: KYC Submission
-    fn process_kyc_submission(&mut self, transaction: &LoanTransaction) -> Result<(), ProcessingError> {
+    fn process_kyc_submission(
+        &mut self,
+        transaction: &LoanTransaction,
+    ) -> Result<(), ProcessingError> {
         let user_id = transaction.user_id;
 
-        let user = self.users.get_mut(&user_id)
+        let user = self
+            .users
+            .get_mut(&user_id)
             .ok_or(ProcessingError::UserNotFound { user_id })?;
 
         // Update KYC status to pending
@@ -156,10 +155,15 @@ impl LoanState {
     }
 
     /// State Transition 3: KYC Verification (admin operation)
-    fn process_kyc_verification(&mut self, transaction: &LoanTransaction) -> Result<(), ProcessingError> {
+    fn process_kyc_verification(
+        &mut self,
+        transaction: &LoanTransaction,
+    ) -> Result<(), ProcessingError> {
         let user_id = transaction.user_id;
 
-        let user = self.users.get_mut(&user_id)
+        let user = self
+            .users
+            .get_mut(&user_id)
             .ok_or(ProcessingError::UserNotFound { user_id })?;
 
         // Decode verification result from metadata
@@ -176,7 +180,10 @@ impl LoanState {
     }
 
     /// State Transition 4: Loan Origination
-    fn process_loan_origination(&mut self, transaction: &LoanTransaction) -> Result<(), ProcessingError> {
+    fn process_loan_origination(
+        &mut self,
+        transaction: &LoanTransaction,
+    ) -> Result<(), ProcessingError> {
         let loan_id = transaction.loan_id;
         let _initiator_id = transaction.user_id;
 
@@ -193,13 +200,21 @@ impl LoanState {
         lender_id.copy_from_slice(&metadata[32..64]);
 
         // Verify both parties are KYC'd
-        let borrower = self.users.get(&borrower_id)
-            .ok_or(ProcessingError::UserNotFound { user_id: borrower_id })?;
-        let lender = self.users.get(&lender_id)
+        let borrower = self
+            .users
+            .get(&borrower_id)
+            .ok_or(ProcessingError::UserNotFound {
+                user_id: borrower_id,
+            })?;
+        let lender = self
+            .users
+            .get(&lender_id)
             .ok_or(ProcessingError::UserNotFound { user_id: lender_id })?;
 
         if !borrower.is_kyc_approved() {
-            return Err(ProcessingError::KycNotApproved { user_id: borrower_id });
+            return Err(ProcessingError::KycNotApproved {
+                user_id: borrower_id,
+            });
         }
         if !lender.is_kyc_approved() {
             return Err(ProcessingError::KycNotApproved { user_id: lender_id });
@@ -225,11 +240,16 @@ impl LoanState {
     }
 
     /// State Transition 5: Loan Payment
-    fn process_loan_payment(&mut self, transaction: &LoanTransaction) -> Result<(), ProcessingError> {
+    fn process_loan_payment(
+        &mut self,
+        transaction: &LoanTransaction,
+    ) -> Result<(), ProcessingError> {
         let loan_id = transaction.loan_id;
         let payment_amount = transaction.amount;
 
-        let loan = self.loans.get_mut(&loan_id)
+        let loan = self
+            .loans
+            .get_mut(&loan_id)
             .ok_or(ProcessingError::LoanNotFound { loan_id })?;
 
         // Verify loan can accept payments
@@ -258,10 +278,15 @@ impl LoanState {
     }
 
     /// State Transition 6: Loan Closeout
-    fn process_loan_closeout(&mut self, transaction: &LoanTransaction) -> Result<(), ProcessingError> {
+    fn process_loan_closeout(
+        &mut self,
+        transaction: &LoanTransaction,
+    ) -> Result<(), ProcessingError> {
         let loan_id = transaction.loan_id;
 
-        let loan = self.loans.get_mut(&loan_id)
+        let loan = self
+            .loans
+            .get_mut(&loan_id)
             .ok_or(ProcessingError::LoanNotFound { loan_id })?;
 
         // Verify loan can be closed
@@ -273,7 +298,7 @@ impl LoanState {
             _ => Err(ProcessingError::InvalidLoanStateTransition {
                 current_status: loan.loan_status,
                 requested_operation: TransactionType::LoanCloseout,
-            })
+            }),
         }
     }
 
@@ -290,7 +315,7 @@ impl LoanState {
     /// Get current state hash (for Merkle tree)
     pub fn compute_state_hash(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
-        
+
         let serialized = serde_json::to_string(&self).unwrap_or_default();
         let mut hasher = Sha256::new();
         hasher.update(serialized.as_bytes());
@@ -323,7 +348,9 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
     // Validate all zeros loan_id for non-loan transactions
     let zero_loan_id = [0u8; 32];
     match transaction.transaction_type {
-        TransactionType::UserRegistration | TransactionType::KycSubmission | TransactionType::KycVerification => {
+        TransactionType::UserRegistration
+        | TransactionType::KycSubmission
+        | TransactionType::KycVerification => {
             if transaction.loan_id != zero_loan_id {
                 return Err(ProcessingError::InvalidTransactionType);
             }
@@ -342,10 +369,10 @@ mod tests {
     fn test_user_registration() {
         let mut state = LoanState::new();
         let user_id = [1u8; 32];
-        
+
         let mut metadata = MetadataArray::empty();
         metadata.as_mut_bytes()[0] = 1; // Investor
-        
+
         let transaction = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id,
@@ -357,7 +384,7 @@ mod tests {
         };
 
         state.process_transaction(&transaction).unwrap();
-        
+
         let user = state.get_user(&user_id).unwrap();
         assert_eq!(user.user_type, UserType::Investor);
         assert_eq!(user.kyc_status, KycStatus::NotSubmitted);

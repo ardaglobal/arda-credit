@@ -433,7 +433,8 @@ pub async fn verify_sindri_proof(
 
     let actual_transaction_count = decoded.transaction_count;
     let actual_batch_timestamp = decoded.batch_timestamp;
-    let batch_details_match_expected = actual_transaction_count == request.expected_transaction_count
+    let batch_details_match_expected = actual_transaction_count
+        == request.expected_transaction_count
         && actual_batch_timestamp == request.expected_batch_timestamp;
     let is_valid = cryptographic_proof_valid && batch_details_match_expected;
 

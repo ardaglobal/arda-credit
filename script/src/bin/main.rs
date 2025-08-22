@@ -6,13 +6,13 @@
 //!
 //! Usage:
 //! ```shell
-//! cargo run --package arda-credit-script --bin arda-credit
+//! cargo run --package arda-credit --bin arda-credit
 //! ```
 
 use alloy_sol_types::SolType;
 use arithmetic_lib::{
-    LoanBatch, LoanBatchPublicValues, LoanState, LoanTransaction, TransactionType,
-    UserType, hash_uuid, MetadataArray
+    hash_uuid, LoanBatch, LoanBatchPublicValues, LoanState, LoanTransaction, MetadataArray,
+    TransactionType, UserType,
 };
 use eyre::Result;
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
@@ -35,13 +35,18 @@ fn main() -> Result<()> {
 
     // Create test scenario: Complete loan workflow
     let (initial_state, batch) = create_test_loan_scenario();
-    
+
     info!("📊 Test scenario:");
     info!("  Initial users: {}", initial_state.users.len());
     info!("  Initial loans: {}", initial_state.loans.len());
     info!("  Batch transactions: {}", batch.transactions.len());
-    info!("  Transaction types: {:?}", 
-        batch.transactions.iter().map(|t| t.transaction_type).collect::<Vec<_>>()
+    info!(
+        "  Transaction types: {:?}",
+        batch
+            .transactions
+            .iter()
+            .map(|t| t.transaction_type)
+            .collect::<Vec<_>>()
     );
 
     // Create inputs for the zkVM program
@@ -63,7 +68,9 @@ fn main() -> Result<()> {
 
     // Verify the proof
     info!("🔍 Verifying loan processing proof...");
-    client.verify(&proof, &vk).expect("Failed to verify loan proof");
+    client
+        .verify(&proof, &vk)
+        .expect("Failed to verify loan proof");
     info!("✅ Proof verification passed!");
 
     // Decode and analyze the public outputs
@@ -72,22 +79,34 @@ fn main() -> Result<()> {
         .expect("Failed to decode loan batch public values");
 
     info!("📤 Public outputs (what goes on-chain):");
-    info!("  Previous state root: 0x{}", hex::encode(&output.previous_state_root));
-    info!("  New state root: 0x{}", hex::encode(&output.new_state_root));
+    info!(
+        "  Previous state root: 0x{}",
+        hex::encode(&output.previous_state_root)
+    );
+    info!(
+        "  New state root: 0x{}",
+        hex::encode(&output.new_state_root)
+    );
     info!("  Transaction count: {}", output.transaction_count);
     info!("  Batch timestamp: {}", output.batch_timestamp);
-    info!("  Transaction types hash: 0x{}", hex::encode(&output.transaction_types_hash));
+    info!(
+        "  Transaction types hash: 0x{}",
+        hex::encode(&output.transaction_types_hash)
+    );
 
     // Verify state transition occurred
     if output.previous_state_root != output.new_state_root {
         info!("✅ State transition verified:");
         let prev_hex = hex::encode(&output.previous_state_root);
         let new_hex = hex::encode(&output.new_state_root);
-        info!("  State successfully changed from 0x{} to 0x{}", 
-            &prev_hex[..16], 
+        info!(
+            "  State successfully changed from 0x{} to 0x{}",
+            &prev_hex[..16],
             &new_hex[..16]
         );
-        info!("🔐 Individual loan amounts, user identities, and transaction details remain private!");
+        info!(
+            "🔐 Individual loan amounts, user identities, and transaction details remain private!"
+        );
         info!("🎉 Only state root transitions and transaction count are public");
         info!("🎉 Local SP1 loan processing test completed successfully!");
     } else {
@@ -101,13 +120,13 @@ fn main() -> Result<()> {
 fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
     let batch_id = [1u8; 32];
     let batch_timestamp = 1640995200; // January 1, 2022
-    
+
     // Create test user IDs
     let alice_uuid = uuid::Uuid::new_v4();
     let bob_uuid = uuid::Uuid::new_v4();
     let alice_id = hash_uuid(&alice_uuid);
     let bob_id = hash_uuid(&bob_uuid);
-    
+
     let loan_uuid = uuid::Uuid::new_v4();
     let loan_id = hash_uuid(&loan_uuid);
 
@@ -120,7 +139,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
     // 1. Register Alice as a lender
     let mut alice_metadata = MetadataArray::empty();
     alice_metadata.as_mut_bytes()[0] = UserType::Lender as u8;
-    
+
     transactions.push(LoanTransaction {
         transaction_id: [1u8; 32],
         user_id: alice_id,
@@ -134,7 +153,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
     // 2. Register Bob as an investor
     let mut bob_metadata = MetadataArray::empty();
     bob_metadata.as_mut_bytes()[0] = UserType::Investor as u8;
-    
+
     transactions.push(LoanTransaction {
         transaction_id: [2u8; 32],
         user_id: bob_id,
@@ -170,7 +189,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
     // 5. KYC verification for Alice (approved)
     let mut alice_kyc_metadata = MetadataArray::empty();
     alice_kyc_metadata.as_mut_bytes()[0] = 1; // Approved
-    
+
     transactions.push(LoanTransaction {
         transaction_id: [5u8; 32],
         user_id: alice_id,
@@ -184,7 +203,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
     // 6. KYC verification for Bob (approved)
     let mut bob_kyc_metadata = MetadataArray::empty();
     bob_kyc_metadata.as_mut_bytes()[0] = 1; // Approved
-    
+
     transactions.push(LoanTransaction {
         transaction_id: [6u8; 32],
         user_id: bob_id,
@@ -198,9 +217,9 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
     // 7. Loan origination: Bob borrows $50,000 from Alice
     let mut loan_metadata = MetadataArray::empty();
     // Pack borrower_id and lender_id into metadata
-    loan_metadata.as_mut_bytes()[0..32].copy_from_slice(&bob_id);   // borrower
+    loan_metadata.as_mut_bytes()[0..32].copy_from_slice(&bob_id); // borrower
     loan_metadata.as_mut_bytes()[32..64].copy_from_slice(&alice_id); // lender
-    
+
     transactions.push(LoanTransaction {
         transaction_id: [7u8; 32],
         user_id: alice_id, // Alice initiates the loan

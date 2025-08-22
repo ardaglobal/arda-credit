@@ -18,7 +18,7 @@ impl MetadataArray {
             data: vec![0u8; 64],
         }
     }
-    
+
     /// Create metadata from bytes (truncates if too long, pads if too short)
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut data = vec![0u8; 64];
@@ -26,12 +26,12 @@ impl MetadataArray {
         data[..len].copy_from_slice(&bytes[..len]);
         Self { data }
     }
-    
+
     /// Get the inner byte array as a slice
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
     }
-    
+
     /// Get mutable access to the underlying data
     pub fn as_mut_bytes(&mut self) -> &mut [u8] {
         &mut self.data
@@ -90,41 +90,41 @@ pub enum TransactionType {
 /// User account (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
-    pub user_id: [u8; 32],        // Hashed UUID for privacy
+    pub user_id: [u8; 32], // Hashed UUID for privacy
     pub user_type: UserType,
     pub kyc_status: KycStatus,
-    pub kyc_submitted_at: u64,    // Unix timestamp, 0 if not submitted
-    pub kyc_verified_at: u64,     // Unix timestamp, 0 if not verified
-    pub created_at: u64,          // Unix timestamp
+    pub kyc_submitted_at: u64, // Unix timestamp, 0 if not submitted
+    pub kyc_verified_at: u64,  // Unix timestamp, 0 if not verified
+    pub created_at: u64,       // Unix timestamp
 }
 
 /// Loan record (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Loan {
-    pub loan_id: [u8; 32],           // Hashed UUID
-    pub borrower_id: [u8; 32],       // Hashed user ID
-    pub lender_id: [u8; 32],         // Hashed user ID
-    pub principal_amount: u64,       // Amount in smallest currency unit (cents)
-    pub outstanding_balance: u64,    // Current balance owed
-    pub interest_rate: u32,          // Rate in basis points (7.5% = 750)
-    pub term_months: u16,            // Loan term
+    pub loan_id: [u8; 32],        // Hashed UUID
+    pub borrower_id: [u8; 32],    // Hashed user ID
+    pub lender_id: [u8; 32],      // Hashed user ID
+    pub principal_amount: u64,    // Amount in smallest currency unit (cents)
+    pub outstanding_balance: u64, // Current balance owed
+    pub interest_rate: u32,       // Rate in basis points (7.5% = 750)
+    pub term_months: u16,         // Loan term
     pub loan_status: LoanStatus,
-    pub originated_at: u64,          // Unix timestamp
-    pub funded_at: u64,              // Unix timestamp, 0 if not funded
-    pub maturity_date: u64,          // Unix timestamp
+    pub originated_at: u64, // Unix timestamp
+    pub funded_at: u64,     // Unix timestamp, 0 if not funded
+    pub maturity_date: u64, // Unix timestamp
 }
 
 /// Transaction for batch processing (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LoanTransaction {
-    pub transaction_id: [u8; 32],   // Hashed UUID
-    pub user_id: [u8; 32],          // Transaction initiator
-    pub loan_id: [u8; 32],          // All zeros for non-loan transactions
+    pub transaction_id: [u8; 32], // Hashed UUID
+    pub user_id: [u8; 32],        // Transaction initiator
+    pub loan_id: [u8; 32],        // All zeros for non-loan transactions
     pub transaction_type: TransactionType,
-    pub amount: u64,                // 0 for non-monetary transactions
-    pub created_at: u64,            // Unix timestamp
+    pub amount: u64,     // 0 for non-monetary transactions
+    pub created_at: u64, // Unix timestamp
     // Metadata encoded as fixed-size array for zkVM compatibility
-    pub metadata: MetadataArray,    // Flexible metadata field
+    pub metadata: MetadataArray, // Flexible metadata field
 }
 
 /// Batch of mixed transaction types
@@ -162,7 +162,10 @@ impl User {
 impl Loan {
     /// Check if loan can accept payments
     pub const fn can_accept_payment(&self) -> bool {
-        matches!(self.loan_status, LoanStatus::Active | LoanStatus::Originated)
+        matches!(
+            self.loan_status,
+            LoanStatus::Active | LoanStatus::Originated
+        )
     }
 
     /// Check if loan is fully paid off
@@ -174,7 +177,10 @@ impl Loan {
 impl TransactionType {
     /// Check if transaction type requires KYC
     pub const fn requires_kyc(&self) -> bool {
-        matches!(self, Self::LoanOrigination | Self::LoanPayment | Self::LoanCloseout)
+        matches!(
+            self,
+            Self::LoanOrigination | Self::LoanPayment | Self::LoanCloseout
+        )
     }
 
     /// Check if transaction type is monetary
