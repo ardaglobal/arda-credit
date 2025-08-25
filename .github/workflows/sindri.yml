@@ -36,8 +36,6 @@ jobs:
 
       - name: Install SP1 Toolchain
         uses: ./.github/actions/setup-sp1
-        with:
-          verify-installation: 'false'
 
       - name: Build SP1 Program
         run: |

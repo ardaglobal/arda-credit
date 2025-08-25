@@ -1,10 +1,6 @@
 name: 'Setup SP1 Toolchain'
 description: 'Install and cache SP1 toolchain for faster CI/CD builds'
 inputs:
-  verify-installation:
-    description: 'Whether to verify installation by running cargo-prove --version'
-    required: false
-    default: 'true'
   cache-key-suffix:
     description: 'Additional suffix for cache key (useful for different SP1 versions)'
     required: false
@@ -53,7 +49,6 @@ runs:
         echo "${{ steps.sp1-cache-key.outputs.sp1-bin-path }}" >> $GITHUB_PATH
 
     - name: Verify SP1 installation
-      if: inputs.verify-installation == 'true'
       shell: bash
       run: |
         # Verify installation by checking cargo-prove version

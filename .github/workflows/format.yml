@@ -23,8 +23,6 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Install SP1 toolchain
         uses: ./.github/actions/setup-sp1
-        with:
-          verify-installation: 'true'
       - name: Build SP1 program
         run: |
           cd program
