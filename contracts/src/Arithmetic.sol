@@ -9,6 +9,16 @@ struct PublicValuesStruct {
     int32 final_balance;
 }
 
+struct LoanBatchPublicValues {
+    bytes32 previous_state_root;
+    bytes32 new_state_root;
+    uint32 transaction_count;
+    uint64 batch_timestamp;
+    bytes32 transaction_types_hash;
+    uint128 previousTotalBalance;
+    uint128 currentTotalBalance;
+}
+
 /// @title Arithmetic.
 /// @author Arda Global
 /// @notice This contract implements verification of batch processing proofs with continuous balance tracking.
@@ -44,6 +54,13 @@ contract Arithmetic is EventHelpers {
 
     /// @notice Authorized addresses that can post state updates.
     mapping(address => bool) public authorizedPosters;
+
+    /// @notice Current total portfolio balance across all loans
+    uint128 public totalPortfolioBalance;
+
+    /// @notice Historical portfolio balances for audit trail
+    mapping(uint256 => uint128) public historicalBalances;
+    uint256 public balanceHistoryIndex;
 
     /// @notice Proof metadata structure
     struct ProofMetadata {
@@ -156,6 +173,13 @@ contract Arithmetic is EventHelpers {
         uint256 indexed timestamp
     );
 
+    /// @notice Emitted when portfolio balance is updated
+    event PortfolioBalanceUpdated(
+        uint128 previousBalance,
+        uint128 currentBalance,
+        bool increased
+    );
+
     /// @notice Legacy events for backwards compatibility.
     event AuthorizationChanged(address indexed account, bool authorized);
     event OwnershipTransferred(
@@ -244,6 +268,40 @@ contract Arithmetic is EventHelpers {
             publicValues,
             proof
         );
+
+        // Handle portfolio balance tracking if publicValues includes balance data
+        if (publicValues.length >= 224) { // 7 * 32 bytes for new LoanBatchPublicValues structure
+            try this.decodeLoanBatchPublicValues(publicValues) returns (
+                bytes32,
+                bytes32, 
+                uint32,
+                uint64,
+                bytes32,
+                uint128 previousBalance,
+                uint128 currentBalance
+            ) {
+                // Validate balance transition
+                if (totalPortfolioBalance != 0) {
+                    require(previousBalance == totalPortfolioBalance, "Portfolio balance mismatch");
+                }
+                
+                // Update portfolio balance
+                totalPortfolioBalance = currentBalance;
+                
+                // Store historical balance for audit trail
+                historicalBalances[balanceHistoryIndex] = currentBalance;
+                balanceHistoryIndex++;
+                
+                // Emit portfolio balance event
+                emit PortfolioBalanceUpdated(
+                    previousBalance,
+                    currentBalance,
+                    currentBalance > previousBalance
+                );
+            } catch {
+                // If decoding fails, continue with legacy behavior
+            }
+        }
 
         bytes32 proofHash = keccak256(proof);
 
@@ -541,6 +599,62 @@ contract Arithmetic is EventHelpers {
 
         // Return the second-to-last state (previous state)
         return history[length - 2];
+    }
+
+    // Add helper function for decoding
+    function decodeLoanBatchPublicValues(bytes calldata data) external pure returns (
+        bytes32 previous_state_root,
+        bytes32 new_state_root,
+        uint32 transaction_count,
+        uint64 batch_timestamp,
+        bytes32 transaction_types_hash,
+        uint128 previousTotalBalance,
+        uint128 currentTotalBalance
+    ) {
+        (
+            previous_state_root,
+            new_state_root,
+            transaction_count,
+            batch_timestamp,
+            transaction_types_hash,
+            previousTotalBalance,
+            currentTotalBalance
+        ) = abi.decode(data, (bytes32, bytes32, uint32, uint64, bytes32, uint128, uint128));
+    }
+
+    /// @notice Get current portfolio balance
+    function getCurrentPortfolioBalance() external view returns (uint128) {
+        return totalPortfolioBalance;
+    }
+
+    /// @notice Get portfolio metrics for monitoring dashboard
+    function getPortfolioMetrics() external view returns (
+        uint128 currentBalance,
+        uint256 historicalCount,
+        uint256 lastUpdated
+    ) {
+        return (
+            totalPortfolioBalance,
+            balanceHistoryIndex,
+            block.timestamp
+        );
+    }
+
+    /// @notice Get portfolio balance history for audit
+    function getPortfolioBalanceHistory(uint256 fromIndex, uint256 toIndex) 
+        external view returns (uint128[] memory) {
+        require(fromIndex < balanceHistoryIndex, "Invalid from index");
+        require(toIndex <= balanceHistoryIndex, "Invalid to index");
+        require(fromIndex <= toIndex, "Invalid range");
+        
+        uint256 length = toIndex - fromIndex;
+        uint128[] memory balances = new uint128[](length);
+        
+        for (uint256 i = 0; i < length; i++) {
+            balances[i] = historicalBalances[fromIndex + i];
+        }
+        
+        return balances;
     }
 
     /*//////////////////////////////////////////////////////////////

@@ -909,8 +909,8 @@ impl BackgroundBatchProcessor {
         let public_values = Bytes::from(proof_data.public_values.clone());
 
         // Log decoded values for debugging
-        if proof_data.public_values.len() >= 128 {
-            // Updated length for LoanBatchPublicValues
+        if proof_data.public_values.len() >= 224 {
+            // Updated length for LoanBatchPublicValues with balance fields (7 * 32 bytes)
             use alloy_sol_types::SolType;
             use arda_credit_lib::LoanBatchPublicValues;
 
@@ -918,8 +918,19 @@ impl BackgroundBatchProcessor {
                 Ok(decoded) => {
                     info!("✅ Using ABI-encoded public values (contract expects this format)");
                     info!(
-                        "   Decoded: previous_state_root={:?}, new_state_root={:?}, transaction_count={}, batch_timestamp={}",
-                        decoded.previous_state_root, decoded.new_state_root, decoded.transaction_count, decoded.batch_timestamp
+                        "   State: previous={:?}, new={:?}, transactions={}, timestamp={}",
+                        decoded.previous_state_root, decoded.new_state_root, 
+                        decoded.transaction_count, decoded.batch_timestamp
+                    );
+                    info!(
+                        "   Portfolio: previous_balance=${:.2}, current_balance=${:.2}, delta=${:.2}",
+                        decoded.previousTotalBalance as f64 / 100.0,
+                        decoded.currentTotalBalance as f64 / 100.0,
+                        if decoded.currentTotalBalance >= decoded.previousTotalBalance {
+                            (decoded.currentTotalBalance - decoded.previousTotalBalance) as f64 / 100.0
+                        } else {
+                            -((decoded.previousTotalBalance - decoded.currentTotalBalance) as f64 / 100.0)
+                        }
                     );
                 }
                 Err(e) => {

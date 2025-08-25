@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✅ Ethereum client initialized");
     println!("   Network: {}", config.network.name);
-    println!("   Contract: {}", config.contract.arithmetic_contract);
+    println!("   Contract: {}", config.contract.arda_credit_contract);
     if let Some(signer) = &config.signer {
         println!("   Signer: {}", signer.address);
     }

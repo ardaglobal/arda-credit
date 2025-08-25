@@ -18,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("   ✅ Configuration loaded successfully");
             println!("      Network: {}", config.network.name);
             println!("      Chain ID: {}", config.network.chain_id);
-            println!("      Contract: {}", config.contract.arithmetic_contract);
+            println!("      Contract: {}", config.contract.arda_credit_contract);
             if let Some(signer) = &config.signer {
                 println!("      Signer: {}", signer.address);
             }
@@ -92,11 +92,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n6️⃣  Contract Information Summary...");
     println!(
         "   📝 Contract Address: {}",
-        config.contract.arithmetic_contract
+        config.contract.arda_credit_contract
     );
     println!(
         "   🔗 Sepolia Explorer: https://sepolia.etherscan.io/address/{}",
-        config.contract.arithmetic_contract
+        config.contract.arda_credit_contract
     );
     if let Some(signer) = &config.signer {
         println!("   🔐 Authorized Signer: {}", signer.address);

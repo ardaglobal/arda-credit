@@ -725,6 +725,37 @@ fn verify_proof_local(
         }
     }
 
+    // Try to decode and display portfolio balance information
+    if let Ok(public_values_bytes) = hex::decode(public_values_hex.trim_start_matches("0x")) {
+        use alloy_sol_types::SolType;
+        use arda_credit_lib::LoanBatchPublicValues;
+        
+        if let Ok(decoded) = LoanBatchPublicValues::abi_decode(&public_values_bytes) {
+            println!();
+            println!("📊 Portfolio Balance Information:");
+            println!("   Previous Balance: ${:.2}", decoded.previousTotalBalance as f64 / 100.0);
+            println!("   Current Balance:  ${:.2}", decoded.currentTotalBalance as f64 / 100.0);
+            
+            let delta_cents = if decoded.currentTotalBalance >= decoded.previousTotalBalance {
+                decoded.currentTotalBalance - decoded.previousTotalBalance
+            } else {
+                decoded.previousTotalBalance - decoded.currentTotalBalance
+            };
+            
+            println!("   Balance Change:   {}{:.2}", 
+                if decoded.currentTotalBalance >= decoded.previousTotalBalance { "+" } else { "-" },
+                delta_cents as f64 / 100.0
+            );
+            
+            let total_operations = decoded.transaction_count;
+            if total_operations > 0 {
+                println!("   Avg per Operation: ${:.2}", 
+                    (delta_cents as f64 / total_operations as f64) / 100.0
+                );
+            }
+        }
+    }
+
     // Placeholder cryptographic verification
     println!();
     println!("🔒 Cryptographic verification...");

@@ -184,6 +184,21 @@ impl GlobalLoanState {
         hasher.update(serialized.as_bytes());
         hasher.finalize().into()
     }
+
+    /// Compute total portfolio balance across all loans
+    /// This aggregates all outstanding loan balances for portfolio visibility
+    pub fn compute_total_balance(&self) -> u128 {
+        let mut total_balance = 0u128;
+        
+        for loan in self.loans.values() {
+            // Add outstanding balance for each active loan
+            if matches!(loan.loan_status, crate::loan::LoanStatus::Active | crate::loan::LoanStatus::Originated) {
+                total_balance = total_balance.saturating_add(loan.outstanding_balance as u128);
+            }
+        }
+        
+        total_balance
+    }
 }
 
 /// Process a complete loan batch and return the state transition
@@ -743,5 +758,89 @@ mod tests {
             created_at: 1640995200,
         };
         assert!(validate_batch_temporal_ordering(&invalid_batch).is_err());
+    }
+
+    #[test]
+    fn test_compute_total_balance() {
+        let mut state = GlobalLoanState::new();
+
+        // Initially, total balance should be 0
+        assert_eq!(state.compute_total_balance(), 0);
+
+        let borrower_id = [1u8; 32];
+        let lender_id = [2u8; 32];
+
+        // Set up KYC'd users
+        setup_kycd_users(&mut state, borrower_id, lender_id);
+
+        // Create multiple loans
+        let loan1_id = [10u8; 32];
+        let loan2_id = [11u8; 32];
+        let loan3_id = [12u8; 32];
+
+        // Loan 1: Active with $100 outstanding balance
+        let loan1 = crate::loan::Loan {
+            loan_id: loan1_id,
+            borrower_id,
+            lender_id,
+            principal_amount: 10000, // $100
+            outstanding_balance: 10000,
+            interest_rate: 750,
+            term_months: 36,
+            loan_status: LoanStatus::Active,
+            originated_at: 1640995200,
+            funded_at: 1640995200,
+            maturity_date: 1640995200 + (36 * 30 * 24 * 60 * 60),
+        };
+
+        // Loan 2: Originated with $200 outstanding balance
+        let loan2 = crate::loan::Loan {
+            loan_id: loan2_id,
+            borrower_id,
+            lender_id,
+            principal_amount: 20000, // $200
+            outstanding_balance: 20000,
+            interest_rate: 750,
+            term_months: 36,
+            loan_status: LoanStatus::Originated,
+            originated_at: 1640995200,
+            funded_at: 0,
+            maturity_date: 1640995200 + (36 * 30 * 24 * 60 * 60),
+        };
+
+        // Loan 3: PaidOff (should not count toward balance)
+        let loan3 = crate::loan::Loan {
+            loan_id: loan3_id,
+            borrower_id,
+            lender_id,
+            principal_amount: 30000, // $300
+            outstanding_balance: 0,
+            interest_rate: 750,
+            term_months: 36,
+            loan_status: LoanStatus::PaidOff,
+            originated_at: 1640995200,
+            funded_at: 1640995200,
+            maturity_date: 1640995200 + (36 * 30 * 24 * 60 * 60),
+        };
+
+        state.loans.insert(loan1_id, loan1);
+        state.loans.insert(loan2_id, loan2);
+        state.loans.insert(loan3_id, loan3);
+
+        // Total balance should be $100 + $200 = $300 (loan3 doesn't count as it's paid off)
+        assert_eq!(state.compute_total_balance(), 30000);
+
+        // Make a payment on loan1 to reduce its outstanding balance
+        state.loans.get_mut(&loan1_id).unwrap().outstanding_balance = 5000; // $50 remaining
+
+        // Total balance should now be $50 + $200 = $250
+        assert_eq!(state.compute_total_balance(), 25000);
+
+        // Pay off loan2
+        state.loans.get_mut(&loan2_id).unwrap().outstanding_balance = 0;
+        state.loans.get_mut(&loan2_id).unwrap().loan_status = LoanStatus::PaidOff;
+
+        // Total balance should now be just $50
+        assert_eq!(state.compute_total_balance(), 5000);
     }
 }

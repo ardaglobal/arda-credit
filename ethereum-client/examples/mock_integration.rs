@@ -21,7 +21,7 @@ async fn main() -> ethereum_client::Result<()> {
             is_testnet: true,
         },
         contract: ContractConfig {
-            arithmetic_contract: Address::from_slice(&[0; 20]),
+            arda_credit_contract: Address::from_slice(&[0; 20]),
             verifier_contract: Address::from_slice(&[0; 20]),
             deployment_block: Some(1_000_000),
         },
@@ -80,7 +80,7 @@ fn test_error_scenarios() {
     invalid_config.network.rpc_url = Url::parse("https://test.example.com").unwrap();
     assert!(invalid_config.validate().is_err()); // Still missing contracts
 
-    invalid_config.contract.arithmetic_contract = Address::from_slice(&[0; 20]);
+    invalid_config.contract.arda_credit_contract = Address::from_slice(&[0; 20]);
     invalid_config.contract.verifier_contract = Address::from_slice(&[0; 20]);
     assert!(invalid_config.validate().is_ok()); // Now should be valid
 
