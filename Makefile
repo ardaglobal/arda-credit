@@ -77,6 +77,22 @@ docker-push: docker-build
 	@echo "✅ Image pushed successfully!"
 	@echo "🚀 Published: $(REGISTRY)/$(OWNER)/$(IMAGE_NAME):$(DOCKER_TAG)"
 
+## docker-lint: Lint Dockerfiles using hadolint
+.PHONY: docker-lint
+docker-lint:
+	@echo "🔍 Linting Dockerfiles with hadolint..."
+	@command -v hadolint >/dev/null 2>&1 || { echo "❌ hadolint not found. Run 'make install' to install dependencies."; exit 1; }
+	hadolint Dockerfile
+	@echo "✅ Dockerfile linting completed"
+
+## docker-lint-fix: Lint and show suggestions to fix Dockerfile issues
+.PHONY: docker-lint-fix
+docker-lint-fix:
+	@echo "🔧 Linting Dockerfiles with detailed suggestions..."
+	@command -v hadolint >/dev/null 2>&1 || { echo "❌ hadolint not found. Run 'make install' to install dependencies."; exit 1; }
+	hadolint --format tty Dockerfile || true
+	@echo "💡 See https://github.com/hadolint/hadolint/wiki/DL4006 for rule explanations"
+
 ## test: Run all tests
 .PHONY: test
 test:
