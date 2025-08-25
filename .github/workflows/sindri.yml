@@ -35,10 +35,9 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Install SP1 Toolchain
-        run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up
-          echo "$HOME/.sp1/bin" >> $GITHUB_PATH
+        uses: ./.github/actions/setup-sp1
+        with:
+          verify-installation: 'false'
 
       - name: Build SP1 Program
         run: |
