@@ -12,6 +12,4 @@ trustedRegistries:
   - debian
   - ghcr.io
 
-format: json
-
-failure-threshold: warning
+failure-threshold: error

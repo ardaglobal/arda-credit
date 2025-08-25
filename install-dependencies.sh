@@ -460,6 +460,30 @@ EOF
   esac
 }
 
+# hadolint (Dockerfile linter)
+function ensure_hadolint() {
+  check_cmd hadolint && return
+
+  say "Installing hadolint..."
+  case $OS in
+  Linux)
+    local cmd=$(
+      cat <<-EOF
+    curl -L "https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64" -o /usr/local/bin/hadolint &&
+    chmod +x /usr/local/bin/hadolint
+EOF
+    )
+    try_sudo "$cmd"
+    ;;
+  Darwin)
+    ensure_brew
+    brew install hadolint
+    ;;
+  *)
+    ;;
+  esac
+}
+
 function ensure_profile() {
   local PROFILE=$(get_profile_path)
 
@@ -559,6 +583,7 @@ function ensure_tools() {
   ensure_foundry
   ensure_sp1
   ensure_gh
+  ensure_hadolint
 }
 
 function install_on_macos() {
