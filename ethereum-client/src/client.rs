@@ -287,10 +287,9 @@ impl EthereumClient {
         })?;
 
         // Verify transaction was successful
-        if receipt.status() != Some(alloy_primitives::U64::from(1)) {
-            let status = receipt.status().unwrap_or_default();
-            error!("Transaction failed on-chain with status: {}", status);
-            return Err(EthereumError::Transaction(format!("Transaction failed on-chain with status: {}", status)));
+        if !receipt.status() {
+            error!("Transaction failed on-chain with status: false");
+            return Err(EthereumError::Transaction("Transaction failed on-chain".to_string()));
         }
 
         let block_number = receipt.block_number.unwrap_or(0);

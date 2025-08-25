@@ -132,10 +132,14 @@ cd contracts && forge test
 ### Zero-Knowledge Properties
 ```rust
 // Public values (visible on-chain) 
-struct LoanPublicValues {
-    bytes32 previous_state_root;    // Previous Merkle root
-    bytes32 new_state_root;         // New Merkle root  
-    uint256 transaction_count;      // Number of transactions in batch
+struct LoanBatchPublicValues {
+    bytes32 previous_state_root;       // Previous Merkle root
+    bytes32 new_state_root;            // New Merkle root  
+    uint32 transaction_count;          // Number of transactions in batch
+    uint64 batch_timestamp;            // Timestamp when batch was processed
+    bytes32 transaction_types_hash;    // Hash of transaction types in batch
+    uint128 previousTotalBalance;      // Previous total balance across all loans
+    uint128 currentTotalBalance;       // Current total balance across all loans
     // Individual loan amounts, KYC status, user details remain private
 }
 ```

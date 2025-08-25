@@ -195,6 +195,9 @@ pub struct LoanBatchPublicValues {
     pub new_state_root: [u8; 32],
     pub transaction_count: u32,
     pub batch_timestamp: u64,
+    pub transaction_types_hash: [u8; 32],
+    pub previous_total_balance: u128,
+    pub current_total_balance: u128,
 }
 ```
 

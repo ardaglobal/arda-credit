@@ -297,6 +297,193 @@ fn validate_batch_temporal_ordering(batch: &LoanBatch) -> Result<(), ProcessingE
 // Re-export the old LoanState name for backward compatibility
 pub type LoanState = GlobalLoanState;
 
+// ============================================================================
+// NEW LOAN OPERATIONS INTERFACE
+// ============================================================================
+
+/// Operations for loan processing (alternative to LoanTransaction)
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LoanOperation {
+    /// Create a new loan
+    LoanCreation {
+        loan_id: [u8; 32],
+        borrower_id: [u8; 32],
+        lender_id: [u8; 32],
+        principal: u128,
+        interest_rate: u64,
+        term_months: u32,
+    },
+    /// Make a payment towards a loan
+    Payment {
+        loan_id: [u8; 32],
+        payer_id: [u8; 32],
+        amount: u128,
+    },
+    /// Fund an originated loan
+    LoanFunding {
+        loan_id: [u8; 32],
+        lender_id: [u8; 32],
+    },
+    /// Update balance (for reconciliation)
+    BalanceUpdate {
+        loan_id: [u8; 32],
+        new_balance: u128,
+    },
+}
+
+impl LoanOperation {
+    /// Get the transaction type for this operation
+    pub fn transaction_type(&self) -> u8 {
+        match self {
+            LoanOperation::LoanCreation { .. } => 1,
+            LoanOperation::Payment { .. } => 2,
+            LoanOperation::LoanFunding { .. } => 3,
+            LoanOperation::BalanceUpdate { .. } => 4,
+        }
+    }
+
+    /// Convert operation to nullifier hash for Merkle tree
+    pub fn to_nullifier(&self) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        
+        let mut hasher = Sha256::new();
+        match self {
+            LoanOperation::LoanCreation { loan_id, borrower_id, lender_id, principal, .. } => {
+                hasher.update(b"loan_creation");
+                hasher.update(loan_id);
+                hasher.update(borrower_id);
+                hasher.update(lender_id);
+                hasher.update(&principal.to_le_bytes());
+            }
+            LoanOperation::Payment { loan_id, payer_id, amount } => {
+                hasher.update(b"payment");
+                hasher.update(loan_id);
+                hasher.update(payer_id);
+                hasher.update(&amount.to_le_bytes());
+            }
+            LoanOperation::LoanFunding { loan_id, lender_id } => {
+                hasher.update(b"funding");
+                hasher.update(loan_id);
+                hasher.update(lender_id);
+            }
+            LoanOperation::BalanceUpdate { loan_id, new_balance } => {
+                hasher.update(b"balance_update");
+                hasher.update(loan_id);
+                hasher.update(&new_balance.to_le_bytes());
+            }
+        }
+        hasher.finalize().into()
+    }
+}
+
+/// Simple Merkle tree implementation for loan operations
+#[derive(Debug, Clone)]
+pub struct MerkleTree {
+    root: [u8; 32],
+    leaves: Vec<[u8; 32]>,
+}
+
+impl MerkleTree {
+    /// Create a new Merkle tree from an existing root
+    pub fn from_root(root: [u8; 32]) -> Self {
+        Self {
+            root,
+            leaves: Vec::new(),
+        }
+    }
+
+    /// Insert a new leaf (nullifier) into the tree
+    pub fn insert(&mut self, leaf: [u8; 32]) {
+        self.leaves.push(leaf);
+        self.root = self.compute_root();
+    }
+
+    /// Get the current root hash
+    pub fn root(&self) -> [u8; 32] {
+        self.root
+    }
+
+    /// Compute the Merkle root from all leaves
+    fn compute_root(&self) -> [u8; 32] {
+        if self.leaves.is_empty() {
+            return [0u8; 32];
+        }
+
+        use sha2::{Digest, Sha256};
+        let mut current_level = self.leaves.clone();
+
+        while current_level.len() > 1 {
+            let mut next_level = Vec::new();
+            
+            for chunk in current_level.chunks(2) {
+                let mut hasher = Sha256::new();
+                hasher.update(&chunk[0]);
+                if chunk.len() > 1 {
+                    hasher.update(&chunk[1]);
+                } else {
+                    hasher.update(&chunk[0]); // Duplicate if odd number
+                }
+                next_level.push(hasher.finalize().into());
+            }
+            
+            current_level = next_level;
+        }
+
+        current_level[0]
+    }
+}
+
+/// Process a batch of loan operations and return public state transition
+pub fn process_loan_operations(
+    previous_balance: u128,
+    operations: &[LoanOperation],
+    previous_root: [u8; 32],
+    batch_timestamp: u64,
+) -> crate::LoanBatchPublicValues {
+    let mut current_balance = previous_balance;
+    let mut merkle_tree = MerkleTree::from_root(previous_root);
+    
+    // Compute transaction types hash
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for operation in operations {
+        hasher.update(&[operation.transaction_type()]);
+    }
+    let transaction_types_hash: [u8; 32] = hasher.finalize().into();
+    
+    // Process operations
+    for operation in operations {
+        // Update balance based on operation type
+        current_balance = apply_operation_to_balance(current_balance, operation);
+        
+        // Update Merkle tree with operation commitment
+        let nullifier = operation.to_nullifier();
+        merkle_tree.insert(nullifier);
+    }
+    
+    let new_root = merkle_tree.root();
+    
+    crate::LoanBatchPublicValues {
+        previous_state_root: previous_root.into(),
+        new_state_root: new_root.into(),
+        transaction_count: operations.len() as u32,
+        batch_timestamp,
+        transaction_types_hash: transaction_types_hash.into(),
+        previousTotalBalance: previous_balance,
+        currentTotalBalance: current_balance,
+    }
+}
+
+/// Apply a loan operation to the current balance
+fn apply_operation_to_balance(balance: u128, operation: &LoanOperation) -> u128 {
+    match operation {
+        LoanOperation::LoanCreation { principal, .. } => balance.saturating_add(*principal),
+        LoanOperation::Payment { amount, .. } => balance.saturating_add(*amount),
+        LoanOperation::LoanFunding { .. } => balance, // No balance change, just state change
+        LoanOperation::BalanceUpdate { new_balance, .. } => *new_balance,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -761,6 +948,96 @@ mod tests {
             created_at: 1640995200,
         };
         assert!(validate_batch_temporal_ordering(&invalid_batch).is_err());
+    }
+
+    #[test]
+    fn test_process_loan_operations() {
+        let previous_balance = 100_000u128; // $1000
+        let previous_root = [0u8; 32];
+        let batch_timestamp = 1640995200;
+
+        let operations = vec![
+            LoanOperation::LoanCreation {
+                loan_id: [1u8; 32],
+                borrower_id: [2u8; 32],
+                lender_id: [3u8; 32],
+                principal: 50_000,
+                interest_rate: 750,
+                term_months: 36,
+            },
+            LoanOperation::Payment {
+                loan_id: [1u8; 32],
+                payer_id: [2u8; 32],
+                amount: 10_000,
+            },
+        ];
+
+        let public_values = process_loan_operations(
+            previous_balance,
+            &operations,
+            previous_root,
+            batch_timestamp,
+        );
+
+        // Check that balance was updated correctly
+        assert_eq!(public_values.previousTotalBalance, 100_000);
+        assert_eq!(public_values.currentTotalBalance, 160_000); // 100k + 50k loan + 10k payment
+        assert_eq!(public_values.transaction_count, 2);
+        assert_eq!(public_values.batch_timestamp, batch_timestamp);
+
+        // Check that state root changed (merkle tree was updated)
+        assert_ne!(public_values.previous_state_root, public_values.new_state_root);
+
+        // Check that transaction types hash is computed
+        assert_ne!(public_values.transaction_types_hash, [0u8; 32].into());
+    }
+
+    #[test]
+    fn test_loan_operation_nullifiers() {
+        let operation1 = LoanOperation::LoanCreation {
+            loan_id: [1u8; 32],
+            borrower_id: [2u8; 32],
+            lender_id: [3u8; 32],
+            principal: 50_000,
+            interest_rate: 750,
+            term_months: 36,
+        };
+
+        let operation2 = LoanOperation::Payment {
+            loan_id: [1u8; 32],
+            payer_id: [2u8; 32],
+            amount: 10_000,
+        };
+
+        let nullifier1 = operation1.to_nullifier();
+        let nullifier2 = operation2.to_nullifier();
+
+        // Nullifiers should be different
+        assert_ne!(nullifier1, nullifier2);
+
+        // Same operation should produce same nullifier
+        let nullifier1_copy = operation1.to_nullifier();
+        assert_eq!(nullifier1, nullifier1_copy);
+    }
+
+    #[test]
+    fn test_merkle_tree_basic() {
+        let mut tree = MerkleTree::from_root([0u8; 32]);
+        let initial_root = tree.root();
+
+        // Insert a leaf
+        tree.insert([1u8; 32]);
+        let new_root = tree.root();
+
+        // Root should change after insertion
+        assert_ne!(initial_root, new_root);
+
+        // Insert another leaf
+        tree.insert([2u8; 32]);
+        let final_root = tree.root();
+
+        // Root should change again
+        assert_ne!(new_root, final_root);
     }
 
     #[test]
