@@ -919,8 +919,10 @@ impl BackgroundBatchProcessor {
                     info!("✅ Using ABI-encoded public values (contract expects this format)");
                     info!(
                         "   State: previous={:?}, new={:?}, transactions={}, timestamp={}",
-                        decoded.previous_state_root, decoded.new_state_root, 
-                        decoded.transaction_count, decoded.batch_timestamp
+                        decoded.previous_state_root,
+                        decoded.new_state_root,
+                        decoded.transaction_count,
+                        decoded.batch_timestamp
                     );
                     info!(
                         "   Portfolio: previous_balance=${:.2}, current_balance=${:.2}, delta=${:.2}",

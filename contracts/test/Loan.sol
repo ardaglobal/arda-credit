@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {Arithmetic} from "../src/Arithmetic.sol";
+import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 
 struct SP1ProofFixtureJson {
@@ -14,11 +14,11 @@ struct SP1ProofFixtureJson {
     bytes32 vkey;
 }
 
-contract ArithmeticGroth16Test is Test {
+contract LoanGroth16Test is Test {
     using stdJson for string;
 
     address verifier;
-    Arithmetic public arithmetic;
+    Loan public loan;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
         string memory root = vm.projectRoot();
@@ -35,10 +35,10 @@ contract ArithmeticGroth16Test is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        arithmetic = new Arithmetic(verifier, fixture.vkey);
+        loan = new Loan(verifier, fixture.vkey);
     }
 
-    function test_ValidArithmeticProof() public {
+    function test_ValidLoanProof() public {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         vm.mockCall(
@@ -47,7 +47,7 @@ contract ArithmeticGroth16Test is Test {
             abi.encode(true)
         );
 
-        int32 result = arithmetic.verifyArithmeticProof(
+        int32 result = loan.verifyLoanProof(
             fixture.publicValues,
             fixture.proof
         );
@@ -56,7 +56,7 @@ contract ArithmeticGroth16Test is Test {
         assert(result == 12);
     }
 
-    function testRevert_InvalidArithmeticProof() public {
+    function testRevert_InvalidLoanProof() public {
         vm.expectRevert();
 
         SP1ProofFixtureJson memory fixture = loadFixture();
@@ -64,15 +64,15 @@ contract ArithmeticGroth16Test is Test {
         // Create a fake proof.
         bytes memory fakeProof = new bytes(fixture.proof.length);
 
-        arithmetic.verifyArithmeticProof(fixture.publicValues, fakeProof);
+        loan.verifyLoanProof(fixture.publicValues, fakeProof);
     }
 }
 
-contract ArithmeticPlonkTest is Test {
+contract LoanPlonkTest is Test {
     using stdJson for string;
 
     address verifier;
-    Arithmetic public arithmetic;
+    Loan public loan;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
         string memory root = vm.projectRoot();
@@ -89,10 +89,10 @@ contract ArithmeticPlonkTest is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        arithmetic = new Arithmetic(verifier, fixture.vkey);
+        loan = new Loan(verifier, fixture.vkey);
     }
 
-    function test_ValidArithmeticProof() public {
+    function test_ValidLoanProof() public {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         vm.mockCall(
@@ -101,7 +101,7 @@ contract ArithmeticPlonkTest is Test {
             abi.encode(true)
         );
 
-        int32 result = arithmetic.verifyArithmeticProof(
+        int32 result = loan.verifyLoanProof(
             fixture.publicValues,
             fixture.proof
         );
@@ -110,7 +110,7 @@ contract ArithmeticPlonkTest is Test {
         assert(result == 12);
     }
 
-    function testRevert_InvalidArithmeticProof() public {
+    function testRevert_InvalidLoanProof() public {
         vm.expectRevert();
 
         SP1ProofFixtureJson memory fixture = loadFixture();
@@ -118,12 +118,12 @@ contract ArithmeticPlonkTest is Test {
         // Create a fake proof.
         bytes memory fakeProof = new bytes(fixture.proof.length);
 
-        arithmetic.verifyArithmeticProof(fixture.publicValues, fakeProof);
+        loan.verifyLoanProof(fixture.publicValues, fakeProof);
     }
 }
 
-contract ArithmeticVerificationKeyTest is Test {
-    Arithmetic public arithmetic;
+contract LoanVerificationKeyTest is Test {
+    Loan public loan;
     bytes32 constant TEST_VKEY =
         0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b;
     bytes32 constant WRONG_VKEY =
@@ -131,26 +131,26 @@ contract ArithmeticVerificationKeyTest is Test {
 
     function setUp() public {
         address verifier = address(new SP1VerifierGateway(address(1)));
-        arithmetic = new Arithmetic(verifier, TEST_VKEY);
+        loan = new Loan(verifier, TEST_VKEY);
     }
 
     function test_GetProgramVerificationKey() public view {
-        bytes32 vkey = arithmetic.getProgramVerificationKey();
+        bytes32 vkey = loan.getProgramVerificationKey();
         assertEq(vkey, TEST_VKEY);
     }
 
     function test_IsValidProgramVerificationKey_ValidKey() public view {
-        bool isValid = arithmetic.isValidProgramVerificationKey(TEST_VKEY);
+        bool isValid = loan.isValidProgramVerificationKey(TEST_VKEY);
         assertTrue(isValid);
     }
 
     function test_IsValidProgramVerificationKey_InvalidKey() public view {
-        bool isValid = arithmetic.isValidProgramVerificationKey(WRONG_VKEY);
+        bool isValid = loan.isValidProgramVerificationKey(WRONG_VKEY);
         assertFalse(isValid);
     }
 
     function test_GetVerificationInfo() public view {
-        (bytes32 vkey, address verifierAddr) = arithmetic.getVerificationInfo();
+        (bytes32 vkey, address verifierAddr) = loan.getVerificationInfo();
         assertEq(vkey, TEST_VKEY);
         assertTrue(verifierAddr != address(0));
     }
@@ -159,7 +159,7 @@ contract ArithmeticVerificationKeyTest is Test {
         bytes memory mockProof = "mock_proof_data";
         bytes memory mockPublicValues = "mock_public_values";
 
-        (bool isValid, string memory message) = arithmetic
+        (bool isValid, string memory message) = loan
             .validateProofCompatibility(TEST_VKEY, mockPublicValues, mockProof);
 
         assertTrue(isValid);
@@ -170,7 +170,7 @@ contract ArithmeticVerificationKeyTest is Test {
         bytes memory mockProof = "mock_proof_data";
         bytes memory mockPublicValues = "mock_public_values";
 
-        (bool isValid, ) = arithmetic.validateProofCompatibility(
+        (bool isValid, ) = loan.validateProofCompatibility(
             WRONG_VKEY,
             mockPublicValues,
             mockProof
@@ -181,7 +181,7 @@ contract ArithmeticVerificationKeyTest is Test {
 }
 
 contract StateRootTest is Test {
-    Arithmetic public arithmetic;
+    Loan public loan;
     address public verifier;
 
     address public owner = address(0x123);
@@ -202,17 +202,17 @@ contract StateRootTest is Test {
 
         // Deploy SP1 verifier
         verifier = address(new SP1VerifierGateway(address(1)));
-        arithmetic = new Arithmetic(verifier, PROGRAM_VKEY);
+        loan = new Loan(verifier, PROGRAM_VKEY);
 
         // Authorize a user for testing
-        arithmetic.setAuthorization(authorizedUser, true);
+        loan.setAuthorization(authorizedUser, true);
 
         vm.stopPrank();
     }
 
     function test_GetPreviousStateRoot_NoHistory() public view {
         // Should return zero when there's no history
-        bytes32 previousState = arithmetic.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState = loan.getPreviousStateRoot(STATE_ID_1);
         assertEq(
             previousState,
             bytes32(0),
@@ -234,7 +234,7 @@ contract StateRootTest is Test {
         bytes memory mockProof = "mock_proof_1";
         bytes memory mockPublicValues = "mock_public_values_1";
 
-        arithmetic.updateState(
+        loan.updateState(
             STATE_ID_1,
             STATE_ROOT_1,
             mockProof,
@@ -242,7 +242,7 @@ contract StateRootTest is Test {
         );
 
         // Should return zero when there's only one state in history
-        bytes32 previousState = arithmetic.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState = loan.getPreviousStateRoot(STATE_ID_1);
         assertEq(
             previousState,
             bytes32(0),
@@ -266,7 +266,7 @@ contract StateRootTest is Test {
         bytes memory mockProof1 = "mock_proof_1";
         bytes memory mockPublicValues1 = "mock_public_values_1";
 
-        arithmetic.updateState(
+        loan.updateState(
             STATE_ID_1,
             STATE_ROOT_1,
             mockProof1,
@@ -277,7 +277,7 @@ contract StateRootTest is Test {
         bytes memory mockProof2 = "mock_proof_2";
         bytes memory mockPublicValues2 = "mock_public_values_2";
 
-        arithmetic.updateState(
+        loan.updateState(
             STATE_ID_1,
             STATE_ROOT_2,
             mockProof2,
@@ -285,7 +285,7 @@ contract StateRootTest is Test {
         );
 
         // Should return the first state root (previous to current)
-        bytes32 previousState = arithmetic.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState = loan.getPreviousStateRoot(STATE_ID_1);
         assertEq(
             previousState,
             STATE_ROOT_1,
@@ -296,7 +296,7 @@ contract StateRootTest is Test {
         bytes memory mockProof3 = "mock_proof_3";
         bytes memory mockPublicValues3 = "mock_public_values_3";
 
-        arithmetic.updateState(
+        loan.updateState(
             STATE_ID_1,
             STATE_ROOT_3,
             mockProof3,
@@ -304,7 +304,7 @@ contract StateRootTest is Test {
         );
 
         // Should return the second state root (previous to current)
-        bytes32 previousState2 = arithmetic.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState2 = loan.getPreviousStateRoot(STATE_ID_1);
         assertEq(
             previousState2,
             STATE_ROOT_2,
@@ -312,7 +312,7 @@ contract StateRootTest is Test {
         );
 
         // Verify current state is still correct
-        bytes32 currentState = arithmetic.getCurrentState(STATE_ID_1);
+        bytes32 currentState = loan.getCurrentState(STATE_ID_1);
         assertEq(
             currentState,
             STATE_ROOT_3,
@@ -335,7 +335,7 @@ contract StateRootTest is Test {
         // Post states for STATE_ID_1
         bytes memory mockProof1 = "mock_proof_1";
         bytes memory mockPublicValues1 = "mock_public_values_1";
-        arithmetic.updateState(
+        loan.updateState(
             STATE_ID_1,
             STATE_ROOT_1,
             mockProof1,
@@ -344,7 +344,7 @@ contract StateRootTest is Test {
 
         bytes memory mockProof2 = "mock_proof_2";
         bytes memory mockPublicValues2 = "mock_public_values_2";
-        arithmetic.updateState(
+        loan.updateState(
             STATE_ID_1,
             STATE_ROOT_2,
             mockProof2,
@@ -354,7 +354,7 @@ contract StateRootTest is Test {
         // Post single state for STATE_ID_2
         bytes memory mockProof3 = "mock_proof_3";
         bytes memory mockPublicValues3 = "mock_public_values_3";
-        arithmetic.updateState(
+        loan.updateState(
             STATE_ID_2,
             STATE_ROOT_3,
             mockProof3,
@@ -362,8 +362,8 @@ contract StateRootTest is Test {
         );
 
         // Check previous states for different state IDs
-        bytes32 previousState1 = arithmetic.getPreviousStateRoot(STATE_ID_1);
-        bytes32 previousState2 = arithmetic.getPreviousStateRoot(STATE_ID_2);
+        bytes32 previousState1 = loan.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState2 = loan.getPreviousStateRoot(STATE_ID_2);
 
         assertEq(
             previousState1,

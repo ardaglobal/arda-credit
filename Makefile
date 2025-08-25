@@ -162,7 +162,7 @@ deploy-contract:
 	@echo "🔑 Verifier: $$VERIFIER_CONTRACT_ADDRESS"
 	@echo "🗝️  Program VKey: $$PROGRAM_VKEY"
 	@echo ""
-	cd contracts && forge create src/Arithmetic.sol:Arithmetic \
+	cd contracts && forge create src/Loan.sol:Loan \
 		--broadcast \
 		--rpc-url $$ETHEREUM_RPC_URL \
 		--private-key $$ETHEREUM_WALLET_PRIVATE_KEY \

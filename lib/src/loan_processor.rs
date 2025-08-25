@@ -189,14 +189,17 @@ impl GlobalLoanState {
     /// This aggregates all outstanding loan balances for portfolio visibility
     pub fn compute_total_balance(&self) -> u128 {
         let mut total_balance = 0u128;
-        
+
         for loan in self.loans.values() {
             // Add outstanding balance for each active loan
-            if matches!(loan.loan_status, crate::loan::LoanStatus::Active | crate::loan::LoanStatus::Originated) {
+            if matches!(
+                loan.loan_status,
+                crate::loan::LoanStatus::Active | crate::loan::LoanStatus::Originated
+            ) {
                 total_balance = total_balance.saturating_add(loan.outstanding_balance as u128);
             }
         }
-        
+
         total_balance
     }
 }

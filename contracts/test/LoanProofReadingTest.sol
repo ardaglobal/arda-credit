@@ -2,11 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Arithmetic} from "../src/Arithmetic.sol";
+import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 
-contract ArithmeticProofReadingTest is Test {
-    Arithmetic public arithmetic;
+contract LoanProofReadingTest is Test {
+    Loan public loan;
     address public verifier;
     address public user1 = address(0x1);
     address public user2 = address(0x2);
@@ -16,11 +16,11 @@ contract ArithmeticProofReadingTest is Test {
 
     function setUp() public {
         verifier = address(new SP1VerifierGateway(address(1)));
-        arithmetic = new Arithmetic(verifier, TEST_VKEY);
+        loan = new Loan(verifier, TEST_VKEY);
 
         // Grant authorization to test users
-        arithmetic.setAuthorization(user1, true);
-        arithmetic.setAuthorization(user2, true);
+        loan.setAuthorization(user1, true);
+        loan.setAuthorization(user2, true);
     }
 
     function testPostStateUpdateStoresMetadata() public {
@@ -48,10 +48,10 @@ contract ArithmeticProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        arithmetic.updateState(stateId, newState, proof, result);
+        loan.updateState(stateId, newState, proof, result);
 
         // Verify metadata was stored
-        Arithmetic.ProofMetadata memory metadata = arithmetic.getProofMetadata(
+        Loan.ProofMetadata memory metadata = loan.getProofMetadata(
             expectedProofId
         );
         assertEq(metadata.proofId, expectedProofId);
@@ -76,17 +76,17 @@ contract ArithmeticProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        arithmetic.updateState(stateId, newState, proof, result);
+        loan.updateState(stateId, newState, proof, result);
 
         // Test getProofById
-        (bytes memory retrievedProof, bool exists) = arithmetic.getProofById(
+        (bytes memory retrievedProof, bool exists) = loan.getProofById(
             proofId
         );
         assertTrue(exists);
         assertEq(retrievedProof, proof);
 
         // Test non-existent proof
-        (bytes memory noProof, bool notExists) = arithmetic.getProofById(
+        (bytes memory noProof, bool notExists) = loan.getProofById(
             keccak256("non-existent")
         );
         assertFalse(notExists);
@@ -106,16 +106,16 @@ contract ArithmeticProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        arithmetic.updateState(stateId, newState, proof, result);
+        loan.updateState(stateId, newState, proof, result);
 
         // Test getProofByStateId
-        (bytes memory retrievedProof, bytes32 proofId) = arithmetic
+        (bytes memory retrievedProof, bytes32 proofId) = loan
             .getProofByStateId(stateId);
         assertEq(retrievedProof, proof);
         assertEq(proofId, keccak256(proof));
 
         // Test non-existent state
-        (bytes memory noProof, bytes32 noProofId) = arithmetic
+        (bytes memory noProof, bytes32 noProofId) = loan
             .getProofByStateId(keccak256("non-existent"));
         assertEq(noProof.length, 0);
         assertEq(noProofId, bytes32(0));
@@ -134,7 +134,7 @@ contract ArithmeticProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        arithmetic.updateState(
+        loan.updateState(
             stateId,
             keccak256("new-state-4a"),
             proof1,
@@ -150,7 +150,7 @@ contract ArithmeticProofReadingTest is Test {
         bytes memory result2 = "test-result-4b";
 
         vm.prank(user2);
-        arithmetic.updateState(
+        loan.updateState(
             stateId,
             keccak256("new-state-4b"),
             proof2,
@@ -163,13 +163,13 @@ contract ArithmeticProofReadingTest is Test {
             bytes memory latestProof,
             bytes32 proofId,
             uint256 timestamp
-        ) = arithmetic.getLatestProof(stateId);
+        ) = loan.getLatestProof(stateId);
         assertEq(latestProof, proof2);
         assertEq(proofId, keccak256(proof2));
         assertEq(timestamp, secondTimestamp);
 
         // Verify first proof is still accessible
-        (bytes memory firstProof, bool exists) = arithmetic.getProofById(
+        (bytes memory firstProof, bool exists) = loan.getProofById(
             keccak256(proof1)
         );
         assertTrue(exists);
@@ -190,26 +190,26 @@ contract ArithmeticProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        arithmetic.updateState(stateId, newState, proof, result);
+        loan.updateState(stateId, newState, proof, result);
 
         // Test verification status functions
-        assertTrue(arithmetic.isProofVerified(proofId));
+        assertTrue(loan.isProofVerified(proofId));
 
-        (bool verified, bytes memory retrievedResult) = arithmetic
+        (bool verified, bytes memory retrievedResult) = loan
             .getVerificationResult(proofId);
         assertTrue(verified);
         assertEq(retrievedResult, result);
 
-        uint256 timestamp = arithmetic.getProofTimestamp(proofId);
+        uint256 timestamp = loan.getProofTimestamp(proofId);
         assertEq(timestamp, block.timestamp);
 
-        address submitter = arithmetic.getProofSubmitter(proofId);
+        address submitter = loan.getProofSubmitter(proofId);
         assertEq(submitter, user1);
     }
 
     function testProofEnumeration() public {
         // Start with empty count
-        assertEq(arithmetic.getProofCount(), 0);
+        assertEq(loan.getProofCount(), 0);
 
         // Post multiple proofs
         bytes32[] memory stateIds = new bytes32[](3);
@@ -228,7 +228,7 @@ contract ArithmeticProofReadingTest is Test {
             proofIds[i] = keccak256(proof);
 
             vm.prank(user1);
-            arithmetic.updateState(
+            loan.updateState(
                 stateIds[i],
                 keccak256(abi.encodePacked("new-state-", i)),
                 proof,
@@ -237,19 +237,19 @@ contract ArithmeticProofReadingTest is Test {
         }
 
         // Test proof count
-        assertEq(arithmetic.getProofCount(), 3);
+        assertEq(loan.getProofCount(), 3);
 
         // Test getProofByIndex
         for (uint256 i = 0; i < 3; i++) {
-            (bytes32 indexProofId, bytes memory indexProof) = arithmetic
+            (bytes32 indexProofId, bytes memory indexProof) = loan
                 .getProofByIndex(i);
             assertEq(indexProofId, proofIds[i]);
             assertEq(indexProof, abi.encodePacked("test-proof-", i));
         }
 
         // Test invalid index
-        vm.expectRevert(Arithmetic.InvalidIndex.selector);
-        arithmetic.getProofByIndex(3);
+        vm.expectRevert(Loan.InvalidIndex.selector);
+        loan.getProofByIndex(3);
     }
 
     function testGetRecentProofs() public {
@@ -266,7 +266,7 @@ contract ArithmeticProofReadingTest is Test {
             bytes memory result = abi.encodePacked("test-result-", i);
 
             vm.prank(user1);
-            arithmetic.updateState(
+            loan.updateState(
                 stateId,
                 keccak256(abi.encodePacked("new-state-", i)),
                 proof,
@@ -278,7 +278,7 @@ contract ArithmeticProofReadingTest is Test {
         (
             bytes32[] memory recentProofIds,
             bytes[] memory recentProofs
-        ) = arithmetic.getRecentProofs(3);
+        ) = loan.getRecentProofs(3);
         assertEq(recentProofIds.length, 3);
         assertEq(recentProofs.length, 3);
 
@@ -288,7 +288,7 @@ contract ArithmeticProofReadingTest is Test {
         }
 
         // Test getting all proofs (limit 0)
-        (bytes32[] memory allProofIds, bytes[] memory allProofs) = arithmetic
+        (bytes32[] memory allProofIds, bytes[] memory allProofs) = loan
             .getRecentProofs(0);
         assertEq(allProofIds.length, 5);
         assertEq(allProofs.length, 5);
@@ -297,7 +297,7 @@ contract ArithmeticProofReadingTest is Test {
         (
             bytes32[] memory limitedProofIds,
             bytes[] memory limitedProofs
-        ) = arithmetic.getRecentProofs(10);
+        ) = loan.getRecentProofs(10);
         assertEq(limitedProofIds.length, 5);
         assertEq(limitedProofs.length, 5);
     }
@@ -317,7 +317,7 @@ contract ArithmeticProofReadingTest is Test {
             bytes memory result = abi.encodePacked("test-result-multi-", i);
 
             vm.prank(user1);
-            arithmetic.updateState(
+            loan.updateState(
                 stateId,
                 keccak256(abi.encodePacked("new-state-multi-", i)),
                 proof,
@@ -326,7 +326,7 @@ contract ArithmeticProofReadingTest is Test {
         }
 
         // Test getProofsByStateId
-        bytes32[] memory stateProofIds = arithmetic.getProofsByStateId(stateId);
+        bytes32[] memory stateProofIds = loan.getProofsByStateId(stateId);
         assertEq(stateProofIds.length, 3);
 
         // Verify each proof ID corresponds to the correct proof
@@ -341,7 +341,7 @@ contract ArithmeticProofReadingTest is Test {
 
     function testEmptyStateReturns() public {
         // Test empty state returns
-        (bytes memory noProof, bytes32 noProofId) = arithmetic
+        (bytes memory noProof, bytes32 noProofId) = loan
             .getProofByStateId(keccak256("non-existent"));
         assertEq(noProof.length, 0);
         assertEq(noProofId, bytes32(0));
@@ -350,7 +350,7 @@ contract ArithmeticProofReadingTest is Test {
             bytes memory noLatestProof,
             bytes32 noLatestProofId,
             uint256 noTimestamp
-        ) = arithmetic.getLatestProof(keccak256("non-existent"));
+        ) = loan.getLatestProof(keccak256("non-existent"));
         assertEq(noLatestProof.length, 0);
         assertEq(noLatestProofId, bytes32(0));
         assertEq(noTimestamp, 0);
@@ -358,7 +358,7 @@ contract ArithmeticProofReadingTest is Test {
         (
             bytes32[] memory emptyRecentIds,
             bytes[] memory emptyRecentProofs
-        ) = arithmetic.getRecentProofs(5);
+        ) = loan.getRecentProofs(5);
         assertEq(emptyRecentIds.length, 0);
         assertEq(emptyRecentProofs.length, 0);
     }
@@ -366,11 +366,11 @@ contract ArithmeticProofReadingTest is Test {
     function testProofNotFoundErrors() public {
         bytes32 nonExistentProofId = keccak256("non-existent-proof");
 
-        vm.expectRevert(Arithmetic.ProofNotFound.selector);
-        arithmetic.getProofMetadata(nonExistentProofId);
+        vm.expectRevert(Loan.ProofNotFound.selector);
+        loan.getProofMetadata(nonExistentProofId);
 
-        vm.expectRevert(Arithmetic.ProofNotFound.selector);
-        arithmetic.getProofSubmitter(nonExistentProofId);
+        vm.expectRevert(Loan.ProofNotFound.selector);
+        loan.getProofSubmitter(nonExistentProofId);
     }
 
     // Events to match the contract

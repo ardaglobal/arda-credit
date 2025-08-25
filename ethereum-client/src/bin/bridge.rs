@@ -125,7 +125,7 @@ async fn check_network_connection(client: &EthereumClient) -> Result<()> {
 fn check_contract_configuration(config: &Config) {
     info!("📋 Contract Configuration:");
     info!(
-        "  - Arithmetic Contract: {}",
+        "  - Loan Contract: {}",
         config.contract.arda_credit_contract
     );
     info!(

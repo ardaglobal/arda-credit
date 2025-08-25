@@ -1,10 +1,10 @@
-# SP1 Arithmetic Contracts
+# SP1 Loan Contracts
 
 Smart contracts for zero-knowledge arithmetic proof verification with comprehensive state management built on [SP1](https://github.com/succinctlabs/sp1) and [SP1VerifierGateway](https://github.com/succinctlabs/sp1-contracts/blob/main/contracts/src/SP1VerifierGateway.sol).
 
 ## Contract Architecture
 
-- **Arithmetic.sol**: Main contract implementing SP1 proof verification with state management
+- **Loan.sol**: Main contract implementing SP1 proof verification with state management
 - **interfaces/IStateManager.sol**: Standardized interface for state operations and proof management
 - **examples/**: Production-ready integration contracts
   - **StateConsumer.sol**: Safe state reading with caching and batch operations
@@ -33,21 +33,21 @@ forge test --match-contract ProofReaderTest
 
 ## Usage
 
-The Arithmetic contract provides complete state management with ZK proof verification:
+The Loan contract provides complete state management with ZK proof verification:
 
 ```solidity
 // Update state with ZK proof verification
-arithmetic.updateState(stateId, newState, proof, publicValues);
+loan.updateState(stateId, newState, proof, publicValues);
 
 // Read current state
-bytes32 currentState = arithmetic.getCurrentState(stateId);
+bytes32 currentState = loan.getCurrentState(stateId);
 
 // Batch operations (gas efficient)
-arithmetic.batchUpdateStates(stateIds, newStates, proofs, results);
-bytes32[] memory states = arithmetic.batchReadStates(stateIds);
+loan.batchUpdateStates(stateIds, newStates, proofs, results);
+bytes32[] memory states = loan.batchReadStates(stateIds);
 
 // Proof verification
-bool verified = arithmetic.isProofVerified(proofId);
+bool verified = loan.isProofVerified(proofId);
 bytes memory storedProof = arithmetic.getStoredProof(proofId);
 ```
 
