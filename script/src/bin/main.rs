@@ -20,8 +20,9 @@ use arithmetic_lib::{
 };
 use clap::Parser;
 use eyre::Result;
+use sindri::{client::SindriClient, ProofInput};
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
-use tracing::info;
+use tracing::{info, error};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
 /// This is built by build.rs from the program/ directory.
@@ -37,9 +38,13 @@ struct Args {
 }
 
 #[allow(clippy::cognitive_complexity)]
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Parse command line arguments
     let args = Args::parse();
+
+    // Load environment variables from .env file if present
+    dotenv::dotenv().ok();
 
     // Setup logging
     tracing_subscriber::fmt().with_env_filter("info").init();
@@ -51,9 +56,6 @@ fn main() -> Result<()> {
         info!("🏦 Starting local SP1 loan processing test");
         info!("🔐 Testing complete loan lifecycle with privacy preservation");
     }
-
-    // Create a prover client for local testing
-    let client = ProverClient::from_env();
 
     // Create test scenario: Complete loan workflow
     let (initial_state, batch) = create_test_loan_scenario();
@@ -71,23 +73,26 @@ fn main() -> Result<()> {
             .collect::<Vec<_>>()
     );
 
-    // Create inputs for the zkVM program
-    let mut stdin = SP1Stdin::new();
-    stdin.write(&initial_state);
-    stdin.write(&batch);
-
     if args.sindri {
-        run_with_sindri(client, stdin)?;
+        run_with_sindri(&initial_state, &batch).await?;
     } else {
-        run_locally(client, stdin)?;
+        run_locally(&initial_state, &batch)?;
     }
 
     Ok(())
 }
 
 /// Run the test locally with Core proofs (fast for development)
-fn run_locally(client: sp1_sdk::EnvProver, stdin: SP1Stdin) -> Result<()> {
+fn run_locally(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
     info!("🔄 Generating Core proof (fast, for development)...");
+
+    // Create a prover client for local testing
+    let client = ProverClient::from_env();
+
+    // Create inputs for the zkVM program
+    let mut stdin = SP1Stdin::new();
+    stdin.write(initial_state);
+    stdin.write(batch);
 
     // Generate a Core proof (fast for local development)
     let (pk, vk) = client.setup(LOAN_PROGRAM_ELF);
@@ -112,71 +117,103 @@ fn run_locally(client: sp1_sdk::EnvProver, stdin: SP1Stdin) -> Result<()> {
     Ok(())
 }
 
-/// Run the test with Sindri integration
-fn run_with_sindri(client: sp1_sdk::EnvProver, stdin: SP1Stdin) -> Result<()> {
-    info!("🔄 Generating proof for Sindri (Groth16)...");
+/// Run the test with Sindri integration (no local proving)
+async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
+    info!("🔄 Submitting loan batch directly to Sindri for proving...");
 
-    // Generate a Groth16 proof for Sindri compatibility
-    let (pk, vk) = client.setup(LOAN_PROGRAM_ELF);
-    let proof = client
-        .prove(&pk, &stdin)
-        .groth16() // Use Groth16 for Sindri compatibility
-        .run()
-        .expect("Failed to generate Groth16 loan processing proof");
-
-    info!("✅ Groth16 proof generated successfully!");
-
-    // Verify the proof locally first
-    info!("🔍 Verifying loan processing proof locally...");
-    client
-        .verify(&proof, &vk)
-        .expect("Failed to verify loan proof locally");
-    info!("✅ Local proof verification passed!");
-
-    analyze_proof_output(&proof)?;
-
-    // Submit to Sindri
-    info!("🌐 Submitting circuit to Sindri for verification...");
-    submit_to_sindri(&proof, &vk)?;
+    // Submit directly to Sindri for proving (no local proof generation)
+    submit_to_sindri_for_proving(initial_state, batch).await?;
 
     info!("🎉 SP1 loan processing test with Sindri integration completed successfully!");
     Ok(())
 }
 
-/// Submit the proof to Sindri for circuit verification
-fn submit_to_sindri(proof: &sp1_sdk::SP1ProofWithPublicValues, _vk: &sp1_sdk::SP1VerifyingKey) -> Result<()> {
+/// Submit loan batch directly to Sindri for proving (no local proof generation)
+async fn submit_to_sindri_for_proving(
+    initial_state: &LoanState,
+    batch: &LoanBatch
+) -> Result<()> {
     use std::env;
 
     // Get Sindri API key from environment
-    let _api_key = env::var("SINDRI_API_KEY")
+    let api_key = env::var("SINDRI_API_KEY")
         .map_err(|_| eyre::eyre!("SINDRI_API_KEY environment variable not set. Please set it to submit to Sindri."))?;
 
-    info!("🔑 Using Sindri API key from environment");
+    info!("🔑 Using Sindri API key from environment (length: {} chars)", api_key.len());
 
-    // Read the sindri.json configuration
-    let _sindri_config = std::fs::read_to_string("sindri.json")
-        .map_err(|_| eyre::eyre!("Could not read sindri.json. Make sure you're running from the project root."))?;
+    // Read the sindri.json configuration (optional - just for validation)
+    if std::path::Path::new("sindri.json").exists() {
+        let _sindri_config = std::fs::read_to_string("sindri.json")
+            .map_err(|_| eyre::eyre!("Could not read sindri.json. Make sure you're running from the project root."))?;
+        info!("📁 Read Sindri configuration from sindri.json");
+    } else {
+        info!("📁 No sindri.json found - using default configuration");
+    }
 
-    info!("📁 Read Sindri configuration from sindri.json");
-
-    // For now, we'll just log that we would submit to Sindri
-    // In a full implementation, you would:
-    // 1. Use the Sindri client from the lib crate (which has the proper integration)
-    // 2. Package the ELF binary
-    // 3. Submit the circuit definition
-    // 4. Submit a proof request with the public inputs
-    // 5. Wait for and verify the result
-
-    info!("🚀 Would submit to Sindri with:");
-    info!("  - Circuit: SP1 Groth16 proof");
-    info!("  - Public values size: {} bytes", proof.public_values.as_slice().len());
-    info!("  - Proof size: {} bytes", proof.bytes().len());
+    // Create SP1 inputs for loan processing and serialize for Sindri
+    info!("📝 Creating SP1 stdin with initial_state and batch for Sindri proving");
+    let mut stdin = SP1Stdin::new();
+    stdin.write(initial_state);
+    stdin.write(batch);
     
-    // TODO: Implement actual Sindri submission using the lib crate's proof module
-    // The proper implementation would use arithmetic_lib::proof::generate_sindri_proof
-    info!("⚠️  Note: Actual Sindri submission not implemented yet - this is a placeholder");
-    info!("🔗 Configuration ready for Sindri integration");
-    info!("💡 To implement full Sindri integration, use the proof module from the lib crate");
+    info!("📝 Serializing SP1 stdin to JSON for Sindri");
+    let stdin_json = serde_json::to_string(&stdin)
+        .map_err(|e| {
+            error!("❌ Failed to serialize SP1 stdin: {}", e);
+            eyre::eyre!("Failed to serialize SP1 stdin: {}", e)
+        })?;
+    
+    info!("✅ SP1 stdin serialized, JSON length: {} chars", stdin_json.len());
+
+    let proof_input = ProofInput::from(stdin_json.clone());
+    info!("✅ ProofInput created from JSON");
+
+    // Get circuit name with configurable tag from environment
+    let circuit_tag = env::var("SINDRI_CIRCUIT_TAG").unwrap_or_else(|_| "latest".to_string());
+    let circuit_name = format!("arda-credit:{}", circuit_tag);
+
+    info!("📋 Using circuit: {} (tag: {})", circuit_name, circuit_tag);
+
+    info!("🌐 Creating Sindri client...");
+    let client = SindriClient::default();
+    info!("✅ Sindri client created");
+
+    info!("🚀 Submitting loan batch to Sindri for proving: {}", circuit_name);
+    info!("🔐 Sindri will generate the zero-knowledge proof (no local proving)");
+    info!(
+        "📊 Request details: stdin_json preview: {}...",
+        &stdin_json[..std::cmp::min(100, stdin_json.len())]
+    );
+
+    let proof_info = client
+        .prove_circuit(&circuit_name, proof_input, None, None, None)
+        .await
+        .map_err(|e| {
+            error!("❌ Sindri API call failed: {}", e);
+            eyre::eyre!("Sindri API error: {}", e)
+        })?;
+
+    info!(
+        "✅ Sindri proving request submitted successfully! Proof ID: {}, Status: {:?}",
+        proof_info.proof_id, proof_info.status
+    );
+
+    info!("🎯 Sindri Proving Results:");
+    info!("  - Proof ID: {}", proof_info.proof_id);
+    info!("  - Status: {:?}", proof_info.status);
+    info!("  - Circuit: {}", circuit_name);
+    info!("  - Batch transactions: {}", batch.transactions.len());
+    info!("  - Batch timestamp: {}", batch.created_at);
+    info!("  - Processing: Sindri is now generating the zero-knowledge proof");
+
+    let verification_command = format!(
+        "sindri proof get {} # Check proof status and download when ready",
+        proof_info.proof_id
+    );
+    
+    info!("📋 Next steps: {}", verification_command);
+    info!("🔗 Loan batch successfully submitted to Sindri for zero-knowledge proof generation");
+    info!("⏱️  Sindri will handle the proving process - no local computation required!");
 
     Ok(())
 }
