@@ -49,6 +49,37 @@ pub trait EventHandler: Send + Sync {
         reader: Address,
         block_number: u64,
     );
+
+    // Loan-specific event handlers
+    fn handle_deposit(
+        &self,
+        user: Address,
+        amount: alloy_primitives::U256,
+        loan_id: FixedBytes<32>,
+        block_number: u64,
+    );
+
+    fn handle_loan_payment(
+        &self,
+        loan_id: FixedBytes<32>,
+        amount: alloy_primitives::U256,
+        payer: Address,
+        block_number: u64,
+    );
+
+    fn handle_loan_closed(
+        &self,
+        loan_id: FixedBytes<32>,
+        final_amount: alloy_primitives::U256,
+        block_number: u64,
+    );
+
+    fn handle_withdrawal(
+        &self,
+        user: Address,
+        amount: alloy_primitives::U256,
+        block_number: u64,
+    );
 }
 
 /// Event manager for vApp server integration
@@ -315,6 +346,40 @@ impl EventManager {
             } => {
                 handler.handle_proof_read_requested(proof_id, reader, block_number);
             }
+            LoanEvent::Deposit {
+                user,
+                amount,
+                loan_id,
+                block_number,
+                ..
+            } => {
+                handler.handle_deposit(user, amount, loan_id, block_number);
+            }
+            LoanEvent::LoanPayment {
+                loan_id,
+                amount,
+                payer,
+                block_number,
+                ..
+            } => {
+                handler.handle_loan_payment(loan_id, amount, payer, block_number);
+            }
+            LoanEvent::LoanClosed {
+                loan_id,
+                final_amount,
+                block_number,
+                ..
+            } => {
+                handler.handle_loan_closed(loan_id, final_amount, block_number);
+            }
+            LoanEvent::Withdrawal {
+                user,
+                amount,
+                block_number,
+                ..
+            } => {
+                handler.handle_withdrawal(user, amount, block_number);
+            }
         }
     }
 
@@ -481,6 +546,70 @@ impl EventHandler for VAppEventHandler {
             self.server_name,
             hex::encode(proof_id.as_slice()),
             reader,
+            block_number
+        );
+    }
+
+    fn handle_deposit(
+        &self,
+        user: Address,
+        amount: alloy_primitives::U256,
+        loan_id: FixedBytes<32>,
+        block_number: u64,
+    ) {
+        info!(
+            "[{}] Deposit: user={}, amount={}, loan_id={}, block={}",
+            self.server_name,
+            user,
+            amount,
+            hex::encode(loan_id.as_slice()),
+            block_number
+        );
+    }
+
+    fn handle_loan_payment(
+        &self,
+        loan_id: FixedBytes<32>,
+        amount: alloy_primitives::U256,
+        payer: Address,
+        block_number: u64,
+    ) {
+        info!(
+            "[{}] Loan payment: loan_id={}, amount={}, payer={}, block={}",
+            self.server_name,
+            hex::encode(loan_id.as_slice()),
+            amount,
+            payer,
+            block_number
+        );
+    }
+
+    fn handle_loan_closed(
+        &self,
+        loan_id: FixedBytes<32>,
+        final_amount: alloy_primitives::U256,
+        block_number: u64,
+    ) {
+        info!(
+            "[{}] Loan closed: loan_id={}, final_amount={}, block={}",
+            self.server_name,
+            hex::encode(loan_id.as_slice()),
+            final_amount,
+            block_number
+        );
+    }
+
+    fn handle_withdrawal(
+        &self,
+        user: Address,
+        amount: alloy_primitives::U256,
+        block_number: u64,
+    ) {
+        info!(
+            "[{}] Withdrawal: user={}, amount={}, block={}",
+            self.server_name,
+            user,
+            amount,
             block_number
         );
     }
