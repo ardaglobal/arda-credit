@@ -31,15 +31,12 @@ jobs:
           toolchain: 1.88.0
 
       - name: Install SP1 toolchain
-        run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up
-          ~/.sp1/bin/cargo-prove prove --version
+        uses: ./.github/actions/setup-sp1
 
       - name: Build SP1 program
         run: |
           cd program
-          ~/.sp1/bin/cargo-prove prove build
+          cargo-prove prove build
 
       - name: Execute SP1 program
         run: |
