@@ -3,7 +3,7 @@ use clap::Parser;
 use ethereum_client::{Config, EthereumClient};
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Publish state to Arithmetic contract", long_about = None)]
+#[command(author, version, about = "Publish state to Loan contract", long_about = None)]
 struct Args {
     /// State ID (32-byte hex string with or without 0x prefix)
     #[arg(long, required = true)]
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args = Args::parse();
 
-    println!("📝 Publishing State to Arithmetic Contract");
+    println!("📝 Publishing State to Loan Contract");
     println!("==========================================");
 
     // Parse input parameters
@@ -70,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("✅ Ethereum client initialized");
     println!("   Network: {}", config.network.name);
-    println!("   Contract: {}", config.contract.arithmetic_contract);
+    println!("   Contract: {}", config.contract.arda_credit_contract);
     if let Some(signer) = &config.signer {
         println!("   Signer: {}", signer.address);
     }

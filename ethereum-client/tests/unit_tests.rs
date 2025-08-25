@@ -14,7 +14,7 @@ mod tests {
 
         // Set required fields
         config.network.rpc_url = Url::parse("https://test.example.com").unwrap();
-        config.contract.arithmetic_contract = Address::from_slice(&[1; 20]);
+        config.contract.arda_credit_contract = Address::from_slice(&[1; 20]);
         config.contract.verifier_contract = Address::from_slice(&[2; 20]);
 
         // Should now pass

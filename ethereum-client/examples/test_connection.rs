@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  Network: {}", config.network.name);
             println!("  Chain ID: {}", config.network.chain_id);
             println!("  RPC URL: {}", config.network.rpc_url);
-            println!("  Contract: {}", config.contract.arithmetic_contract);
+            println!("  Contract: {}", config.contract.arda_credit_contract);
 
             if let Some(signer) = &config.signer {
                 println!("✅ Signer configured: {}", signer.address);

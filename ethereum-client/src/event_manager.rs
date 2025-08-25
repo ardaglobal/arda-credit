@@ -1,5 +1,5 @@
 use crate::{
-    client::{ArithmeticEvent, EthereumClient, EventFilter, SubscriptionId},
+    client::{EthereumClient, EventFilter, LoanEvent, SubscriptionId},
     error::Result,
 };
 use alloy_primitives::{Address, FixedBytes};
@@ -55,7 +55,7 @@ pub trait EventHandler: Send + Sync {
 pub struct EventManager {
     ethereum_client: Arc<EthereumClient>,
     event_handlers: Vec<Arc<dyn EventHandler>>,
-    global_event_receiver: Option<broadcast::Receiver<ArithmeticEvent>>,
+    global_event_receiver: Option<broadcast::Receiver<LoanEvent>>,
 }
 
 impl EventManager {
@@ -92,8 +92,8 @@ impl EventManager {
             to_block: None,
         };
 
-        let callback = Arc::new(move |event: ArithmeticEvent| match event {
-            ArithmeticEvent::StateUpdated {
+        let callback = Arc::new(move |event: LoanEvent| match event {
+            LoanEvent::StateUpdated {
                 state_id,
                 new_state,
                 proof_id,
@@ -103,7 +103,7 @@ impl EventManager {
             } => {
                 handler.handle_state_updated(state_id, new_state, proof_id, updater, block_number);
             }
-            ArithmeticEvent::StateReadRequested {
+            LoanEvent::StateReadRequested {
                 state_id,
                 reader,
                 block_number,
@@ -138,8 +138,8 @@ impl EventManager {
             to_block: None,
         };
 
-        let callback = Arc::new(move |event: ArithmeticEvent| match event {
-            ArithmeticEvent::ProofStored {
+        let callback = Arc::new(move |event: LoanEvent| match event {
+            LoanEvent::ProofStored {
                 proof_id,
                 state_id,
                 submitter,
@@ -148,7 +148,7 @@ impl EventManager {
             } => {
                 handler.handle_proof_stored(proof_id, state_id, submitter, block_number);
             }
-            ArithmeticEvent::ProofVerified {
+            LoanEvent::ProofVerified {
                 proof_id,
                 success,
                 block_number,
@@ -156,7 +156,7 @@ impl EventManager {
             } => {
                 handler.handle_proof_verified(proof_id, success, block_number);
             }
-            ArithmeticEvent::ProofReadRequested {
+            LoanEvent::ProofReadRequested {
                 proof_id,
                 reader,
                 block_number,
@@ -187,8 +187,8 @@ impl EventManager {
             to_block: None,
         };
 
-        let callback = Arc::new(move |event: ArithmeticEvent| match event {
-            ArithmeticEvent::BatchStateUpdated {
+        let callback = Arc::new(move |event: LoanEvent| match event {
+            LoanEvent::BatchStateUpdated {
                 state_ids,
                 new_states,
                 updater,
@@ -221,7 +221,7 @@ impl EventManager {
             to_block: None,
         };
 
-        let callback = Arc::new(move |event: ArithmeticEvent| {
+        let callback = Arc::new(move |event: LoanEvent| {
             Self::dispatch_event_to_handler(&*handler, event);
         });
 
@@ -261,9 +261,9 @@ impl EventManager {
     }
 
     /// Dispatch event to a specific handler
-    fn dispatch_event_to_handler(handler: &dyn EventHandler, event: ArithmeticEvent) {
+    fn dispatch_event_to_handler(handler: &dyn EventHandler, event: LoanEvent) {
         match event {
-            ArithmeticEvent::StateUpdated {
+            LoanEvent::StateUpdated {
                 state_id,
                 new_state,
                 proof_id,
@@ -273,7 +273,7 @@ impl EventManager {
             } => {
                 handler.handle_state_updated(state_id, new_state, proof_id, updater, block_number);
             }
-            ArithmeticEvent::BatchStateUpdated {
+            LoanEvent::BatchStateUpdated {
                 state_ids,
                 new_states,
                 updater,
@@ -282,7 +282,7 @@ impl EventManager {
             } => {
                 handler.handle_batch_state_updated(state_ids, new_states, updater, block_number);
             }
-            ArithmeticEvent::ProofStored {
+            LoanEvent::ProofStored {
                 proof_id,
                 state_id,
                 submitter,
@@ -291,7 +291,7 @@ impl EventManager {
             } => {
                 handler.handle_proof_stored(proof_id, state_id, submitter, block_number);
             }
-            ArithmeticEvent::ProofVerified {
+            LoanEvent::ProofVerified {
                 proof_id,
                 success,
                 block_number,
@@ -299,7 +299,7 @@ impl EventManager {
             } => {
                 handler.handle_proof_verified(proof_id, success, block_number);
             }
-            ArithmeticEvent::StateReadRequested {
+            LoanEvent::StateReadRequested {
                 state_id,
                 reader,
                 block_number,
@@ -307,7 +307,7 @@ impl EventManager {
             } => {
                 handler.handle_state_read_requested(state_id, reader, block_number);
             }
-            ArithmeticEvent::ProofReadRequested {
+            LoanEvent::ProofReadRequested {
                 proof_id,
                 reader,
                 block_number,

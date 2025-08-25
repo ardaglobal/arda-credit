@@ -20,6 +20,8 @@ sol! {
         uint32 transaction_count;        // Number of transactions processed
         uint64 batch_timestamp;          // When batch was created
         bytes32 transaction_types_hash;  // Hash of transaction types (for transparency)
+        uint128 previousTotalBalance;    // Previous total debits + credits of all loans
+        uint128 currentTotalBalance;     // Current total debits + credits of all loans
     }
 }
 

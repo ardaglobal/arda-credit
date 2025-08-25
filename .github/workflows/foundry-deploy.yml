@@ -47,7 +47,7 @@ jobs:
 
       - name: Deploy contract
         run: |
-          forge create src/Arithmetic.sol:Arithmetic \
+          forge create src/Loan.sol:Loan \
             --broadcast \
             --rpc-url ${{ secrets.SEPOLIA_RPC_URL }} \
             --private-key ${{ secrets.ETHEREUM_WALLET_PRIVATE_KEY }} \

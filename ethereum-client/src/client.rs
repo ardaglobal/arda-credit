@@ -1,6 +1,6 @@
 use crate::{
     config::Config,
-    contracts::{ContractAddresses, IArithmetic, IArithmeticInstance, ISP1Verifier},
+    contracts::{ContractAddresses, ILoan, ILoanInstance, ISP1Verifier},
     error::{EthereumError, Result},
     types::{
         BatchStateUpdate, InclusionProof, NetworkStats, ProofVerificationResult, StateHistory,
@@ -47,7 +47,7 @@ use sqlx;
 
 /// Event data structures for comprehensive event handling
 #[derive(Debug, Clone)]
-pub enum ArithmeticEvent {
+pub enum LoanEvent {
     StateUpdated {
         state_id: FixedBytes<32>,
         new_state: FixedBytes<32>,
@@ -98,7 +98,7 @@ pub enum ArithmeticEvent {
 }
 
 /// Event callback function type
-pub type EventCallback = Arc<dyn Fn(ArithmeticEvent) + Send + Sync>;
+pub type EventCallback = Arc<dyn Fn(LoanEvent) + Send + Sync>;
 
 /// Event filter configuration
 #[derive(Debug, Clone, Default)]
@@ -149,9 +149,9 @@ pub struct EthereumClient {
 
     // Event system components
     event_callbacks: Arc<RwLock<HashMap<SubscriptionId, (EventFilter, EventCallback)>>>,
-    event_broadcaster: broadcast::Sender<ArithmeticEvent>,
+    event_broadcaster: broadcast::Sender<LoanEvent>,
     #[allow(dead_code)]
-    event_receiver: broadcast::Receiver<ArithmeticEvent>,
+    event_receiver: broadcast::Receiver<LoanEvent>,
     listener_config: EventListenerConfig,
     last_processed_block: Arc<RwLock<u64>>,
 }
@@ -240,9 +240,9 @@ impl EthereumClient {
     }
 
     pub async fn verify_proof(&self, public_values: Bytes, proof: Bytes) -> Result<i32> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
         let call_builder = contract
-            .verifyArithmeticProof(public_values.clone(), proof.clone())
+            .verifyLoanProof(public_values.clone(), proof.clone())
             .from(self.signer.address());
 
         let tx_result = call_builder.call().await.map_err(|e| {
@@ -261,7 +261,7 @@ impl EthereumClient {
         public_values: Bytes,
     ) -> Result<StateUpdate> {
         // Create contract instance
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         // Send transaction (wallet handles signing automatically)
         let tx_result = contract
@@ -313,7 +313,7 @@ impl EthereumClient {
     }
 
     pub async fn is_authorized(&self, account: Address) -> Result<bool> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
         let call_builder = contract.isAuthorized(account).from(self.signer.address());
         let tx_result = call_builder.call().await.map_err(|e| {
             error!("Failed to send is authorized transaction: {e}");
@@ -324,7 +324,7 @@ impl EthereumClient {
     }
 
     pub async fn check_proof_exists(&self, proof: Bytes) -> Result<bool> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
         let call_builder = contract.proofExists(proof).from(self.signer.address());
         let tx_result = call_builder.call().await.map_err(|e| {
             error!("Failed to send check proof exists transaction: {e}");
@@ -339,7 +339,7 @@ impl EthereumClient {
         info!("🔍 Validating verification key compatibility with smart contract...");
 
         // First, get the contract's verification key
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
         let contract_vkey = contract
             .getProgramVerificationKey()
             .call()
@@ -476,7 +476,7 @@ impl EthereumClient {
 
     /// Test the contract's validation function with mock data
     async fn test_contract_validation_function(&self, contract_vkey: FixedBytes<32>) -> Result<()> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         let mock_proof = Bytes::from(vec![0x12, 0x34, 0x56, 0x78]);
         let mock_public_values = Bytes::from(vec![0xab, 0xcd, 0xef]);
@@ -524,7 +524,7 @@ impl EthereumClient {
         info!("Batch updating {} states", state_ids.len());
 
         // Create contract instance
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         // Send batch transaction (wallet handles signing automatically)
         let tx_result = contract
@@ -582,7 +582,7 @@ impl EthereumClient {
         &self,
         state_id: FixedBytes<32>,
     ) -> Result<Option<StateResponse>> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         let state_root = contract
             .getCurrentState(state_id)
@@ -608,7 +608,7 @@ impl EthereumClient {
         &self,
         state_id: FixedBytes<32>,
     ) -> Result<FixedBytes<32>> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         let previous_state_root = contract
             .getPreviousStateRoot(state_id)
@@ -672,7 +672,7 @@ impl EthereumClient {
 
     /// Get global event stream
     #[must_use]
-    pub fn get_event_stream(&self) -> broadcast::Receiver<ArithmeticEvent> {
+    pub fn get_event_stream(&self) -> broadcast::Receiver<LoanEvent> {
         self.event_broadcaster.subscribe()
     }
 
@@ -681,7 +681,7 @@ impl EthereumClient {
     pub async fn start_event_monitoring(&self) -> Result<()> {
         info!(
             "Starting enhanced event monitoring for contract: {}",
-            self.contracts.arithmetic
+            self.contracts.loan
         );
 
         // Initialize last processed block if not set
@@ -757,9 +757,9 @@ impl EthereumClient {
         &self,
         from_block: u64,
         to_block: u64,
-    ) -> Result<Vec<ArithmeticEvent>> {
+    ) -> Result<Vec<LoanEvent>> {
         let filter = Filter::new()
-            .address(self.contracts.arithmetic)
+            .address(self.contracts.loan)
             .from_block(from_block)
             .to_block(to_block);
 
@@ -778,15 +778,15 @@ impl EthereumClient {
         Ok(events)
     }
 
-    /// Convert RPC log to `ArithmeticEvent`
-    fn convert_log_to_event(log: &alloy_rpc_types_eth::Log) -> Option<ArithmeticEvent> {
+    /// Convert RPC log to `LoanEvent`
+    fn convert_log_to_event(log: &alloy_rpc_types_eth::Log) -> Option<LoanEvent> {
         let primitive_log = Self::convert_rpc_log_to_primitive(log);
         let block_number = log.block_number.unwrap_or(0);
         let tx_hash = log.transaction_hash.unwrap_or_default();
 
         // Decode different event types
-        if let Ok(event) = IArithmetic::StateUpdated::decode_log(&primitive_log) {
-            return Some(ArithmeticEvent::StateUpdated {
+        if let Ok(event) = ILoan::StateUpdated::decode_log(&primitive_log) {
+            return Some(LoanEvent::StateUpdated {
                 state_id: event.stateId,
                 new_state: event.newState,
                 proof_id: event.proofId,
@@ -797,8 +797,8 @@ impl EthereumClient {
             });
         }
 
-        if let Ok(event) = IArithmetic::BatchStateUpdated::decode_log(&primitive_log) {
-            return Some(ArithmeticEvent::BatchStateUpdated {
+        if let Ok(event) = ILoan::BatchStateUpdated::decode_log(&primitive_log) {
+            return Some(LoanEvent::BatchStateUpdated {
                 state_ids: event.stateIds.clone(),
                 new_states: event.newStates.clone(),
                 updater: event.updater,
@@ -808,8 +808,8 @@ impl EthereumClient {
             });
         }
 
-        if let Ok(event) = IArithmetic::ProofStored::decode_log(&primitive_log) {
-            return Some(ArithmeticEvent::ProofStored {
+        if let Ok(event) = ILoan::ProofStored::decode_log(&primitive_log) {
+            return Some(LoanEvent::ProofStored {
                 proof_id: event.proofId,
                 state_id: event.stateId,
                 submitter: event.submitter,
@@ -819,8 +819,8 @@ impl EthereumClient {
             });
         }
 
-        if let Ok(event) = IArithmetic::ProofVerified::decode_log(&primitive_log) {
-            return Some(ArithmeticEvent::ProofVerified {
+        if let Ok(event) = ILoan::ProofVerified::decode_log(&primitive_log) {
+            return Some(LoanEvent::ProofVerified {
                 proof_id: event.proofId,
                 success: event.success,
                 result: event.result.clone(),
@@ -830,8 +830,8 @@ impl EthereumClient {
             });
         }
 
-        if let Ok(event) = IArithmetic::StateReadRequested::decode_log(&primitive_log) {
-            return Some(ArithmeticEvent::StateReadRequested {
+        if let Ok(event) = ILoan::StateReadRequested::decode_log(&primitive_log) {
+            return Some(LoanEvent::StateReadRequested {
                 state_id: event.stateId,
                 reader: event.reader,
                 timestamp: event.timestamp.try_into().unwrap_or(0),
@@ -840,8 +840,8 @@ impl EthereumClient {
             });
         }
 
-        if let Ok(event) = IArithmetic::ProofReadRequested::decode_log(&primitive_log) {
-            return Some(ArithmeticEvent::ProofReadRequested {
+        if let Ok(event) = ILoan::ProofReadRequested::decode_log(&primitive_log) {
+            return Some(LoanEvent::ProofReadRequested {
                 proof_id: event.proofId,
                 reader: event.reader,
                 timestamp: event.timestamp.try_into().unwrap_or(0),
@@ -856,7 +856,7 @@ impl EthereumClient {
 
     /// Process event and dispatch to subscribers
     #[allow(clippy::cognitive_complexity)]
-    async fn process_and_dispatch_event(&self, event: ArithmeticEvent) {
+    async fn process_and_dispatch_event(&self, event: LoanEvent) {
         // Broadcast to global stream
         if let Err(e) = self.event_broadcaster.send(event.clone()) {
             warn!("Failed to broadcast event: {}", e);
@@ -880,16 +880,16 @@ impl EthereumClient {
     }
 
     /// Check if event matches filter criteria
-    fn event_matches_filter(event: &ArithmeticEvent, filter: &EventFilter) -> bool {
+    fn event_matches_filter(event: &LoanEvent, filter: &EventFilter) -> bool {
         // Check event type filter
         if let Some(event_types) = &filter.event_types {
             let event_type = match event {
-                ArithmeticEvent::StateUpdated { .. } => "StateUpdated",
-                ArithmeticEvent::BatchStateUpdated { .. } => "BatchStateUpdated",
-                ArithmeticEvent::ProofStored { .. } => "ProofStored",
-                ArithmeticEvent::ProofVerified { .. } => "ProofVerified",
-                ArithmeticEvent::StateReadRequested { .. } => "StateReadRequested",
-                ArithmeticEvent::ProofReadRequested { .. } => "ProofReadRequested",
+                LoanEvent::StateUpdated { .. } => "StateUpdated",
+                LoanEvent::BatchStateUpdated { .. } => "BatchStateUpdated",
+                LoanEvent::ProofStored { .. } => "ProofStored",
+                LoanEvent::ProofVerified { .. } => "ProofVerified",
+                LoanEvent::StateReadRequested { .. } => "StateReadRequested",
+                LoanEvent::ProofReadRequested { .. } => "ProofReadRequested",
             };
             if !event_types.contains(&event_type.to_string()) {
                 return false;
@@ -899,9 +899,9 @@ impl EthereumClient {
         // Check state ID filter
         if let Some(state_ids) = &filter.state_ids {
             let event_state_id = match event {
-                ArithmeticEvent::StateUpdated { state_id, .. }
-                | ArithmeticEvent::ProofStored { state_id, .. }
-                | ArithmeticEvent::StateReadRequested { state_id, .. } => Some(*state_id),
+                LoanEvent::StateUpdated { state_id, .. }
+                | LoanEvent::ProofStored { state_id, .. }
+                | LoanEvent::StateReadRequested { state_id, .. } => Some(*state_id),
                 _ => None,
             };
             if let Some(state_id) = event_state_id {
@@ -914,12 +914,12 @@ impl EthereumClient {
         // Check address filter
         if let Some(addresses) = &filter.addresses {
             let event_address = match event {
-                ArithmeticEvent::StateUpdated { updater, .. }
-                | ArithmeticEvent::BatchStateUpdated { updater, .. } => Some(*updater),
-                ArithmeticEvent::ProofStored { submitter, .. } => Some(*submitter),
-                ArithmeticEvent::StateReadRequested { reader, .. }
-                | ArithmeticEvent::ProofReadRequested { reader, .. } => Some(*reader),
-                ArithmeticEvent::ProofVerified { .. } => None,
+                LoanEvent::StateUpdated { updater, .. }
+                | LoanEvent::BatchStateUpdated { updater, .. } => Some(*updater),
+                LoanEvent::ProofStored { submitter, .. } => Some(*submitter),
+                LoanEvent::StateReadRequested { reader, .. }
+                | LoanEvent::ProofReadRequested { reader, .. } => Some(*reader),
+                LoanEvent::ProofVerified { .. } => None,
             };
             if let Some(address) = event_address {
                 if !addresses.contains(&address) {
@@ -930,12 +930,12 @@ impl EthereumClient {
 
         // Check block range filter
         let event_block = match event {
-            ArithmeticEvent::StateUpdated { block_number, .. }
-            | ArithmeticEvent::BatchStateUpdated { block_number, .. }
-            | ArithmeticEvent::ProofStored { block_number, .. }
-            | ArithmeticEvent::ProofVerified { block_number, .. }
-            | ArithmeticEvent::StateReadRequested { block_number, .. }
-            | ArithmeticEvent::ProofReadRequested { block_number, .. } => *block_number,
+            LoanEvent::StateUpdated { block_number, .. }
+            | LoanEvent::BatchStateUpdated { block_number, .. }
+            | LoanEvent::ProofStored { block_number, .. }
+            | LoanEvent::ProofVerified { block_number, .. }
+            | LoanEvent::StateReadRequested { block_number, .. }
+            | LoanEvent::ProofReadRequested { block_number, .. } => *block_number,
         };
 
         if let Some(from_block) = filter.from_block {
@@ -955,7 +955,7 @@ impl EthereumClient {
 
     /// Persist event to database cache
     #[cfg(feature = "database")]
-    fn persist_event(event: &ArithmeticEvent, _cache: &EthereumCache) {
+    fn persist_event(event: &LoanEvent, _cache: &EthereumCache) {
         // TODO: Implement event persistence to database
         debug!("Persisting event: {:?}", event);
     }
@@ -968,7 +968,7 @@ impl EthereumClient {
     pub async fn check_for_new_events(
         &self,
         last_block: u64,
-        _contract: &IArithmeticInstance<&EthProvider>,
+        _contract: &ILoanInstance<&EthProvider>,
     ) -> Result<u64> {
         warn!("Using deprecated check_for_new_events. Use process_new_events instead.");
         let current_block = self.http_provider.get_block_number().await?;
@@ -985,7 +985,7 @@ impl EthereumClient {
 
         // Create filter for new blocks
         let filter = Filter::new()
-            .address(self.contracts.arithmetic)
+            .address(self.contracts.loan)
             .from_block(last_block + 1)
             .to_block(current_block);
 
@@ -1031,18 +1031,18 @@ impl EthereumClient {
         primitive_log: &alloy_primitives::Log,
         original_log: &alloy_rpc_types_eth::Log,
     ) {
-        if let Ok(event) = IArithmetic::StateUpdated::decode_log(primitive_log) {
+        if let Ok(event) = ILoan::StateUpdated::decode_log(primitive_log) {
             self.handle_state_updated_event(&event);
-        } else if let Ok(event) = IArithmetic::ProofStored::decode_log(primitive_log) {
+        } else if let Ok(event) = ILoan::ProofStored::decode_log(primitive_log) {
             Self::handle_proof_stored_event(&event);
-        } else if let Ok(event) = IArithmetic::ProofVerified::decode_log(primitive_log) {
+        } else if let Ok(event) = ILoan::ProofVerified::decode_log(primitive_log) {
             Self::handle_proof_verified_event(&event);
         } else {
             debug!("Unknown event type in log: {:?}", original_log);
         }
     }
 
-    pub fn handle_state_updated_event(&self, event: &IArithmetic::StateUpdated) {
+    pub fn handle_state_updated_event(&self, event: &ILoan::StateUpdated) {
         info!(
             "StateUpdated event: stateId={}, newState={}, proofId={}, updater={}",
             hex::encode(event.stateId.as_slice()),
@@ -1058,7 +1058,7 @@ impl EthereumClient {
         }
     }
 
-    pub fn handle_proof_stored_event(event: &IArithmetic::ProofStored) {
+    pub fn handle_proof_stored_event(event: &ILoan::ProofStored) {
         info!(
             "ProofStored event: proofId={}, stateId={}, submitter={}",
             hex::encode(event.proofId.as_slice()),
@@ -1067,7 +1067,7 @@ impl EthereumClient {
         );
     }
 
-    pub fn handle_proof_verified_event(event: &IArithmetic::ProofVerified) {
+    pub fn handle_proof_verified_event(event: &ILoan::ProofVerified) {
         info!(
             "ProofVerified event: proofId={}, success={}, result={}",
             hex::encode(event.proofId.as_slice()),
@@ -1125,9 +1125,9 @@ impl EthereumClient {
     }
 
     pub async fn get_verifier_key(&self) -> Result<Bytes> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
-        let vkey = contract.arithmeticProgramVKey().call().await.map_err(|e| {
+        let vkey = contract.loanProgramVKey().call().await.map_err(|e| {
             warn!("Failed to get verifier key: {}", e);
             EthereumError::from_contract_error(&format!("Verifier key query failed: {e}"))
         })?;
@@ -1137,7 +1137,7 @@ impl EthereumClient {
     }
 
     pub async fn get_proof_result(&self, proof_id: FixedBytes<32>) -> Result<Option<Bytes>> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         let result = contract
             .getStoredResult(proof_id)
@@ -1218,7 +1218,7 @@ impl EthereumClient {
     }
 
     pub async fn get_proof_data(&self, proof_id: FixedBytes<32>) -> Result<Option<Bytes>> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         let proof_data = contract
             .getStoredProof(proof_id)
@@ -1237,7 +1237,7 @@ impl EthereumClient {
     }
 
     pub async fn get_state_root(&self, state_id: FixedBytes<32>) -> Result<FixedBytes<32>> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         let state_root = contract
             .getCurrentState(state_id)
@@ -1327,7 +1327,7 @@ impl EthereumClient {
 
     /// Query the contract's current verification key and verifier address
     pub async fn query_contract_verification_key(&self) -> Result<(FixedBytes<32>, Address)> {
-        let contract = IArithmetic::new(self.contracts.arithmetic, &self.http_provider);
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
         let verification_key = contract
             .getProgramVerificationKey()
@@ -1353,14 +1353,14 @@ mod tests {
     use alloy_primitives::{Address, B256, U256};
 
     // Type aliases for function signature testing
-    type StateUpdatedHandler = fn(&EthereumClient, &IArithmetic::StateUpdated);
+    type StateUpdatedHandler = fn(&EthereumClient, &ILoan::StateUpdated);
     type EventProcessor = fn(&EthereumClient, &alloy_rpc_types_eth::Log);
     type EventDecoder = fn(&EthereumClient, &alloy_primitives::Log, &alloy_rpc_types_eth::Log);
 
     #[test]
     fn test_handle_state_updated_event_is_public() {
         // Test that handle_state_updated_event method is public and accessible
-        let event = IArithmetic::StateUpdated {
+        let event = ILoan::StateUpdated {
             stateId: B256::from([1u8; 32]),
             newState: B256::from([2u8; 32]),
             proofId: B256::from([3u8; 32]),
@@ -1380,7 +1380,7 @@ mod tests {
     #[test]
     fn test_handle_proof_stored_event_is_public() {
         // Test that handle_proof_stored_event method is public and accessible
-        let event = IArithmetic::ProofStored {
+        let event = ILoan::ProofStored {
             proofId: B256::from([1u8; 32]),
             stateId: B256::from([2u8; 32]),
             submitter: Address::from([3u8; 20]),
@@ -1400,7 +1400,7 @@ mod tests {
     #[test]
     fn test_handle_proof_verified_event_is_public() {
         // Test that handle_proof_verified_event method is public and accessible
-        let event = IArithmetic::ProofVerified {
+        let event = ILoan::ProofVerified {
             proofId: B256::from([1u8; 32]),
             success: true,
             result: alloy_primitives::Bytes::from(vec![4u8, 5u8, 6u8]),
@@ -1426,7 +1426,7 @@ mod tests {
         // We test this by verifying the method signatures compile and are accessible.
 
         // Test proof stored event handling
-        let proof_stored = IArithmetic::ProofStored {
+        let proof_stored = ILoan::ProofStored {
             proofId: B256::from([1u8; 32]),
             stateId: B256::from([2u8; 32]),
             submitter: Address::from([3u8; 20]),
@@ -1437,7 +1437,7 @@ mod tests {
         EthereumClient::handle_proof_stored_event(&proof_stored);
 
         // Test proof verified event handling
-        let proof_verified = IArithmetic::ProofVerified {
+        let proof_verified = ILoan::ProofVerified {
             proofId: B256::from([4u8; 32]),
             success: true,
             result: alloy_primitives::Bytes::from(vec![1u8, 2u8, 3u8]),
@@ -1457,9 +1457,9 @@ mod tests {
         // by creating function pointers to the methods
 
         // Test that we can create function pointers to the public methods
-        let handle_proof_stored: fn(&IArithmetic::ProofStored) =
+        let handle_proof_stored: fn(&ILoan::ProofStored) =
             EthereumClient::handle_proof_stored_event;
-        let handle_proof_verified: fn(&IArithmetic::ProofVerified) =
+        let handle_proof_verified: fn(&ILoan::ProofVerified) =
             EthereumClient::handle_proof_verified_event;
 
         // Test that instance methods exist (can't easily test without a client instance)

@@ -40,6 +40,10 @@ pub fn main() {
     let previous_state_root = initial_state.compute_state_hash();
     let new_state_root = final_state.compute_state_hash();
 
+    // Compute total portfolio balances from loan state
+    let previous_total = initial_state.compute_total_balance();
+    let current_total = final_state.compute_total_balance();
+
     // Create hash of transaction types for transparency (without revealing details)
     let mut types_hasher = Sha256::new();
     for transaction in &batch.transactions {
@@ -55,6 +59,8 @@ pub fn main() {
         transaction_count: batch.transactions.len() as u32,
         batch_timestamp: batch.created_at,
         transaction_types_hash: FixedBytes(transaction_types_hash),
+        previousTotalBalance: previous_total,
+        currentTotalBalance: current_total,
     };
 
     let bytes = LoanBatchPublicValues::abi_encode(&public_values);

@@ -9,11 +9,21 @@ struct PublicValuesStruct {
     int32 final_balance;
 }
 
-/// @title Arithmetic.
+struct LoanBatchPublicValues {
+    bytes32 previous_state_root;
+    bytes32 new_state_root;
+    uint32 transaction_count;
+    uint64 batch_timestamp;
+    bytes32 transaction_types_hash;
+    uint128 previousTotalBalance;
+    uint128 currentTotalBalance;
+}
+
+/// @title Loan.
 /// @author Arda Global
 /// @notice This contract implements verification of batch processing proofs with continuous balance tracking.
 ///         Individual transactions remain private while only initial and final balances are public.
-contract Arithmetic is EventHelpers {
+contract Loan is EventHelpers {
     /// @notice The address of the SP1 verifier contract.
     /// @dev This can either be a specific SP1Verifier for a specific version, or the
     ///      SP1VerifierGateway which can be used to verify proofs for any version of SP1.
@@ -21,8 +31,8 @@ contract Arithmetic is EventHelpers {
     ///      https://github.com/succinctlabs/sp1-contracts/tree/main/contracts/deployments
     address public verifier;
 
-    /// @notice The verification key for the arithmetic program.
-    bytes32 public arithmeticProgramVKey;
+    /// @notice The verification key for the loan program.
+    bytes32 public loanProgramVKey;
 
     /// @notice Store state by state ID.
     mapping(bytes32 => bytes32) public currentState;
@@ -44,6 +54,13 @@ contract Arithmetic is EventHelpers {
 
     /// @notice Authorized addresses that can post state updates.
     mapping(address => bool) public authorizedPosters;
+
+    /// @notice Current total portfolio balance across all loans
+    uint128 public totalPortfolioBalance;
+
+    /// @notice Historical portfolio balances for audit trail
+    mapping(uint256 => uint128) public historicalBalances;
+    uint256 public balanceHistoryIndex;
 
     /// @notice Proof metadata structure
     struct ProofMetadata {
@@ -156,6 +173,13 @@ contract Arithmetic is EventHelpers {
         uint256 indexed timestamp
     );
 
+    /// @notice Emitted when portfolio balance is updated
+    event PortfolioBalanceUpdated(
+        uint128 previousBalance,
+        uint128 currentBalance,
+        bool increased
+    );
+
     /// @notice Legacy events for backwards compatibility.
     event AuthorizationChanged(address indexed account, bool authorized);
     event OwnershipTransferred(
@@ -200,9 +224,9 @@ contract Arithmetic is EventHelpers {
         _;
     }
 
-    constructor(address _verifier, bytes32 _arithmeticProgramVKey) {
+    constructor(address _verifier, bytes32 _loanProgramVKey) {
         verifier = _verifier;
-        arithmeticProgramVKey = _arithmeticProgramVKey;
+        loanProgramVKey = _loanProgramVKey;
         owner = msg.sender;
         authorizedPosters[msg.sender] = true;
         emit AuthorizationChanged(msg.sender, true);
@@ -211,12 +235,12 @@ contract Arithmetic is EventHelpers {
     /// @notice The entrypoint for verifying the proof of a batch processing operation.
     /// @param _proofBytes The encoded proof.
     /// @param _publicValues The encoded public values containing initial and final balance.
-    function verifyArithmeticProof(
+    function verifyLoanProof(
         bytes calldata _publicValues,
         bytes calldata _proofBytes
     ) public view returns (int32) {
         ISP1Verifier(verifier).verifyProof(
-            arithmeticProgramVKey,
+            loanProgramVKey,
             _publicValues,
             _proofBytes
         );
@@ -240,10 +264,44 @@ contract Arithmetic is EventHelpers {
     ) external onlyAuthorized {
         // Verify the proof first
         ISP1Verifier(verifier).verifyProof(
-            arithmeticProgramVKey,
+            loanProgramVKey,
             publicValues,
             proof
         );
+
+        // Handle portfolio balance tracking if publicValues includes balance data
+        if (publicValues.length >= 224) { // 7 * 32 bytes for new LoanBatchPublicValues structure
+            try this.decodeLoanBatchPublicValues(publicValues) returns (
+                bytes32,
+                bytes32, 
+                uint32,
+                uint64,
+                bytes32,
+                uint128 previousBalance,
+                uint128 currentBalance
+            ) {
+                // Validate balance transition
+                if (totalPortfolioBalance != 0) {
+                    require(previousBalance == totalPortfolioBalance, "Portfolio balance mismatch");
+                }
+                
+                // Update portfolio balance
+                totalPortfolioBalance = currentBalance;
+                
+                // Store historical balance for audit trail
+                historicalBalances[balanceHistoryIndex] = currentBalance;
+                balanceHistoryIndex++;
+                
+                // Emit portfolio balance event
+                emit PortfolioBalanceUpdated(
+                    previousBalance,
+                    currentBalance,
+                    currentBalance > previousBalance
+                );
+            } catch {
+                // If decoding fails, continue with legacy behavior
+            }
+        }
 
         bytes32 proofHash = keccak256(proof);
 
@@ -392,7 +450,7 @@ contract Arithmetic is EventHelpers {
 
         // Cache frequently accessed values to reduce external calls
         address cachedVerifier = verifier;
-        bytes32 cachedVKey = arithmeticProgramVKey;
+        bytes32 cachedVKey = loanProgramVKey;
         address cachedSender = msg.sender;
         uint256 cachedTimestamp = block.timestamp;
 
@@ -541,6 +599,62 @@ contract Arithmetic is EventHelpers {
 
         // Return the second-to-last state (previous state)
         return history[length - 2];
+    }
+
+    // Add helper function for decoding
+    function decodeLoanBatchPublicValues(bytes calldata data) external pure returns (
+        bytes32 previous_state_root,
+        bytes32 new_state_root,
+        uint32 transaction_count,
+        uint64 batch_timestamp,
+        bytes32 transaction_types_hash,
+        uint128 previousTotalBalance,
+        uint128 currentTotalBalance
+    ) {
+        (
+            previous_state_root,
+            new_state_root,
+            transaction_count,
+            batch_timestamp,
+            transaction_types_hash,
+            previousTotalBalance,
+            currentTotalBalance
+        ) = abi.decode(data, (bytes32, bytes32, uint32, uint64, bytes32, uint128, uint128));
+    }
+
+    /// @notice Get current portfolio balance
+    function getCurrentPortfolioBalance() external view returns (uint128) {
+        return totalPortfolioBalance;
+    }
+
+    /// @notice Get portfolio metrics for monitoring dashboard
+    function getPortfolioMetrics() external view returns (
+        uint128 currentBalance,
+        uint256 historicalCount,
+        uint256 lastUpdated
+    ) {
+        return (
+            totalPortfolioBalance,
+            balanceHistoryIndex,
+            block.timestamp
+        );
+    }
+
+    /// @notice Get portfolio balance history for audit
+    function getPortfolioBalanceHistory(uint256 fromIndex, uint256 toIndex) 
+        external view returns (uint128[] memory) {
+        require(fromIndex < balanceHistoryIndex, "Invalid from index");
+        require(toIndex <= balanceHistoryIndex, "Invalid to index");
+        require(fromIndex <= toIndex, "Invalid range");
+        
+        uint256 length = toIndex - fromIndex;
+        uint128[] memory balances = new uint128[](length);
+        
+        for (uint256 i = 0; i < length; i++) {
+            balances[i] = historicalBalances[fromIndex + i];
+        }
+        
+        return balances;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -872,9 +986,9 @@ contract Arithmetic is EventHelpers {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the current program verification key used by this contract.
-    /// @return vKey The 32-byte verification key for the arithmetic program.
+    /// @return vKey The 32-byte verification key for the loan program.
     function getProgramVerificationKey() external view returns (bytes32 vKey) {
-        return arithmeticProgramVKey;
+        return loanProgramVKey;
     }
 
     /// @notice Check if a given verification key matches the contract's program vkey.
@@ -883,7 +997,7 @@ contract Arithmetic is EventHelpers {
     function isValidProgramVerificationKey(
         bytes32 vKey
     ) external view returns (bool matches) {
-        return vKey == arithmeticProgramVKey;
+        return vKey == loanProgramVKey;
     }
 
     /// @notice Get verification key information for debugging.
@@ -894,7 +1008,7 @@ contract Arithmetic is EventHelpers {
         view
         returns (bytes32 contractVKey, address verifierAddress)
     {
-        return (arithmeticProgramVKey, verifier);
+        return (loanProgramVKey, verifier);
     }
 
     /// @notice Validate that a proof would be accepted by this contract (without executing).
@@ -910,13 +1024,13 @@ contract Arithmetic is EventHelpers {
         bytes calldata proof
     ) external view returns (bool isValid, string memory message) {
         // Check if the verification key matches
-        if (expectedVKey != arithmeticProgramVKey) {
+        if (expectedVKey != loanProgramVKey) {
             return (
                 false,
                 string(
                     abi.encodePacked(
                         "Verification key mismatch. Expected: 0x",
-                        _bytes32ToHex(arithmeticProgramVKey),
+                        _bytes32ToHex(loanProgramVKey),
                         ", Got: 0x",
                         _bytes32ToHex(expectedVKey)
                     )

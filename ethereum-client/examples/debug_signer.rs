@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(signer1) = &config1.signer {
         println!("   Signer 1: {}", signer1.address);
     }
-    println!("   Contract 1: {}", config1.contract.arithmetic_contract);
+    println!("   Contract 1: {}", config1.contract.arda_credit_contract);
 
     // Test 2: Replicate exact prove command flow
     println!("\n2️⃣  Testing prove command flow...");
@@ -27,7 +27,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(signer2) = &eth_config.signer {
         println!("   Signer 2: {}", signer2.address);
     }
-    println!("   Contract 2: {}", eth_config.contract.arithmetic_contract);
+    println!(
+        "   Contract 2: {}",
+        eth_config.contract.arda_credit_contract
+    );
 
     // Compare configurations
     println!("\n3️⃣  Configuration comparison...");

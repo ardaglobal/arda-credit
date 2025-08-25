@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
 import {StateInteraction} from "../src/libraries/StateInteraction.sol";
-import {Arithmetic} from "../src/Arithmetic.sol";
+import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 
 // Test wrapper contract to expose internal library functions
@@ -57,14 +57,14 @@ contract StateInteractionTest is Test {
     using StateInteraction for *;
     
     StateInteractionWrapper public wrapper;
-    Arithmetic public arithmetic;
+    Loan public loan;
     address public verifier;
     bytes32 public constant TEST_VKEY = 0x1234567890123456789012345678901234567890123456789012345678901234;
     
     function setUp() public {
         wrapper = new StateInteractionWrapper();
         verifier = address(new SP1VerifierGateway(address(1)));
-        arithmetic = new Arithmetic(verifier, TEST_VKEY);
+        loan = new Loan(verifier, TEST_VKEY);
     }
     
     function testPrepareStateUpdate() public {
@@ -112,7 +112,7 @@ contract StateInteractionTest is Test {
         bytes32 stateId = keccak256("test-state");
         
         (bytes32 state, bool exists) = wrapper.readStateFromContract(
-            address(arithmetic),
+            address(loan),
             stateId
         );
         
@@ -231,6 +231,6 @@ contract StateInteractionTest is Test {
         
         vm.expectRevert(StateInteraction.InvalidParameters.selector);
         bytes32[] memory empty = new bytes32[](0);
-        StateInteraction.batchReadStates(address(arithmetic), empty);
+        StateInteraction.batchReadStates(address(loan), empty);
     }
 }
