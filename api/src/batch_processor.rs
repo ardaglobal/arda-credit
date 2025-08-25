@@ -18,7 +18,7 @@ use crate::rest::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
 use arda_credit_db::{
     get_batch_by_id, get_pending_transactions, get_proven_unposted_batches,
-    mark_batch_posted_to_contract, update_batch_proof, IndexedMerkleTreeADS,
+    mark_batch_posted_to_contract_with_tx_hash, update_batch_proof, IndexedMerkleTreeADS,
 };
 use arda_credit_lib::proof::{generate_batch_proof, BatchProofGenerationRequest, ProofSystem};
 use ethereum_client::{Config as EthConfig, EthereumClient};
@@ -817,6 +817,15 @@ impl BackgroundBatchProcessor {
             unposted_batches.len()
         );
 
+        // Log batch details for debugging
+        for batch in &unposted_batches {
+            debug!("📦 Batch {} ready for contract posting:", batch.id);
+            debug!("   Sindri proof ID: {:?}", batch.sindri_proof_id);
+            debug!("   Counter: {} -> {}", batch.previous_counter_value, batch.final_counter_value);
+            debug!("   Transaction count: {}", batch.transaction_ids.len());
+            debug!("   Status: {}", batch.proof_status);
+        }
+
         // Try to initialize Ethereum client (graceful fallback if not configured)
         let eth_client = match EthConfig::from_env() {
             Ok(config) => match EthereumClient::new(config).await {
@@ -837,16 +846,27 @@ impl BackgroundBatchProcessor {
         let eth_client = eth_client.unwrap();
 
         for batch in unposted_batches {
-            if let Err(e) = Self::submit_batch_to_contract(pool, &eth_client, &batch).await {
-                error!("❌ Failed to submit batch {} to contract: {}", batch.id, e);
-                continue; // Continue with next batch
-            }
-
-            // Mark as posted after successful submission
-            if let Err(e) = mark_batch_posted_to_contract(pool, batch.id).await {
-                error!("❌ Failed to mark batch {} as posted: {}", batch.id, e);
-            } else {
-                info!("✅ Successfully posted batch {} to contract", batch.id);
+            // Submit to contract with retry logic and confirmation waiting
+            match Self::submit_batch_with_retry(pool, &eth_client, &batch, 3).await {
+                Ok(tx_hash) => {
+                    info!("✅ Batch {} confirmed on-chain with tx hash: {}", batch.id, hex::encode(tx_hash));
+                    
+                    // Mark as posted only after successful confirmation with transaction hash
+                    let tx_hash_hex = format!("0x{}", hex::encode(tx_hash));
+                    if let Err(e) = mark_batch_posted_to_contract_with_tx_hash(pool, batch.id, &tx_hash_hex).await {
+                        error!("❌ Failed to mark batch {} as posted after confirmation: {}", batch.id, e);
+                        // Even if marking fails, the transaction was successful on-chain
+                        // Log this as a critical issue for manual resolution
+                        error!("🚨 CRITICAL: Batch {} was successfully posted to contract (tx: {}) but database marking failed", batch.id, tx_hash_hex);
+                        error!("    This batch may be re-submitted unless manually marked as posted in the database");
+                    } else {
+                        info!("✅ Successfully posted and confirmed batch {} to contract with tx: {}", batch.id, tx_hash_hex);
+                    }
+                }
+                Err(e) => {
+                    error!("❌ Failed to submit and confirm batch {} to contract after retries: {}", batch.id, e);
+                    continue; // Continue with next batch
+                }
             }
 
             // Small delay between submissions to avoid overwhelming the network
@@ -856,12 +876,50 @@ impl BackgroundBatchProcessor {
         Ok(())
     }
 
-    /// Submit a single batch to the smart contract
-    async fn submit_batch_to_contract(
+    /// Submit a batch to smart contract with retry logic
+    async fn submit_batch_with_retry(
+        pool: &PgPool,
+        eth_client: &EthereumClient,
+        batch: &arda_credit_db::ProofBatch,
+        max_retries: u32,
+    ) -> Result<FixedBytes<32>, String> {
+        let mut attempts = 0;
+        let mut last_error = String::new();
+
+        while attempts < max_retries {
+            attempts += 1;
+            info!("🔄 Attempting to submit batch {} (attempt {} of {})", batch.id, attempts, max_retries);
+
+            match Self::submit_batch_to_contract_with_confirmation(pool, eth_client, batch).await {
+                Ok(tx_hash) => {
+                    if attempts > 1 {
+                        info!("✅ Batch {} submitted successfully after {} attempts", batch.id, attempts);
+                    }
+                    return Ok(tx_hash);
+                }
+                Err(e) => {
+                    last_error = e.clone();
+                    error!("❌ Attempt {} failed for batch {}: {}", attempts, batch.id, e);
+                    
+                    if attempts < max_retries {
+                        let backoff_seconds = 2_u64.pow(attempts - 1); // Exponential backoff: 1s, 2s, 4s, etc.
+                        warn!("⏳ Retrying batch {} submission in {} seconds...", batch.id, backoff_seconds);
+                        tokio::time::sleep(Duration::from_secs(backoff_seconds)).await;
+                    }
+                }
+            }
+        }
+
+        error!("❌ All {} attempts failed for batch {}", max_retries, batch.id);
+        Err(format!("Failed after {} retries. Last error: {}", max_retries, last_error))
+    }
+
+    /// Submit a single batch to the smart contract and wait for confirmation
+    async fn submit_batch_to_contract_with_confirmation(
         _pool: &PgPool,
         eth_client: &EthereumClient,
         batch: &arda_credit_db::ProofBatch,
-    ) -> Result<(), String> {
+    ) -> Result<FixedBytes<32>, String> {
         info!("🚀 Submitting batch {} to smart contract", batch.id);
 
         // Get the Sindri proof ID from the batch
@@ -945,21 +1003,28 @@ impl BackgroundBatchProcessor {
         info!("   State ID: {}", state_id);
         info!("   New state root: {}", new_state_root);
 
-        // Submit to smart contract
+        // Submit to smart contract and wait for confirmation
         match eth_client
             .update_state(state_id, new_state_root, proof_bytes, public_values)
             .await
         {
             Ok(result) => {
+                // Extract transaction hash from result
+                let tx_hash = result.transaction_hash
+                    .ok_or_else(|| "Transaction hash not available in result".to_string())?;
+
                 info!(
-                    "✅ Batch {} submitted to contract successfully with REAL proof data!",
+                    "✅ Batch {} submitted and confirmed on-chain with REAL proof data!",
                     batch.id
                 );
-                info!("   Transaction hash: {:?}", result.transaction_hash);
+                info!("   Transaction hash: {}", hex::encode(tx_hash));
+                info!("   Block number: {:?}", result.block_number);
                 info!("   State ID: {}", result.state_id);
                 info!("   New state root: {}", result.new_state_root);
                 info!("   Used Sindri proof ID: {}", sindri_proof_id);
-                Ok(())
+                
+                // Return the transaction hash for tracking
+                Ok(tx_hash)
             }
             Err(e) => {
                 error!("❌ Failed to submit batch {} to contract: {}", batch.id, e);
