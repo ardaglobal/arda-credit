@@ -592,3 +592,88 @@ pub async fn mark_batch_posted_to_contract(
     debug!("Successfully marked batch {batch_id} as posted to contract");
     Ok(())
 }
+
+/// Mark a batch as posted to the smart contract with transaction hash
+///
+/// # Errors
+/// Returns error if database operation fails
+pub async fn mark_batch_posted_to_contract_with_tx_hash(
+    pool: &PgPool,
+    batch_id: i32,
+    transaction_hash: &str,
+) -> Result<(), sqlx::Error> {
+    debug!("Marking batch {batch_id} as posted to contract with tx hash: {transaction_hash}");
+
+    let result = sqlx::query!(
+        r"
+        UPDATE proof_batches
+        SET posted_to_contract = TRUE,
+            posted_to_contract_at = NOW(),
+            transaction_hash = $2
+        WHERE id = $1 AND posted_to_contract = FALSE
+        ",
+        batch_id,
+        transaction_hash
+    )
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() != 1 {
+        return Err(sqlx::Error::RowNotFound);
+    }
+
+    debug!("Successfully marked batch {batch_id} as posted to contract with tx hash");
+    Ok(())
+}
+
+/// Check for batches that may have been posted to contract but not marked in database
+/// This helps identify potential synchronization issues
+///
+/// # Errors
+/// Returns error if database query fails
+pub async fn get_potential_stuck_batches(
+    pool: &PgPool,
+    limit: Option<i32>,
+) -> Result<Vec<ProofBatch>, sqlx::Error> {
+    let limit = limit.unwrap_or(10);
+    debug!("Checking for potential stuck batches (limit: {})", limit);
+
+    // Get batches that have been proven for a while but are not marked as posted
+    let records = sqlx::query!(
+        r"
+        SELECT id, previous_counter_value, final_counter_value, transaction_ids,
+               sindri_proof_id, proof_status, created_at, proven_at
+        FROM proof_batches
+        WHERE proof_status = 'proven' 
+          AND posted_to_contract = FALSE
+          AND sindri_proof_id IS NOT NULL
+          AND proven_at IS NOT NULL
+          AND proven_at < NOW() - INTERVAL '10 minutes'  -- Proven more than 10 minutes ago
+        ORDER BY proven_at ASC
+        LIMIT $1
+        ",
+        limit as i64
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let batches: Vec<ProofBatch> = records
+        .into_iter()
+        .map(|row| ProofBatch {
+            id: row.id,
+            previous_counter_value: row.previous_counter_value,
+            final_counter_value: row.final_counter_value,
+            transaction_ids: row.transaction_ids,
+            sindri_proof_id: row.sindri_proof_id,
+            proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
+            created_at: row.created_at.unwrap_or_else(|| Utc::now()),
+            proven_at: row.proven_at,
+        })
+        .collect();
+
+    if !batches.is_empty() {
+        debug!("Found {} potentially stuck batches", batches.len());
+    }
+    
+    Ok(batches)
+}

@@ -286,11 +286,18 @@ impl EthereumClient {
             EthereumError::Transaction(format!("Receipt error: {e}"))
         })?;
 
+        // Verify transaction was successful
+        if receipt.status() != Some(alloy_primitives::U64::from(1)) {
+            let status = receipt.status().unwrap_or_default();
+            error!("Transaction failed on-chain with status: {}", status);
+            return Err(EthereumError::Transaction(format!("Transaction failed on-chain with status: {}", status)));
+        }
+
         let block_number = receipt.block_number.unwrap_or(0);
         let tx_hash = receipt.transaction_hash;
 
         info!(
-            "State update confirmed in block {}: {}",
+            "State update confirmed successfully in block {}: {}",
             block_number,
             hex::encode(tx_hash.as_slice())
         );

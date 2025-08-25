@@ -62,6 +62,8 @@ pub use db::{
     init_db_with_url,
 
     mark_batch_posted_to_contract,
+    mark_batch_posted_to_contract_with_tx_hash,
+    get_potential_stuck_batches,
     // ADS/Merkle functions
     store_ads_state_commit,
     // Transaction functions
