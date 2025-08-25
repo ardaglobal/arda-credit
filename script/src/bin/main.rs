@@ -8,7 +8,7 @@
 //! ```shell
 //! # Run locally with Core proofs (fast development)
 //! cargo run --package arda-credit --bin arda-credit
-//! 
+//!
 //! # Run and submit to Sindri for circuit verification
 //! cargo run --package arda-credit --bin arda-credit -- --sindri
 //! ```
@@ -22,7 +22,7 @@ use clap::Parser;
 use eyre::Result;
 use sindri::{client::SindriClient, ProofInput};
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
-use tracing::{info, error};
+use tracing::{error, info};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
 /// This is built by build.rs from the program/ directory.
@@ -129,22 +129,28 @@ async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result
 }
 
 /// Submit loan batch directly to Sindri for proving (no local proof generation)
-async fn submit_to_sindri_for_proving(
-    initial_state: &LoanState,
-    batch: &LoanBatch
-) -> Result<()> {
+async fn submit_to_sindri_for_proving(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
     use std::env;
 
     // Get Sindri API key from environment
-    let api_key = env::var("SINDRI_API_KEY")
-        .map_err(|_| eyre::eyre!("SINDRI_API_KEY environment variable not set. Please set it to submit to Sindri."))?;
+    let api_key = env::var("SINDRI_API_KEY").map_err(|_| {
+        eyre::eyre!(
+            "SINDRI_API_KEY environment variable not set. Please set it to submit to Sindri."
+        )
+    })?;
 
-    info!("🔑 Using Sindri API key from environment (length: {} chars)", api_key.len());
+    info!(
+        "🔑 Using Sindri API key from environment (length: {} chars)",
+        api_key.len()
+    );
 
     // Read the sindri.json configuration (optional - just for validation)
     if std::path::Path::new("sindri.json").exists() {
-        let _sindri_config = std::fs::read_to_string("sindri.json")
-            .map_err(|_| eyre::eyre!("Could not read sindri.json. Make sure you're running from the project root."))?;
+        let _sindri_config = std::fs::read_to_string("sindri.json").map_err(|_| {
+            eyre::eyre!(
+                "Could not read sindri.json. Make sure you're running from the project root."
+            )
+        })?;
         info!("📁 Read Sindri configuration from sindri.json");
     } else {
         info!("📁 No sindri.json found - using default configuration");
@@ -155,15 +161,17 @@ async fn submit_to_sindri_for_proving(
     let mut stdin = SP1Stdin::new();
     stdin.write(initial_state);
     stdin.write(batch);
-    
+
     info!("📝 Serializing SP1 stdin to JSON for Sindri");
-    let stdin_json = serde_json::to_string(&stdin)
-        .map_err(|e| {
-            error!("❌ Failed to serialize SP1 stdin: {}", e);
-            eyre::eyre!("Failed to serialize SP1 stdin: {}", e)
-        })?;
-    
-    info!("✅ SP1 stdin serialized, JSON length: {} chars", stdin_json.len());
+    let stdin_json = serde_json::to_string(&stdin).map_err(|e| {
+        error!("❌ Failed to serialize SP1 stdin: {}", e);
+        eyre::eyre!("Failed to serialize SP1 stdin: {}", e)
+    })?;
+
+    info!(
+        "✅ SP1 stdin serialized, JSON length: {} chars",
+        stdin_json.len()
+    );
 
     let proof_input = ProofInput::from(stdin_json.clone());
     info!("✅ ProofInput created from JSON");
@@ -178,7 +186,10 @@ async fn submit_to_sindri_for_proving(
     let client = SindriClient::default();
     info!("✅ Sindri client created");
 
-    info!("🚀 Submitting loan batch to Sindri for proving: {}", circuit_name);
+    info!(
+        "🚀 Submitting loan batch to Sindri for proving: {}",
+        circuit_name
+    );
     info!("🔐 Sindri will generate the zero-knowledge proof (no local proving)");
     info!(
         "📊 Request details: stdin_json preview: {}...",
@@ -210,7 +221,7 @@ async fn submit_to_sindri_for_proving(
         "sindri proof get {} # Check proof status and download when ready",
         proof_info.proof_id
     );
-    
+
     info!("📋 Next steps: {}", verification_command);
     info!("🔗 Loan batch successfully submitted to Sindri for zero-knowledge proof generation");
     info!("⏱️  Sindri will handle the proving process - no local computation required!");
