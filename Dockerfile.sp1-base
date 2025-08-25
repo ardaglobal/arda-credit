@@ -1,0 +1,37 @@
+# SP1 Base Image
+# This Dockerfile creates a reusable base image with Rust and SP1 pre-installed
+# Use this as a base image in your application Dockerfiles to speed up builds
+
+FROM rust:1.88.0
+
+LABEL maintainer="Arda Global"
+LABEL description="Rust base image with SP1 toolchain pre-installed"
+LABEL version="1.0"
+
+# Install system dependencies that might be needed for SP1
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install SP1 toolchain in a single layer for better caching
+# The installation and setup are combined to minimize layers
+RUN curl -L https://sp1.succinct.xyz | bash && \
+    export PATH="/root/.sp1/bin:/usr/local/cargo/bin:$PATH" && \
+    sp1up
+
+# Set PATH environment variable so SP1 tools are available
+ENV PATH="/root/.sp1/bin:/usr/local/cargo/bin:$PATH"
+
+# Verify SP1 installation
+RUN sp1 --version
+
+# Set a default working directory
+WORKDIR /app
+
+# Add a health check to verify SP1 is working
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD sp1 --version || exit 1

@@ -1,12 +1,13 @@
 # Balanced Dockerfile: Optimized but maintainable
 # Single file that works for both development and production
+# Uses SP1 base image to avoid reinstalling SP1 toolchain every time
 
-FROM rust:1.88.0 AS builder
+# Option 1: Use locally built SP1 base image
+# Run: docker build -f Dockerfile.sp1-base -t sp1-base:local .
+FROM sp1-base:local AS builder
 
-# Install SP1 toolchain (cached when Dockerfile doesn't change)
-RUN curl -L https://sp1.succinct.xyz | bash
-ENV PATH="/root/.sp1/bin:/usr/local/cargo/bin:$PATH"
-RUN sp1up
+# Option 2: Use published SP1 base image (uncomment when available)
+# FROM your-registry/sp1-base:1.0 AS builder
 
 WORKDIR /app
 
