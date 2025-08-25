@@ -838,11 +838,16 @@ name = "arda-credit"
 version = "0.0.1"
 dependencies = [
  "alloy-sol-types",
+ "clap",
+ "dotenv",
  "eyre",
  "hex",
  "lib",
+ "serde_json",
+ "sindri",
  "sp1-build",
  "sp1-sdk",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "uuid",
