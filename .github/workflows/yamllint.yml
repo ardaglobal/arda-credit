@@ -1,0 +1,48 @@
+name: YAML Lint
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  merge_group:
+
+jobs:
+  yamllint:
+    name: YAML Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install yamllint
+        run: |
+          python -m pip install --upgrade pip
+          pip install yamllint
+
+      - name: Run yamllint
+        run: |
+          echo "Running yamllint on all YAML files..."
+          yamllint .
+
+      - name: Generate yamllint report on failure
+        if: failure()
+        run: |
+          echo "YAMLint found issues. Generating detailed report..."
+          yamllint --format parsable . | tee yamllint-report.txt || true
+          echo "::warning::YAMLint issues found. See the full report above."

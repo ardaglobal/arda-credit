@@ -1,0 +1,39 @@
+# YAMLint configuration for arda-credit repository
+# See: https://yamllint.readthedocs.io/en/stable/configuration.html
+
+extends: default
+
+rules:
+  # Disable line length checking
+  line-length: disable
+
+  # Allow empty lines at document start (useful for GitHub Actions)
+  document-start:
+    present: false
+
+  # Allow empty lines at document end
+  document-end:
+    present: false
+
+  # Allow multi-line comments without indentation
+  comments:
+    min-spaces-from-content: 1
+
+  # Be more flexible with indentation for better readability
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Allow truthy values (on/off, yes/no) which are common in config files
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    check-keys: false
+
+# Ignore specific directories and files
+ignore: |
+  /target/
+  /build/
+  /contracts/lib/
+  *.log
+  /.github/dependabot.yaml

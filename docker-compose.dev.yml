@@ -13,12 +13,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    
+
     # Development-specific environment overrides
     environment:
       - RUST_LOG=${RUST_LOG:-debug}  # More verbose logging for development
-      
-    # Optional: Mount source code for hot reloading (if supported)
-    # volumes:
-    #   - ./db/src:/app/db/src:ro
-    #   - ./lib/src:/app/lib/src:ro

@@ -1,13 +1,12 @@
 ignored:
   # Allow MAINTAINER instruction (deprecated but sometimes needed for compatibility)
   - DL4000
-  
   # Allow --platform flag in FROM (useful for multi-arch builds)
   - DL3006
 
 trustedRegistries:
   - docker.io
-  - index.docker.io  
+  - index.docker.io
   - rust
   - debian
   - ghcr.io
