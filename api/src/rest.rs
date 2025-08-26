@@ -16,8 +16,8 @@ use crate::batch_processor::BatchProcessorHandle;
 use arda_credit_db::{
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
     get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
-    ContractSubmissionData, IndexedMerkleTreeADS, LoanInclusionProof, LoanInclusionRequest,
-    AuditEvent, LoanLifecycleSummary,
+    AuditEvent, ContractSubmissionData, IndexedMerkleTreeADS, LoanInclusionProof,
+    LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -1897,12 +1897,16 @@ async fn generate_loan_operation_proof_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<GenerateLoanOperationProofRequest>,
 ) -> Result<Json<LoanOperationProofResponse>, (StatusCode, String)> {
-    info!("🔍 API: Generating loan operation inclusion proof for user {}", request.user_id);
+    info!(
+        "🔍 API: Generating loan operation inclusion proof for user {}",
+        request.user_id
+    );
 
     // Use the unified batch service to generate proof
     let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
         state.pool,
         state.ads_service,
+        state.config.max_batch_size,
     );
 
     let proof = unified_service
@@ -1939,13 +1943,14 @@ async fn generate_loan_payment_proof_endpoint(
     State(state): State<ApiState>,
     Path((user_id, loan_id, payment_id, batch_id)): Path<(uuid::Uuid, uuid::Uuid, uuid::Uuid, i32)>,
 ) -> Result<Json<LoanOperationProofResponse>, (StatusCode, String)> {
-    info!("💰 API: Generating loan payment proof for payment {} in batch {}", payment_id, batch_id);
+    info!(
+        "💰 API: Generating loan payment proof for payment {} in batch {}",
+        payment_id, batch_id
+    );
 
     // Use the unified batch service to generate proof
-    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
-        state.pool,
-        state.ads_service,
-    );
+    let unified_service =
+        crate::unified_batch_service::UnifiedBatchService::new(state.pool, state.ads_service, 100);
 
     let proof = unified_service
         .generate_loan_payment_proof(user_id, loan_id, payment_id, batch_id)
@@ -1980,6 +1985,7 @@ async fn verify_loan_proof_endpoint(
     let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
         state.pool,
         state.ads_service,
+        state.config.max_batch_size,
     );
 
     let is_valid = unified_service
@@ -1998,7 +2004,10 @@ async fn verify_loan_proof_endpoint(
         "proof_details": report
     });
 
-    info!("✅ API: Loan inclusion proof verification completed: valid={}", is_valid);
+    info!(
+        "✅ API: Loan inclusion proof verification completed: valid={}",
+        is_valid
+    );
     Ok(Json(response))
 }
 
@@ -2011,10 +2020,8 @@ async fn generate_proof_report_endpoint(
     info!("📊 API: Generating proof verification report");
 
     // Use the unified batch service to generate report
-    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
-        state.pool,
-        state.ads_service,
-    );
+    let unified_service =
+        crate::unified_batch_service::UnifiedBatchService::new(state.pool, state.ads_service, 100);
 
     let report = unified_service
         .generate_proof_report(&proof)
@@ -2031,13 +2038,14 @@ async fn batch_verify_proofs_endpoint(
     State(state): State<ApiState>,
     Json(proofs): Json<Vec<LoanInclusionProof>>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    info!("🔍 API: Batch verifying {} loan inclusion proofs", proofs.len());
+    info!(
+        "🔍 API: Batch verifying {} loan inclusion proofs",
+        proofs.len()
+    );
 
     // Use the unified batch service to batch verify proofs
-    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
-        state.pool,
-        state.ads_service,
-    );
+    let unified_service =
+        crate::unified_batch_service::UnifiedBatchService::new(state.pool, state.ads_service, 100);
 
     let results = unified_service
         .batch_verify_proofs(&proofs)
@@ -2053,7 +2061,11 @@ async fn batch_verify_proofs_endpoint(
         "verified_at": Utc::now()
     });
 
-    info!("✅ API: Batch verification completed: {}/{} proofs valid", valid_count, proofs.len());
+    info!(
+        "✅ API: Batch verification completed: {}/{} proofs valid",
+        valid_count,
+        proofs.len()
+    );
     Ok(Json(response))
 }
 
@@ -2066,17 +2078,18 @@ async fn get_loan_audit_trail_endpoint(
     info!("📋 API: Getting loan audit trail for loan {}", loan_id);
 
     // Use the unified batch service to get audit trail
-    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
-        state.pool,
-        state.ads_service,
-    );
+    let unified_service =
+        crate::unified_batch_service::UnifiedBatchService::new(state.pool, state.ads_service, 100);
 
     let audit_trail = unified_service
         .get_loan_audit_trail(loan_id)
         .await
         .map_err(|e| (StatusCode::NOT_FOUND, e))?;
 
-    info!("✅ API: Retrieved {} audit events for loan", audit_trail.len());
+    info!(
+        "✅ API: Retrieved {} audit events for loan",
+        audit_trail.len()
+    );
     Ok(Json(audit_trail))
 }
 
@@ -2086,20 +2099,23 @@ async fn get_loan_lifecycle_summary_endpoint(
     State(state): State<ApiState>,
     Path(loan_id): Path<uuid::Uuid>,
 ) -> Result<Json<LoanLifecycleSummary>, (StatusCode, String)> {
-    info!("📈 API: Getting loan lifecycle summary for loan {}", loan_id);
+    info!(
+        "📈 API: Getting loan lifecycle summary for loan {}",
+        loan_id
+    );
 
     // Use the unified batch service to get lifecycle summary
-    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
-        state.pool,
-        state.ads_service,
-    );
+    let unified_service =
+        crate::unified_batch_service::UnifiedBatchService::new(state.pool, state.ads_service, 100);
 
     let summary = unified_service
         .get_loan_lifecycle_summary(loan_id)
         .await
         .map_err(|e| (StatusCode::NOT_FOUND, e))?;
 
-    info!("✅ API: Generated loan lifecycle summary: {} operations, {} payments", 
-          summary.total_operations, summary.total_payments);
+    info!(
+        "✅ API: Generated loan lifecycle summary: {} operations, {} payments",
+        summary.total_operations, summary.total_payments
+    );
     Ok(Json(summary))
 }

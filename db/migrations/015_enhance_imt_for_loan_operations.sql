@@ -59,39 +59,39 @@ ALTER TABLE tree_state ADD CONSTRAINT tree_state_loan_stats_non_negative CHECK (
 -- ============================================================================
 
 -- Indexes for loan operation queries on nullifiers table
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_loan_id 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_loan_id 
     ON nullifiers(loan_id) WHERE loan_id IS NOT NULL AND is_active = true;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_user_id 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_user_id 
     ON nullifiers(user_id) WHERE user_id IS NOT NULL AND is_active = true;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_operation_type 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_operation_type 
     ON nullifiers(loan_operation_type) WHERE loan_operation_type IS NOT NULL AND is_active = true;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_batch_id 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_batch_id 
     ON nullifiers(batch_id) WHERE batch_id IS NOT NULL AND is_active = true;
 
 -- Composite indexes for efficient loan lifecycle queries
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_loan_lifecycle 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_loan_lifecycle 
     ON nullifiers(loan_id, loan_operation_type, created_at) 
     WHERE loan_id IS NOT NULL AND is_active = true;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_user_operations 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_user_operations 
     ON nullifiers(user_id, loan_operation_type, created_at) 
     WHERE user_id IS NOT NULL AND is_active = true;
 
 -- Index for loan amount range queries
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_operation_amount 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_operation_amount 
     ON nullifiers(operation_amount) 
     WHERE operation_amount IS NOT NULL AND is_active = true;
 
 -- Partial index for loan operations only
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_loan_ops_only 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_loan_ops_only 
     ON nullifiers(value, loan_id, loan_operation_type, created_at) 
     WHERE loan_operation_type IN ('loan_origination', 'loan_payment', 'loan_closeout') AND is_active = true;
 
 -- GIN index for loan operation metadata queries
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_nullifiers_operation_metadata 
+CREATE INDEX IF NOT EXISTS idx_nullifiers_operation_metadata 
     ON nullifiers USING GIN(operation_metadata) 
     WHERE operation_metadata IS NOT NULL AND operation_metadata != '{}';
 
@@ -112,17 +112,17 @@ ALTER TABLE audit_events ADD CONSTRAINT fk_audit_events_user_id
     FOREIGN KEY (user_id) REFERENCES identities(id) ON DELETE SET NULL;
 
 -- Add indexes for loan operation correlation
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_events_loan_id 
+CREATE INDEX IF NOT EXISTS idx_audit_events_loan_id 
     ON audit_events(loan_id) WHERE loan_id IS NOT NULL;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_events_user_id 
+CREATE INDEX IF NOT EXISTS idx_audit_events_user_id 
     ON audit_events(user_id) WHERE user_id IS NOT NULL;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_events_loan_operation_type 
+CREATE INDEX IF NOT EXISTS idx_audit_events_loan_operation_type 
     ON audit_events(loan_operation_type) WHERE loan_operation_type IS NOT NULL;
 
 -- Composite index for loan audit trail queries
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_audit_events_loan_timeline 
+CREATE INDEX IF NOT EXISTS idx_audit_events_loan_timeline 
     ON audit_events(loan_id, timestamp, loan_operation_type) 
     WHERE loan_id IS NOT NULL;
 
@@ -252,8 +252,10 @@ SELECT
     (SELECT COUNT(DISTINCT user_id) FROM nullifiers WHERE loan_operation_type IS NOT NULL AND is_active = true) as total_loan_users,
     
     -- Performance metrics
-    (SELECT AVG(EXTRACT(epoch FROM (created_at - LAG(created_at) OVER (ORDER BY created_at)))) 
-     FROM nullifiers WHERE loan_operation_type IS NOT NULL AND is_active = true) as avg_operation_interval_seconds
+    (SELECT AVG(interval_seconds)::bigint FROM (
+        SELECT EXTRACT(epoch FROM (created_at - LAG(created_at) OVER (ORDER BY created_at))) as interval_seconds
+        FROM nullifiers WHERE loan_operation_type IS NOT NULL AND is_active = true
+     ) intervals WHERE interval_seconds IS NOT NULL) as avg_operation_interval_seconds
      
 FROM tree_state ts;
 
@@ -551,8 +553,8 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION refresh_loan_statistics()
 RETURNS VOID AS $$
 BEGIN
-    -- Force update of loan statistics
-    PERFORM update_tree_loan_stats();
+    -- Force update of loan statistics (trigger will handle this automatically)
+    -- Trigger function will be called automatically on nullifier changes
     
     -- Additional optimizations could include:
     -- - ANALYZE on key tables
@@ -581,7 +583,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_loan_operation_type ON audit_events(loan_op
 CREATE INDEX IF NOT EXISTS idx_audit_loan_id ON audit_events(loan_id) WHERE loan_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_audit_user_id_loan ON audit_events(user_id) WHERE user_id IS NOT NULL AND loan_operation_type IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_audit_batch_id ON audit_events(batch_id) WHERE batch_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_audit_loan_timestamp ON audit_events(timestamp, loan_operation_type) WHERE loan_operation_type IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_loan_timestamp ON audit_events("timestamp", loan_operation_type) WHERE loan_operation_type IS NOT NULL;
 
 -- Function to create loan operation audit event
 CREATE OR REPLACE FUNCTION create_loan_audit_event(
@@ -643,7 +645,7 @@ RETURNS TABLE(
     nullifier_value BIGINT,
     loan_operation_type VARCHAR,
     operation_amount DECIMAL(18, 6),
-    timestamp TIMESTAMP WITH TIME ZONE,
+    operation_timestamp TIMESTAMP WITH TIME ZONE,
     root_before BYTEA,
     root_after BYTEA,
     batch_id INTEGER,
@@ -685,7 +687,7 @@ RETURNS TABLE(
     loan_operation_type VARCHAR,
     loan_id UUID,
     operation_amount DECIMAL(18, 6),
-    timestamp TIMESTAMP WITH TIME ZONE,
+    operation_timestamp TIMESTAMP WITH TIME ZONE,
     root_before BYTEA,
     root_after BYTEA,
     batch_id INTEGER,
@@ -744,7 +746,7 @@ RETURNS TABLE(
     loan_id UUID,
     user_id UUID,
     operation_amount DECIMAL(18, 6),
-    timestamp TIMESTAMP WITH TIME ZONE,
+    operation_timestamp TIMESTAMP WITH TIME ZONE,
     root_before BYTEA,
     root_after BYTEA,
     transaction_hash VARCHAR(66),
@@ -867,7 +869,10 @@ SELECT
     AVG(ae.operation_amount) as avg_amount,
     MIN(ae.timestamp) as first_operation,
     MAX(ae.timestamp) as last_operation,
-    AVG(EXTRACT(EPOCH FROM (ae.timestamp - LAG(ae.timestamp) OVER (ORDER BY ae.timestamp)))) as avg_interval_seconds
+    (SELECT AVG(interval_seconds) FROM (
+        SELECT EXTRACT(EPOCH FROM (timestamp - LAG(timestamp) OVER (ORDER BY timestamp))) as interval_seconds
+        FROM audit_events WHERE loan_operation_type IS NOT NULL
+     ) intervals WHERE interval_seconds IS NOT NULL) as avg_interval_seconds
 FROM audit_events ae
 WHERE ae.loan_operation_type IS NOT NULL
 GROUP BY ae.loan_operation_type;

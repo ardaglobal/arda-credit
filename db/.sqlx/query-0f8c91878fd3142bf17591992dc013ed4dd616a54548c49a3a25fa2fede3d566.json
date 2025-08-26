@@ -1,0 +1,92 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                0 as \"total_nullifiers!\",\n                0 as \"total_loan_originations!\",\n                0 as \"total_loan_payments!\", \n                0 as \"total_loan_closeouts!\",\n                0.0 as \"total_loan_amount!\",\n                0 as \"active_loans_count!\",\n                0 as \"current_originations!\",\n                0 as \"current_payments!\",\n                0 as \"current_closeouts!\",\n                0 as \"total_unique_loans!\",\n                0 as \"total_loan_users!\",\n                NULL as avg_operation_interval_seconds,\n                NULL as loan_stats_updated_at\n            FROM imt_loan_stats\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_nullifiers!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "total_loan_originations!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_loan_payments!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_loan_closeouts!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "total_loan_amount!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "active_loans_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "current_originations!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "current_payments!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "current_closeouts!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "total_unique_loans!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "total_loan_users!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "avg_operation_interval_seconds",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "loan_stats_updated_at",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "0f8c91878fd3142bf17591992dc013ed4dd616a54548c49a3a25fa2fede3d566"
+}

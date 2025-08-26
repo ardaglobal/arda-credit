@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                value as nullifier_value,\n                loan_operation_type as operation_type,\n                operation_amount,\n                created_at as operation_timestamp,\n                tree_index,\n                batch_id,\n                user_id,\n                operation_metadata\n            FROM nullifiers\n            WHERE loan_id = $1\n                AND loan_operation_type IS NOT NULL\n                AND is_active = true\n            ORDER BY created_at DESC\n            LIMIT $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "nullifier_value",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "operation_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "operation_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "operation_timestamp",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "tree_index",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "batch_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "operation_metadata",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "733b89fd33628cecf2de611db1f70a486763aec98ddc1c01ad00b44753734764"
+}

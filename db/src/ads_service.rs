@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
@@ -62,27 +63,27 @@ pub trait AuthenticatedDataStructure: Send + Sync {
 /// Loan operation metadata for enhanced state transitions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoanMetadata {
-    pub loan_id: Option<uuid::Uuid>,      // Loan ID (for loan operations)
-    pub payment_id: Option<uuid::Uuid>,   // Payment ID (for payment operations)
-    pub user_id: Option<uuid::Uuid>,      // Primary user ID (borrower/lender)
-    pub borrower_id: Option<uuid::Uuid>,  // Borrower ID (for loan operations)
-    pub lender_id: Option<uuid::Uuid>,    // Lender ID (for loan operations)
+    pub loan_id: Option<uuid::Uuid>,     // Loan ID (for loan operations)
+    pub payment_id: Option<uuid::Uuid>,  // Payment ID (for payment operations)
+    pub user_id: Option<uuid::Uuid>,     // Primary user ID (borrower/lender)
+    pub borrower_id: Option<uuid::Uuid>, // Borrower ID (for loan operations)
+    pub lender_id: Option<uuid::Uuid>,   // Lender ID (for loan operations)
     pub payment_amount: Option<rust_decimal::Decimal>, // Payment amount
     pub principal_amount: Option<rust_decimal::Decimal>, // Loan principal
     pub outstanding_balance: Option<rust_decimal::Decimal>, // Remaining balance
-    pub loan_status: Option<String>,      // Loan status (active, paid_off, closed, etc.)
-    pub operation_type: String,           // Operation type (loan_origination, loan_payment, etc.)
+    pub loan_status: Option<String>,     // Loan status (active, paid_off, closed, etc.)
+    pub operation_type: String,          // Operation type (loan_origination, loan_payment, etc.)
     pub transaction_context: Option<serde_json::Value>, // Additional transaction data
 }
 
 /// CCR operation metadata for enhanced state transitions (kept for compatibility)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CcrMetadata {
-    pub operation_type: String,           // CCR operation type (loan_creation, payment, etc.)
-    pub operation_id: String,             // Primary ID (loan_id, payment_id, etc.)
-    pub user_ids: Vec<String>,            // Related user IDs (borrower_id, lender_id, etc.)
-    pub amount: Option<i64>,              // Associated amount if applicable
-    pub created_at: DateTime<Utc>,        // Operation timestamp
+    pub operation_type: String, // CCR operation type (loan_creation, payment, etc.)
+    pub operation_id: String,   // Primary ID (loan_id, payment_id, etc.)
+    pub user_ids: Vec<String>,  // Related user IDs (borrower_id, lender_id, etc.)
+    pub amount: Option<i64>,    // Associated amount if applicable
+    pub created_at: DateTime<Utc>, // Operation timestamp
     pub additional_context: serde_json::Value, // Additional operation-specific data
 }
 
@@ -137,14 +138,14 @@ pub struct LoanInclusionProof {
 /// Loan operation proof details
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoanOperationProof {
-    pub operation_type: String,         // "loan_origination", "loan_payment", "loan_closeout"
-    pub loan_id: Option<uuid::Uuid>,    // Loan ID
+    pub operation_type: String, // "loan_origination", "loan_payment", "loan_closeout"
+    pub loan_id: Option<uuid::Uuid>, // Loan ID
     pub payment_id: Option<uuid::Uuid>, // Payment ID (for payments)
-    pub user_id: uuid::Uuid,            // User requesting proof (borrower/lender)
+    pub user_id: uuid::Uuid,    // User requesting proof (borrower/lender)
     pub amount: Option<rust_decimal::Decimal>, // Operation amount
-    pub nullifier_value: i64,           // Generated nullifier
-    pub operation_hash: [u8; 32],       // Hash of operation details
-    pub user_role: String,              // "borrower" or "lender"
+    pub nullifier_value: i64,   // Generated nullifier
+    pub operation_hash: [u8; 32], // Hash of operation details
+    pub user_role: String,      // "borrower" or "lender"
 }
 
 /// Batch inclusion information for context
@@ -264,15 +265,15 @@ pub struct ComplianceStatus {
 /// Loan operation for batch processing
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoanOperation {
-    pub operation_type: String,           // "loan_origination", "loan_payment", "loan_closeout"
-    pub loan_id: Option<uuid::Uuid>,      // Loan ID
-    pub payment_id: Option<uuid::Uuid>,   // Payment ID (for payment operations)
-    pub borrower_id: Option<uuid::Uuid>,  // Borrower ID
-    pub lender_id: Option<uuid::Uuid>,    // Lender ID
+    pub operation_type: String, // "loan_origination", "loan_payment", "loan_closeout"
+    pub loan_id: Option<uuid::Uuid>, // Loan ID
+    pub payment_id: Option<uuid::Uuid>, // Payment ID (for payment operations)
+    pub borrower_id: Option<uuid::Uuid>, // Borrower ID
+    pub lender_id: Option<uuid::Uuid>, // Lender ID
     pub amount: Option<rust_decimal::Decimal>, // Operation amount
-    pub loan_status: Option<String>,      // Current loan status
+    pub loan_status: Option<String>, // Current loan status
     pub transaction_data: serde_json::Value, // Additional transaction context
-    pub nullifier_prefix: Option<i64>,    // Optional nullifier prefix
+    pub nullifier_prefix: Option<i64>, // Optional nullifier prefix
 }
 
 impl LoanOperation {
@@ -282,7 +283,7 @@ impl LoanOperation {
         use std::hash::{Hash, Hasher};
 
         let mut hasher = DefaultHasher::new();
-        
+
         if let Some(loan_id) = &self.loan_id {
             loan_id.to_string().hash(&mut hasher);
         }
@@ -302,7 +303,7 @@ impl LoanOperation {
     pub fn to_nullifier_with_prefix(&self) -> i64 {
         let base_nullifier = self.to_nullifier();
         let prefix = self.get_operation_prefix();
-        
+
         // Apply prefix while keeping within range
         let adjusted_base = base_nullifier % 999_999_999;
         prefix + adjusted_base
@@ -327,7 +328,11 @@ impl LoanOperation {
             borrower_id: self.borrower_id,
             lender_id: self.lender_id,
             payment_amount: self.amount,
-            principal_amount: if self.operation_type == "loan_origination" { self.amount } else { None },
+            principal_amount: if self.operation_type == "loan_origination" {
+                self.amount
+            } else {
+                None
+            },
             outstanding_balance: None, // To be filled by business logic
             loan_status: self.loan_status.clone(),
             operation_type: self.operation_type.clone(),
@@ -360,10 +365,10 @@ pub struct AdsMetrics {
     pub last_reset: DateTime<Utc>,                // Metrics reset time
     pub constraint_efficiency: ConstraintMetrics, // ZK efficiency metrics
     // Loan-specific metrics
-    pub total_loan_operations: u64,               // Total loan operations
-    pub loan_originations: u64,                   // Total loan originations
-    pub loan_payments: u64,                       // Total loan payments
-    pub loan_closeouts: u64,                      // Total loan closeouts
+    pub total_loan_operations: u64, // Total loan operations
+    pub loan_originations: u64,     // Total loan originations
+    pub loan_payments: u64,         // Total loan payments
+    pub loan_closeouts: u64,        // Total loan closeouts
 }
 
 /// ZK constraint efficiency metrics
@@ -513,6 +518,10 @@ impl IndexedMerkleTreeADS {
                 efficiency_ratio: 1.0,
                 circuit_types: HashMap::new(),
             },
+            total_loan_operations: 0,
+            loan_originations: 0,
+            loan_payments: 0,
+            loan_closeouts: 0,
         };
 
         // If we recovered state, update metrics to reflect the recovered data
@@ -593,7 +602,7 @@ impl IndexedMerkleTreeADS {
         // Get recent ADS state commits to populate the cache
         let recent_commits = sqlx::query!(
             r#"
-            SELECT ads.batch_id, ads.merkle_root, ads.created_at,
+            SELECT ads.batch_id, ads.merkle_root, ads.created_at as "created_at!",
                    pb.previous_counter_value, pb.final_counter_value
             FROM ads_state_commits ads
             JOIN proof_batches pb ON ads.batch_id = pb.id
@@ -619,7 +628,7 @@ impl IndexedMerkleTreeADS {
                     root_hash: root_key,
                     nullifier_count: 0, // We could query this if needed
                     tree_height: 32,
-                    last_updated: commit.created_at.unwrap_or_else(|| chrono::Utc::now()),
+                    last_updated: commit.created_at,
                     commitment_hash: root_key, // Use root as commitment hash for simplicity
                     settlement_data: SettlementData {
                         contract_address: "0x0000000000000000000000000000000000000000".to_string(),
@@ -1303,6 +1312,10 @@ impl IndexedMerkleTreeADS {
                 efficiency_ratio: 1.0,
                 circuit_types: HashMap::new(),
             },
+            total_loan_operations: 0,
+            loan_originations: 0,
+            loan_payments: 0,
+            loan_closeouts: 0,
         };
 
         info!("🔄 Performance metrics reset");
@@ -1340,11 +1353,17 @@ impl IndexedMerkleTreeADS {
     ) -> Result<StateTransition, AdsError> {
         let operation_type = operation.operation_type();
         let operation_id = operation.primary_id();
-        info!("🔄 Inserting CCR operation: {} ({})", operation_type, operation_id);
+        info!(
+            "🔄 Inserting CCR operation: {} ({})",
+            operation_type, operation_id
+        );
 
         // Generate prefixed nullifier using CCR operation's built-in method
         let nullifier_value = operation.to_nullifier();
-        debug!("Generated CCR nullifier: {} for operation {}", nullifier_value, operation_id);
+        debug!(
+            "Generated CCR nullifier: {} for operation {}",
+            nullifier_value, operation_id
+        );
 
         // Use existing insert logic to maintain compatibility
         let mut base_transition = self.insert(nullifier_value).await?;
@@ -1363,10 +1382,14 @@ impl IndexedMerkleTreeADS {
 
         // Add CCR-specific audit event
         if self.config.audit_enabled {
-            self.add_ccr_audit_event(&base_transition, operation).await?;
+            self.add_ccr_audit_event(&base_transition, operation)
+                .await?;
         }
 
-        info!("✅ CCR operation {} inserted successfully with nullifier {}", operation_id, nullifier_value);
+        info!(
+            "✅ CCR operation {} inserted successfully with nullifier {}",
+            operation_id, nullifier_value
+        );
         Ok(base_transition)
     }
 
@@ -1394,14 +1417,21 @@ impl IndexedMerkleTreeADS {
             transitions.push(transition);
         }
 
-        info!("✅ Successfully batch inserted {} CCR operations", operations.len());
+        info!(
+            "✅ Successfully batch inserted {} CCR operations",
+            operations.len()
+        );
         Ok(transitions)
     }
 
     /// Extract user IDs from a CCR operation for metadata
     fn extract_user_ids(&self, operation: &CcrOperation) -> Vec<String> {
         match operation {
-            CcrOperation::LoanCreation { borrower_id, lender_id, .. } => {
+            CcrOperation::LoanCreation {
+                borrower_id,
+                lender_id,
+                ..
+            } => {
                 vec![borrower_id.to_string(), lender_id.to_string()]
             }
             CcrOperation::LoanFunding { funder_id, .. } => {
@@ -1417,7 +1447,10 @@ impl IndexedMerkleTreeADS {
     }
 
     /// Serialize operation context for additional metadata
-    fn serialize_operation_context(&self, operation: &CcrOperation) -> Result<serde_json::Value, AdsError> {
+    fn serialize_operation_context(
+        &self,
+        operation: &CcrOperation,
+    ) -> Result<serde_json::Value, AdsError> {
         match serde_json::to_value(operation) {
             Ok(value) => Ok(value),
             Err(e) => {
@@ -1458,7 +1491,7 @@ impl IndexedMerkleTreeADS {
         // Store audit event in database
         sqlx::query!(
             r#"
-            INSERT INTO audit_events (event_id, event_type, timestamp, root_before, root_after, 
+            INSERT INTO audit_events (event_id, event_type, timestamp, root_before, root_after,
                                     block_height, operator, metadata, nullifier_value)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             "#,
@@ -1482,12 +1515,15 @@ impl IndexedMerkleTreeADS {
 
     /// Get enhanced audit trail for CCR operations
     #[instrument(skip(self), level = "debug")]
-    pub async fn get_ccr_audit_trail(&self, operation_id: &str) -> Result<Vec<AuditEvent>, AdsError> {
+    pub async fn get_ccr_audit_trail(
+        &self,
+        operation_id: &str,
+    ) -> Result<Vec<AuditEvent>, AdsError> {
         let events = sqlx::query!(
             r#"
             SELECT event_id, event_type, timestamp, root_before, root_after,
                    transaction_hash, block_height, operator, metadata, nullifier_value
-            FROM audit_events 
+            FROM audit_events
             WHERE metadata->>'operation_id' = $1
             ORDER BY timestamp DESC
             "#,
@@ -1499,10 +1535,8 @@ impl IndexedMerkleTreeADS {
 
         let mut audit_events = Vec::new();
         for row in events {
-            if let (Ok(event_type), Some(nullifier_value)) = (
-                serde_json::from_str::<AuditEventType>(&row.event_type.unwrap_or_default()),
-                row.nullifier_value
-            ) {
+            if let Ok(event_type) = serde_json::from_str::<AuditEventType>(&row.event_type) {
+                let _nullifier_value = row.nullifier_value;
                 audit_events.push(AuditEvent {
                     event_id: row.event_id,
                     event_type,
@@ -1510,9 +1544,9 @@ impl IndexedMerkleTreeADS {
                     root_before: row.root_before.as_slice().try_into().unwrap_or_default(),
                     root_after: row.root_after.as_slice().try_into().unwrap_or_default(),
                     transaction_hash: row.transaction_hash,
-                    block_height: row.block_height as u64,
-                    operator: row.operator,
-                    metadata: row.metadata,
+                    block_height: row.block_height.unwrap_or(0) as u64,
+                    operator: row.operator.unwrap_or_default(),
+                    metadata: row.metadata.unwrap_or_default(),
                 });
             }
         }
@@ -1530,7 +1564,10 @@ impl IndexedMerkleTreeADS {
         &mut self,
         loan_operations: &[LoanOperation],
     ) -> Result<Vec<StateTransition>, AdsError> {
-        info!("🏦 Processing loan batch with {} operations", loan_operations.len());
+        info!(
+            "🏦 Processing loan batch with {} operations",
+            loan_operations.len()
+        );
 
         if loan_operations.len() > self.config.batch_size_limit {
             return Err(AdsError::InvalidRange(format!(
@@ -1547,24 +1584,32 @@ impl IndexedMerkleTreeADS {
             let nullifier = loan_op.to_nullifier();
 
             // Process single loan operation
-            let mut transition = self.insert_with_metadata(nullifier, loan_op.to_loan_metadata()).await?;
-            
+            let transition = self
+                .insert_with_metadata(nullifier, loan_op.to_loan_metadata())
+                .await?;
+
             // Add loan-specific audit trail
             self.add_loan_audit_event(&transition, loan_op).await?;
 
             state_transitions.push(transition);
-            
+
             // Update performance metrics
-            self.metrics.total_loan_operations += 1;
-            match loan_op.operation_type.as_str() {
-                "loan_origination" => self.metrics.loan_originations += 1,
-                "loan_payment" => self.metrics.loan_payments += 1,
-                "loan_closeout" => self.metrics.loan_closeouts += 1,
-                _ => {}
+            {
+                let mut metrics = self.metrics.write().await;
+                metrics.total_loan_operations += 1;
+                match loan_op.operation_type.as_str() {
+                    "loan_origination" => metrics.loan_originations += 1,
+                    "loan_payment" => metrics.loan_payments += 1,
+                    "loan_closeout" => metrics.loan_closeouts += 1,
+                    _ => {}
+                }
             }
         }
 
-        info!("✅ Processed {} loan operations successfully", state_transitions.len());
+        info!(
+            "✅ Processed {} loan operations successfully",
+            state_transitions.len()
+        );
         Ok(state_transitions)
     }
 
@@ -1575,7 +1620,11 @@ impl IndexedMerkleTreeADS {
         loan_operations: &[LoanOperation],
         use_prefixes: bool,
     ) -> Result<Vec<StateTransition>, AdsError> {
-        info!("🏦 Processing {} loan operations (prefixes: {})", loan_operations.len(), use_prefixes);
+        info!(
+            "🏦 Processing {} loan operations (prefixes: {})",
+            loan_operations.len(),
+            use_prefixes
+        );
 
         let mut state_transitions = Vec::new();
 
@@ -1586,7 +1635,9 @@ impl IndexedMerkleTreeADS {
                 loan_op.to_nullifier()
             };
 
-            let mut transition = self.insert_with_metadata(nullifier, loan_op.to_loan_metadata()).await?;
+            let transition = self
+                .insert_with_metadata(nullifier, loan_op.to_loan_metadata())
+                .await?;
             self.add_loan_audit_event(&transition, loan_op).await?;
             state_transitions.push(transition);
         }
@@ -1602,10 +1653,10 @@ impl IndexedMerkleTreeADS {
     ) -> Result<StateTransition, AdsError> {
         // Use existing insert method for core functionality
         let mut transition = self.insert(nullifier).await?;
-        
+
         // Enhance with loan metadata
         transition.loan_metadata = Some(loan_metadata);
-        
+
         Ok(transition)
     }
 
@@ -1639,7 +1690,7 @@ impl IndexedMerkleTreeADS {
         // Store audit event
         sqlx::query!(
             r#"
-            INSERT INTO audit_events (event_id, event_type, timestamp, root_before, root_after, 
+            INSERT INTO audit_events (event_id, event_type, timestamp, root_before, root_after,
                                     block_height, operator, metadata, nullifier_value)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             "#,
@@ -1663,12 +1714,15 @@ impl IndexedMerkleTreeADS {
 
     /// Get loan-specific audit trail
     #[instrument(skip(self), level = "debug")]
-    pub async fn get_loan_audit_trail(&self, loan_id: uuid::Uuid) -> Result<Vec<AuditEvent>, AdsError> {
+    pub async fn get_loan_audit_trail(
+        &self,
+        loan_id: uuid::Uuid,
+    ) -> Result<Vec<AuditEvent>, AdsError> {
         let events = sqlx::query!(
             r#"
             SELECT event_id, event_type, timestamp, root_before, root_after,
                    transaction_hash, block_height, operator, metadata, nullifier_value
-            FROM audit_events 
+            FROM audit_events
             WHERE metadata->>'loan_id' = $1
             ORDER BY timestamp DESC
             "#,
@@ -1680,10 +1734,8 @@ impl IndexedMerkleTreeADS {
 
         let mut audit_events = Vec::new();
         for row in events {
-            if let (Ok(event_type), Some(nullifier_value)) = (
-                serde_json::from_str::<AuditEventType>(&row.event_type.unwrap_or_default()),
-                row.nullifier_value
-            ) {
+            if let Ok(event_type) = serde_json::from_str::<AuditEventType>(&row.event_type) {
+                let _nullifier_value = row.nullifier_value;
                 audit_events.push(AuditEvent {
                     event_id: row.event_id,
                     event_type,
@@ -1691,9 +1743,9 @@ impl IndexedMerkleTreeADS {
                     root_before: row.root_before.as_slice().try_into().unwrap_or_default(),
                     root_after: row.root_after.as_slice().try_into().unwrap_or_default(),
                     transaction_hash: row.transaction_hash,
-                    block_height: row.block_height as u64,
-                    operator: row.operator,
-                    metadata: row.metadata,
+                    block_height: row.block_height.unwrap_or(0) as u64,
+                    operator: row.operator.unwrap_or_default(),
+                    metadata: row.metadata.unwrap_or_default(),
                 });
             }
         }
@@ -1703,9 +1755,12 @@ impl IndexedMerkleTreeADS {
 
     /// Get loan lifecycle summary
     #[instrument(skip(self), level = "debug")]
-    pub async fn get_loan_lifecycle_summary(&self, loan_id: uuid::Uuid) -> Result<LoanLifecycleSummary, AdsError> {
+    pub async fn get_loan_lifecycle_summary(
+        &self,
+        loan_id: uuid::Uuid,
+    ) -> Result<LoanLifecycleSummary, AdsError> {
         let events = self.get_loan_audit_trail(loan_id).await?;
-        
+
         let mut summary = LoanLifecycleSummary {
             loan_id,
             total_operations: events.len(),
@@ -1717,20 +1772,24 @@ impl IndexedMerkleTreeADS {
         };
 
         for event in &events {
-            if let Ok(metadata) = serde_json::from_value::<serde_json::Value>(event.metadata.clone()) {
+            if let Ok(metadata) =
+                serde_json::from_value::<serde_json::Value>(event.metadata.clone())
+            {
                 match metadata.get("operation_type").and_then(|v| v.as_str()) {
                     Some("loan_origination") => {
                         summary.origination_date = Some(event.timestamp);
-                    },
+                    }
                     Some("loan_payment") => {
                         summary.total_payments += 1;
-                        if summary.last_payment_date.is_none() || Some(event.timestamp) > summary.last_payment_date {
+                        if summary.last_payment_date.is_none()
+                            || Some(event.timestamp) > summary.last_payment_date
+                        {
                             summary.last_payment_date = Some(event.timestamp);
                         }
-                    },
+                    }
                     _ => {}
                 }
-                
+
                 // Update current status from most recent event
                 if let Some(status) = metadata.get("loan_status").and_then(|v| v.as_str()) {
                     summary.current_status = status.to_string();
@@ -1751,20 +1810,27 @@ impl IndexedMerkleTreeADS {
         &self,
         loan_operation_request: &LoanInclusionRequest,
     ) -> Result<LoanInclusionProof, AdsError> {
-        info!("🔍 Generating loan operation inclusion proof for user {}", loan_operation_request.user_id);
+        info!(
+            "🔍 Generating loan operation inclusion proof for user {}",
+            loan_operation_request.user_id
+        );
 
         // Step 1: Verify the loan operation exists and user has access
         let loan_operation = self.verify_user_loan_access(loan_operation_request).await?;
-        
+
         // Step 2: Find the nullifier for this operation
-        let nullifier = self.calculate_loan_operation_nullifier(&loan_operation).await?;
-        
+        let nullifier = self
+            .calculate_loan_operation_nullifier(&loan_operation)
+            .await?;
+
         // Step 3: Generate core membership proof
         let membership_proof = self.prove_membership(nullifier).await?;
-        
+
         // Step 4: Get batch information
-        let batch_info = self.get_batch_inclusion_info(nullifier, loan_operation_request.batch_id).await?;
-        
+        let batch_info = self
+            .get_batch_inclusion_info(nullifier, loan_operation_request.batch_id)
+            .await?;
+
         // Step 5: Create loan operation proof details
         let loan_operation_proof = LoanOperationProof {
             operation_type: loan_operation.operation_type.clone(),
@@ -1786,7 +1852,10 @@ impl IndexedMerkleTreeADS {
             verified_at: Utc::now(),
         };
 
-        info!("✅ Generated loan operation inclusion proof for {} operation", loan_operation.operation_type);
+        info!(
+            "✅ Generated loan operation inclusion proof for {} operation",
+            loan_operation.operation_type
+        );
         Ok(loan_inclusion_proof)
     }
 
@@ -1794,23 +1863,36 @@ impl IndexedMerkleTreeADS {
     #[instrument(skip(self), level = "debug")]
     pub async fn prove_membership(&self, nullifier: i64) -> Result<MembershipProof, AdsError> {
         let proof_start = Instant::now();
-        
+
         // Get merkle proof from the underlying tree
-        let merkle_proof = self.tree.prove_membership(nullifier).await
-            .map_err(|e| AdsError::ProofGeneration(format!("Failed to generate merkle proof: {}", e)))?;
-        
+        let merkle_proof = {
+            let tree = self.tree.read().await;
+            tree.prove_membership(nullifier).await.map_err(|e| {
+                AdsError::ProofGeneration(format!("Failed to generate merkle proof: {}", e))
+            })?
+        };
+
         // Get current root
-        let current_root = self.tree.get_root().await
-            .map_err(|e| AdsError::StateError(format!("Failed to get current root: {}", e)))?;
-        
+        let current_root = {
+            let tree = self.tree.read().await;
+            tree.get_root()
+                .await
+                .map_err(|e| AdsError::StateError(format!("Failed to get current root: {}", e)))?
+                .to_vec()
+        };
+
         // Get tree index for the nullifier
-        let tree_index = self.tree.get_nullifier_index(nullifier).await
-            .map_err(|e| AdsError::StateError(format!("Failed to get nullifier index: {}", e)))?;
+        let tree_index = {
+            let tree = self.tree.read().await;
+            tree.get_nullifier_index(nullifier).await.map_err(|e| {
+                AdsError::StateError(format!("Failed to get nullifier index: {}", e))
+            })?
+        };
 
         let membership_proof = MembershipProof {
             nullifier_value: nullifier,
             merkle_proof,
-            root_hash: current_root,
+            root_hash: current_root.try_into().unwrap_or([0u8; 32]),
             tree_index,
             verified_at: Utc::now(),
         };
@@ -1818,7 +1900,10 @@ impl IndexedMerkleTreeADS {
         let duration_ms = proof_start.elapsed().as_millis() as f64;
         self.update_metrics("proof", duration_ms).await?;
 
-        info!("✅ Membership proof generated for {} in {:.2}ms", nullifier, duration_ms);
+        info!(
+            "✅ Membership proof generated for {} in {:.2}ms",
+            nullifier, duration_ms
+        );
         Ok(membership_proof)
     }
 
@@ -1831,8 +1916,10 @@ impl IndexedMerkleTreeADS {
         payment_id: uuid::Uuid,
         batch_id: i32,
     ) -> Result<LoanInclusionProof, AdsError> {
-        info!("💰 Proving loan payment inclusion: loan={}, payment={}, batch={}", 
-              loan_id, payment_id, batch_id);
+        info!(
+            "💰 Proving loan payment inclusion: loan={}, payment={}, batch={}",
+            loan_id, payment_id, batch_id
+        );
 
         let request = LoanInclusionRequest {
             user_id,
@@ -1852,48 +1939,40 @@ impl IndexedMerkleTreeADS {
         request: &LoanInclusionRequest,
     ) -> Result<LoanOperation, AdsError> {
         // Query database for the loan operation
-        let loan_operation_data = if let Some(payment_id) = request.payment_id {
-            // Payment operation
-            sqlx::query!(
-                r#"
-                SELECT lt.loan_id, lt.payment_id, lt.transaction_type, lt.amount, lt.identity_id,
-                       l.borrower_id, l.lender_id, l.loan_status, lt.created_at
-                FROM loan_transactions lt
-                JOIN loans l ON lt.loan_id = l.id
-                WHERE lt.payment_id = $1 AND (l.borrower_id = $2 OR l.lender_id = $2)
-                "#,
-                payment_id,
-                request.user_id
+        if request.payment_id.is_none() && request.loan_id.is_none() {
+            return Err(AdsError::InvalidRequest(
+                "Either loan_id or payment_id must be provided".to_string(),
+            ));
+        }
+
+        let loan_operation_data = sqlx::query!(
+            r#"
+            SELECT lt.loan_id, lt.payment_id, lt.transaction_type, lt.amount, lt.identity_id,
+                   l.borrower_id, l.lender_id, l.loan_status, lt.created_at
+            FROM loan_transactions lt
+            JOIN loans l ON lt.loan_id = l.id
+            WHERE (
+                ($1::UUID IS NOT NULL AND lt.payment_id = $1) OR
+                ($2::UUID IS NOT NULL AND lt.loan_id = $2)
             )
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| AdsError::Database(DbError::Database(e)))?
-        } else if let Some(loan_id) = request.loan_id {
-            // Loan origination or closeout
-            sqlx::query!(
-                r#"
-                SELECT lt.loan_id, lt.payment_id, lt.transaction_type, lt.amount, lt.identity_id,
-                       l.borrower_id, l.lender_id, l.loan_status, lt.created_at
-                FROM loan_transactions lt
-                JOIN loans l ON lt.loan_id = l.id
-                WHERE lt.loan_id = $1 AND (l.borrower_id = $2 OR l.lender_id = $2)
-                  AND lt.transaction_type = $3
-                ORDER BY lt.created_at DESC
-                LIMIT 1
-                "#,
-                loan_id,
-                request.user_id,
-                request.operation_type
-            )
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| AdsError::Database(DbError::Database(e)))?
-        } else {
-            return Err(AdsError::InvalidRequest("Either loan_id or payment_id must be provided".to_string()));
-        };
+            AND (l.borrower_id = $3 OR l.lender_id = $3)
+            AND lt.transaction_type = $4
+            ORDER BY lt.created_at DESC
+            LIMIT 1
+            "#,
+            request.payment_id,
+            request.loan_id,
+            request.user_id,
+            request.operation_type
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AdsError::Database(DbError::Database(e)))?;
 
         let row = loan_operation_data.ok_or_else(|| {
-            AdsError::InvalidRequest("Loan operation not found or user doesn't have access".to_string())
+            AdsError::InvalidRequest(
+                "Loan operation not found or user doesn't have access".to_string(),
+            )
         })?;
 
         // Convert database row to LoanOperation
@@ -1901,8 +1980,8 @@ impl IndexedMerkleTreeADS {
             operation_type: row.transaction_type,
             loan_id: row.loan_id,
             payment_id: row.payment_id,
-            borrower_id: row.borrower_id,
-            lender_id: row.lender_id,
+            borrower_id: Some(row.borrower_id),
+            lender_id: Some(row.lender_id),
             amount: Some(row.amount),
             loan_status: Some(row.loan_status),
             transaction_data: serde_json::json!({
@@ -1916,13 +1995,18 @@ impl IndexedMerkleTreeADS {
     }
 
     /// Calculate the nullifier for a loan operation (matches batch processing logic)
-    async fn calculate_loan_operation_nullifier(&self, loan_operation: &LoanOperation) -> Result<i64, AdsError> {
+    async fn calculate_loan_operation_nullifier(
+        &self,
+        loan_operation: &LoanOperation,
+    ) -> Result<i64, AdsError> {
         // Use the same nullifier generation logic as in batch processing
         let nullifier = loan_operation.to_nullifier_with_prefix();
-        
-        debug!("Calculated nullifier {} for {} operation", 
-               nullifier, loan_operation.operation_type);
-        
+
+        debug!(
+            "Calculated nullifier {} for {} operation",
+            nullifier, loan_operation.operation_type
+        );
+
         Ok(nullifier)
     }
 
@@ -1933,39 +2017,23 @@ impl IndexedMerkleTreeADS {
         requested_batch_id: Option<i32>,
     ) -> Result<BatchInclusionInfo, AdsError> {
         // Find which batch contains this nullifier
-        let batch_info = if let Some(batch_id) = requested_batch_id {
-            // Verify the nullifier is in the specified batch
-            sqlx::query!(
-                r#"
-                SELECT pb.id, pb.created_at, asc.merkle_root
-                FROM proof_batches pb
-                JOIN ads_state_commits asc ON pb.id = asc.batch_id
-                JOIN audit_events ae ON ae.nullifier_value = $1
-                WHERE pb.id = $2
-                "#,
-                nullifier,
-                batch_id
-            )
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| AdsError::Database(DbError::Database(e)))?
-        } else {
-            // Find which batch contains this nullifier
-            sqlx::query!(
-                r#"
-                SELECT pb.id, pb.created_at, asc.merkle_root
-                FROM proof_batches pb
-                JOIN ads_state_commits asc ON pb.id = asc.batch_id
-                JOIN audit_events ae ON ae.nullifier_value = $1
-                ORDER BY pb.created_at DESC
-                LIMIT 1
-                "#,
-                nullifier
-            )
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| AdsError::Database(DbError::Database(e)))?
-        };
+        let batch_id_filter = requested_batch_id.unwrap_or(-1); // Use -1 as "any batch" indicator
+        let batch_info = sqlx::query!(
+            r#"
+            SELECT pb.id, pb.created_at as "created_at!", ads.merkle_root
+            FROM proof_batches pb
+            JOIN ads_state_commits ads ON pb.id = ads.batch_id
+            JOIN audit_events ae ON ae.nullifier_value = $1
+            WHERE ($2 = -1 OR pb.id = $2)
+            ORDER BY pb.created_at DESC
+            LIMIT 1
+            "#,
+            nullifier,
+            batch_id_filter
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AdsError::Database(DbError::Database(e)))?;
 
         let batch_row = batch_info.ok_or_else(|| {
             AdsError::InvalidRequest("Nullifier not found in any batch".to_string())
@@ -1976,7 +2044,7 @@ impl IndexedMerkleTreeADS {
             r#"
             SELECT COUNT(*)::INT
             FROM audit_events ae
-            JOIN proof_batches pb ON pb.created_at <= ae.timestamp 
+            JOIN proof_batches pb ON pb.created_at <= ae.timestamp
             WHERE pb.id = $1
             "#,
             batch_row.id
@@ -1988,7 +2056,10 @@ impl IndexedMerkleTreeADS {
 
         let batch_info = BatchInclusionInfo {
             batch_id: batch_row.id,
-            batch_root: batch_row.merkle_root.as_slice().try_into()
+            batch_root: batch_row
+                .merkle_root
+                .as_slice()
+                .try_into()
                 .map_err(|_| AdsError::StateError("Invalid merkle root format".to_string()))?,
             batch_timestamp: batch_row.created_at,
             operation_index: 0, // Would need more sophisticated tracking
@@ -2001,7 +2072,7 @@ impl IndexedMerkleTreeADS {
     /// Hash loan operation for proof generation
     fn hash_loan_operation(&self, loan_operation: &LoanOperation) -> [u8; 32] {
         let mut hasher = blake3::Hasher::new();
-        
+
         hasher.update(loan_operation.operation_type.as_bytes());
         if let Some(loan_id) = loan_operation.loan_id {
             hasher.update(loan_id.as_bytes());
@@ -2012,7 +2083,7 @@ impl IndexedMerkleTreeADS {
         if let Some(amount) = loan_operation.amount {
             hasher.update(&amount.to_string().as_bytes());
         }
-        
+
         let hash = hasher.finalize();
         *hash.as_bytes()
     }
@@ -2023,23 +2094,31 @@ impl IndexedMerkleTreeADS {
         &self,
         proof: &LoanInclusionProof,
     ) -> Result<bool, AdsError> {
-        info!("🔍 Verifying loan inclusion proof for {} operation", 
-              proof.loan_operation.operation_type);
+        info!(
+            "🔍 Verifying loan inclusion proof for {} operation",
+            proof.loan_operation.operation_type
+        );
 
         // Step 1: Verify the membership proof
-        let membership_valid = self.verify_membership_proof(&proof.membership_proof).await?;
+        let membership_valid = self
+            .verify_membership_proof(&proof.membership_proof)
+            .await?;
         if !membership_valid {
             return Ok(false);
         }
 
         // Step 2: Verify nullifier matches operation
-        let expected_nullifier = self.calculate_operation_nullifier_from_proof(&proof.loan_operation).await?;
+        let expected_nullifier = self
+            .calculate_operation_nullifier_from_proof(&proof.loan_operation)
+            .await?;
         if proof.membership_proof.nullifier_value != expected_nullifier {
             return Ok(false);
         }
 
         // Step 3: Verify batch information
-        let batch_valid = self.verify_batch_inclusion_info(&proof.batch_info, proof.membership_proof.nullifier_value).await?;
+        let batch_valid = self
+            .verify_batch_inclusion_info(&proof.batch_info, proof.membership_proof.nullifier_value)
+            .await?;
         if !batch_valid {
             return Ok(false);
         }
@@ -2051,24 +2130,45 @@ impl IndexedMerkleTreeADS {
     /// Verify membership proof against current tree state
     async fn verify_membership_proof(&self, proof: &MembershipProof) -> Result<bool, AdsError> {
         // Get current root to verify against
-        let current_root = self.tree.get_root().await
-            .map_err(|e| AdsError::StateError(format!("Failed to get current root: {}", e)))?;
+        let current_root = {
+            let tree = self.tree.read().await;
+            tree.get_root()
+                .await
+                .map_err(|e| AdsError::StateError(format!("Failed to get current root: {}", e)))?
+                .to_vec()
+        };
 
         // The proof root should match current root or a historical valid root
-        if proof.root_hash != current_root {
+        if proof.root_hash != current_root.as_slice() {
             // Could check against historical roots if needed
-            warn!("Proof root mismatch: expected {:?}, got {:?}", current_root, proof.root_hash);
+            warn!(
+                "Proof root mismatch: expected {:?}, got {:?}",
+                current_root, proof.root_hash
+            );
         }
 
         // Verify the merkle proof
-        let valid = self.tree.verify_membership_proof(proof.nullifier_value, &proof.merkle_proof, &proof.root_hash).await
-            .map_err(|e| AdsError::ProofVerification(format!("Failed to verify merkle proof: {}", e)))?;
+        let valid = {
+            let tree = self.tree.read().await;
+            tree.verify_membership_proof(
+                proof.nullifier_value,
+                &proof.merkle_proof,
+                &proof.root_hash,
+            )
+            .await
+            .map_err(|e| {
+                AdsError::ProofVerification(format!("Failed to verify merkle proof: {}", e))
+            })?
+        };
 
         Ok(valid)
     }
 
     /// Calculate nullifier from proof operation data
-    async fn calculate_operation_nullifier_from_proof(&self, operation_proof: &LoanOperationProof) -> Result<i64, AdsError> {
+    async fn calculate_operation_nullifier_from_proof(
+        &self,
+        operation_proof: &LoanOperationProof,
+    ) -> Result<i64, AdsError> {
         // Recreate LoanOperation from proof data
         let loan_operation = LoanOperation {
             operation_type: operation_proof.operation_type.clone(),
@@ -2087,7 +2187,11 @@ impl IndexedMerkleTreeADS {
     }
 
     /// Verify batch inclusion information
-    async fn verify_batch_inclusion_info(&self, batch_info: &BatchInclusionInfo, nullifier: i64) -> Result<bool, AdsError> {
+    async fn verify_batch_inclusion_info(
+        &self,
+        batch_info: &BatchInclusionInfo,
+        nullifier: i64,
+    ) -> Result<bool, AdsError> {
         // Verify the batch exists and contains the nullifier
         let batch_exists = sqlx::query_scalar!(
             r#"
@@ -2118,24 +2222,36 @@ impl IndexedMerkleTreeADS {
         nullifier: i64,
         operation_type: &str,
     ) -> Result<bool, AdsError> {
-        debug!("🔢 Verifying nullifier prefix for {} operation: {}", operation_type, nullifier);
+        debug!(
+            "🔢 Verifying nullifier prefix for {} operation: {}",
+            operation_type, nullifier
+        );
 
         // Define prefix ranges for different operation types
         let valid_range = match operation_type {
             "loan_origination" => (1_000_000_000i64, 1_999_999_999i64),
             "loan_closeout" => (2_000_000_000i64, 2_999_999_999i64),
             "loan_payment" => (3_000_000_000i64, 3_999_999_999i64),
-            _ => return Err(AdsError::InvalidRequest(format!("Unknown operation type: {}", operation_type))),
+            _ => {
+                return Err(AdsError::InvalidRequest(format!(
+                    "Unknown operation type: {}",
+                    operation_type
+                )))
+            }
         };
 
         let is_valid = nullifier >= valid_range.0 && nullifier <= valid_range.1;
-        
+
         if is_valid {
-            debug!("✅ Nullifier {} is valid for {} (range: {}-{})", 
-                   nullifier, operation_type, valid_range.0, valid_range.1);
+            debug!(
+                "✅ Nullifier {} is valid for {} (range: {}-{})",
+                nullifier, operation_type, valid_range.0, valid_range.1
+            );
         } else {
-            warn!("❌ Nullifier {} is invalid for {} (expected range: {}-{})", 
-                  nullifier, operation_type, valid_range.0, valid_range.1);
+            warn!(
+                "❌ Nullifier {} is invalid for {} (expected range: {}-{})",
+                nullifier, operation_type, valid_range.0, valid_range.1
+            );
         }
 
         Ok(is_valid)
@@ -2147,8 +2263,10 @@ impl IndexedMerkleTreeADS {
         &self,
         proof: &LoanInclusionProof,
     ) -> Result<bool, AdsError> {
-        info!("🔍 Verifying loan inclusion proof with prefix validation for {} operation", 
-              proof.loan_operation.operation_type);
+        info!(
+            "🔍 Verifying loan inclusion proof with prefix validation for {} operation",
+            proof.loan_operation.operation_type
+        );
 
         // Step 1: Standard verification
         let basic_valid = self.verify_loan_inclusion_proof(proof).await?;
@@ -2157,10 +2275,12 @@ impl IndexedMerkleTreeADS {
         }
 
         // Step 2: Verify nullifier prefix is correct for operation type
-        let prefix_valid = self.verify_nullifier_prefix(
-            proof.membership_proof.nullifier_value,
-            &proof.loan_operation.operation_type,
-        ).await?;
+        let prefix_valid = self
+            .verify_nullifier_prefix(
+                proof.membership_proof.nullifier_value,
+                &proof.loan_operation.operation_type,
+            )
+            .await?;
 
         if !prefix_valid {
             warn!("❌ Nullifier prefix validation failed");
@@ -2168,10 +2288,14 @@ impl IndexedMerkleTreeADS {
         }
 
         // Step 3: Verify nullifier determinism - recalculate and compare
-        let recalculated_nullifier = self.calculate_operation_nullifier_from_proof(&proof.loan_operation).await?;
+        let recalculated_nullifier = self
+            .calculate_operation_nullifier_from_proof(&proof.loan_operation)
+            .await?;
         if recalculated_nullifier != proof.membership_proof.nullifier_value {
-            warn!("❌ Nullifier determinism check failed: expected {}, got {}", 
-                  recalculated_nullifier, proof.membership_proof.nullifier_value);
+            warn!(
+                "❌ Nullifier determinism check failed: expected {}, got {}",
+                recalculated_nullifier, proof.membership_proof.nullifier_value
+            );
             return Ok(false);
         }
 
@@ -2187,7 +2311,7 @@ impl IndexedMerkleTreeADS {
             transaction_data: serde_json::Value::Null,
             nullifier_prefix: None,
         };
-        
+
         let expected_hash = self.hash_loan_operation(&operation_for_hash);
         if expected_hash != proof.loan_operation.operation_hash {
             warn!("❌ Operation hash verification failed");
@@ -2208,19 +2332,24 @@ impl IndexedMerkleTreeADS {
 
         // Run all verification checks
         let basic_verification = self.verify_loan_inclusion_proof(proof).await?;
-        let prefix_verification = self.verify_nullifier_prefix(
-            proof.membership_proof.nullifier_value,
-            &proof.loan_operation.operation_type,
-        ).await?;
-        
-        let membership_verification = self.verify_membership_proof(&proof.membership_proof).await?;
-        let batch_verification = self.verify_batch_inclusion_info(
-            &proof.batch_info,
-            proof.membership_proof.nullifier_value,
-        ).await?;
+        let prefix_verification = self
+            .verify_nullifier_prefix(
+                proof.membership_proof.nullifier_value,
+                &proof.loan_operation.operation_type,
+            )
+            .await?;
+
+        let membership_verification = self
+            .verify_membership_proof(&proof.membership_proof)
+            .await?;
+        let batch_verification = self
+            .verify_batch_inclusion_info(&proof.batch_info, proof.membership_proof.nullifier_value)
+            .await?;
 
         let nullifier_determinism = {
-            let recalculated = self.calculate_operation_nullifier_from_proof(&proof.loan_operation).await?;
+            let recalculated = self
+                .calculate_operation_nullifier_from_proof(&proof.loan_operation)
+                .await?;
             recalculated == proof.membership_proof.nullifier_value
         };
 
@@ -2260,7 +2389,10 @@ impl IndexedMerkleTreeADS {
             },
         });
 
-        info!("📊 Generated proof verification report in {}ms", duration_ms);
+        info!(
+            "📊 Generated proof verification report in {}ms",
+            duration_ms
+        );
         Ok(report)
     }
 
@@ -2271,22 +2403,28 @@ impl IndexedMerkleTreeADS {
         proofs: &[LoanInclusionProof],
     ) -> Result<Vec<bool>, AdsError> {
         info!("🔍 Batch verifying {} loan inclusion proofs", proofs.len());
-        
+
         let mut results = Vec::with_capacity(proofs.len());
         let verification_start = Instant::now();
-        
+
         for (index, proof) in proofs.iter().enumerate() {
             debug!("Verifying proof {} of {}", index + 1, proofs.len());
-            let valid = self.verify_loan_inclusion_proof_with_prefix_validation(proof).await?;
+            let valid = self
+                .verify_loan_inclusion_proof_with_prefix_validation(proof)
+                .await?;
             results.push(valid);
         }
-        
+
         let duration_ms = verification_start.elapsed().as_millis();
         let valid_count = results.iter().filter(|&&v| v).count();
-        
-        info!("✅ Batch verification complete: {}/{} proofs valid in {}ms", 
-              valid_count, proofs.len(), duration_ms);
-        
+
+        info!(
+            "✅ Batch verification complete: {}/{} proofs valid in {}ms",
+            valid_count,
+            proofs.len(),
+            duration_ms
+        );
+
         Ok(results)
     }
 }

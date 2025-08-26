@@ -15,21 +15,43 @@ ADD COLUMN IF NOT EXISTS operation_amount DECIMAL(18, 6),
 ADD COLUMN IF NOT EXISTS operation_metadata JSONB DEFAULT '{}',
 ADD COLUMN IF NOT EXISTS batch_id INTEGER;
 
--- Add foreign key constraints for data integrity
-ALTER TABLE nullifiers 
-ADD CONSTRAINT IF NOT EXISTS fk_nullifiers_loan_id 
-    FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE SET NULL,
-ADD CONSTRAINT IF NOT EXISTS fk_nullifiers_user_id 
-    FOREIGN KEY (user_id) REFERENCES identities(id) ON DELETE SET NULL,
-ADD CONSTRAINT IF NOT EXISTS fk_nullifiers_batch_id 
-    FOREIGN KEY (batch_id) REFERENCES proof_batches(id) ON DELETE SET NULL;
+-- Add foreign key constraints for data integrity (skip if already exist)
+DO $$ 
+BEGIN
+    BEGIN
+        ALTER TABLE nullifiers ADD CONSTRAINT fk_nullifiers_loan_id 
+            FOREIGN KEY (loan_id) REFERENCES loans(id) ON DELETE SET NULL;
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END;
+    
+    BEGIN
+        ALTER TABLE nullifiers ADD CONSTRAINT fk_nullifiers_user_id 
+            FOREIGN KEY (user_id) REFERENCES identities(id) ON DELETE SET NULL;
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END;
+    
+    BEGIN
+        ALTER TABLE nullifiers ADD CONSTRAINT fk_nullifiers_batch_id 
+            FOREIGN KEY (batch_id) REFERENCES proof_batches(id) ON DELETE SET NULL;
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END;
+END $$;
 
--- Add check constraints for loan operation types
-ALTER TABLE nullifiers 
-ADD CONSTRAINT IF NOT EXISTS chk_loan_operation_type 
-    CHECK (loan_operation_type IS NULL OR 
-           loan_operation_type IN ('loan_origination', 'loan_payment', 'loan_closeout', 
-                                 'user_registration', 'kyc_submission', 'kyc_verification'));
+-- Add check constraints for loan operation types (skip if already exists)
+DO $$ 
+BEGIN
+    BEGIN
+        ALTER TABLE nullifiers ADD CONSTRAINT chk_loan_operation_type 
+            CHECK (loan_operation_type IS NULL OR 
+                   loan_operation_type IN ('loan_origination', 'loan_payment', 'loan_closeout', 
+                                         'user_registration', 'kyc_submission', 'kyc_verification'));
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END;
+END $$;
 
 -- ============================================================================
 -- EXTEND TREE STATE TABLE WITH LOAN OPERATION STATISTICS
@@ -106,14 +128,35 @@ CREATE INDEX IF NOT EXISTS idx_audit_batch_id
     ON audit_events(batch_id) WHERE batch_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_audit_loan_timeline 
-    ON audit_events(timestamp, loan_operation_type) WHERE loan_operation_type IS NOT NULL;
+    ON audit_events("timestamp", loan_operation_type) WHERE loan_operation_type IS NOT NULL;
 
 -- ============================================================================
 -- DATABASE VIEWS FOR LOAN LIFECYCLE VISIBILITY
 -- ============================================================================
 
+-- Drop existing views and functions to avoid conflicts
+DROP VIEW IF EXISTS loan_operation_history CASCADE;
+DROP VIEW IF EXISTS loan_lifecycle_summary CASCADE;
+DROP VIEW IF EXISTS user_loan_activity CASCADE;
+DROP VIEW IF EXISTS imt_loan_stats CASCADE;
+DROP VIEW IF EXISTS loan_audit_comprehensive CASCADE;
+DROP VIEW IF EXISTS loan_audit_stats CASCADE;
+DROP VIEW IF EXISTS recent_loan_audit_activity CASCADE;
+
+-- Drop functions that may have conflicting signatures
+DROP FUNCTION IF EXISTS get_loan_operation_history(uuid, integer) CASCADE;
+DROP FUNCTION IF EXISTS get_user_loan_operations(uuid, character varying, integer) CASCADE;
+DROP FUNCTION IF EXISTS get_loan_operations_by_amount_range(numeric, numeric, character varying) CASCADE;
+DROP FUNCTION IF EXISTS get_batch_loan_summary(integer) CASCADE;
+DROP FUNCTION IF EXISTS update_tree_loan_stats() CASCADE;
+DROP FUNCTION IF EXISTS create_loan_audit_event(character varying, bigint, character varying, bytea, bytea, uuid, uuid, numeric, integer, character varying, bigint, character varying, jsonb) CASCADE;
+DROP FUNCTION IF EXISTS get_loan_audit_trail(uuid, integer) CASCADE;
+DROP FUNCTION IF EXISTS create_loan_operation_audit_trigger() CASCADE;
+DROP FUNCTION IF EXISTS insert_loan_nullifier_atomic(bigint, character varying, uuid, uuid, numeric, jsonb, integer, bigint) CASCADE;
+DROP FUNCTION IF EXISTS refresh_loan_statistics() CASCADE;
+
 -- View: Comprehensive loan operation history
-CREATE OR REPLACE VIEW loan_operation_history AS
+CREATE VIEW loan_operation_history AS
 SELECT 
     n.id as nullifier_id,
     n.value as nullifier_value,
@@ -236,7 +279,7 @@ SELECT
     ae.loan_operation_type,
     ae.operation_amount,
     ae.nullifier_value,
-    ae.timestamp,
+    ae."timestamp",
     ae.batch_id,
     ae.transaction_hash,
     ae.root_before,
@@ -255,7 +298,7 @@ FROM audit_events ae
 LEFT JOIN loans l ON ae.loan_id = l.id
 LEFT JOIN identities i ON ae.user_id = i.id
 WHERE ae.loan_operation_type IS NOT NULL
-ORDER BY ae.timestamp ASC;
+ORDER BY ae."timestamp" ASC;
 
 -- ============================================================================
 -- ENHANCED QUERY FUNCTIONS FOR LOAN OPERATIONS
@@ -525,7 +568,7 @@ RETURNS TABLE(
     nullifier_value BIGINT,
     loan_operation_type VARCHAR,
     operation_amount DECIMAL(18, 6),
-    timestamp TIMESTAMP WITH TIME ZONE,
+    operation_timestamp TIMESTAMP WITH TIME ZONE,
     root_before BYTEA,
     root_after BYTEA,
     batch_id INTEGER,
@@ -540,7 +583,7 @@ BEGIN
         ae.nullifier_value,
         ae.loan_operation_type,
         ae.operation_amount,
-        ae.timestamp,
+        ae."timestamp",
         ae.root_before,
         ae.root_after,
         ae.batch_id,
@@ -550,7 +593,7 @@ BEGIN
     FROM audit_events ae
     WHERE ae.loan_id = p_loan_id
         AND ae.loan_operation_type IS NOT NULL
-    ORDER BY ae.timestamp ASC
+    ORDER BY ae."timestamp" ASC
     LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
@@ -714,8 +757,8 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION refresh_loan_statistics()
 RETURNS VOID AS $$
 BEGIN
-    -- Force update of loan statistics
-    PERFORM update_tree_loan_stats();
+    -- Force update of loan statistics (handled by triggers automatically)
+    -- Triggers will handle updating statistics on table changes
     
     -- Additional optimizations
     ANALYZE nullifiers;

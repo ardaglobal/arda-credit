@@ -226,21 +226,6 @@ impl BackgroundProcessor {
         final_nullifier
     }
 
-    /// Determine transaction type prefix from transaction data  
-    /// This method can be enhanced to detect transaction types from metadata
-    fn get_transaction_type_prefix(&self, _transaction: &IncomingTransaction) -> i64 {
-        // For now, we use legacy default for all IncomingTransactions
-        // In future enhancements, this could examine transaction metadata, 
-        // database relations, or other contextual information to determine type
-        
-        // Placeholder logic - could be enhanced with:
-        // 1. Transaction metadata analysis
-        // 2. Database lookup for related loan/user records  
-        // 3. Pattern matching on transaction amounts or timing
-        // 4. Background processor context information
-        
-        transaction_prefixes::LEGACY_DEFAULT
-    }
 
     /// Fetch new transactions since the last processed ID
     async fn fetch_new_transactions(&self) -> DbResult<Vec<IncomingTransaction>> {

@@ -5,23 +5,21 @@
 //!
 //! This replaces the dual workflow problem where some batches used ADS and others didn't.
 
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::collections::HashMap;
+use futures_util::future;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 
 use arda_credit_db::{
     get_pending_transactions, store_ads_state_commit, AuthenticatedDataStructure,
-    IncomingTransaction, IndexedMerkleTreeADS, LoanOperation, LoanMetadata, 
-    ProofBatch, StateTransition,
+    IncomingTransaction, IndexedMerkleTreeADS, LoanOperation, ProofBatch, StateTransition,
 };
-use std::time::{Instant, Duration};
-use tokio::time::timeout;
-use futures;
-use num_cpus;
 use chrono;
+use std::time::{Duration, Instant};
+use tokio::time::timeout;
 
 // ============================================================================
 // TRANSACTION TYPE PREFIXES FOR NULLIFIER NAMESPACE ISOLATION
@@ -33,22 +31,22 @@ use chrono;
 pub mod transaction_prefixes {
     /// Loan origination transactions: 1,000,000,000 - 1,999,999,999
     pub const LOAN_ORIGINATION: i64 = 1_000_000_000;
-    
-    /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999  
+
+    /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999
     pub const LOAN_CLOSEOUT: i64 = 2_000_000_000;
-    
+
     /// Loan payment transactions: 3,000,000,000 - 3,999,999,999
     pub const LOAN_PAYMENT: i64 = 3_000_000_000;
-    
+
     /// User registration transactions: 5,000,000,000 - 5,999,999,999
     pub const USER_REGISTRATION: i64 = 5_000_000_000;
-    
+
     /// KYC verification transactions: 6,000,000,000 - 6,999,999,999
     pub const KYC_VERIFICATION: i64 = 6_000_000_000;
-    
+
     /// Default/legacy transactions (for backward compatibility): 0 - 999,999,999
     pub const LEGACY_DEFAULT: i64 = 0;
-    
+
     /// Maximum value within a prefix range (999,999,999)
     pub const PREFIX_RANGE_SIZE: i64 = 999_999_999;
 }
@@ -65,7 +63,7 @@ pub struct LoanBatchMetrics {
     pub operations_per_second: f64,
     pub merkleization_tps: f64,
     pub total_throughput: f64,
-    
+
     // Timing breakdown (milliseconds)
     pub total_processing_time: f64,
     pub validation_time: f64,
@@ -73,26 +71,26 @@ pub struct LoanBatchMetrics {
     pub merkleization_time: f64,
     pub database_commit_time: f64,
     pub ads_processing_time: f64,
-    
+
     // Operation breakdown
     pub loan_originations: usize,
     pub loan_payments: usize,
     pub loan_closeouts: usize,
     pub mixed_operations: usize,
     pub total_operations: usize,
-    
+
     // Performance indicators
     pub batch_size: usize,
     pub nullifiers_generated: usize,
     pub state_transitions: usize,
     pub merkle_depth_utilized: u32,
     pub memory_usage_mb: f64,
-    
+
     // Quality metrics
     pub validation_success_rate: f64,
     pub lifecycle_integrity_score: f64,
     pub prefix_collision_rate: f64,
-    
+
     // Timestamps
     pub batch_started_at: chrono::DateTime<chrono::Utc>,
     pub batch_completed_at: chrono::DateTime<chrono::Utc>,
@@ -235,7 +233,10 @@ impl UnifiedBatchService {
     /// Update loan batch configuration for runtime optimization
     pub fn update_loan_config(&mut self, config: LoanBatchConfig) {
         self.loan_config = config;
-        info!("🔧 Updated loan batch configuration: target TPS = {}", self.loan_config.target_tps);
+        info!(
+            "🔧 Updated loan batch configuration: target TPS = {}",
+            self.loan_config.target_tps
+        );
     }
 
     /// Get performance history for analysis
@@ -248,7 +249,7 @@ impl UnifiedBatchService {
         self.performance_history.write().await.clear();
     }
 
-    /// Create a batch with full ADS integration 
+    /// Create a batch with full ADS integration
     ///
     /// This method provides unified processing for loan transactions with prefix-based nullifier generation
     #[instrument(skip(self), level = "info")]
@@ -257,8 +258,8 @@ impl UnifiedBatchService {
         requested_batch_size: Option<i32>,
         trigger_source: &str,
     ) -> Result<Option<BatchCreationResult>, String> {
-        let batch_start_time = Instant::now();
-        
+        let _batch_start_time = Instant::now();
+
         info!("🔄 UNIFIED: Creating batch via {} trigger", trigger_source);
 
         // Step 1: Get pending transactions
@@ -317,7 +318,10 @@ impl UnifiedBatchService {
 
         // Step 5: Process transactions with prefix-based nullifiers
         let processing_start = Instant::now();
-        info!("🔄 Processing {} transactions with prefix-based nullifiers", batch_size);
+        info!(
+            "🔄 Processing {} transactions with prefix-based nullifiers",
+            batch_size
+        );
 
         let mut nullifiers = Vec::new();
         for transaction in batch_transactions {
@@ -326,15 +330,23 @@ impl UnifiedBatchService {
         }
 
         let processing_time = processing_start.elapsed().as_millis() as f64;
-        info!("✅ Generated {} nullifiers in {:.2}ms", nullifiers.len(), processing_time);
+        info!(
+            "✅ Generated {} nullifiers in {:.2}ms",
+            nullifiers.len(),
+            processing_time
+        );
 
         // Step 6: Apply nullifiers through ADS
-        info!("🔐 UNIFIED: Applying {} nullifiers through ADS service", nullifiers.len());
+        info!(
+            "🔐 UNIFIED: Applying {} nullifiers through ADS service",
+            nullifiers.len()
+        );
         let mut ads_guard = self.ads_service.write().await;
 
-        let state_transitions = ads_guard.batch_insert(&nullifiers).await.map_err(|e| {
-            format!("Failed to process nullifiers through ADS: {}", e)
-        })?;
+        let state_transitions = ads_guard
+            .batch_insert(&nullifiers)
+            .await
+            .map_err(|e| format!("Failed to process nullifiers through ADS: {}", e))?;
 
         info!(
             "✅ UNIFIED: Successfully processed {} state transitions through ADS",
@@ -380,7 +392,7 @@ impl UnifiedBatchService {
             return Err(format!("Failed to commit batch transaction: {}", e));
         }
 
-        let total_time = batch_start_time.elapsed().as_millis() as f64;
+        let total_time = _batch_start_time.elapsed().as_millis() as f64;
 
         info!("🎉 UNIFIED: Batch processing completed successfully!");
         info!("   📊 Batch ID: {}", batch.id);
@@ -397,11 +409,13 @@ impl UnifiedBatchService {
             merkle_root: merkle_root.to_vec(),
             nullifier_count: state_transitions.len(),
             processing_time_ms: total_time,
+            loan_metrics: None,
+            lifecycle_validation: None,
+            achieved_tps: 0.0,
         };
 
         Ok(Some(result))
     }
-
 
     /// Create batch entry in database (temporary - uses existing logic)
     /// TODO: This should be replaced with pure database operations once SQL function is deprecated
@@ -422,7 +436,11 @@ impl UnifiedBatchService {
     }
 
     /// Convert a transaction to a nullifier value with specific prefix for namespace isolation
-    fn transaction_to_nullifier_with_prefix(&self, transaction: &IncomingTransaction, prefix: i64) -> i64 {
+    fn transaction_to_nullifier_with_prefix(
+        &self,
+        transaction: &IncomingTransaction,
+        prefix: i64,
+    ) -> i64 {
         // Create a deterministic nullifier from the transaction data using blake3
         // This ensures the same transaction always produces the same nullifier across deployments
         let mut hasher = blake3::Hasher::new();
@@ -448,8 +466,9 @@ impl UnifiedBatchService {
 
         // Convert to positive value within prefix range
         // Take modulo to fit within the prefix range (999,999,999), then add 1 to avoid zero
-        let base_nullifier = ((hash_u64 % (transaction_prefixes::PREFIX_RANGE_SIZE as u64)) as i64) + 1;
-        
+        let base_nullifier =
+            ((hash_u64 % (transaction_prefixes::PREFIX_RANGE_SIZE as u64)) as i64) + 1;
+
         // Apply prefix for namespace isolation
         let final_nullifier = prefix + base_nullifier;
 
@@ -457,25 +476,10 @@ impl UnifiedBatchService {
             "Transaction {} -> nullifier {} (prefix: {}, base: {}, hash: {})",
             transaction.id, final_nullifier, prefix, base_nullifier, hash_u64
         );
-        
+
         final_nullifier
     }
 
-    /// Determine transaction type prefix from transaction data
-    /// This method can be enhanced to detect transaction types from metadata
-    fn get_transaction_type_prefix(&self, transaction: &IncomingTransaction) -> i64 {
-        // For now, we use legacy default for all IncomingTransactions
-        // In future enhancements, this could examine transaction metadata, 
-        // database relations, or other contextual information to determine type
-        
-        // Placeholder logic - could be enhanced with:
-        // 1. Transaction metadata analysis
-        // 2. Database lookup for related loan/user records  
-        // 3. Pattern matching on transaction amounts or timing
-        // 4. API endpoint context information
-        
-        transaction_prefixes::LEGACY_DEFAULT
-    }
 
     // ============================================================================
     // LOAN LIFECYCLE BATCH PROCESSING INTEGRATION
@@ -488,14 +492,14 @@ impl UnifiedBatchService {
         loan_operations: &[LoanOperation],
         trigger_source: &str,
     ) -> Result<Option<BatchCreationResult>, String> {
-        let batch_start_time = Instant::now();
+        let _batch_start_time = Instant::now();
         let mut metrics = LoanBatchMetrics {
             batch_started_at: chrono::Utc::now(),
             batch_size: loan_operations.len(),
             ..Default::default()
         };
-        
-        info!("🚀 OPTIMIZED: Creating high-performance loan batch via {} with {} operations (target: {} TPS)", 
+
+        info!("🚀 OPTIMIZED: Creating high-performance loan batch via {} with {} operations (target: {} TPS)",
               trigger_source, loan_operations.len(), self.loan_config.target_tps);
 
         if loan_operations.is_empty() {
@@ -506,13 +510,17 @@ impl UnifiedBatchService {
         // Apply timeout for entire operation
         let batch_result = timeout(
             self.loan_config.timeout_duration,
-            self.process_loan_batch_optimized(loan_operations, &mut metrics)
-        ).await;
+            self.process_loan_batch_optimized(loan_operations, &mut metrics),
+        )
+        .await;
 
         match batch_result {
             Ok(result) => result,
             Err(_) => {
-                error!("🚫 OPTIMIZED: Loan batch processing timed out after {:?}", self.loan_config.timeout_duration);
+                error!(
+                    "🚫 OPTIMIZED: Loan batch processing timed out after {:?}",
+                    self.loan_config.timeout_duration
+                );
                 Err("Batch processing timeout".to_string())
             }
         }
@@ -528,18 +536,23 @@ impl UnifiedBatchService {
 
         // Step 1: Parallel validation and categorization
         let validation_start = Instant::now();
-        let (validated_operations, lifecycle_validation) = if self.loan_config.enable_lifecycle_validation {
-            self.validate_loan_operations_parallel(loan_operations).await?
-        } else {
-            (loan_operations.to_vec(), LoanLifecycleValidation {
-                is_valid: true,
-                validation_errors: vec![],
-                lifecycle_warnings: vec![],
-                integrity_score: 1.0,
-                validated_loans: loan_operations.len(),
-                validation_time_ms: 0.0,
-            })
-        };
+        let (validated_operations, lifecycle_validation) =
+            if self.loan_config.enable_lifecycle_validation {
+                self.validate_loan_operations_parallel(loan_operations)
+                    .await?
+            } else {
+                (
+                    loan_operations.to_vec(),
+                    LoanLifecycleValidation {
+                        is_valid: true,
+                        validation_errors: vec![],
+                        lifecycle_warnings: vec![],
+                        integrity_score: 1.0,
+                        validated_loans: loan_operations.len(),
+                        validation_time_ms: 0.0,
+                    },
+                )
+            };
         metrics.validation_time = validation_start.elapsed().as_millis() as f64;
         metrics.lifecycle_integrity_score = lifecycle_validation.integrity_score;
 
@@ -547,27 +560,38 @@ impl UnifiedBatchService {
         self.categorize_loan_operations(&validated_operations, metrics);
 
         // Step 2: Create batch entry
-        let batch = match arda_credit_db::create_batch(&self.pool, Some(validated_operations.len() as i32)).await {
-            Ok(Some(batch)) => batch,
-            Ok(None) => {
-                debug!("Failed to create optimized loan batch entry");
-                return Ok(None);
-            }
-            Err(e) => {
-                error!("Failed to create optimized loan batch entry: {}", e);
-                return Err(format!("Failed to create optimized loan batch entry: {}", e));
-            }
-        };
+        let batch =
+            match arda_credit_db::create_batch(&self.pool, Some(validated_operations.len() as i32))
+                .await
+            {
+                Ok(Some(batch)) => batch,
+                Ok(None) => {
+                    debug!("Failed to create optimized loan batch entry");
+                    return Ok(None);
+                }
+                Err(e) => {
+                    error!("Failed to create optimized loan batch entry: {}", e);
+                    return Err(format!(
+                        "Failed to create optimized loan batch entry: {}",
+                        e
+                    ));
+                }
+            };
 
-        info!("✅ OPTIMIZED: Batch entry created: id={}, validated_ops={}", 
-              batch.id, validated_operations.len());
+        info!(
+            "✅ OPTIMIZED: Batch entry created: id={}, validated_ops={}",
+            batch.id,
+            validated_operations.len()
+        );
 
         // Step 3: Optimized nullifier generation
         let nullifier_start = Instant::now();
         let nullifiers = if self.loan_config.enable_parallel_validation {
-            self.generate_nullifiers_parallel(&validated_operations).await?
+            self.generate_nullifiers_parallel(&validated_operations)
+                .await?
         } else {
-            validated_operations.iter()
+            validated_operations
+                .iter()
                 .map(|op| op.to_nullifier_with_prefix())
                 .collect()
         };
@@ -577,12 +601,16 @@ impl UnifiedBatchService {
         // Step 4: Optimized merkleization
         let merkle_start = Instant::now();
         let (state_transitions, merkle_root) = if self.loan_config.enable_merkle_optimization {
-            self.process_merkleization_optimized(&validated_operations).await?
+            self.process_merkleization_optimized(&validated_operations)
+                .await?
         } else {
             let mut ads_guard = self.ads_service.write().await;
-            let transitions = ads_guard.process_loan_batch(&validated_operations).await
+            let transitions = ads_guard
+                .process_loan_batch(&validated_operations)
+                .await
                 .map_err(|e| format!("Failed to process loan operations: {}", e))?;
-            let root = transitions.last()
+            let root = transitions
+                .last()
                 .ok_or("No state transitions returned")?
                 .new_root;
             drop(ads_guard);
@@ -599,7 +627,10 @@ impl UnifiedBatchService {
                 info!("✅ OPTIMIZED: Merkle root stored for batch {}", batch.id);
             }
             Err(e) => {
-                error!("OPTIMIZED: Failed to store merkle root for batch {}: {}", batch.id, e);
+                error!(
+                    "OPTIMIZED: Failed to store merkle root for batch {}: {}",
+                    batch.id, e
+                );
                 return Err(format!("Failed to store merkle root: {}", e));
             }
         }
@@ -609,43 +640,62 @@ impl UnifiedBatchService {
         let total_time = total_start.elapsed().as_millis() as f64;
         metrics.total_processing_time = total_time;
         metrics.batch_completed_at = chrono::Utc::now();
-        
+
         // Calculate throughput metrics
         let seconds_elapsed = total_time / 1000.0;
-        metrics.transactions_per_second = if seconds_elapsed > 0.0 { 
-            validated_operations.len() as f64 / seconds_elapsed 
-        } else { 0.0 };
+        metrics.transactions_per_second = if seconds_elapsed > 0.0 {
+            validated_operations.len() as f64 / seconds_elapsed
+        } else {
+            0.0
+        };
         metrics.operations_per_second = metrics.transactions_per_second;
         metrics.merkleization_tps = if metrics.merkleization_time > 0.0 {
             (state_transitions.len() as f64 * 1000.0) / metrics.merkleization_time
-        } else { 0.0 };
+        } else {
+            0.0
+        };
         metrics.total_throughput = metrics.transactions_per_second;
 
         // Calculate validation success rate
         metrics.validation_success_rate = if lifecycle_validation.validated_loans > 0 {
-            (lifecycle_validation.validated_loans as f64 - lifecycle_validation.validation_errors.len() as f64) 
+            (lifecycle_validation.validated_loans as f64
+                - lifecycle_validation.validation_errors.len() as f64)
                 / lifecycle_validation.validated_loans as f64
-        } else { 1.0 };
+        } else {
+            1.0
+        };
 
         // Store metrics in performance history
         {
             let mut history = self.performance_history.write().await;
             history.push(metrics.clone());
-            if history.len() > 1000 { // Keep last 1000 entries
+            if history.len() > 1000 {
+                // Keep last 1000 entries
                 history.remove(0);
             }
         }
 
         info!("🎉 OPTIMIZED: High-performance loan batch completed!");
         info!("   📊 Batch ID: {}", batch.id);
-        info!("   🏦 Loan Operations: {} (originations: {}, payments: {}, closeouts: {})", 
-              validated_operations.len(), metrics.loan_originations, metrics.loan_payments, metrics.loan_closeouts);
-        info!("   ⚡ Achieved TPS: {:.2} (target: {:.2})", metrics.transactions_per_second, self.loan_config.target_tps);
-        info!("   ⏱️ Total Time: {:.2}ms (validation: {:.2}ms, nullifiers: {:.2}ms, merkle: {:.2}ms, db: {:.2}ms)", 
-              total_time, metrics.validation_time, metrics.nullifier_generation_time, 
+        info!(
+            "   🏦 Loan Operations: {} (originations: {}, payments: {}, closeouts: {})",
+            validated_operations.len(),
+            metrics.loan_originations,
+            metrics.loan_payments,
+            metrics.loan_closeouts
+        );
+        info!(
+            "   ⚡ Achieved TPS: {:.2} (target: {:.2})",
+            metrics.transactions_per_second, self.loan_config.target_tps
+        );
+        info!("   ⏱️ Total Time: {:.2}ms (validation: {:.2}ms, nullifiers: {:.2}ms, merkle: {:.2}ms, db: {:.2}ms)",
+              total_time, metrics.validation_time, metrics.nullifier_generation_time,
               metrics.merkleization_time, metrics.database_commit_time);
-        info!("   🎯 Success Rate: {:.1}%, Integrity Score: {:.2}", 
-              metrics.validation_success_rate * 100.0, metrics.lifecycle_integrity_score);
+        info!(
+            "   🎯 Success Rate: {:.1}%, Integrity Score: {:.2}",
+            metrics.validation_success_rate * 100.0,
+            metrics.lifecycle_integrity_score
+        );
         info!("   🌳 Merkle Root: 0x{}", hex::encode(&merkle_root));
 
         let result = BatchCreationResult {
@@ -672,11 +722,15 @@ impl UnifiedBatchService {
         loan_operations: &[LoanOperation],
         trigger_source: &str,
     ) -> Result<Option<BatchCreationResult>, String> {
-        let batch_start_time = Instant::now();
-        
+        let _batch_start_time = Instant::now();
+
         let total_operations = transactions.len() + loan_operations.len();
-        info!("🔄 UNIFIED: Creating mixed batch via {} ({} regular, {} loan operations)", 
-              trigger_source, transactions.len(), loan_operations.len());
+        info!(
+            "🔄 UNIFIED: Creating mixed batch via {} ({} regular, {} loan operations)",
+            trigger_source,
+            transactions.len(),
+            loan_operations.len()
+        );
 
         if total_operations == 0 {
             debug!("No operations to batch");
@@ -684,17 +738,18 @@ impl UnifiedBatchService {
         }
 
         // Step 1: Create batch entry
-        let batch = match arda_credit_db::create_batch(&self.pool, Some(total_operations as i32)).await {
-            Ok(Some(batch)) => batch,
-            Ok(None) => {
-                debug!("Failed to create mixed batch entry");
-                return Ok(None);
-            }
-            Err(e) => {
-                error!("Failed to create mixed batch entry: {}", e);
-                return Err(format!("Failed to create mixed batch entry: {}", e));
-            }
-        };
+        let batch =
+            match arda_credit_db::create_batch(&self.pool, Some(total_operations as i32)).await {
+                Ok(Some(batch)) => batch,
+                Ok(None) => {
+                    debug!("Failed to create mixed batch entry");
+                    return Ok(None);
+                }
+                Err(e) => {
+                    error!("Failed to create mixed batch entry: {}", e);
+                    return Err(format!("Failed to create mixed batch entry: {}", e));
+                }
+            };
 
         info!("✅ UNIFIED: Mixed batch entry created: id={}", batch.id);
 
@@ -709,14 +764,18 @@ impl UnifiedBatchService {
                 nullifiers.push(nullifier);
             }
 
-            let regular_transitions = ads_guard.batch_insert(&nullifiers).await
+            let regular_transitions = ads_guard
+                .batch_insert(&nullifiers)
+                .await
                 .map_err(|e| format!("Failed to process regular transactions: {}", e))?;
             all_transitions.extend(regular_transitions);
         }
 
         // Step 3: Process loan operations
         if !loan_operations.is_empty() {
-            let loan_transitions = ads_guard.process_loan_batch(loan_operations).await
+            let loan_transitions = ads_guard
+                .process_loan_batch(loan_operations)
+                .await
                 .map_err(|e| format!("Failed to process loan operations: {}", e))?;
             all_transitions.extend(loan_transitions);
         }
@@ -733,10 +792,11 @@ impl UnifiedBatchService {
         drop(ads_guard);
 
         // Step 5: Store merkle root
-        store_ads_state_commit(&self.pool, batch.id, &merkle_root).await
+        store_ads_state_commit(&self.pool, batch.id, &merkle_root)
+            .await
             .map_err(|e| format!("Failed to store merkle root: {}", e))?;
 
-        let total_time = batch_start_time.elapsed().as_millis() as f64;
+        let total_time = _batch_start_time.elapsed().as_millis() as f64;
 
         info!("🎉 UNIFIED: Mixed batch processing completed successfully!");
         info!("   📊 Batch ID: {}", batch.id);
@@ -753,6 +813,9 @@ impl UnifiedBatchService {
             merkle_root: merkle_root.to_vec(),
             nullifier_count: all_transitions.len(),
             processing_time_ms: total_time,
+            loan_metrics: None,
+            lifecycle_validation: None,
+            achieved_tps: 0.0,
         };
 
         Ok(Some(result))
@@ -760,8 +823,8 @@ impl UnifiedBatchService {
 
     /// Convert database loan transaction to LoanOperation
     pub fn loan_transaction_to_operation(
-        &self, 
-        loan_transaction: &arda_credit_db::LoanTransactionDb
+        &self,
+        loan_transaction: &arda_credit_db::LoanTransactionDb,
     ) -> Result<LoanOperation, String> {
         // Convert database transaction to loan operation
         let operation = LoanOperation {
@@ -794,7 +857,9 @@ impl UnifiedBatchService {
         // Check ADS service
         let ads_guard = self.ads_service.read().await;
         match ads_guard.health_check().await {
-            Ok(true) => Ok("Unified batch service with prefix-based nullifiers is healthy".to_string()),
+            Ok(true) => {
+                Ok("Unified batch service with prefix-based nullifiers is healthy".to_string())
+            }
             Ok(false) => Err("ADS service is not healthy".to_string()),
             Err(e) => Err(format!("ADS health check failed: {}", e)),
         }
@@ -815,10 +880,13 @@ impl UnifiedBatchService {
         batch_id: Option<i32>,
         user_role: String,
     ) -> Result<arda_credit_db::LoanInclusionProof, String> {
-        info!("🔍 Generating loan inclusion proof for user {} ({} operation)", user_id, operation_type);
+        info!(
+            "🔍 Generating loan inclusion proof for user {} ({} operation)",
+            user_id, operation_type
+        );
 
         let ads_guard = self.ads_service.read().await;
-        
+
         let request = arda_credit_db::LoanInclusionRequest {
             user_id,
             loan_id,
@@ -828,7 +896,9 @@ impl UnifiedBatchService {
             user_role,
         };
 
-        let proof = ads_guard.prove_loan_operation_inclusion(&request).await
+        let proof = ads_guard
+            .prove_loan_operation_inclusion(&request)
+            .await
             .map_err(|e| format!("Failed to generate loan inclusion proof: {}", e))?;
 
         info!("✅ Loan inclusion proof generated successfully");
@@ -844,12 +914,16 @@ impl UnifiedBatchService {
         payment_id: uuid::Uuid,
         batch_id: i32,
     ) -> Result<arda_credit_db::LoanInclusionProof, String> {
-        info!("💰 Generating loan payment proof: loan={}, payment={}, batch={}", 
-              loan_id, payment_id, batch_id);
+        info!(
+            "💰 Generating loan payment proof: loan={}, payment={}, batch={}",
+            loan_id, payment_id, batch_id
+        );
 
         let ads_guard = self.ads_service.read().await;
-        
-        let proof = ads_guard.prove_loan_payment_in_batch(user_id, loan_id, payment_id, batch_id).await
+
+        let proof = ads_guard
+            .prove_loan_payment_in_batch(user_id, loan_id, payment_id, batch_id)
+            .await
             .map_err(|e| format!("Failed to generate loan payment proof: {}", e))?;
 
         info!("✅ Loan payment proof generated successfully");
@@ -862,12 +936,16 @@ impl UnifiedBatchService {
         &self,
         proof: &arda_credit_db::LoanInclusionProof,
     ) -> Result<bool, String> {
-        info!("🔍 Verifying loan inclusion proof for {} operation", 
-              proof.loan_operation.operation_type);
+        info!(
+            "🔍 Verifying loan inclusion proof for {} operation",
+            proof.loan_operation.operation_type
+        );
 
         let ads_guard = self.ads_service.read().await;
-        
-        let is_valid = ads_guard.verify_loan_inclusion_proof_with_prefix_validation(proof).await
+
+        let is_valid = ads_guard
+            .verify_loan_inclusion_proof_with_prefix_validation(proof)
+            .await
             .map_err(|e| format!("Failed to verify loan proof: {}", e))?;
 
         if is_valid {
@@ -888,8 +966,10 @@ impl UnifiedBatchService {
         info!("📊 Generating proof verification report");
 
         let ads_guard = self.ads_service.read().await;
-        
-        let report = ads_guard.generate_proof_verification_report(proof).await
+
+        let report = ads_guard
+            .generate_proof_verification_report(proof)
+            .await
             .map_err(|e| format!("Failed to generate proof report: {}", e))?;
 
         info!("✅ Proof verification report generated");
@@ -905,12 +985,18 @@ impl UnifiedBatchService {
         info!("🔍 Batch verifying {} loan inclusion proofs", proofs.len());
 
         let ads_guard = self.ads_service.read().await;
-        
-        let results = ads_guard.batch_verify_loan_proofs(proofs).await
+
+        let results = ads_guard
+            .batch_verify_loan_proofs(proofs)
+            .await
             .map_err(|e| format!("Failed to batch verify proofs: {}", e))?;
 
         let valid_count = results.iter().filter(|&&v| v).count();
-        info!("✅ Batch verification completed: {}/{} proofs valid", valid_count, proofs.len());
+        info!(
+            "✅ Batch verification completed: {}/{} proofs valid",
+            valid_count,
+            proofs.len()
+        );
 
         Ok(results)
     }
@@ -924,8 +1010,10 @@ impl UnifiedBatchService {
         info!("📋 Retrieving loan audit trail for loan {}", loan_id);
 
         let ads_guard = self.ads_service.read().await;
-        
-        let audit_trail = ads_guard.get_loan_audit_trail(loan_id).await
+
+        let audit_trail = ads_guard
+            .get_loan_audit_trail(loan_id)
+            .await
             .map_err(|e| format!("Failed to get loan audit trail: {}", e))?;
 
         info!("✅ Retrieved {} audit events for loan", audit_trail.len());
@@ -941,12 +1029,16 @@ impl UnifiedBatchService {
         info!("📈 Generating loan lifecycle summary for loan {}", loan_id);
 
         let ads_guard = self.ads_service.read().await;
-        
-        let summary = ads_guard.get_loan_lifecycle_summary(loan_id).await
+
+        let summary = ads_guard
+            .get_loan_lifecycle_summary(loan_id)
+            .await
             .map_err(|e| format!("Failed to get loan lifecycle summary: {}", e))?;
 
-        info!("✅ Generated loan lifecycle summary: {} operations, {} payments", 
-              summary.total_operations, summary.total_payments);
+        info!(
+            "✅ Generated loan lifecycle summary: {} operations, {} payments",
+            summary.total_operations, summary.total_payments
+        );
         Ok(summary)
     }
 
@@ -965,26 +1057,36 @@ impl UnifiedBatchService {
         let mut validated_operations = Vec::new();
         let mut loan_states = HashMap::new();
 
-        info!("🔍 VALIDATION: Starting parallel loan lifecycle validation for {} operations", operations.len());
+        info!(
+            "🔍 VALIDATION: Starting parallel loan lifecycle validation for {} operations",
+            operations.len()
+        );
 
         // Group operations by loan_id for lifecycle validation
         for operation in operations {
             if let Some(loan_id) = operation.loan_id {
-                loan_states.entry(loan_id).or_insert(Vec::new()).push(operation.clone());
+                loan_states
+                    .entry(loan_id)
+                    .or_insert(Vec::new())
+                    .push(operation.clone());
             } else {
-                validation_errors.push(format!("Operation missing loan_id: {:?}", operation.operation_type));
+                validation_errors.push(format!(
+                    "Operation missing loan_id: {:?}",
+                    operation.operation_type
+                ));
             }
         }
 
         // Validate each loan's lifecycle integrity in parallel
-        let loan_validation_futures: Vec<_> = loan_states.into_iter().map(|(loan_id, ops)| {
-            async move {
+        let loan_validation_futures: Vec<_> = loan_states
+            .into_iter()
+            .map(|(loan_id, ops)| async move {
                 self.validate_single_loan_lifecycle(loan_id, &ops).await
-            }
-        }).collect();
+            })
+            .collect();
 
         // Execute validations in parallel
-        let validation_results = futures::future::join_all(loan_validation_futures).await;
+        let validation_results = future::join_all(loan_validation_futures).await;
 
         let mut total_integrity_score = 0.0;
         let mut validated_loan_count = 0;
@@ -1006,19 +1108,29 @@ impl UnifiedBatchService {
 
         let average_integrity_score = if validated_loan_count > 0 {
             total_integrity_score / validated_loan_count as f64
-        } else { 0.0 };
+        } else {
+            0.0
+        };
 
         let validation_time = validation_start.elapsed().as_millis() as f64;
-        
-        info!("✅ VALIDATION: Completed in {:.2}ms - {} operations validated with {:.2} integrity score", 
+
+        info!("✅ VALIDATION: Completed in {:.2}ms - {} operations validated with {:.2} integrity score",
               validation_time, validated_operations.len(), average_integrity_score);
 
         if !validation_errors.is_empty() {
-            warn!("⚠️ VALIDATION: {} errors found: {:?}", validation_errors.len(), validation_errors);
+            warn!(
+                "⚠️ VALIDATION: {} errors found: {:?}",
+                validation_errors.len(),
+                validation_errors
+            );
         }
 
         if !lifecycle_warnings.is_empty() {
-            warn!("⚠️ VALIDATION: {} warnings: {:?}", lifecycle_warnings.len(), lifecycle_warnings);
+            warn!(
+                "⚠️ VALIDATION: {} warnings: {:?}",
+                lifecycle_warnings.len(),
+                lifecycle_warnings
+            );
         }
 
         let lifecycle_validation = LoanLifecycleValidation {
@@ -1042,10 +1154,20 @@ impl UnifiedBatchService {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
         let mut valid_operations = Vec::new();
-        
+
         // Sort operations by timestamp or sequence
         let mut sorted_ops = operations.to_vec();
-        sorted_ops.sort_by_key(|op| op.transaction_data.get("created_at").unwrap_or(&serde_json::Value::Null));
+        sorted_ops.sort_by(|a, b| {
+            let a_time = a.transaction_data
+                .get("created_at")
+                .and_then(|v| v.as_str())
+                .unwrap_or("1970-01-01T00:00:00Z");
+            let b_time = b.transaction_data
+                .get("created_at")
+                .and_then(|v| v.as_str())
+                .unwrap_or("1970-01-01T00:00:00Z");
+            a_time.cmp(b_time)
+        });
 
         // Validate operation sequence
         let mut has_origination = false;
@@ -1084,7 +1206,10 @@ impl UnifiedBatchService {
                     }
                 }
                 _ => {
-                    warnings.push(format!("Unknown operation type: {} for loan {}", op.operation_type, loan_id));
+                    warnings.push(format!(
+                        "Unknown operation type: {} for loan {}",
+                        op.operation_type, loan_id
+                    ));
                     // Still include it for processing
                     valid_operations.push(op.clone());
                 }
@@ -1095,13 +1220,18 @@ impl UnifiedBatchService {
         let max_possible_score = operations.len() as f64;
         let error_penalty = errors.len() as f64 * 0.5;
         let warning_penalty = warnings.len() as f64 * 0.1;
-        let integrity_score = ((max_possible_score - error_penalty - warning_penalty) / max_possible_score).max(0.0);
+        let integrity_score =
+            ((max_possible_score - error_penalty - warning_penalty) / max_possible_score).max(0.0);
 
         Ok((valid_operations, errors, warnings, integrity_score))
     }
 
     /// Categorize loan operations for metrics tracking
-    fn categorize_loan_operations(&self, operations: &[LoanOperation], metrics: &mut LoanBatchMetrics) {
+    fn categorize_loan_operations(
+        &self,
+        operations: &[LoanOperation],
+        metrics: &mut LoanBatchMetrics,
+    ) {
         for operation in operations {
             match operation.operation_type.as_str() {
                 "loan_origination" => metrics.loan_originations += 1,
@@ -1111,9 +1241,14 @@ impl UnifiedBatchService {
             }
         }
         metrics.total_operations = operations.len();
-        
-        debug!("📊 CATEGORIZATION: Originations: {}, Payments: {}, Closeouts: {}, Mixed: {}", 
-               metrics.loan_originations, metrics.loan_payments, metrics.loan_closeouts, metrics.mixed_operations);
+
+        debug!(
+            "📊 CATEGORIZATION: Originations: {}, Payments: {}, Closeouts: {}, Mixed: {}",
+            metrics.loan_originations,
+            metrics.loan_payments,
+            metrics.loan_closeouts,
+            metrics.mixed_operations
+        );
     }
 
     /// Generate nullifiers in parallel for performance
@@ -1121,25 +1256,32 @@ impl UnifiedBatchService {
         &self,
         operations: &[LoanOperation],
     ) -> Result<Vec<i64>, String> {
-        info!("⚡ NULLIFIERS: Generating {} nullifiers in parallel", operations.len());
-        
-        // Split operations into chunks for parallel processing
-        let chunk_size = (operations.len() / num_cpus::get()).max(1);
-        let chunks: Vec<_> = operations.chunks(chunk_size).collect();
-        
-        let nullifier_futures: Vec<_> = chunks.into_iter().map(|chunk| {
-            tokio::task::spawn_blocking({
-                let chunk = chunk.to_vec();
-                move || {
-                    chunk.iter()
-                        .map(|op| op.to_nullifier_with_prefix())
-                        .collect::<Vec<i64>>()
-                }
-            })
-        }).collect();
+        info!(
+            "⚡ NULLIFIERS: Generating {} nullifiers in parallel",
+            operations.len()
+        );
 
-        let nullifier_results = futures::future::join_all(nullifier_futures).await;
-        
+        // Split operations into chunks for parallel processing
+        let chunk_size = (operations.len() / 4).max(1);  // Use 4 threads by default
+        let chunks: Vec<_> = operations.chunks(chunk_size).collect();
+
+        let nullifier_futures: Vec<_> = chunks
+            .into_iter()
+            .map(|chunk| {
+                tokio::task::spawn_blocking({
+                    let chunk = chunk.to_vec();
+                    move || {
+                        chunk
+                            .iter()
+                            .map(|op| op.to_nullifier_with_prefix())
+                            .collect::<Vec<i64>>()
+                    }
+                })
+            })
+            .collect();
+
+        let nullifier_results = future::join_all(nullifier_futures).await;
+
         let mut all_nullifiers = Vec::new();
         for result in nullifier_results {
             match result {
@@ -1147,8 +1289,11 @@ impl UnifiedBatchService {
                 Err(e) => return Err(format!("Failed to generate nullifiers: {}", e)),
             }
         }
-        
-        info!("✅ NULLIFIERS: Generated {} nullifiers successfully", all_nullifiers.len());
+
+        info!(
+            "✅ NULLIFIERS: Generated {} nullifiers successfully",
+            all_nullifiers.len()
+        );
         Ok(all_nullifiers)
     }
 
@@ -1157,27 +1302,30 @@ impl UnifiedBatchService {
         &self,
         operations: &[LoanOperation],
     ) -> Result<(Vec<StateTransition>, [u8; 32]), String> {
-        info!("🌳 MERKLEIZATION: Starting optimized processing for {} loan operations", operations.len());
-        
+        info!(
+            "🌳 MERKLEIZATION: Starting optimized processing for {} loan operations",
+            operations.len()
+        );
+
         // For loan-heavy workloads, we can optimize by:
         // 1. Pre-sorting operations by type for better cache locality
         // 2. Batch processing similar operation types together
         // 3. Using optimized insertion patterns
-        
+
         let mut sorted_operations = operations.to_vec();
-        
+
         // Sort by operation type for better merkle tree insertion patterns
         sorted_operations.sort_by(|a, b| {
             let a_priority = match a.operation_type.as_str() {
                 "loan_origination" => 0,
-                "loan_payment" => 1, 
+                "loan_payment" => 1,
                 "loan_closeout" => 2,
                 _ => 3,
             };
             let b_priority = match b.operation_type.as_str() {
                 "loan_origination" => 0,
                 "loan_payment" => 1,
-                "loan_closeout" => 2, 
+                "loan_closeout" => 2,
                 _ => 3,
             };
             a_priority.cmp(&b_priority)
@@ -1185,16 +1333,22 @@ impl UnifiedBatchService {
 
         // Process through ADS with optimized batch
         let mut ads_guard = self.ads_service.write().await;
-        let state_transitions = ads_guard.process_loan_batch(&sorted_operations).await
+        let state_transitions = ads_guard
+            .process_loan_batch(&sorted_operations)
+            .await
             .map_err(|e| format!("Optimized merkleization failed: {}", e))?;
-        
-        let merkle_root = state_transitions.last()
+
+        let merkle_root = state_transitions
+            .last()
             .ok_or("No state transitions in optimized merkleization")?
             .new_root;
-        
+
         drop(ads_guard);
-        
-        info!("✅ MERKLEIZATION: Completed optimized processing with {} transitions", state_transitions.len());
+
+        info!(
+            "✅ MERKLEIZATION: Completed optimized processing with {} transitions",
+            state_transitions.len()
+        );
         Ok((state_transitions, merkle_root))
     }
 
@@ -1206,16 +1360,20 @@ impl UnifiedBatchService {
         loan_operations: &[LoanOperation],
         trigger_source: &str,
     ) -> Result<Option<BatchCreationResult>, String> {
-        let batch_start_time = Instant::now();
         let total_operations = transactions.len() + loan_operations.len();
         let mut metrics = LoanBatchMetrics {
             batch_started_at: chrono::Utc::now(),
             batch_size: total_operations,
             ..Default::default()
         };
-        
-        info!("🚀 OPTIMIZED: Creating mixed batch via {} ({} regular, {} loan ops, target: {} TPS)", 
-              trigger_source, transactions.len(), loan_operations.len(), self.loan_config.target_tps);
+
+        info!(
+            "🚀 OPTIMIZED: Creating mixed batch via {} ({} regular, {} loan ops, target: {} TPS)",
+            trigger_source,
+            transactions.len(),
+            loan_operations.len(),
+            self.loan_config.target_tps
+        );
 
         if total_operations == 0 {
             debug!("No operations to batch");
@@ -1225,13 +1383,17 @@ impl UnifiedBatchService {
         // Apply timeout for entire operation
         let batch_result = timeout(
             self.loan_config.timeout_duration,
-            self.process_mixed_batch_optimized(transactions, loan_operations, &mut metrics)
-        ).await;
+            self.process_mixed_batch_optimized(transactions, loan_operations, &mut metrics),
+        )
+        .await;
 
         match batch_result {
             Ok(result) => result,
             Err(_) => {
-                error!("🚫 OPTIMIZED: Mixed batch processing timed out after {:?}", self.loan_config.timeout_duration);
+                error!(
+                    "🚫 OPTIMIZED: Mixed batch processing timed out after {:?}",
+                    self.loan_config.timeout_duration
+                );
                 Err("Mixed batch processing timeout".to_string())
             }
         }
@@ -1249,35 +1411,44 @@ impl UnifiedBatchService {
 
         // Step 1: Validate loan operations if enabled
         let validation_start = Instant::now();
-        let (validated_loan_ops, lifecycle_validation) = if self.loan_config.enable_lifecycle_validation && !loan_operations.is_empty() {
-            self.validate_loan_operations_parallel(loan_operations).await?
-        } else {
-            (loan_operations.to_vec(), LoanLifecycleValidation {
-                is_valid: true,
-                validation_errors: vec![],
-                lifecycle_warnings: vec![],
-                integrity_score: 1.0,
-                validated_loans: loan_operations.len(),
-                validation_time_ms: 0.0,
-            })
-        };
+        let (validated_loan_ops, lifecycle_validation) =
+            if self.loan_config.enable_lifecycle_validation && !loan_operations.is_empty() {
+                self.validate_loan_operations_parallel(loan_operations)
+                    .await?
+            } else {
+                (
+                    loan_operations.to_vec(),
+                    LoanLifecycleValidation {
+                        is_valid: true,
+                        validation_errors: vec![],
+                        lifecycle_warnings: vec![],
+                        integrity_score: 1.0,
+                        validated_loans: loan_operations.len(),
+                        validation_time_ms: 0.0,
+                    },
+                )
+            };
         metrics.validation_time = validation_start.elapsed().as_millis() as f64;
 
         // Categorize operations
         self.categorize_loan_operations(&validated_loan_ops, metrics);
 
         // Step 2: Create batch entry
-        let batch = match arda_credit_db::create_batch(&self.pool, Some(total_operations as i32)).await {
-            Ok(Some(batch)) => batch,
-            Ok(None) => {
-                debug!("Failed to create optimized mixed batch entry");
-                return Ok(None);
-            }
-            Err(e) => {
-                error!("Failed to create optimized mixed batch entry: {}", e);
-                return Err(format!("Failed to create optimized mixed batch entry: {}", e));
-            }
-        };
+        let batch =
+            match arda_credit_db::create_batch(&self.pool, Some(total_operations as i32)).await {
+                Ok(Some(batch)) => batch,
+                Ok(None) => {
+                    debug!("Failed to create optimized mixed batch entry");
+                    return Ok(None);
+                }
+                Err(e) => {
+                    error!("Failed to create optimized mixed batch entry: {}", e);
+                    return Err(format!(
+                        "Failed to create optimized mixed batch entry: {}",
+                        e
+                    ));
+                }
+            };
 
         info!("✅ OPTIMIZED: Mixed batch entry created: id={}", batch.id);
 
@@ -1293,7 +1464,9 @@ impl UnifiedBatchService {
                 nullifiers.push(nullifier);
             }
 
-            let regular_transitions = ads_guard.batch_insert(&nullifiers).await
+            let regular_transitions = ads_guard
+                .batch_insert(&nullifiers)
+                .await
                 .map_err(|e| format!("Failed to process regular transactions: {}", e))?;
             all_transitions.extend(regular_transitions);
         }
@@ -1319,10 +1492,14 @@ impl UnifiedBatchService {
                     };
                     a_priority.cmp(&b_priority)
                 });
-                ads_guard.process_loan_batch(&sorted_ops).await
+                ads_guard
+                    .process_loan_batch(&sorted_ops)
+                    .await
                     .map_err(|e| format!("Failed to process optimized loan operations: {}", e))?
             } else {
-                ads_guard.process_loan_batch(&validated_loan_ops).await
+                ads_guard
+                    .process_loan_batch(&validated_loan_ops)
+                    .await
                     .map_err(|e| format!("Failed to process loan operations: {}", e))?
             };
             all_transitions.extend(loan_transitions);
@@ -1347,10 +1524,16 @@ impl UnifiedBatchService {
         let db_start = Instant::now();
         match store_ads_state_commit(&self.pool, batch.id, &merkle_root).await {
             Ok(_) => {
-                info!("✅ OPTIMIZED: Merkle root stored for mixed batch {}", batch.id);
+                info!(
+                    "✅ OPTIMIZED: Merkle root stored for mixed batch {}",
+                    batch.id
+                );
             }
             Err(e) => {
-                error!("OPTIMIZED: Failed to store merkle root for mixed batch {}: {}", batch.id, e);
+                error!(
+                    "OPTIMIZED: Failed to store merkle root for mixed batch {}: {}",
+                    batch.id, e
+                );
                 return Err(format!("Failed to store merkle root: {}", e));
             }
         }
@@ -1360,19 +1543,24 @@ impl UnifiedBatchService {
         let total_time = total_start.elapsed().as_millis() as f64;
         metrics.total_processing_time = total_time;
         metrics.batch_completed_at = chrono::Utc::now();
-        
+
         // Calculate throughput metrics
         let seconds_elapsed = total_time / 1000.0;
-        metrics.transactions_per_second = if seconds_elapsed > 0.0 { 
-            total_operations as f64 / seconds_elapsed 
-        } else { 0.0 };
+        metrics.transactions_per_second = if seconds_elapsed > 0.0 {
+            total_operations as f64 / seconds_elapsed
+        } else {
+            0.0
+        };
         metrics.operations_per_second = metrics.transactions_per_second;
         metrics.total_throughput = metrics.transactions_per_second;
-        
+
         metrics.validation_success_rate = if lifecycle_validation.validated_loans > 0 {
-            (lifecycle_validation.validated_loans as f64 - lifecycle_validation.validation_errors.len() as f64) 
+            (lifecycle_validation.validated_loans as f64
+                - lifecycle_validation.validation_errors.len() as f64)
                 / lifecycle_validation.validated_loans as f64
-        } else { 1.0 };
+        } else {
+            1.0
+        };
 
         // Store metrics in performance history
         {
@@ -1385,10 +1573,20 @@ impl UnifiedBatchService {
 
         info!("🎉 OPTIMIZED: Mixed batch completed!");
         info!("   📊 Batch ID: {}", batch.id);
-        info!("   🔄 Regular Transactions: {}, Loan Operations: {}", transactions.len(), validated_loan_ops.len());
-        info!("   ⚡ Achieved TPS: {:.2} (target: {:.2})", metrics.transactions_per_second, self.loan_config.target_tps);
+        info!(
+            "   🔄 Regular Transactions: {}, Loan Operations: {}",
+            transactions.len(),
+            validated_loan_ops.len()
+        );
+        info!(
+            "   ⚡ Achieved TPS: {:.2} (target: {:.2})",
+            metrics.transactions_per_second, self.loan_config.target_tps
+        );
         info!("   ⏱️ Total Time: {:.2}ms", total_time);
-        info!("   🎯 Success Rate: {:.1}%", metrics.validation_success_rate * 100.0);
+        info!(
+            "   🎯 Success Rate: {:.1}%",
+            metrics.validation_success_rate * 100.0
+        );
 
         let result = BatchCreationResult {
             batch_id: batch.id,
@@ -1409,7 +1607,7 @@ impl UnifiedBatchService {
     /// Get comprehensive performance analytics
     pub async fn get_performance_analytics(&self) -> serde_json::Value {
         let history = self.performance_history.read().await;
-        
+
         if history.is_empty() {
             return serde_json::json!({
                 "status": "no_data",
@@ -1418,18 +1616,33 @@ impl UnifiedBatchService {
         }
 
         let total_batches = history.len();
-        let avg_tps = history.iter().map(|m| m.transactions_per_second).sum::<f64>() / total_batches as f64;
-        let avg_processing_time = history.iter().map(|m| m.total_processing_time).sum::<f64>() / total_batches as f64;
-        let avg_integrity_score = history.iter().map(|m| m.lifecycle_integrity_score).sum::<f64>() / total_batches as f64;
-        
-        let max_tps = history.iter().map(|m| m.transactions_per_second).fold(0.0, f64::max);
-        let min_tps = history.iter().map(|m| m.transactions_per_second).fold(f64::INFINITY, f64::min);
-        
+        let avg_tps = history
+            .iter()
+            .map(|m| m.transactions_per_second)
+            .sum::<f64>()
+            / total_batches as f64;
+        let avg_processing_time =
+            history.iter().map(|m| m.total_processing_time).sum::<f64>() / total_batches as f64;
+        let avg_integrity_score = history
+            .iter()
+            .map(|m| m.lifecycle_integrity_score)
+            .sum::<f64>()
+            / total_batches as f64;
+
+        let max_tps = history
+            .iter()
+            .map(|m| m.transactions_per_second)
+            .fold(0.0, f64::max);
+        let min_tps = history
+            .iter()
+            .map(|m| m.transactions_per_second)
+            .fold(f64::INFINITY, f64::min);
+
         let total_operations = history.iter().map(|m| m.total_operations).sum::<usize>();
         let total_originations = history.iter().map(|m| m.loan_originations).sum::<usize>();
         let total_payments = history.iter().map(|m| m.loan_payments).sum::<usize>();
         let total_closeouts = history.iter().map(|m| m.loan_closeouts).sum::<usize>();
-        
+
         serde_json::json!({
             "performance_summary": {
                 "total_batches": total_batches,
