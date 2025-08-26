@@ -5,10 +5,10 @@
 //!
 //! This replaces the dual workflow problem where some batches used ADS and others didn't.
 
+use futures_util::future;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
-use futures_util::future;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
@@ -479,7 +479,6 @@ impl UnifiedBatchService {
 
         final_nullifier
     }
-
 
     // ============================================================================
     // LOAN LIFECYCLE BATCH PROCESSING INTEGRATION
@@ -1158,11 +1157,13 @@ impl UnifiedBatchService {
         // Sort operations by timestamp or sequence
         let mut sorted_ops = operations.to_vec();
         sorted_ops.sort_by(|a, b| {
-            let a_time = a.transaction_data
+            let a_time = a
+                .transaction_data
                 .get("created_at")
                 .and_then(|v| v.as_str())
                 .unwrap_or("1970-01-01T00:00:00Z");
-            let b_time = b.transaction_data
+            let b_time = b
+                .transaction_data
                 .get("created_at")
                 .and_then(|v| v.as_str())
                 .unwrap_or("1970-01-01T00:00:00Z");
@@ -1262,7 +1263,7 @@ impl UnifiedBatchService {
         );
 
         // Split operations into chunks for parallel processing
-        let chunk_size = (operations.len() / 4).max(1);  // Use 4 threads by default
+        let chunk_size = (operations.len() / 4).max(1); // Use 4 threads by default
         let chunks: Vec<_> = operations.chunks(chunk_size).collect();
 
         let nullifier_futures: Vec<_> = chunks

@@ -98,4 +98,3 @@ pub struct InternalLoanBatchPublicValues {
     // Hash of transaction types (for transparency without revealing details)
     pub transaction_types_hash: [u8; 32],
 }
-

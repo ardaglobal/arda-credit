@@ -435,20 +435,50 @@ impl TransactionMapper {
         Uuid::from_bytes(full_bytes)
     }
 
-    /// Calculate new balance after transaction (placeholder - would integrate with balance tracking)
-    fn calculate_new_balance(
-        &self,
-        _user_id: Uuid,
-        amount_delta: i64,
-    ) -> Result<i64, MappingError> {
-        // In a real implementation, this would:
-        // 1. Look up current balance from context or database
-        // 2. Apply the delta
-        // 3. Return the new balance
-        //
-        // For now, we'll return a placeholder that assumes starting balance of 0
-        // This should be replaced with actual balance tracking logic
-        Ok(amount_delta.max(0)) // Simplified: return delta if positive, 0 if negative
+    /// Calculate new balance after transaction using loan context
+    fn calculate_new_balance(&self, user_id: Uuid, amount_delta: i64) -> Result<i64, MappingError> {
+        // Look up current balance from loan context
+        // In a loan system, balance tracking would be based on:
+        // 1. Outstanding loan balances for borrowers
+        // 2. Total lent amounts for lenders
+
+        let mut current_balance = 0i64;
+
+        // Aggregate balance from all loans involving this user
+        for loan in self.context.loans.values() {
+            if loan.borrower_id == user_id {
+                // For borrowers, outstanding balance is a negative balance (debt)
+                let outstanding = loan
+                    .outstanding_balance
+                    .to_string()
+                    .parse::<f64>()
+                    .unwrap_or(0.0) as i64;
+                current_balance -= outstanding;
+            } else if loan.lender_id == user_id {
+                // For lenders, outstanding balance represents money lent out
+                let outstanding = loan
+                    .outstanding_balance
+                    .to_string()
+                    .parse::<f64>()
+                    .unwrap_or(0.0) as i64;
+                current_balance += outstanding;
+
+                // Add principal amount as well (total exposure)
+                let principal = loan
+                    .principal_amount
+                    .to_string()
+                    .parse::<f64>()
+                    .unwrap_or(0.0) as i64;
+                current_balance += principal - outstanding; // Principal minus what's still owed
+            }
+        }
+
+        // Apply the transaction delta
+        let new_balance = current_balance + amount_delta;
+
+        // For a credit system, negative balances are allowed (debt)
+        // But we ensure minimum floor based on business rules
+        Ok(new_balance.max(-1_000_000_000)) // Minimum debt limit of 1B
     }
 }
 

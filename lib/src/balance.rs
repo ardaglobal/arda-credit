@@ -13,13 +13,13 @@ use thiserror::Error;
 pub enum BalanceError {
     #[error("User not found: {user_id:?}")]
     UserNotFound { user_id: [u8; 32] },
-    
+
     #[error("Insufficient balance: requested {requested}, available {available}")]
     InsufficientBalance { requested: u128, available: u128 },
-    
+
     #[error("Invalid balance amount: {amount}")]
     InvalidAmount { amount: u128 },
-    
+
     #[error("Balance operation failed: {reason}")]
     OperationFailed { reason: String },
 }
@@ -45,18 +45,21 @@ impl BalanceUpdateType {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::CreditFromPayment => "credit_from_payment",
-            Self::DebitFromOrigination => "debit_from_origination", 
+            Self::DebitFromOrigination => "debit_from_origination",
             Self::CreditFromOrigination => "credit_from_origination",
             Self::InterestAccrual => "interest_accrual",
             Self::ManualAdjustment => "manual_adjustment",
         }
     }
-    
+
     /// Check if this update type increases balance
     pub fn is_credit(&self) -> bool {
-        matches!(self, Self::CreditFromPayment | Self::CreditFromOrigination | Self::InterestAccrual)
+        matches!(
+            self,
+            Self::CreditFromPayment | Self::CreditFromOrigination | Self::InterestAccrual
+        )
     }
-    
+
     /// Check if this update type decreases balance
     pub fn is_debit(&self) -> bool {
         matches!(self, Self::DebitFromOrigination)
@@ -104,7 +107,7 @@ impl BalanceUpdate {
         if amount == 0 {
             return Err(BalanceError::InvalidAmount { amount });
         }
-        
+
         let new_balance = if update_type.is_credit() {
             previous_balance.saturating_add(amount)
         } else if update_type.is_debit() {
@@ -119,7 +122,7 @@ impl BalanceUpdate {
             // Manual adjustment - amount could be positive or negative
             previous_balance.saturating_add(amount)
         };
-        
+
         Ok(Self {
             update_id,
             user_id,
@@ -133,29 +136,29 @@ impl BalanceUpdate {
             metadata,
         })
     }
-    
+
     /// Get the balance change as a signed integer (positive for credits, negative for debits)
     pub fn signed_change(&self) -> i128 {
         let amount = self.amount as i128;
         match self.update_type {
-            BalanceUpdateType::CreditFromPayment 
-            | BalanceUpdateType::CreditFromOrigination 
+            BalanceUpdateType::CreditFromPayment
+            | BalanceUpdateType::CreditFromOrigination
             | BalanceUpdateType::InterestAccrual => amount,
             BalanceUpdateType::DebitFromOrigination => -amount,
             BalanceUpdateType::ManualAdjustment => amount, // Assume positive for manual
         }
     }
-    
+
     /// Convert balance update to nullifier hash for IMT insertion
     /// Uses the 4_000_000_000 prefix as specified
     pub fn to_nullifier(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
-        
+
         let mut hasher = Sha256::new();
-        
+
         // Add the balance update prefix (4_000_000_000)
         hasher.update(&4_000_000_000u64.to_le_bytes());
-        
+
         // Add core balance update data
         hasher.update(&self.update_id);
         hasher.update(&self.user_id);
@@ -164,17 +167,17 @@ impl BalanceUpdate {
         hasher.update(&self.previous_balance.to_le_bytes());
         hasher.update(&self.new_balance.to_le_bytes());
         hasher.update(&self.created_at.to_le_bytes());
-        
+
         // Add loan ID if present
         if let Some(loan_id) = self.loan_id {
             hasher.update(&loan_id);
         }
-        
+
         // Add triggering transaction ID if present
         if let Some(tx_id) = self.triggering_transaction_id {
             hasher.update(&tx_id);
         }
-        
+
         hasher.finalize().into()
     }
 }
@@ -202,7 +205,7 @@ impl UserBalance {
             update_count: 0,
         }
     }
-    
+
     /// Apply a balance update to this user's balance
     pub fn apply_update(&mut self, update: &BalanceUpdate) -> Result<(), BalanceError> {
         if update.user_id != self.user_id {
@@ -210,18 +213,20 @@ impl UserBalance {
                 reason: "User ID mismatch".to_string(),
             });
         }
-        
+
         if update.previous_balance != self.balance {
             return Err(BalanceError::OperationFailed {
-                reason: format!("Balance mismatch: expected {}, got {}", 
-                    self.balance, update.previous_balance),
+                reason: format!(
+                    "Balance mismatch: expected {}, got {}",
+                    self.balance, update.previous_balance
+                ),
             });
         }
-        
+
         self.balance = update.new_balance;
         self.last_updated = update.created_at;
         self.update_count += 1;
-        
+
         Ok(())
     }
 }
@@ -252,63 +257,68 @@ impl BalanceState {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Get user's current balance
     pub fn get_balance(&self, user_id: &[u8; 32]) -> u128 {
         self.balances.get(user_id).map(|b| b.balance).unwrap_or(0)
     }
-    
+
     /// Get user balance info
     pub fn get_user_balance(&self, user_id: &[u8; 32]) -> Option<&UserBalance> {
         self.balances.get(user_id)
     }
-    
+
     /// Initialize a user's balance if it doesn't exist
     pub fn ensure_user_balance(&mut self, user_id: [u8; 32], timestamp: u64) {
         if !self.balances.contains_key(&user_id) {
-            self.balances.insert(user_id, UserBalance::new(user_id, 0, timestamp));
+            self.balances
+                .insert(user_id, UserBalance::new(user_id, 0, timestamp));
         }
     }
-    
+
     /// Apply a balance update to the state
     pub fn apply_update(&mut self, update: BalanceUpdate) -> Result<(), BalanceError> {
         // Ensure user balance exists
         self.ensure_user_balance(update.user_id, update.created_at);
-        
+
         // Get mutable reference to user balance
-        let user_balance = self.balances.get_mut(&update.user_id)
-            .ok_or(BalanceError::UserNotFound { user_id: update.user_id })?;
-        
+        let user_balance =
+            self.balances
+                .get_mut(&update.user_id)
+                .ok_or(BalanceError::UserNotFound {
+                    user_id: update.user_id,
+                })?;
+
         // Store timestamp before moving update
         let update_timestamp = update.created_at;
-        
+
         // Apply the update
         user_balance.apply_update(&update)?;
-        
+
         // Store the update in history
         self.updates.push(update);
-        
+
         // Update global timestamp
         if update_timestamp > self.last_updated {
             self.last_updated = update_timestamp;
         }
-        
+
         Ok(())
     }
-    
+
     /// Create balance updates from loan payment
     /// This is called automatically during loan payment processing
     pub fn create_payment_updates(
         &self,
         payment_transaction_id: [u8; 32],
         loan_id: [u8; 32],
-        _payer_id: [u8; 32], // Not used in current implementation
+        _payer_id: [u8; 32],    // Not used in current implementation
         recipient_id: [u8; 32], // Usually the lender
         amount: u128,
         timestamp: u64,
     ) -> Result<Vec<BalanceUpdate>, BalanceError> {
         let mut updates = Vec::new();
-        
+
         // Credit for recipient (lender receives payment)
         let credit_update = BalanceUpdate::new(
             self.generate_update_id(payment_transaction_id, 1),
@@ -319,15 +329,17 @@ impl BalanceState {
             amount,
             self.get_balance(&recipient_id),
             timestamp,
-            Some(format!("Payment received from loan {:02x}{:02x}{:02x}{:02x}", 
-                loan_id[0], loan_id[1], loan_id[2], loan_id[3])),
+            Some(format!(
+                "Payment received from loan {:02x}{:02x}{:02x}{:02x}",
+                loan_id[0], loan_id[1], loan_id[2], loan_id[3]
+            )),
         )?;
-        
+
         updates.push(credit_update);
-        
+
         Ok(updates)
     }
-    
+
     /// Create balance updates from loan origination
     pub fn create_origination_updates(
         &self,
@@ -339,7 +351,7 @@ impl BalanceState {
         timestamp: u64,
     ) -> Result<Vec<BalanceUpdate>, BalanceError> {
         let mut updates = Vec::new();
-        
+
         // Credit for borrower (receives loan funds)
         let borrower_credit = BalanceUpdate::new(
             self.generate_update_id(origination_transaction_id, 1),
@@ -350,10 +362,12 @@ impl BalanceState {
             amount,
             self.get_balance(&borrower_id),
             timestamp,
-            Some(format!("Loan origination funds received {:02x}{:02x}{:02x}{:02x}", 
-                loan_id[0], loan_id[1], loan_id[2], loan_id[3])),
+            Some(format!(
+                "Loan origination funds received {:02x}{:02x}{:02x}{:02x}",
+                loan_id[0], loan_id[1], loan_id[2], loan_id[3]
+            )),
         )?;
-        
+
         // Debit for lender (funds lent out)
         let lender_debit = BalanceUpdate::new(
             self.generate_update_id(origination_transaction_id, 2),
@@ -364,33 +378,40 @@ impl BalanceState {
             amount,
             self.get_balance(&lender_id),
             timestamp,
-            Some(format!("Loan origination funds lent {:02x}{:02x}{:02x}{:02x}", 
-                loan_id[0], loan_id[1], loan_id[2], loan_id[3])),
+            Some(format!(
+                "Loan origination funds lent {:02x}{:02x}{:02x}{:02x}",
+                loan_id[0], loan_id[1], loan_id[2], loan_id[3]
+            )),
         )?;
-        
+
         updates.push(borrower_credit);
         updates.push(lender_debit);
-        
+
         Ok(updates)
     }
-    
+
     /// Get balance update history for a user
-    pub fn get_user_update_history(&self, user_id: &[u8; 32], limit: Option<usize>) -> Vec<&BalanceUpdate> {
-        let mut user_updates: Vec<&BalanceUpdate> = self.updates
+    pub fn get_user_update_history(
+        &self,
+        user_id: &[u8; 32],
+        limit: Option<usize>,
+    ) -> Vec<&BalanceUpdate> {
+        let mut user_updates: Vec<&BalanceUpdate> = self
+            .updates
             .iter()
             .filter(|update| update.user_id == *user_id)
             .collect();
-        
+
         // Sort by timestamp (most recent first)
         user_updates.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-        
+
         if let Some(limit) = limit {
             user_updates.truncate(limit);
         }
-        
+
         user_updates
     }
-    
+
     /// Get balance updates for a specific loan
     pub fn get_loan_balance_updates(&self, loan_id: &[u8; 32]) -> Vec<&BalanceUpdate> {
         self.updates
@@ -398,22 +419,22 @@ impl BalanceState {
             .filter(|update| update.loan_id.as_ref() == Some(loan_id))
             .collect()
     }
-    
+
     /// Get total value of all balances
     pub fn compute_total_balance(&self) -> u128 {
         self.balances.values().map(|b| b.balance).sum()
     }
-    
+
     /// Generate a unique update ID based on transaction ID and sequence
     fn generate_update_id(&self, transaction_id: [u8; 32], sequence: u8) -> [u8; 32] {
         use sha2::{Digest, Sha256};
-        
+
         let mut hasher = Sha256::new();
         hasher.update(b"balance_update");
         hasher.update(&transaction_id);
         hasher.update(&[sequence]);
         hasher.update(&(self.updates.len() as u64).to_le_bytes());
-        
+
         hasher.finalize().into()
     }
 }
@@ -450,14 +471,14 @@ impl BalanceInclusionProof {
             leaf_index,
         }
     }
-    
+
     /// Verify that this balance update was included in the specified Merkle tree
     pub fn verify(&self) -> bool {
         use sha2::{Digest, Sha256};
-        
+
         let mut current_hash = self.balance_update.to_nullifier();
         let mut index = self.leaf_index;
-        
+
         for sibling in &self.merkle_path {
             let mut hasher = Sha256::new();
             if index % 2 == 0 {
@@ -465,22 +486,22 @@ impl BalanceInclusionProof {
                 hasher.update(&current_hash);
                 hasher.update(sibling);
             } else {
-                // Current node is right child  
+                // Current node is right child
                 hasher.update(sibling);
                 hasher.update(&current_hash);
             }
             current_hash = hasher.finalize().into();
             index /= 2;
         }
-        
+
         current_hash == self.merkle_root
     }
-    
+
     /// Get a human-readable description of this proof
     pub fn description(&self) -> String {
         format!(
             "Balance update proof for user {:02x}{:02x}{:02x}{:02x} - {} {} in batch {:02x}{:02x}{:02x}{:02x}",
-            self.balance_update.user_id[0], self.balance_update.user_id[1], 
+            self.balance_update.user_id[0], self.balance_update.user_id[1],
             self.balance_update.user_id[2], self.balance_update.user_id[3],
             self.balance_update.update_type.as_str(),
             self.balance_update.amount,
@@ -492,7 +513,7 @@ impl BalanceInclusionProof {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_balance_update_creation() {
         let update_id = [1u8; 32];
@@ -502,7 +523,7 @@ mod tests {
         let amount = 50000u128; // $500.00
         let previous_balance = 100000u128; // $1000.00
         let timestamp = 1640995200;
-        
+
         let update = BalanceUpdate::new(
             update_id,
             user_id,
@@ -513,22 +534,23 @@ mod tests {
             previous_balance,
             timestamp,
             Some("Test payment".to_string()),
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         assert_eq!(update.user_id, user_id);
         assert_eq!(update.amount, amount);
         assert_eq!(update.previous_balance, previous_balance);
         assert_eq!(update.new_balance, previous_balance + amount);
         assert_eq!(update.update_type, BalanceUpdateType::CreditFromPayment);
     }
-    
+
     #[test]
     fn test_balance_update_debit() {
         let update_id = [1u8; 32];
         let user_id = [2u8; 32];
         let amount = 30000u128; // $300.00
         let previous_balance = 100000u128; // $1000.00
-        
+
         let update = BalanceUpdate::new(
             update_id,
             user_id,
@@ -539,12 +561,13 @@ mod tests {
             previous_balance,
             1640995200,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         assert_eq!(update.new_balance, previous_balance - amount);
         assert_eq!(update.signed_change(), -(amount as i128));
     }
-    
+
     #[test]
     fn test_insufficient_balance() {
         let result = BalanceUpdate::new(
@@ -558,18 +581,21 @@ mod tests {
             1640995200,
             None,
         );
-        
-        assert!(matches!(result, Err(BalanceError::InsufficientBalance { .. })));
+
+        assert!(matches!(
+            result,
+            Err(BalanceError::InsufficientBalance { .. })
+        ));
     }
-    
+
     #[test]
     fn test_balance_state_operations() {
         let mut state = BalanceState::new();
         let user_id = [1u8; 32];
-        
+
         // Initial balance should be 0
         assert_eq!(state.get_balance(&user_id), 0);
-        
+
         // Create and apply a credit update
         let update = BalanceUpdate::new(
             [10u8; 32],
@@ -581,18 +607,19 @@ mod tests {
             0, // Previous balance
             1640995200,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         state.apply_update(update).unwrap();
-        
+
         // Balance should be updated
         assert_eq!(state.get_balance(&user_id), 50000u128);
         assert_eq!(state.updates.len(), 1);
-        
+
         let user_balance = state.get_user_balance(&user_id).unwrap();
         assert_eq!(user_balance.update_count, 1);
     }
-    
+
     #[test]
     fn test_payment_updates_creation() {
         let state = BalanceState::new();
@@ -601,25 +628,30 @@ mod tests {
         let payer_id = [3u8; 32];
         let recipient_id = [4u8; 32];
         let amount = 25000u128;
-        
-        let updates = state.create_payment_updates(
-            payment_tx_id,
-            loan_id,
-            payer_id,
-            recipient_id,
-            amount,
-            1640995200,
-        ).unwrap();
-        
+
+        let updates = state
+            .create_payment_updates(
+                payment_tx_id,
+                loan_id,
+                payer_id,
+                recipient_id,
+                amount,
+                1640995200,
+            )
+            .unwrap();
+
         assert_eq!(updates.len(), 1);
-        
+
         let credit_update = &updates[0];
         assert_eq!(credit_update.user_id, recipient_id);
-        assert_eq!(credit_update.update_type, BalanceUpdateType::CreditFromPayment);
+        assert_eq!(
+            credit_update.update_type,
+            BalanceUpdateType::CreditFromPayment
+        );
         assert_eq!(credit_update.amount, amount);
         assert_eq!(credit_update.loan_id, Some(loan_id));
     }
-    
+
     #[test]
     fn test_origination_updates_creation() {
         let state = BalanceState::new();
@@ -628,31 +660,39 @@ mod tests {
         let borrower_id = [3u8; 32];
         let lender_id = [4u8; 32];
         let amount = 100000u128;
-        
-        let updates = state.create_origination_updates(
-            origination_tx_id,
-            loan_id,
-            borrower_id,
-            lender_id,
-            amount,
-            1640995200,
-        ).unwrap();
-        
+
+        let updates = state
+            .create_origination_updates(
+                origination_tx_id,
+                loan_id,
+                borrower_id,
+                lender_id,
+                amount,
+                1640995200,
+            )
+            .unwrap();
+
         assert_eq!(updates.len(), 2);
-        
+
         // First update should be credit for borrower
         let borrower_update = &updates[0];
         assert_eq!(borrower_update.user_id, borrower_id);
-        assert_eq!(borrower_update.update_type, BalanceUpdateType::CreditFromOrigination);
+        assert_eq!(
+            borrower_update.update_type,
+            BalanceUpdateType::CreditFromOrigination
+        );
         assert_eq!(borrower_update.amount, amount);
-        
+
         // Second update should be debit for lender
         let lender_update = &updates[1];
         assert_eq!(lender_update.user_id, lender_id);
-        assert_eq!(lender_update.update_type, BalanceUpdateType::DebitFromOrigination);
+        assert_eq!(
+            lender_update.update_type,
+            BalanceUpdateType::DebitFromOrigination
+        );
         assert_eq!(lender_update.amount, amount);
     }
-    
+
     #[test]
     fn test_balance_nullifier_generation() {
         let update = BalanceUpdate::new(
@@ -665,14 +705,15 @@ mod tests {
             100000u128,
             1640995200,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         let nullifier1 = update.to_nullifier();
         let nullifier2 = update.to_nullifier();
-        
+
         // Same update should produce same nullifier
         assert_eq!(nullifier1, nullifier2);
-        
+
         // Different update should produce different nullifier
         let different_update = BalanceUpdate::new(
             [5u8; 32], // Different ID
@@ -684,11 +725,12 @@ mod tests {
             100000u128,
             1640995200,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         assert_ne!(nullifier1, different_update.to_nullifier());
     }
-    
+
     #[test]
     fn test_balance_inclusion_proof_verification() {
         let balance_update = BalanceUpdate::new(
@@ -701,17 +743,18 @@ mod tests {
             100000u128,
             1640995200,
             None,
-        ).unwrap();
-        
+        )
+        .unwrap();
+
         // Create a simple merkle path for testing
         let merkle_path = vec![[5u8; 32], [6u8; 32]];
         let leaf_index = 0;
-        
+
         // Calculate what the root should be with this path
         use sha2::{Digest, Sha256};
         let mut current_hash = balance_update.to_nullifier();
         let mut index = leaf_index;
-        
+
         for sibling in &merkle_path {
             let mut hasher = Sha256::new();
             if index % 2 == 0 {
@@ -724,9 +767,9 @@ mod tests {
             current_hash = hasher.finalize().into();
             index /= 2;
         }
-        
+
         let merkle_root = current_hash;
-        
+
         let proof = BalanceInclusionProof::new(
             balance_update,
             merkle_path,
@@ -734,10 +777,10 @@ mod tests {
             [7u8; 32],
             leaf_index,
         );
-        
+
         // Proof should verify correctly
         assert!(proof.verify());
-        
+
         // Proof with wrong root should fail
         let wrong_proof = BalanceInclusionProof::new(
             proof.balance_update.clone(),
@@ -746,7 +789,7 @@ mod tests {
             proof.batch_id,
             proof.leaf_index,
         );
-        
+
         assert!(!wrong_proof.verify());
     }
 }

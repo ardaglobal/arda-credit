@@ -21,7 +21,7 @@ pub enum ProcessingError {
 
     #[error("Loan error: {0}")]
     LoanError(#[from] LoanError),
-    
+
     #[error("Balance error: {0}")]
     BalanceError(#[from] BalanceError),
 
@@ -50,7 +50,7 @@ pub struct GlobalLoanState {
 
     /// All loans in the system
     pub loans: HashMap<[u8; 32], Loan>,
-    
+
     /// User balance tracking state
     pub balance_state: BalanceState,
 
@@ -136,14 +136,14 @@ impl GlobalLoanState {
                 };
                 loan_state.process_loan_origination(transaction, &self.users, &self.loan_terms)?;
                 self.loans = loan_state.loans;
-                
+
                 // Create balance updates for loan origination
                 let metadata = transaction.metadata.as_bytes();
                 let mut borrower_id = [0u8; 32];
                 let mut lender_id = [0u8; 32];
                 borrower_id.copy_from_slice(&metadata[0..32]);
                 lender_id.copy_from_slice(&metadata[32..64]);
-                
+
                 let balance_updates = self.balance_state.create_origination_updates(
                     transaction.transaction_id,
                     transaction.loan_id,
@@ -152,7 +152,7 @@ impl GlobalLoanState {
                     transaction.amount as u128,
                     transaction.created_at,
                 )?;
-                
+
                 // Apply balance updates to state
                 for update in balance_updates {
                     self.balance_state.apply_update(update)?;
@@ -160,19 +160,21 @@ impl GlobalLoanState {
             }
             TransactionType::LoanPayment => {
                 // Get loan info before processing payment for balance updates
-                let loan = self.loans.get(&transaction.loan_id)
-                    .ok_or(ProcessingError::LoanError(LoanError::LoanNotFound { 
-                        loan_id: transaction.loan_id 
-                    }))?;
+                let loan =
+                    self.loans
+                        .get(&transaction.loan_id)
+                        .ok_or(ProcessingError::LoanError(LoanError::LoanNotFound {
+                            loan_id: transaction.loan_id,
+                        }))?;
                 let lender_id = loan.lender_id;
                 let payer_id = transaction.user_id;
-                
+
                 let mut loan_state = crate::loan::LoanState {
                     loans: self.loans.clone(),
                 };
                 loan_state.process_loan_payment(transaction, &self.users)?;
                 self.loans = loan_state.loans;
-                
+
                 // Create balance updates for loan payment
                 let balance_updates = self.balance_state.create_payment_updates(
                     transaction.transaction_id,
@@ -182,7 +184,7 @@ impl GlobalLoanState {
                     transaction.amount as u128,
                     transaction.created_at,
                 )?;
-                
+
                 // Apply balance updates to state
                 for update in balance_updates {
                     self.balance_state.apply_update(update)?;
@@ -255,22 +257,26 @@ impl GlobalLoanState {
 
         total_balance
     }
-    
+
     /// Get user's current balance
     pub fn get_user_balance(&self, user_id: &[u8; 32]) -> u128 {
         self.balance_state.get_balance(user_id)
     }
-    
+
     /// Get balance update history for a user
-    pub fn get_user_balance_history(&self, user_id: &[u8; 32], limit: Option<usize>) -> Vec<&BalanceUpdate> {
+    pub fn get_user_balance_history(
+        &self,
+        user_id: &[u8; 32],
+        limit: Option<usize>,
+    ) -> Vec<&BalanceUpdate> {
         self.balance_state.get_user_update_history(user_id, limit)
     }
-    
+
     /// Get balance updates for a specific loan
     pub fn get_loan_balance_updates(&self, loan_id: &[u8; 32]) -> Vec<&BalanceUpdate> {
         self.balance_state.get_loan_balance_updates(loan_id)
     }
-    
+
     /// Get total value of all user balances
     pub fn compute_total_user_balance(&self) -> u128 {
         self.balance_state.compute_total_balance()

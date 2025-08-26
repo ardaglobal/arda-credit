@@ -110,10 +110,10 @@ pub use error::{DbError, DbResult};
 // Re-export ADS and related types
 pub use ads_service::{
     AdsConfig, AdsError, AdsMetrics, AdsServiceFactory, AuditEvent, AuditEventType, AuditTrail,
-    AuthenticatedDataStructure, BatchInclusionInfo, CcrMetadata, ComplianceStatus, 
+    AuthenticatedDataStructure, BatchInclusionInfo, CcrMetadata, ComplianceStatus,
     IndexedMerkleTreeADS, LoanInclusionProof, LoanInclusionRequest, LoanLifecycleSummary,
-    LoanMetadata, LoanOperation, LoanOperationProof, MembershipProof,
-    NonMembershipProof, StateCommitment, StateTransition, WitnessData,
+    LoanMetadata, LoanOperation, LoanOperationProof, MembershipProof, NonMembershipProof,
+    StateCommitment, StateTransition, WitnessData,
 };
 
 pub use background_processor::{BackgroundProcessor, ProcessorBuilder, ProcessorConfig};

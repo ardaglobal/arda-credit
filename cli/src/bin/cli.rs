@@ -144,7 +144,6 @@ enum Commands {
     // ============================================================================
     // ENHANCED LOAN OPERATION TESTING COMMANDS
     // ============================================================================
-
     /// Test prefixed nullifier generation for loan operations
     TestPrefixedNullifiers {
         /// Number of nullifiers to generate for testing
@@ -483,46 +482,213 @@ async fn main() -> Result<()> {
         }
 
         // Enhanced loan operation testing commands
-        Commands::TestPrefixedNullifiers { count, prefix, verbose } => {
+        Commands::TestPrefixedNullifiers {
+            count,
+            prefix,
+            verbose,
+        } => {
             test_prefixed_nullifiers(count, &prefix, verbose).await?;
         }
-        Commands::VerifyLoanPayment { batch_id, loan_id, amount, user_id, proof_file, verbose } => {
-            verify_loan_payment(&client, batch_id, &loan_id, &amount, &user_id, proof_file, verbose).await?;
+        Commands::VerifyLoanPayment {
+            batch_id,
+            loan_id,
+            amount,
+            user_id,
+            proof_file,
+            verbose,
+        } => {
+            verify_loan_payment(
+                &client, batch_id, &loan_id, &amount, &user_id, proof_file, verbose,
+            )
+            .await?;
         }
-        Commands::VerifyLoanOrigination { batch_id, loan_id, principal, borrower_id, lender_id, proof_file, verbose } => {
-            verify_loan_origination(&client, batch_id, &loan_id, &principal, &borrower_id, &lender_id, proof_file, verbose).await?;
+        Commands::VerifyLoanOrigination {
+            batch_id,
+            loan_id,
+            principal,
+            borrower_id,
+            lender_id,
+            proof_file,
+            verbose,
+        } => {
+            verify_loan_origination(
+                &client,
+                batch_id,
+                &loan_id,
+                &principal,
+                &borrower_id,
+                &lender_id,
+                proof_file,
+                verbose,
+            )
+            .await?;
         }
-        Commands::VerifyLoanOperation { batch_id, transaction_id, transaction_type, proof_file, verbose } => {
-            verify_loan_operation(&client, batch_id, &transaction_id, &transaction_type, proof_file, verbose).await?;
+        Commands::VerifyLoanOperation {
+            batch_id,
+            transaction_id,
+            transaction_type,
+            proof_file,
+            verbose,
+        } => {
+            verify_loan_operation(
+                &client,
+                batch_id,
+                &transaction_id,
+                &transaction_type,
+                proof_file,
+                verbose,
+            )
+            .await?;
         }
-        Commands::TestLoanPerformance { operation_count, target_tps, operation_mix, batch_size, verbose, continuous } => {
-            test_loan_performance(&client, operation_count, target_tps, &operation_mix, batch_size, verbose, continuous).await?;
+        Commands::TestLoanPerformance {
+            operation_count,
+            target_tps,
+            operation_mix,
+            batch_size,
+            verbose,
+            continuous,
+        } => {
+            test_loan_performance(
+                &client,
+                operation_count,
+                target_tps,
+                &operation_mix,
+                batch_size,
+                verbose,
+                continuous,
+            )
+            .await?;
         }
-        Commands::QueryLoanStatus { loan_id, history, audit_trail, limit, verbose } => {
+        Commands::QueryLoanStatus {
+            loan_id,
+            history,
+            audit_trail,
+            limit,
+            verbose,
+        } => {
             query_loan_status(&client, &loan_id, history, audit_trail, limit, verbose).await?;
         }
-        Commands::QueryUserLoans { user_id, operation_type, limit, verbose } => {
+        Commands::QueryUserLoans {
+            user_id,
+            operation_type,
+            limit,
+            verbose,
+        } => {
             query_user_loans(&client, &user_id, operation_type, limit, verbose).await?;
         }
-        Commands::QueryLoansByAmount { min_amount, max_amount, operation_type, limit, verbose } => {
-            query_loans_by_amount(&client, &min_amount, &max_amount, operation_type, limit, verbose).await?;
+        Commands::QueryLoansByAmount {
+            min_amount,
+            max_amount,
+            operation_type,
+            limit,
+            verbose,
+        } => {
+            query_loans_by_amount(
+                &client,
+                &min_amount,
+                &max_amount,
+                operation_type,
+                limit,
+                verbose,
+            )
+            .await?;
         }
-        Commands::TestBatchProcessing { batch_count, operations_per_batch, target_time, verbose, mixed_operations } => {
-            test_batch_processing(&client, batch_count, operations_per_batch, target_time, verbose, mixed_operations).await?;
+        Commands::TestBatchProcessing {
+            batch_count,
+            operations_per_batch,
+            target_time,
+            verbose,
+            mixed_operations,
+        } => {
+            test_batch_processing(
+                &client,
+                batch_count,
+                operations_per_batch,
+                target_time,
+                verbose,
+                mixed_operations,
+            )
+            .await?;
         }
-        Commands::ValidateZkPerformance { operation_count, target_time, include_loans, complexity, verbose } => {
-            validate_zk_performance(&client, operation_count, target_time, include_loans, complexity, verbose).await?;
+        Commands::ValidateZkPerformance {
+            operation_count,
+            target_time,
+            include_loans,
+            complexity,
+            verbose,
+        } => {
+            validate_zk_performance(
+                &client,
+                operation_count,
+                target_time,
+                include_loans,
+                complexity,
+                verbose,
+            )
+            .await?;
         }
-        Commands::GetLoanStats { loan_id, user_id, batch_id, system_wide, include_audit, verbose } => {
-            get_loan_stats(&client, loan_id, user_id, batch_id, system_wide, include_audit, verbose).await?;
+        Commands::GetLoanStats {
+            loan_id,
+            user_id,
+            batch_id,
+            system_wide,
+            include_audit,
+            verbose,
+        } => {
+            get_loan_stats(
+                &client,
+                loan_id,
+                user_id,
+                batch_id,
+                system_wide,
+                include_audit,
+                verbose,
+            )
+            .await?;
         }
-        Commands::GenerateTestData { users, loans, payments_per_loan, seed, clean, verbose } => {
-            generate_test_data(&client, users, loans, payments_per_loan, seed, clean, verbose).await?;
+        Commands::GenerateTestData {
+            users,
+            loans,
+            payments_per_loan,
+            seed,
+            clean,
+            verbose,
+        } => {
+            generate_test_data(
+                &client,
+                users,
+                loans,
+                payments_per_loan,
+                seed,
+                clean,
+                verbose,
+            )
+            .await?;
         }
-        Commands::BenchmarkLoanOperations { duration, target_ops_per_sec, operation_types, include_batching, include_proofs, verbose } => {
-            benchmark_loan_operations(&client, duration, target_ops_per_sec, &operation_types, include_batching, include_proofs, verbose).await?;
+        Commands::BenchmarkLoanOperations {
+            duration,
+            target_ops_per_sec,
+            operation_types,
+            include_batching,
+            include_proofs,
+            verbose,
+        } => {
+            benchmark_loan_operations(
+                &client,
+                duration,
+                target_ops_per_sec,
+                &operation_types,
+                include_batching,
+                include_proofs,
+                verbose,
+            )
+            .await?;
         }
-        Commands::RefreshLoanStats { force_recalc, optimize_indexes, verbose } => {
+        Commands::RefreshLoanStats {
+            force_recalc,
+            optimize_indexes,
+            verbose,
+        } => {
             refresh_loan_stats(&client, force_recalc, optimize_indexes, verbose).await?;
         }
     }
@@ -1282,8 +1448,8 @@ fn parse_local_vkey(content: &str) -> Result<[u8; 32]> {
 
 /// Test prefixed nullifier generation for loan operations
 async fn test_prefixed_nullifiers(count: usize, prefix: &str, verbose: bool) -> Result<()> {
-    use std::collections::HashSet;
     use sha2::{Digest, Sha256};
+    use std::collections::HashSet;
 
     println!("🧪 Testing prefixed nullifier generation...");
     println!("   Count: {}", count);
@@ -1299,11 +1465,10 @@ async fn test_prefixed_nullifiers(count: usize, prefix: &str, verbose: bool) -> 
         let mut hasher = Sha256::new();
         hasher.update(input.as_bytes());
         let hash = hasher.finalize();
-        
+
         // Convert to i64 nullifier value
         let nullifier = i64::from_be_bytes([
-            hash[0], hash[1], hash[2], hash[3],
-            hash[4], hash[5], hash[6], hash[7],
+            hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
         ]);
 
         if !nullifiers.insert(nullifier) {
@@ -1325,9 +1490,12 @@ async fn test_prefixed_nullifiers(count: usize, prefix: &str, verbose: bool) -> 
     println!("   Collisions: {}", collisions);
     println!("   Duration: {:?}", duration);
     println!("   Rate: {:.2} nullifiers/second", rate);
-    
+
     if collisions > 0 {
-        println!("   ⚠️ Collision rate: {:.4}%", (collisions as f64 / count as f64) * 100.0);
+        println!(
+            "   ⚠️ Collision rate: {:.4}%",
+            (collisions as f64 / count as f64) * 100.0
+        );
     }
 
     Ok(())
@@ -1381,21 +1549,20 @@ async fn verify_loan_payment(
     // 4. Validate the proof covers the transaction
 
     println!("   🔐 Verifying proof inclusion...");
-    
+
     // Simulate verification for now
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     println!("   ✅ Loan payment verification completed");
-    println!("   💸 Payment of {} for loan {} by user {} is verified in batch {}", 
-             amount, loan_id, user_id, batch_id);
+    println!(
+        "   💸 Payment of {} for loan {} by user {} is verified in batch {}",
+        amount, loan_id, user_id, batch_id
+    );
 
     if verbose {
         println!("   📋 Batch Details:");
         println!("      Transactions: {}", batch_info.transaction_count);
         println!("      Status: {:?}", batch_info.proof_status);
-        if let Some(root) = batch_info.final_root {
-            println!("      Final Root: 0x{}", hex::encode(root));
-        }
     }
 
     Ok(())
@@ -1444,21 +1611,20 @@ async fn verify_loan_origination(
     };
 
     println!("   🔐 Verifying proof inclusion...");
-    
+
     // Simulate verification
     tokio::time::sleep(tokio::time::Duration::from_millis(700)).await;
 
     println!("   ✅ Loan origination verification completed");
-    println!("   🏦 Origination of loan {} for {} from {} to {} is verified in batch {}", 
-             loan_id, principal, lender_id, borrower_id, batch_id);
+    println!(
+        "   🏦 Origination of loan {} for {} from {} to {} is verified in batch {}",
+        loan_id, principal, lender_id, borrower_id, batch_id
+    );
 
     if verbose {
         println!("   📋 Batch Details:");
         println!("      Transactions: {}", batch_info.transaction_count);
         println!("      Status: {:?}", batch_info.proof_status);
-        if let Some(root) = batch_info.final_root {
-            println!("      Final Root: 0x{}", hex::encode(root));
-        }
     }
 
     Ok(())
@@ -1481,7 +1647,10 @@ async fn verify_loan_operation(
     // Validate transaction type
     let valid_types = ["loan_origination", "loan_payment", "loan_closeout"];
     if !valid_types.contains(&transaction_type) {
-        println!("   ❌ Invalid transaction type. Valid types: {:?}", valid_types);
+        println!(
+            "   ❌ Invalid transaction type. Valid types: {:?}",
+            valid_types
+        );
         return Ok(());
     }
 
@@ -1500,13 +1669,15 @@ async fn verify_loan_operation(
     };
 
     println!("   🔐 Verifying {} inclusion...", transaction_type);
-    
+
     // Simulate verification
     tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
 
     println!("   ✅ Loan operation verification completed");
-    println!("   📊 Transaction {} of type {} is verified in batch {}", 
-             transaction_id, transaction_type, batch_id);
+    println!(
+        "   📊 Transaction {} of type {} is verified in batch {}",
+        transaction_id, transaction_type, batch_id
+    );
 
     Ok(())
 }
@@ -1557,17 +1728,21 @@ async fn test_loan_performance(
 
     loop {
         let batch_start = Instant::now();
-        
+
         // Simulate batch creation with mixed operations
-        println!("   📦 Creating batch {} with {} operations...", batches_processed + 1, batch_size);
-        
+        println!(
+            "   📦 Creating batch {} with {} operations...",
+            batches_processed + 1,
+            batch_size
+        );
+
         // Simulate processing time based on operation complexity
         let base_time = 100; // milliseconds base processing time
         let operation_complexity = batch_size as u64 * 2; // more operations = more time
         let processing_time = std::cmp::min(base_time + operation_complexity, 2000); // cap at 2 seconds
-        
+
         tokio::time::sleep(tokio::time::Duration::from_millis(processing_time)).await;
-        
+
         operations_completed += batch_size;
         batches_processed += 1;
         let batch_duration = batch_start.elapsed();
@@ -1577,7 +1752,10 @@ async fn test_loan_performance(
         let current_tps = operations_completed as f64 / elapsed.as_secs_f64();
 
         if verbose {
-            println!("      ✅ Batch {} completed in {:?}", batches_processed, batch_duration);
+            println!(
+                "      ✅ Batch {} completed in {:?}",
+                batches_processed, batch_duration
+            );
             println!("      📈 Current TPS: {:.2}", current_tps);
         } else {
             print!(".");
@@ -1616,9 +1794,15 @@ async fn test_loan_performance(
     println!("   Average Batch Time: {:?}", avg_batch_time);
 
     if final_tps >= target_tps {
-        println!("   ✅ TARGET ACHIEVED: {:.2} TPS >= {} TPS", final_tps, target_tps);
+        println!(
+            "   ✅ TARGET ACHIEVED: {:.2} TPS >= {} TPS",
+            final_tps, target_tps
+        );
     } else {
-        println!("   ⚠️ Target missed: {:.2} TPS < {} TPS", final_tps, target_tps);
+        println!(
+            "   ⚠️ Target missed: {:.2} TPS < {} TPS",
+            final_tps, target_tps
+        );
     }
 
     if final_tps >= 60.0 {
@@ -1646,7 +1830,7 @@ async fn query_loan_status(
     println!("   📊 Loan Status: Active");
     println!("   💰 Outstanding Balance: $45,000.00");
     println!("   📅 Last Payment: 2024-01-15");
-    
+
     if history {
         println!();
         println!("   📜 Operation History (last {}):", limit);
@@ -1684,7 +1868,7 @@ async fn query_user_loans(
     println!("   Limit: {}", limit);
 
     // TODO: Implement actual API calls to query user loans
-    
+
     println!();
     println!("   👤 User Loan Summary:");
     println!("      Active Loans: 3");
@@ -1757,7 +1941,7 @@ async fn test_batch_processing(
 
     for batch_num in 1..=batch_count {
         let batch_start = Instant::now();
-        
+
         println!("   📦 Processing batch {}/{}...", batch_num, batch_count);
 
         // Simulate batch processing
@@ -1777,13 +1961,19 @@ async fn test_batch_processing(
         if batch_duration.as_secs() <= target_time {
             successful_batches += 1;
             if verbose {
-                println!("      ✅ Completed in {:?} (target: {}s)", batch_duration, target_time);
+                println!(
+                    "      ✅ Completed in {:?} (target: {}s)",
+                    batch_duration, target_time
+                );
             } else {
                 print!("✓");
             }
         } else {
             if verbose {
-                println!("      ⚠️ Took {:?} (target: {}s)", batch_duration, target_time);
+                println!(
+                    "      ⚠️ Took {:?} (target: {}s)",
+                    batch_duration, target_time
+                );
             } else {
                 print!("!");
             }
@@ -1795,14 +1985,18 @@ async fn test_batch_processing(
     }
 
     let total_duration = start_time.elapsed();
-    let avg_batch_time: std::time::Duration = batch_times.iter().sum::<std::time::Duration>() / batch_times.len() as u32;
+    let avg_batch_time: std::time::Duration =
+        batch_times.iter().sum::<std::time::Duration>() / batch_times.len() as u32;
     let total_tps = total_operations as f64 / total_duration.as_secs_f64();
 
     println!();
     println!("🎯 Batch Processing Results:");
     println!("   Total Batches: {}", batch_count);
-    println!("   Successful Batches: {} ({:.1}%)", successful_batches, 
-             (successful_batches as f64 / batch_count as f64) * 100.0);
+    println!(
+        "   Successful Batches: {} ({:.1}%)",
+        successful_batches,
+        (successful_batches as f64 / batch_count as f64) * 100.0
+    );
     println!("   Total Operations: {}", total_operations);
     println!("   Total Duration: {:?}", total_duration);
     println!("   Average Batch Time: {:?}", avg_batch_time);
@@ -1811,7 +2005,10 @@ async fn test_batch_processing(
     if successful_batches == batch_count {
         println!("   🚀 ALL BATCHES SUCCESSFUL!");
     } else {
-        println!("   ⚠️ {} batches exceeded target time", batch_count - successful_batches);
+        println!(
+            "   ⚠️ {} batches exceeded target time",
+            batch_count - successful_batches
+        );
     }
 
     Ok(())
@@ -1828,7 +2025,11 @@ async fn validate_zk_performance(
 ) -> Result<()> {
     println!("⚡ Validating ZK proof generation performance...");
     println!("   Operations: {}", operation_count);
-    println!("   Target time: {}s ({:.1} minutes)", target_time, target_time as f64 / 60.0);
+    println!(
+        "   Target time: {}s ({:.1} minutes)",
+        target_time,
+        target_time as f64 / 60.0
+    );
     println!("   Include loans: {}", include_loans);
     println!("   Complexity level: {}/5", complexity);
 
@@ -1837,12 +2038,19 @@ async fn validate_zk_performance(
     // Simulate proof generation time based on parameters
     let base_time = operation_count as u64 * 50; // 50ms per operation base
     let complexity_multiplier = complexity as u64;
-    let loan_overhead = if include_loans { operation_count as u64 * 10 } else { 0 };
-    
+    let loan_overhead = if include_loans {
+        operation_count as u64 * 10
+    } else {
+        0
+    };
+
     let estimated_time_ms = (base_time + loan_overhead) * complexity_multiplier;
     let estimated_time_s = estimated_time_ms / 1000;
 
-    println!("   🧮 Estimated proof generation time: {}s", estimated_time_s);
+    println!(
+        "   🧮 Estimated proof generation time: {}s",
+        estimated_time_s
+    );
 
     if verbose {
         println!("   📊 Breakdown:");
@@ -1856,7 +2064,7 @@ async fn validate_zk_performance(
     for step in 1..=steps {
         let step_time = estimated_time_ms / steps;
         tokio::time::sleep(tokio::time::Duration::from_millis(step_time)).await;
-        
+
         if verbose {
             println!("   🔧 Step {}/{}: Processing batch segment...", step, steps);
         } else if step % 2 == 0 {
@@ -1879,16 +2087,23 @@ async fn validate_zk_performance(
 
     if actual_seconds <= target_time {
         println!("   ✅ PERFORMANCE TARGET MET!");
-        
-        if actual_seconds <= 600 { // 10 minutes
+
+        if actual_seconds <= 600 {
+            // 10 minutes
             println!("   🚀 EXCELLENT: Under 10-minute requirement!");
         }
     } else {
-        println!("   ⚠️ Performance target missed by {}s", actual_seconds - target_time);
+        println!(
+            "   ⚠️ Performance target missed by {}s",
+            actual_seconds - target_time
+        );
     }
 
     let operations_per_second = operation_count as f64 / actual_time.as_secs_f64();
-    println!("   📈 Processing rate: {:.2} operations/second", operations_per_second);
+    println!(
+        "   📈 Processing rate: {:.2} operations/second",
+        operations_per_second
+    );
 
     if include_loans {
         println!("   🏦 Loan operations successfully included in proof");
@@ -1970,7 +2185,7 @@ async fn generate_test_data(
     println!("   Users: {}", users);
     println!("   Loans: {}", loans);
     println!("   Payments per loan: {}", payments_per_loan);
-    
+
     if let Some(s) = seed {
         println!("   Seed: {}", s);
     }
@@ -2054,85 +2269,95 @@ async fn benchmark_loan_operations(
 
     let start_time = Instant::now();
     let end_time = start_time + std::time::Duration::from_secs(duration);
-    
+
     let mut operations_completed = 0;
     let mut batches_created = 0;
     let mut proofs_generated = 0;
-    
-    let operation_delay = std::time::Duration::from_millis(
-        (1000.0 / target_ops_per_sec) as u64
-    );
+
+    let operation_delay = std::time::Duration::from_millis((1000.0 / target_ops_per_sec) as u64);
 
     while Instant::now() < end_time {
         let op_start = Instant::now();
-        
+
         // Simulate operation processing
         operations_completed += 1;
-        
+
         // Batch every 50 operations
         if include_batching && operations_completed % 50 == 0 {
             batches_created += 1;
-            
+
             if verbose {
                 println!("   📦 Created batch #{}", batches_created);
             }
         }
-        
+
         // Generate proof every 200 operations
         if include_proofs && operations_completed % 200 == 0 {
             proofs_generated += 1;
-            
+
             if verbose {
                 println!("   🔐 Generated proof #{}", proofs_generated);
             }
-            
+
             // Proof generation takes longer
             tokio::time::sleep(std::time::Duration::from_millis(2000)).await;
         }
-        
+
         // Maintain target rate
         let op_duration = op_start.elapsed();
         if op_duration < operation_delay {
             tokio::time::sleep(operation_delay - op_duration).await;
         }
-        
+
         // Progress indicator
         if !verbose && operations_completed % 100 == 0 {
             print!(".");
         }
     }
-    
+
     if !verbose {
         println!(); // New line after dots
     }
 
     let actual_duration = start_time.elapsed();
     let actual_ops_per_sec = operations_completed as f64 / actual_duration.as_secs_f64();
-    
+
     println!();
     println!("🏆 Benchmark Results:");
     println!("   Duration: {:?}", actual_duration);
     println!("   Operations completed: {}", operations_completed);
     println!("   Actual OPS: {:.2}/second", actual_ops_per_sec);
     println!("   Target OPS: {}/second", target_ops_per_sec);
-    
+
     if include_batching {
         println!("   Batches created: {}", batches_created);
-        println!("   Avg operations/batch: {:.1}", operations_completed as f64 / batches_created as f64);
+        println!(
+            "   Avg operations/batch: {:.1}",
+            operations_completed as f64 / batches_created as f64
+        );
     }
-    
+
     if include_proofs {
         println!("   Proofs generated: {}", proofs_generated);
-        println!("   Avg operations/proof: {:.1}", operations_completed as f64 / proofs_generated as f64);
+        println!(
+            "   Avg operations/proof: {:.1}",
+            operations_completed as f64 / proofs_generated as f64
+        );
     }
-    
+
     let performance_ratio = actual_ops_per_sec / target_ops_per_sec;
     if performance_ratio >= 1.0 {
-        println!("   ✅ PERFORMANCE TARGET MET: {:.1}% of target", performance_ratio * 100.0);
+        println!(
+            "   ✅ PERFORMANCE TARGET MET: {:.1}% of target",
+            performance_ratio * 100.0
+        );
     } else {
-        println!("   ⚠️ Performance below target: {:.1}% of target", performance_ratio * 100.0);
+        println!(
+            "   ⚠️ Performance below target: {:.1}% of target",
+            performance_ratio * 100.0
+        );
     }
-    
+
     if actual_ops_per_sec >= 60.0 {
         println!("   🚀 EXCELLENT: Exceeded 60 OPS requirement!");
     }
@@ -2148,11 +2373,11 @@ async fn refresh_loan_stats(
     verbose: bool,
 ) -> Result<()> {
     println!("🔄 Refreshing loan statistics...");
-    
+
     if force_recalc {
         println!("   💪 Force recalculation enabled");
     }
-    
+
     if optimize_indexes {
         println!("   🚀 Index optimization enabled");
     }
@@ -2162,30 +2387,30 @@ async fn refresh_loan_stats(
     // Simulate statistics refresh
     println!("   📊 Refreshing loan operation statistics...");
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-    
+
     println!("   🔍 Refreshing audit trail statistics...");
     tokio::time::sleep(tokio::time::Duration::from_millis(800)).await;
-    
+
     println!("   📈 Refreshing batch statistics...");
     tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
 
     if optimize_indexes {
         println!("   🗂️ Analyzing table statistics...");
         tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
-        
+
         println!("   ⚡ Optimizing database indexes...");
         tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
     }
 
     let duration = start_time.elapsed();
-    
+
     println!();
     println!("✅ Statistics refresh completed:");
     println!("   Duration: {:?}", duration);
     println!("   📊 Updated 1,247 loan records");
     println!("   🔐 Processed 15,439 audit events");
     println!("   📦 Analyzed 289 batches");
-    
+
     if optimize_indexes {
         println!("   🚀 Optimized 12 database indexes");
         println!("   ⚡ Expected query performance improvement: 15-25%");

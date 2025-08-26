@@ -28,12 +28,15 @@ sol! {
 
 // Re-export core processing functions and state
 pub use loan_processor::{
-    process_loan_batch, process_loan_operations, validate_transaction, GlobalLoanState, LoanOperation, MerkleTree,
-    ProcessingError,
+    process_loan_batch, process_loan_operations, validate_transaction, GlobalLoanState,
+    LoanOperation, MerkleTree, ProcessingError,
 };
 
 // Re-export from new modules
-pub use balance::{BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType, UserBalance};
+pub use balance::{
+    BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType,
+    UserBalance,
+};
 pub use loan::{Loan, LoanError, LoanStatus, LoanTerms};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};

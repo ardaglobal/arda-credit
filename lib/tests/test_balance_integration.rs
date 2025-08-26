@@ -109,28 +109,38 @@ mod tests {
         assert_eq!(state.balance_state.updates.len(), 2);
 
         // Find borrower credit update
-        let borrower_updates: Vec<_> = state.balance_state.updates
+        let borrower_updates: Vec<_> = state
+            .balance_state
+            .updates
             .iter()
             .filter(|u| u.user_id == borrower_id)
             .collect();
         assert_eq!(borrower_updates.len(), 1);
-        
+
         let borrower_update = borrower_updates[0];
-        assert_eq!(borrower_update.update_type, BalanceUpdateType::CreditFromOrigination);
+        assert_eq!(
+            borrower_update.update_type,
+            BalanceUpdateType::CreditFromOrigination
+        );
         assert_eq!(borrower_update.amount, 50000);
         assert_eq!(borrower_update.previous_balance, 0);
         assert_eq!(borrower_update.new_balance, 50000);
         assert_eq!(borrower_update.loan_id, Some(loan_id));
 
         // Find lender debit update
-        let lender_updates: Vec<_> = state.balance_state.updates
+        let lender_updates: Vec<_> = state
+            .balance_state
+            .updates
             .iter()
             .filter(|u| u.user_id == lender_id)
             .collect();
         assert_eq!(lender_updates.len(), 1);
-        
+
         let lender_update = lender_updates[0];
-        assert_eq!(lender_update.update_type, BalanceUpdateType::DebitFromOrigination);
+        assert_eq!(
+            lender_update.update_type,
+            BalanceUpdateType::DebitFromOrigination
+        );
         assert_eq!(lender_update.amount, 50000);
         assert_eq!(lender_update.previous_balance, 0);
         assert_eq!(lender_update.new_balance, 0); // Can't go negative, saturates at 0
@@ -176,10 +186,13 @@ mod tests {
 
         // Verify balance update was created for the payment
         assert_eq!(state.balance_state.updates.len(), 3); // 2 origination + 1 payment
-        
+
         let payment_update = &state.balance_state.updates[2]; // Latest update
         assert_eq!(payment_update.user_id, lender_id); // Lender receives the payment
-        assert_eq!(payment_update.update_type, BalanceUpdateType::CreditFromPayment);
+        assert_eq!(
+            payment_update.update_type,
+            BalanceUpdateType::CreditFromPayment
+        );
         assert_eq!(payment_update.amount, 25000);
         assert_eq!(payment_update.previous_balance, 0); // Lender balance before payment
         assert_eq!(payment_update.new_balance, 25000);
@@ -223,7 +236,7 @@ mod tests {
         let mut expected_balances = vec![
             (BalanceUpdateType::DebitFromOrigination, 100000, 0, 0), // Lends out money
             (BalanceUpdateType::CreditFromPayment, 25000, 0, 25000), // First payment
-            (BalanceUpdateType::CreditFromPayment, 35000, 25000, 60000), // Second payment  
+            (BalanceUpdateType::CreditFromPayment, 35000, 25000, 60000), // Second payment
             (BalanceUpdateType::CreditFromPayment, 40000, 60000, 100000), // Final payment
         ];
 
@@ -232,7 +245,8 @@ mod tests {
         sorted_history.sort_by_key(|u| u.created_at);
 
         for (i, update) in sorted_history.iter().enumerate() {
-            let (expected_type, expected_amount, expected_prev, expected_new) = expected_balances[i];
+            let (expected_type, expected_amount, expected_prev, expected_new) =
+                expected_balances[i];
             assert_eq!(update.update_type, expected_type);
             assert_eq!(update.amount, expected_amount);
             assert_eq!(update.previous_balance, expected_prev);
@@ -272,10 +286,10 @@ mod tests {
         for update in balance_updates {
             let nullifier1 = update.to_nullifier();
             let nullifier2 = update.to_nullifier();
-            
+
             // Same update should produce same nullifier
             assert_eq!(nullifier1, nullifier2);
-            
+
             // Nullifiers should not be all zeros
             assert_ne!(nullifier1, [0u8; 32]);
         }
@@ -292,20 +306,21 @@ mod tests {
 
         // Create a test balance update
         let balance_update = BalanceUpdate::new(
-            [1u8; 32], // update_id
-            [2u8; 32], // user_id
+            [1u8; 32],       // update_id
+            [2u8; 32],       // user_id
             Some([3u8; 32]), // loan_id
             Some([4u8; 32]), // triggering_transaction_id
             BalanceUpdateType::CreditFromPayment,
-            50000, // amount
-            100000, // previous_balance
+            50000,      // amount
+            100000,     // previous_balance
             1640995200, // timestamp
             Some("Test balance update".to_string()),
-        ).unwrap();
+        )
+        .unwrap();
 
         // Create mock Merkle path
         let merkle_path = vec![[5u8; 32], [6u8; 32], [7u8; 32]];
-        
+
         // Calculate expected root for the proof
         use sha2::{Digest, Sha256};
         let mut current_hash = balance_update.to_nullifier();
@@ -332,7 +347,7 @@ mod tests {
             merkle_path,
             merkle_root,
             [8u8; 32], // batch_id
-            0, // leaf_index
+            0,         // leaf_index
         );
 
         // Verify the proof
@@ -372,7 +387,7 @@ mod tests {
         // Originate two loans
         let loan1_origination = create_loan_origination(loan1_id, borrower1_id, lender_id, 50000);
         let loan2_origination = create_loan_origination(loan2_id, borrower2_id, lender_id, 75000);
-        
+
         state.process_transaction(&loan1_origination).unwrap();
         state.process_transaction(&loan2_origination).unwrap();
 
@@ -387,33 +402,39 @@ mod tests {
         // Check loan-specific balance updates
         let loan1_updates = state.get_loan_balance_updates(&loan1_id);
         let loan2_updates = state.get_loan_balance_updates(&loan2_id);
-        
+
         assert_eq!(loan1_updates.len(), 2); // Credit to borrower, debit from lender
         assert_eq!(loan2_updates.len(), 2); // Credit to borrower, debit from lender
 
         // Verify loan-specific amounts
         let loan1_borrower_update = loan1_updates
             .iter()
-            .find(|u| u.user_id == borrower1_id && u.update_type == BalanceUpdateType::CreditFromOrigination)
+            .find(|u| {
+                u.user_id == borrower1_id
+                    && u.update_type == BalanceUpdateType::CreditFromOrigination
+            })
             .unwrap();
         assert_eq!(loan1_borrower_update.amount, 50000);
 
         let loan2_borrower_update = loan2_updates
             .iter()
-            .find(|u| u.user_id == borrower2_id && u.update_type == BalanceUpdateType::CreditFromOrigination)
+            .find(|u| {
+                u.user_id == borrower2_id
+                    && u.update_type == BalanceUpdateType::CreditFromOrigination
+            })
             .unwrap();
         assert_eq!(loan2_borrower_update.amount, 75000);
 
         // Make payments on both loans
         let payment1 = create_loan_payment([20u8; 32], loan1_id, borrower1_id, 25000, 1640995500);
         let payment2 = create_loan_payment([21u8; 32], loan2_id, borrower2_id, 35000, 1640995600);
-        
+
         state.process_transaction(&payment1).unwrap();
         state.process_transaction(&payment2).unwrap();
 
         // Verify payment balance updates
         assert_eq!(state.balance_state.updates.len(), 6); // 4 origination + 2 payment
-        
+
         // Final lender balance should reflect both payments
         assert_eq!(state.get_user_balance(&lender_id), 60000); // 25000 + 35000
     }

@@ -17,16 +17,16 @@ default = [ "tikv-jemallocator" ]
 [dependencies]
 chrono = { version = "0.4", features = [ "serde" ] }
 lib = { path = "../lib" }
+rust_decimal = "1.33"
 serde = { workspace = true }
 sqlx = { workspace = true, features = [
     "chrono",
     "json",
     "postgres",
     "runtime-tokio-rustls",
-    "uuid",
     "rust_decimal",
+    "uuid",
 ] }
-rust_decimal = "1.33"
 thiserror = "2.0"
 tokio = { workspace = true }
 tracing = { workspace = true }

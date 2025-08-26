@@ -57,13 +57,13 @@ pub enum CcrOperation {
 
 impl CcrOperation {
     /// Generate a deterministic nullifier for this operation
-    /// 
+    ///
     /// This follows the same blake3-based approach as the existing `transaction_to_nullifier`
     /// method in `api/src/unified_batch_service.rs` but adds operation-type prefixes to
     /// prevent collisions between different operation types.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A positive i64 nullifier value compatible with the IndexedMerkleTree requirements
     pub fn to_nullifier(&self) -> i64 {
         let mut hasher = blake3::Hasher::new();
@@ -188,7 +188,9 @@ impl CcrOperation {
     /// Get the amount associated with this operation (if applicable)
     pub fn amount(&self) -> Option<i64> {
         match self {
-            CcrOperation::LoanCreation { principal_amount, .. } => Some(*principal_amount),
+            CcrOperation::LoanCreation {
+                principal_amount, ..
+            } => Some(*principal_amount),
             CcrOperation::LoanFunding { amount, .. } => Some(*amount),
             CcrOperation::Payment { amount, .. } => Some(*amount),
             CcrOperation::BalanceUpdate { amount_delta, .. } => Some(*amount_delta),

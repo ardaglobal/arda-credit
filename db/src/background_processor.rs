@@ -15,22 +15,22 @@ use tracing::{debug, error, info, warn};
 pub mod transaction_prefixes {
     /// Loan origination transactions: 1,000,000,000 - 1,999,999,999
     pub const LOAN_ORIGINATION: i64 = 1_000_000_000;
-    
+
     /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999  
     pub const LOAN_CLOSEOUT: i64 = 2_000_000_000;
-    
+
     /// Loan payment transactions: 3,000,000,000 - 3,999,999,999
     pub const LOAN_PAYMENT: i64 = 3_000_000_000;
-    
+
     /// User registration transactions: 5,000,000,000 - 5,999,999,999
     pub const USER_REGISTRATION: i64 = 5_000_000_000;
-    
+
     /// KYC verification transactions: 6,000,000,000 - 6,999,999,999
     pub const KYC_VERIFICATION: i64 = 6_000_000_000;
-    
+
     /// Default/legacy transactions (for backward compatibility): 0 - 999,999,999
     pub const LEGACY_DEFAULT: i64 = 0;
-    
+
     /// Maximum value within a prefix range (999,999,999)
     pub const PREFIX_RANGE_SIZE: i64 = 999_999_999;
 }
@@ -188,7 +188,11 @@ impl BackgroundProcessor {
     }
 
     /// Convert a transaction to a nullifier value with specific prefix for namespace isolation
-    fn transaction_to_nullifier_with_prefix(&self, transaction: &IncomingTransaction, prefix: i64) -> i64 {
+    fn transaction_to_nullifier_with_prefix(
+        &self,
+        transaction: &IncomingTransaction,
+        prefix: i64,
+    ) -> i64 {
         // Create a deterministic nullifier from the transaction data using blake3
         // This ensures the same transaction always produces the same nullifier across deployments
         let mut hasher = blake3::Hasher::new();
@@ -213,8 +217,9 @@ impl BackgroundProcessor {
 
         // Convert to positive value within prefix range
         // Take modulo to fit within the prefix range (999,999,999), then add 1 to avoid zero
-        let base_nullifier = ((hash_u64 % (transaction_prefixes::PREFIX_RANGE_SIZE as u64)) as i64) + 1;
-        
+        let base_nullifier =
+            ((hash_u64 % (transaction_prefixes::PREFIX_RANGE_SIZE as u64)) as i64) + 1;
+
         // Apply prefix for namespace isolation
         let final_nullifier = prefix + base_nullifier;
 
@@ -222,10 +227,9 @@ impl BackgroundProcessor {
             "Background processor: Transaction {} -> nullifier {} (prefix: {}, base: {}, hash: {})",
             transaction.id, final_nullifier, prefix, base_nullifier, hash_u64
         );
-        
+
         final_nullifier
     }
-
 
     /// Fetch new transactions since the last processed ID
     async fn fetch_new_transactions(&self) -> DbResult<Vec<IncomingTransaction>> {
