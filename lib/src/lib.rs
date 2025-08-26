@@ -7,6 +7,10 @@ pub mod loan_processor;
 pub mod transactions;
 pub mod user;
 pub mod utils;
+pub mod zkvm_ads; // zkVM-compatible ADS operations
+
+#[cfg(test)]
+mod zkvm_ads_consistency_tests; // Consistency tests for zkVM ADS
 
 // Proof module only available for host-side operations
 #[cfg(feature = "sp1")]
@@ -41,6 +45,15 @@ pub use loan::{Loan, LoanError, LoanStatus, LoanTerms};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};
 pub use utils::{cents_to_decimal, decimal_to_cents, hash_uuid};
+pub use zkvm_ads::{StateTransition, ZkVMAds, ZkVMNullifier};
 
 // Keep the old LoanState type alias for backward compatibility
 pub type LoanState = GlobalLoanState;
+
+// Input structure for zkVM program with ADS state
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ZkVMBatchInput {
+    pub initial_loan_state: GlobalLoanState,
+    pub initial_ads_state: ZkVMAds,
+    pub batch: LoanBatch,
+}
