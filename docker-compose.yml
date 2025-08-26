@@ -19,7 +19,6 @@ services:
   server:
     # Production: Use pre-built image from GitHub Container Registry
     image: ghcr.io/ardaglobal/arda-credit:latest
-    
     container_name: arda_credit_server
     env_file:
       - .env  # Load environment variables from .env file

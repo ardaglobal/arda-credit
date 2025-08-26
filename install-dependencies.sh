@@ -358,6 +358,30 @@ EOF
   esac
 }
 
+# yamllint (YAML linter)
+function ensure_yamllint() {
+  check_cmd yamllint && return
+  
+  case $OS in
+  Linux)
+    local cmd=$(
+      cat <<-EOF
+    apt-get update &&
+    apt-get install -y --no-install-recommends python3 python3-pip &&
+    pip3 install yamllint
+EOF
+    )
+    try_sudo "$cmd"
+    ;;
+  Darwin)
+    ensure_brew
+    brew install yamllint
+    ;;
+  *)
+    ;;
+  esac
+}
+
 # foundry
 function ensure_foundry() {
   check_cmd forge && check_cmd cast && check_cmd anvil && return
@@ -580,6 +604,7 @@ function ensure_tools() {
   ensure_nodejs
   ensure_sindri
   ensure_taplo
+  ensure_yamllint
   ensure_foundry
   ensure_sp1
   ensure_gh

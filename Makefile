@@ -93,6 +93,22 @@ docker-lint-fix:
 	hadolint --format tty Dockerfile || true
 	@echo "💡 See https://github.com/hadolint/hadolint/wiki/DL4006 for rule explanations"
 
+## yamllint: Lint YAML files using yamllint
+.PHONY: yamllint
+yamllint:
+	@echo "🔍 Linting YAML files with yamllint..."
+	@command -v yamllint >/dev/null 2>&1 || { echo "❌ yamllint not found. Run 'make install' to install dependencies."; exit 1; }
+	yamllint .
+	@echo "✅ YAML linting completed"
+
+## yamllint-fix: Lint YAML files with verbose output for fixing issues
+.PHONY: yamllint-fix
+yamllint-fix:
+	@echo "🔧 Linting YAML files with detailed output..."
+	@command -v yamllint >/dev/null 2>&1 || { echo "❌ yamllint not found. Run 'make install' to install dependencies."; exit 1; }
+	yamllint --format parsable . || true
+	@echo "💡 Fix YAML issues based on the output above"
+
 ## test: Run all tests
 .PHONY: test
 test:
