@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT pb.id, pb.created_at as \"created_at!\", ads.merkle_root\n                FROM proof_batches pb\n                JOIN ads_state_commits ads ON pb.id = ads.batch_id\n                JOIN audit_events ae ON ae.nullifier_value = $1\n                ORDER BY pb.created_at DESC\n                LIMIT 1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "merkle_root",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "6d48d6815c82452af31eb632ef958d1d3f0d494bb87f27eb2b2439922683ff3a"
+}

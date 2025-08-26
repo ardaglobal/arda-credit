@@ -815,7 +815,7 @@ pub async fn get_identity_by_id(
 ) -> Result<Option<Identity>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at as "created_at!", updated_at as "updated_at!"
         FROM identities
         WHERE id = $1
         "#,
@@ -831,8 +831,8 @@ pub async fn get_identity_by_id(
         kyc_status: row.kyc_status,
         kyc_submitted_at: row.kyc_submitted_at,
         kyc_verified_at: row.kyc_verified_at,
-        created_at: row.created_at.unwrap_or_else(Utc::now),
-        updated_at: row.updated_at.unwrap_or_else(Utc::now),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     });
 
     Ok(identity)
@@ -845,7 +845,7 @@ pub async fn get_identity_by_email(
 ) -> Result<Option<Identity>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at as "created_at!", updated_at as "updated_at!"
         FROM identities
         WHERE email = $1
         "#,
@@ -861,8 +861,8 @@ pub async fn get_identity_by_email(
         kyc_status: row.kyc_status,
         kyc_submitted_at: row.kyc_submitted_at,
         kyc_verified_at: row.kyc_verified_at,
-        created_at: row.created_at.unwrap_or_else(Utc::now),
-        updated_at: row.updated_at.unwrap_or_else(Utc::now),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     });
 
     Ok(identity)
@@ -878,7 +878,7 @@ pub async fn list_identities(
     // Simplified version - can add filtering later
     let rows = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at as "created_at!", updated_at as "updated_at!"
         FROM identities
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -898,8 +898,8 @@ pub async fn list_identities(
             kyc_status: row.kyc_status,
             kyc_submitted_at: row.kyc_submitted_at,
             kyc_verified_at: row.kyc_verified_at,
-            created_at: row.created_at.unwrap_or_else(Utc::now),
-            updated_at: row.updated_at.unwrap_or_else(Utc::now),
+            created_at: row.created_at,
+            updated_at: row.updated_at,
         })
         .collect();
 

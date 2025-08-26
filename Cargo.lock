@@ -2238,6 +2238,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "sp1-sdk",
  "tokio",
  "tracing",

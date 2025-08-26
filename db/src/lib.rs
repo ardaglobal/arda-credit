@@ -40,6 +40,7 @@ pub mod merkle_tree;
 pub mod merkle_tree_32;
 pub mod vapp_integration;
 
+pub mod ccr;
 pub mod db;
 pub mod error;
 
@@ -109,8 +110,10 @@ pub use error::{DbError, DbResult};
 // Re-export ADS and related types
 pub use ads_service::{
     AdsConfig, AdsError, AdsMetrics, AdsServiceFactory, AuditEvent, AuditEventType, AuditTrail,
-    AuthenticatedDataStructure, ComplianceStatus, IndexedMerkleTreeADS, MembershipProof,
-    NonMembershipProof, StateCommitment, StateTransition, WitnessData,
+    AuthenticatedDataStructure, BatchInclusionInfo, CcrMetadata, ComplianceStatus,
+    IndexedMerkleTreeADS, LoanInclusionProof, LoanInclusionRequest, LoanLifecycleSummary,
+    LoanMetadata, LoanOperation, LoanOperationProof, MembershipProof, NonMembershipProof,
+    StateCommitment, StateTransition, WitnessData,
 };
 
 pub use background_processor::{BackgroundProcessor, ProcessorBuilder, ProcessorConfig};
@@ -125,6 +128,9 @@ pub use vapp_integration::{
     SettlementResult, VAppAdsIntegration, VAppBatchResponse, VAppConfig, VAppError,
     VAppInsertionResponse, VAppProofResponse, ZkProof,
 };
+
+// Re-export CCR types
+pub use ccr::{CcrOperation, MappingContext, MappingError, TransactionMapper};
 
 #[cfg(test)]
 mod test_utils;
