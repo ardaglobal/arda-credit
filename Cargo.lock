@@ -4231,6 +4231,7 @@ name = "lib"
 version = "0.0.1"
 dependencies = [
  "alloy-sol-types",
+ "blake3",
  "clap",
  "hex",
  "rust_decimal",
