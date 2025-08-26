@@ -17,8 +17,9 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::rest::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
 use arda_credit_db::{
-    get_batch_by_id, get_pending_transactions, get_proven_unposted_batches,
-    mark_batch_posted_to_contract_with_tx_hash, update_batch_proof, IndexedMerkleTreeADS,
+    get_batch_by_id, get_contract_submission_data, get_pending_transactions,
+    get_proven_unposted_batches, mark_batch_posted_to_contract_with_tx_hash, update_batch_proof,
+    IndexedMerkleTreeADS,
 };
 use arda_credit_lib::proof::{generate_batch_proof, BatchProofGenerationRequest, ProofSystem};
 use ethereum_client::{Config as EthConfig, EthereumClient};
@@ -953,7 +954,7 @@ impl BackgroundBatchProcessor {
 
     /// Submit a single batch to the smart contract and wait for confirmation
     async fn submit_batch_to_contract_with_confirmation(
-        _pool: &PgPool,
+        pool: &PgPool,
         eth_client: &EthereumClient,
         batch: &arda_credit_db::ProofBatch,
     ) -> Result<FixedBytes<32>, String> {
@@ -985,16 +986,40 @@ impl BackgroundBatchProcessor {
             }
         };
 
-        // For now, use a random 32-byte hash for state management
-        // until the ADS state root issue is fixed
-        let state_id = FixedBytes::from_slice(
-            &alloy_primitives::keccak256(format!("batch_{}", batch.id).as_bytes())[..32],
+        // Get real ADS state roots from database
+        info!("🌳 Fetching real ADS state roots for batch {}", batch.id);
+        let contract_data = match get_contract_submission_data(pool, batch.id).await {
+            Ok(data) => {
+                info!("✅ Successfully retrieved contract submission data");
+                info!("   Previous state root: {}", data.public.prev_merkle_root);
+                info!("   New state root: {}", data.public.new_merkle_root);
+                info!("   Transaction count: {}", batch.transaction_ids.len());
+                data
+            }
+            Err(e) => {
+                error!("❌ Failed to get contract submission data for batch {}: {}", batch.id, e);
+                return Err(format!("Failed to get contract submission data: {}", e));
+            }
+        };
+
+        // Convert hex strings to FixedBytes (removing 0x prefix if present)
+        let previous_state_root = FixedBytes::from_slice(
+            &hex::decode(contract_data.public.prev_merkle_root.trim_start_matches("0x"))
+                .map_err(|e| format!("Invalid previous state root hex: {}", e))?
         );
+
         let new_state_root = FixedBytes::from_slice(
-            &alloy_primitives::keccak256(
-                format!("state_root_{}", batch.final_counter_value).as_bytes(),
-            )[..32],
+            &hex::decode(contract_data.public.new_merkle_root.trim_start_matches("0x"))
+                .map_err(|e| format!("Invalid new state root hex: {}", e))?
         );
+
+        // Use a deterministic state_id based on previous state root
+        let state_id = previous_state_root;
+
+        info!("🌳 Using real ADS state roots for contract submission:");
+        info!("   Previous state root: 0x{}", hex::encode(previous_state_root));
+        info!("   New state root: 0x{}", hex::encode(new_state_root));
+        info!("   State ID: 0x{}", hex::encode(state_id));
 
         // Use real proof data from Sindri
         let proof_bytes = Bytes::from(proof_data.proof_bytes);
@@ -1003,7 +1028,7 @@ impl BackgroundBatchProcessor {
         // The contract calls abi.decode() on the public values, so we must keep them ABI-encoded
         let public_values = Bytes::from(proof_data.public_values.clone());
 
-        // Log decoded values for debugging
+        // Validate state roots and log decoded values for debugging
         if proof_data.public_values.len() >= 224 {
             // Updated length for LoanBatchPublicValues with balance fields (7 * 32 bytes)
             use alloy_sol_types::SolType;
@@ -1029,9 +1054,27 @@ impl BackgroundBatchProcessor {
                             -((decoded.previousTotalBalance - decoded.currentTotalBalance) as f64 / 100.0)
                         }
                     );
+
+                    // Validate that SP1 proof state roots match ADS state roots
+                    if decoded.previous_state_root.as_slice() != previous_state_root.as_slice() {
+                        warn!("⚠️ SP1 proof previous state root doesn't match ADS state root");
+                        warn!("   SP1: 0x{}", hex::encode(decoded.previous_state_root));
+                        warn!("   ADS: 0x{}", hex::encode(previous_state_root));
+                    }
+                    
+                    if decoded.new_state_root.as_slice() != new_state_root.as_slice() {
+                        warn!("⚠️ SP1 proof new state root doesn't match ADS state root");
+                        warn!("   SP1: 0x{}", hex::encode(decoded.new_state_root));
+                        warn!("   ADS: 0x{}", hex::encode(new_state_root));
+                    }
+                    
+                    if decoded.previous_state_root.as_slice() == previous_state_root.as_slice() &&
+                       decoded.new_state_root.as_slice() == new_state_root.as_slice() {
+                        info!("✅ SP1 proof state roots match ADS state roots perfectly");
+                    }
                 }
                 Err(e) => {
-                    warn!("⚠️ Failed to decode public values for logging: {}", e);
+                    warn!("⚠️ Failed to decode SP1 public values for validation: {}", e);
                 }
             }
         }
@@ -1052,14 +1095,15 @@ impl BackgroundBatchProcessor {
                     .ok_or_else(|| "Transaction hash not available in result".to_string())?;
 
                 info!(
-                    "✅ Batch {} submitted and confirmed on-chain with REAL proof data!",
+                    "✅ Batch {} submitted to contract successfully with REAL ADS state roots!",
                     batch.id
                 );
                 info!("   Transaction hash: {}", hex::encode(tx_hash));
                 info!("   Block number: {:?}", result.block_number);
-                info!("   State ID: {}", result.state_id);
-                info!("   New state root: {}", result.new_state_root);
+                info!("   Previous state root: 0x{}", hex::encode(previous_state_root));
+                info!("   New state root: 0x{}", hex::encode(new_state_root));
                 info!("   Used Sindri proof ID: {}", sindri_proof_id);
+                info!("   🎉 No more placeholder state roots - using real ADS-generated Merkle roots!");
 
                 // Return the transaction hash for tracking
                 Ok(tx_hash)
