@@ -18,7 +18,7 @@ jobs:
       SINDRI_API_KEY: ${{ secrets.SINDRI_API_KEY }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         id: setup-node
@@ -34,19 +34,14 @@ jobs:
         run: |
           sindri lint
 
-      - name: Setup Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Install SP1 toolchain
-        shell: bash
+      - name: Install SP1 Toolchain
         run: |
-          echo "Installing SP1 toolchain..."
           curl -L https://sp1.succinct.xyz | bash
-          # Set PATH temporarily for this step
-          export PATH="$HOME/.sp1/bin:$PATH"
-          # Run SP1 update tool
-          sp1up
-          echo "SP1 toolchain installation completed"
+          ~/.sp1/bin/sp1up
+          echo "$HOME/.sp1/bin" >> $GITHUB_PATH
 
       - name: Build SP1 Program
         run: |
@@ -55,18 +50,14 @@ jobs:
 
       - name: Get Branch Name
         id: branch-name
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-          PR_NUMBER: ${{ github.event.number }}
-          SHA: ${{ github.sha }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "branch=$HEAD_REF" >> $GITHUB_OUTPUT
-            echo "tag=pr-$PR_NUMBER-$HEAD_REF" >> $GITHUB_OUTPUT
+            echo "branch=${{ github.head_ref }}" >> $GITHUB_OUTPUT
+            echo "tag=pr-${{ github.event.number }}-${{ github.head_ref }}" >> $GITHUB_OUTPUT
           else
             branch=${GITHUB_REF#refs/heads/}
             echo "branch=$branch" >> $GITHUB_OUTPUT
-            echo "tag=$branch-$(echo $SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+            echo "tag=$branch-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy Circuit to Sindri
