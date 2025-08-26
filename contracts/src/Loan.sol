@@ -4,19 +4,14 @@ pragma solidity ^0.8.20;
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
 import {EventHelpers} from "./EventHelpers.sol";
 
-struct PublicValuesStruct {
-    int32 initial_balance;
-    int32 final_balance;
-}
-
 struct LoanBatchPublicValues {
     bytes32 previous_state_root;
     bytes32 new_state_root;
     uint32 transaction_count;
     uint64 batch_timestamp;
     bytes32 transaction_types_hash;
-    uint128 previousTotalBalance;
-    uint128 currentTotalBalance;
+    uint128 previous_total_balance;
+    uint128 current_total_balance;
 }
 
 /// @title Loan.
@@ -234,21 +229,33 @@ contract Loan is EventHelpers {
 
     /// @notice The entrypoint for verifying the proof of a batch processing operation.
     /// @param _proofBytes The encoded proof.
-    /// @param _publicValues The encoded public values containing initial and final balance.
+    /// @param _publicValues The encoded public values containing loan batch information.
     function verifyLoanProof(
         bytes calldata _publicValues,
         bytes calldata _proofBytes
-    ) public view returns (int32) {
+    ) public view returns (uint128) {
         ISP1Verifier(verifier).verifyProof(
             loanProgramVKey,
             _publicValues,
             _proofBytes
         );
-        PublicValuesStruct memory publicValues = abi.decode(
-            _publicValues,
-            (PublicValuesStruct)
-        );
-        return publicValues.final_balance;
+
+        // Check if this is the new LoanBatchPublicValues format (224 bytes = 7 * 32)
+        if (_publicValues.length == 224) {
+            LoanBatchPublicValues memory publicValues = abi.decode(
+                _publicValues,
+                (LoanBatchPublicValues)
+            );
+            return publicValues.current_total_balance;
+        }
+        // Legacy format compatibility (64 bytes = 2 * 32 for initial_balance and final_balance)
+        else if (_publicValues.length == 64) {
+            (, int32 finalBalance) = abi.decode(_publicValues, (int32, int32));
+            // Return final_balance as uint128 for legacy compatibility
+            return uint128(uint256(int256(finalBalance)));
+        } else {
+            revert("Unsupported public values format");
+        }
     }
 
     /// @notice Update state with ZK proof verification.
@@ -270,10 +277,11 @@ contract Loan is EventHelpers {
         );
 
         // Handle portfolio balance tracking if publicValues includes balance data
-        if (publicValues.length >= 224) { // 7 * 32 bytes for new LoanBatchPublicValues structure
+        if (publicValues.length >= 224) {
+            // 7 * 32 bytes for new LoanBatchPublicValues structure
             try this.decodeLoanBatchPublicValues(publicValues) returns (
                 bytes32,
-                bytes32, 
+                bytes32,
                 uint32,
                 uint64,
                 bytes32,
@@ -282,16 +290,19 @@ contract Loan is EventHelpers {
             ) {
                 // Validate balance transition
                 if (totalPortfolioBalance != 0) {
-                    require(previousBalance == totalPortfolioBalance, "Portfolio balance mismatch");
+                    require(
+                        previousBalance == totalPortfolioBalance,
+                        "Portfolio balance mismatch"
+                    );
                 }
-                
+
                 // Update portfolio balance
                 totalPortfolioBalance = currentBalance;
-                
+
                 // Store historical balance for audit trail
                 historicalBalances[balanceHistoryIndex] = currentBalance;
                 balanceHistoryIndex++;
-                
+
                 // Emit portfolio balance event
                 emit PortfolioBalanceUpdated(
                     previousBalance,
@@ -330,7 +341,9 @@ contract Loan is EventHelpers {
     /// @notice Get the current state root for a given state ID.
     /// @param stateId The state identifier.
     /// @return The current state root.
-    function getCurrentState(bytes32 stateId) external view returns (bytes32) {
+    function getCurrentStateRoot(
+        bytes32 stateId
+    ) external view returns (bytes32) {
         return currentState[stateId];
     }
 
@@ -602,24 +615,33 @@ contract Loan is EventHelpers {
     }
 
     // Add helper function for decoding
-    function decodeLoanBatchPublicValues(bytes calldata data) external pure returns (
-        bytes32 previous_state_root,
-        bytes32 new_state_root,
-        uint32 transaction_count,
-        uint64 batch_timestamp,
-        bytes32 transaction_types_hash,
-        uint128 previousTotalBalance,
-        uint128 currentTotalBalance
-    ) {
+    function decodeLoanBatchPublicValues(
+        bytes calldata data
+    )
+        external
+        pure
+        returns (
+            bytes32 previous_state_root,
+            bytes32 new_state_root,
+            uint32 transaction_count,
+            uint64 batch_timestamp,
+            bytes32 transaction_types_hash,
+            uint128 previous_total_balance,
+            uint128 current_total_balance
+        )
+    {
         (
             previous_state_root,
             new_state_root,
             transaction_count,
             batch_timestamp,
             transaction_types_hash,
-            previousTotalBalance,
-            currentTotalBalance
-        ) = abi.decode(data, (bytes32, bytes32, uint32, uint64, bytes32, uint128, uint128));
+            previous_total_balance,
+            current_total_balance
+        ) = abi.decode(
+            data,
+            (bytes32, bytes32, uint32, uint64, bytes32, uint128, uint128)
+        );
     }
 
     /// @notice Get current portfolio balance
@@ -628,32 +650,34 @@ contract Loan is EventHelpers {
     }
 
     /// @notice Get portfolio metrics for monitoring dashboard
-    function getPortfolioMetrics() external view returns (
-        uint128 currentBalance,
-        uint256 historicalCount,
-        uint256 lastUpdated
-    ) {
-        return (
-            totalPortfolioBalance,
-            balanceHistoryIndex,
-            block.timestamp
-        );
+    function getPortfolioMetrics()
+        external
+        view
+        returns (
+            uint128 currentBalance,
+            uint256 historicalCount,
+            uint256 lastUpdated
+        )
+    {
+        return (totalPortfolioBalance, balanceHistoryIndex, block.timestamp);
     }
 
     /// @notice Get portfolio balance history for audit
-    function getPortfolioBalanceHistory(uint256 fromIndex, uint256 toIndex) 
-        external view returns (uint128[] memory) {
+    function getPortfolioBalanceHistory(
+        uint256 fromIndex,
+        uint256 toIndex
+    ) external view returns (uint128[] memory) {
         require(fromIndex < balanceHistoryIndex, "Invalid from index");
         require(toIndex <= balanceHistoryIndex, "Invalid to index");
         require(fromIndex <= toIndex, "Invalid range");
-        
+
         uint256 length = toIndex - fromIndex;
         uint128[] memory balances = new uint128[](length);
-        
+
         for (uint256 i = 0; i < length; i++) {
             balances[i] = historicalBalances[fromIndex + i];
         }
-        
+
         return balances;
     }
 
@@ -978,6 +1002,134 @@ contract Loan is EventHelpers {
 
         for (uint256 day = startDay; day <= endDay; day++) {
             totalEvents += dailyEventCounts[day];
+        }
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    LOAN BATCH PUBLIC VALUES GETTERS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Get the previous state root from the latest batch public values
+    /// @param stateId The state identifier
+    /// @return previous_state_root The previous state root from the last verified batch
+    function getPreviousStateRootFromBatch(
+        bytes32 stateId
+    ) external view returns (bytes32 previous_state_root) {
+        bytes32 latestProofId = latestProofForState[stateId];
+        if (latestProofId == bytes32(0)) {
+            return bytes32(0);
+        }
+
+        bytes memory publicValues = storedResults[latestProofId];
+        if (publicValues.length == 0) {
+            return bytes32(0);
+        }
+
+        try this.decodeLoanBatchPublicValues(publicValues) returns (
+            bytes32 prev_state_root,
+            bytes32,
+            uint32,
+            uint64,
+            bytes32,
+            uint128,
+            uint128
+        ) {
+            return prev_state_root;
+        } catch {
+            return bytes32(0);
+        }
+    }
+
+    /// @notice Get the new state root from the latest batch public values
+    /// @param stateId The state identifier
+    /// @return new_state_root The new state root from the last verified batch
+    function getNewStateRootFromBatch(
+        bytes32 stateId
+    ) external view returns (bytes32 new_state_root) {
+        bytes32 latestProofId = latestProofForState[stateId];
+        if (latestProofId == bytes32(0)) {
+            return bytes32(0);
+        }
+
+        bytes memory publicValues = storedResults[latestProofId];
+        if (publicValues.length == 0) {
+            return bytes32(0);
+        }
+
+        try this.decodeLoanBatchPublicValues(publicValues) returns (
+            bytes32,
+            bytes32 new_state_root_val,
+            uint32,
+            uint64,
+            bytes32,
+            uint128,
+            uint128
+        ) {
+            return new_state_root_val;
+        } catch {
+            return bytes32(0);
+        }
+    }
+
+    /// @notice Get the previous total balance from the latest batch
+    /// @param stateId The state identifier
+    /// @return previous_total_balance The previous total balance from the last verified batch
+    function getPreviousTotalBalance(
+        bytes32 stateId
+    ) external view returns (uint128 previous_total_balance) {
+        bytes32 latestProofId = latestProofForState[stateId];
+        if (latestProofId == bytes32(0)) {
+            return 0;
+        }
+
+        bytes memory publicValues = storedResults[latestProofId];
+        if (publicValues.length == 0) {
+            return 0;
+        }
+
+        try this.decodeLoanBatchPublicValues(publicValues) returns (
+            bytes32,
+            bytes32,
+            uint32,
+            uint64,
+            bytes32,
+            uint128 prev_total_balance,
+            uint128
+        ) {
+            return prev_total_balance;
+        } catch {
+            return 0;
+        }
+    }
+
+    /// @notice Get the current total balance from the latest batch
+    /// @param stateId The state identifier
+    /// @return current_total_balance The current total balance from the last verified batch
+    function getCurrentTotalBalance(
+        bytes32 stateId
+    ) external view returns (uint128 current_total_balance) {
+        bytes32 latestProofId = latestProofForState[stateId];
+        if (latestProofId == bytes32(0)) {
+            return 0;
+        }
+
+        bytes memory publicValues = storedResults[latestProofId];
+        if (publicValues.length == 0) {
+            return 0;
+        }
+
+        try this.decodeLoanBatchPublicValues(publicValues) returns (
+            bytes32,
+            bytes32,
+            uint32,
+            uint64,
+            bytes32,
+            uint128,
+            uint128 curr_total_balance
+        ) {
+            return curr_total_balance;
+        } catch {
+            return 0;
         }
     }
 

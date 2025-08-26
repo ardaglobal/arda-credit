@@ -153,7 +153,7 @@ contract StateManagementTest is Test {
         );
 
         // Verify state was stored
-        bytes32 storedState = loan.getCurrentState(STATE_ID_1);
+        bytes32 storedState = loan.getCurrentStateRoot(STATE_ID_1);
         assertEq(storedState, NEW_STATE_1, "State should be updated correctly");
 
         // Verify proof was stored
@@ -191,7 +191,7 @@ contract StateManagementTest is Test {
         );
 
         // Test reading the state
-        bytes32 currentState = loan.getCurrentState(STATE_ID_1);
+        bytes32 currentState = loan.getCurrentStateRoot(STATE_ID_1);
         assertEq(
             currentState,
             NEW_STATE_1,
@@ -200,7 +200,7 @@ contract StateManagementTest is Test {
     }
 
     function test_GetCurrentState_NonExistentState_ReturnsZero() public {
-        bytes32 currentState = loan.getCurrentState(STATE_ID_1);
+        bytes32 currentState = loan.getCurrentStateRoot(STATE_ID_1);
         assertEq(
             currentState,
             bytes32(0),
@@ -293,12 +293,12 @@ contract StateManagementTest is Test {
 
         // Verify states were stored
         assertEq(
-            loan.getCurrentState(STATE_ID_1),
+            loan.getCurrentStateRoot(STATE_ID_1),
             NEW_STATE_1,
             "First state should be updated"
         );
         assertEq(
-            loan.getCurrentState(STATE_ID_2),
+            loan.getCurrentStateRoot(STATE_ID_2),
             NEW_STATE_2,
             "Second state should be updated"
         );
@@ -491,7 +491,7 @@ contract StateManagementTest is Test {
         );
 
         // Verify state was not updated
-        bytes32 storedState = loan.getCurrentState(STATE_ID_1);
+        bytes32 storedState = loan.getCurrentStateRoot(STATE_ID_1);
         assertEq(
             storedState,
             bytes32(0),
@@ -617,7 +617,7 @@ contract StateManagementTest is Test {
 
         // Test single state reads
         uint256 gasBefore = gasleft();
-        loan.getCurrentState(STATE_ID_1);
+        loan.getCurrentStateRoot(STATE_ID_1);
         uint256 singleReadGas = gasBefore - gasleft();
 
         // Test batch state reads
@@ -757,7 +757,7 @@ contract StateManagementTest is Test {
 
         // Verify current state is latest
         assertEq(
-            loan.getCurrentState(STATE_ID_1),
+            loan.getCurrentStateRoot(STATE_ID_1),
             NEW_STATE_2,
             "Current state should be latest"
         );
