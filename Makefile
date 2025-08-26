@@ -29,7 +29,7 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 ## lint: Lint code
 .PHONY: lint
 lint: yamllint actionlint docker-lint
-	cargo clippy
+	SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::style -W clippy::complexity -W clippy::perf -W clippy::suspicious -W clippy::correctness
 
 ## env: Copy .env.example to .env
 .PHONY: env
@@ -303,9 +303,18 @@ initDB:
 	@echo "💡 You can now use 'SQLX_OFFLINE=true cargo check' without a database connection."
 	@echo "📝 The .sqlx/ directory has been updated and should be committed to version control."
 
+## setup-hooks: Setup git hooks for pre-commit linting and formatting
+.PHONY: setup-hooks
+setup-hooks:
+	@echo "🔧 Setting up git hooks..."
+	@git config core.hooksPath .githooks
+	@chmod +x .githooks/pre-commit
+	@echo "✅ Git hooks configured successfully"
+	@echo "💡 Pre-commit hook will run 'make fmt' and 'make lint' automatically"
+
 ## setup: Complete setup from scratch
 .PHONY: setup
-setup: install env initDB
+setup: install env initDB setup-hooks
 	@echo ""
 	@echo "🎉 Setup complete! Next steps:"
 	@echo "1. Edit .env and add your SINDRI_API_KEY"

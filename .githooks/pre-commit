@@ -1,14 +1,32 @@
 #!/bin/bash
 
-# Run cargo clippy with the specified lint settings
-echo "Running cargo clippy..."
-cargo clippy --all-targets -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::style -W clippy::complexity -W clippy::perf -W clippy::suspicious -W clippy::correctness
+set -e
 
-# Check if clippy succeeded
-if [ $? -ne 0 ]; then
-    echo "Clippy found issues. Commit aborted."
+echo "🔧 Running pre-commit checks..."
+
+# Store the current diff to check for changes after formatting
+INITIAL_DIFF=$(git diff --name-only)
+
+echo "📝 Running code formatting..."
+make fmt
+
+# Check if formatting made any changes
+AFTER_FMT_DIFF=$(git diff --name-only)
+if [ "$INITIAL_DIFF" != "$AFTER_FMT_DIFF" ] || [ -n "$(git diff --name-only)" ]; then
+    echo ""
+    echo "❌ Code formatting made changes. Please review and stage the changes:"
+    echo ""
+    git diff --name-only | sed 's/^/  - /'
+    echo ""
+    echo "💡 Run 'git add .' to stage the formatted changes and commit again."
     exit 1
 fi
 
-echo "Clippy checks passed. Proceeding with commit."
+echo "✅ Code formatting is up to date"
+
+echo "🔍 Running linting checks..."
+make lint
+
+echo ""
+echo "✅ All pre-commit checks passed! 🎉"
 exit 0
