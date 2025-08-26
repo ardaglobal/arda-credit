@@ -16,7 +16,8 @@ use crate::batch_processor::BatchProcessorHandle;
 use arda_credit_db::{
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
     get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
-    ContractSubmissionData, IndexedMerkleTreeADS,
+    ContractSubmissionData, IndexedMerkleTreeADS, LoanInclusionProof, LoanInclusionRequest,
+    AuditEvent, LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -580,6 +581,37 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             "/api/v2/ccr/batch/pending",
             get(get_pending_loan_transactions_endpoint),
+        )
+        // ========================================================================
+        // LOAN OPERATION INCLUSION PROOF ENDPOINTS
+        // ========================================================================
+        .route(
+            "/api/v2/ccr/proofs/loan-operation",
+            post(generate_loan_operation_proof_endpoint),
+        )
+        .route(
+            "/api/v2/ccr/proofs/loan-payment/{user_id}/{loan_id}/{payment_id}/{batch_id}",
+            get(generate_loan_payment_proof_endpoint),
+        )
+        .route(
+            "/api/v2/ccr/proofs/verify",
+            post(verify_loan_proof_endpoint),
+        )
+        .route(
+            "/api/v2/ccr/proofs/report",
+            post(generate_proof_report_endpoint),
+        )
+        .route(
+            "/api/v2/ccr/proofs/batch-verify",
+            post(batch_verify_proofs_endpoint),
+        )
+        .route(
+            "/api/v2/ccr/loans/{loan_id}/audit-trail",
+            get(get_loan_audit_trail_endpoint),
+        )
+        .route(
+            "/api/v2/ccr/loans/{loan_id}/lifecycle-summary",
+            get(get_loan_lifecycle_summary_endpoint),
         )
         .with_state(state)
 }
@@ -1834,4 +1866,240 @@ async fn get_pending_loan_transactions_endpoint(
 
     info!("✅ CCR: Pending loan transactions retrieved");
     Ok(Json(response))
+}
+
+// ============================================================================
+// LOAN OPERATION INCLUSION PROOF ENDPOINT HANDLERS
+// ============================================================================
+
+/// Request body for generating loan operation inclusion proof
+#[derive(Debug, Deserialize)]
+struct GenerateLoanOperationProofRequest {
+    user_id: uuid::Uuid,
+    loan_id: Option<uuid::Uuid>,
+    payment_id: Option<uuid::Uuid>,
+    operation_type: String,
+    batch_id: Option<i32>,
+    user_role: String,
+}
+
+/// Response for loan operation inclusion proof generation
+#[derive(Debug, Serialize)]
+struct LoanOperationProofResponse {
+    proof: LoanInclusionProof,
+    generated_at: DateTime<Utc>,
+    verification_summary: serde_json::Value,
+}
+
+/// Generate loan operation inclusion proof endpoint
+#[instrument(skip(state), level = "info")]
+async fn generate_loan_operation_proof_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<GenerateLoanOperationProofRequest>,
+) -> Result<Json<LoanOperationProofResponse>, (StatusCode, String)> {
+    info!("🔍 API: Generating loan operation inclusion proof for user {}", request.user_id);
+
+    // Use the unified batch service to generate proof
+    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+        state.pool,
+        state.ads_service,
+    );
+
+    let proof = unified_service
+        .generate_loan_inclusion_proof(
+            request.user_id,
+            request.loan_id,
+            request.payment_id,
+            request.operation_type,
+            request.batch_id,
+            request.user_role,
+        )
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    // Generate verification summary
+    let verification_summary = unified_service
+        .generate_proof_report(&proof)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let response = LoanOperationProofResponse {
+        proof,
+        generated_at: Utc::now(),
+        verification_summary,
+    };
+
+    info!("✅ API: Loan operation inclusion proof generated successfully");
+    Ok(Json(response))
+}
+
+/// Generate loan payment inclusion proof endpoint
+#[instrument(skip(state), level = "info")]
+async fn generate_loan_payment_proof_endpoint(
+    State(state): State<ApiState>,
+    Path((user_id, loan_id, payment_id, batch_id)): Path<(uuid::Uuid, uuid::Uuid, uuid::Uuid, i32)>,
+) -> Result<Json<LoanOperationProofResponse>, (StatusCode, String)> {
+    info!("💰 API: Generating loan payment proof for payment {} in batch {}", payment_id, batch_id);
+
+    // Use the unified batch service to generate proof
+    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+        state.pool,
+        state.ads_service,
+    );
+
+    let proof = unified_service
+        .generate_loan_payment_proof(user_id, loan_id, payment_id, batch_id)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+
+    // Generate verification summary
+    let verification_summary = unified_service
+        .generate_proof_report(&proof)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let response = LoanOperationProofResponse {
+        proof,
+        generated_at: Utc::now(),
+        verification_summary,
+    };
+
+    info!("✅ API: Loan payment inclusion proof generated successfully");
+    Ok(Json(response))
+}
+
+/// Verify loan inclusion proof endpoint
+#[instrument(skip(state), level = "info")]
+async fn verify_loan_proof_endpoint(
+    State(state): State<ApiState>,
+    Json(proof): Json<LoanInclusionProof>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    info!("🔍 API: Verifying loan inclusion proof");
+
+    // Use the unified batch service to verify proof
+    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+        state.pool,
+        state.ads_service,
+    );
+
+    let is_valid = unified_service
+        .verify_loan_proof(&proof)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let report = unified_service
+        .generate_proof_report(&proof)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let response = serde_json::json!({
+        "valid": is_valid,
+        "verified_at": Utc::now(),
+        "proof_details": report
+    });
+
+    info!("✅ API: Loan inclusion proof verification completed: valid={}", is_valid);
+    Ok(Json(response))
+}
+
+/// Generate proof verification report endpoint
+#[instrument(skip(state), level = "info")]
+async fn generate_proof_report_endpoint(
+    State(state): State<ApiState>,
+    Json(proof): Json<LoanInclusionProof>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    info!("📊 API: Generating proof verification report");
+
+    // Use the unified batch service to generate report
+    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+        state.pool,
+        state.ads_service,
+    );
+
+    let report = unified_service
+        .generate_proof_report(&proof)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    info!("✅ API: Proof verification report generated");
+    Ok(Json(report))
+}
+
+/// Batch verify multiple loan proofs endpoint
+#[instrument(skip(state), level = "info")]
+async fn batch_verify_proofs_endpoint(
+    State(state): State<ApiState>,
+    Json(proofs): Json<Vec<LoanInclusionProof>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    info!("🔍 API: Batch verifying {} loan inclusion proofs", proofs.len());
+
+    // Use the unified batch service to batch verify proofs
+    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+        state.pool,
+        state.ads_service,
+    );
+
+    let results = unified_service
+        .batch_verify_proofs(&proofs)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+
+    let valid_count = results.iter().filter(|&&v| v).count();
+    let response = serde_json::json!({
+        "total_proofs": proofs.len(),
+        "valid_proofs": valid_count,
+        "invalid_proofs": proofs.len() - valid_count,
+        "results": results,
+        "verified_at": Utc::now()
+    });
+
+    info!("✅ API: Batch verification completed: {}/{} proofs valid", valid_count, proofs.len());
+    Ok(Json(response))
+}
+
+/// Get loan audit trail endpoint
+#[instrument(skip(state), level = "info")]
+async fn get_loan_audit_trail_endpoint(
+    State(state): State<ApiState>,
+    Path(loan_id): Path<uuid::Uuid>,
+) -> Result<Json<Vec<AuditEvent>>, (StatusCode, String)> {
+    info!("📋 API: Getting loan audit trail for loan {}", loan_id);
+
+    // Use the unified batch service to get audit trail
+    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+        state.pool,
+        state.ads_service,
+    );
+
+    let audit_trail = unified_service
+        .get_loan_audit_trail(loan_id)
+        .await
+        .map_err(|e| (StatusCode::NOT_FOUND, e))?;
+
+    info!("✅ API: Retrieved {} audit events for loan", audit_trail.len());
+    Ok(Json(audit_trail))
+}
+
+/// Get loan lifecycle summary endpoint
+#[instrument(skip(state), level = "info")]
+async fn get_loan_lifecycle_summary_endpoint(
+    State(state): State<ApiState>,
+    Path(loan_id): Path<uuid::Uuid>,
+) -> Result<Json<LoanLifecycleSummary>, (StatusCode, String)> {
+    info!("📈 API: Getting loan lifecycle summary for loan {}", loan_id);
+
+    // Use the unified batch service to get lifecycle summary
+    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+        state.pool,
+        state.ads_service,
+    );
+
+    let summary = unified_service
+        .get_loan_lifecycle_summary(loan_id)
+        .await
+        .map_err(|e| (StatusCode::NOT_FOUND, e))?;
+
+    info!("✅ API: Generated loan lifecycle summary: {} operations, {} payments", 
+          summary.total_operations, summary.total_payments);
+    Ok(Json(summary))
 }

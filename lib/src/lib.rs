@@ -1,6 +1,7 @@
 use alloy_sol_types::sol;
 
 // Separated modules for better maintainability
+pub mod balance;
 pub mod loan;
 pub mod loan_processor;
 pub mod transactions;
@@ -32,6 +33,7 @@ pub use loan_processor::{
 };
 
 // Re-export from new modules
+pub use balance::{BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType, UserBalance};
 pub use loan::{Loan, LoanError, LoanStatus, LoanTerms};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};

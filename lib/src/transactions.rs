@@ -99,30 +99,3 @@ pub struct InternalLoanBatchPublicValues {
     pub transaction_types_hash: [u8; 32],
 }
 
-/// Validate a loan transaction before processing
-pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), crate::ProcessingError> {
-    // Basic validation
-    match transaction.transaction_type {
-        TransactionType::LoanOrigination | TransactionType::LoanPayment => {
-            if transaction.amount == 0 {
-                return Err(crate::ProcessingError::InvalidTransactionType);
-            }
-        }
-        _ => {}
-    }
-
-    // Validate all zeros loan_id for non-loan transactions
-    let zero_loan_id = [0u8; 32];
-    match transaction.transaction_type {
-        TransactionType::UserRegistration
-        | TransactionType::KycSubmission
-        | TransactionType::KycVerification => {
-            if transaction.loan_id != zero_loan_id {
-                return Err(crate::ProcessingError::InvalidTransactionType);
-            }
-        }
-        _ => {}
-    }
-
-    Ok(())
-}
