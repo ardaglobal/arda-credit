@@ -20,6 +20,12 @@ help: Makefile
 install:
 	./install-dependencies.sh
 
+## fmt: Format code
+.PHONY: fmt
+fmt: yamllint-fix actionlint-fix docker-lint-fix
+	cargo fmt
+	taplo fmt
+
 ## env: Copy .env.example to .env
 .PHONY: env
 env:

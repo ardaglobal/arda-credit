@@ -1,19 +1,19 @@
 [package]
-name = "scripts"
-version = "0.1.0"
 edition = "2021"
+name    = "scripts"
+version = "0.1.0"
 
 [[bin]]
 name = "populate_test_data"
 path = "populate_test_data.rs"
 
 [dependencies]
-chrono = { workspace = true, features = ["serde"] }
-db = { path = "../db" }
-rust_decimal = { workspace = true, features = ["serde"] }
-serde_json = { workspace = true }
-sqlx = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }
+chrono             = { workspace = true, features = [ "serde" ] }
+db                 = { path = "../db" }
+rust_decimal       = { workspace = true, features = [ "serde" ] }
+serde_json         = { workspace = true }
+sqlx               = { workspace = true }
+tokio              = { workspace = true }
+tracing            = { workspace = true }
 tracing-subscriber = { workspace = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
+uuid               = { workspace = true, features = [ "serde", "v4" ] }
