@@ -17,7 +17,10 @@ env:
 jobs:
   deploy:
     name: Deploy Contracts
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=small
     defaults:
       run:
         working-directory: contracts

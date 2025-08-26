@@ -4,8 +4,6 @@ permissions:
   contents: read
   security-events: write
 on:
-  schedule:
-    - cron: "0 0 * * *" # Run at midnight every day
   push:
     paths:
       - "**/Cargo.toml"
@@ -17,7 +15,10 @@ on:
 
 jobs:
   audit:
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=small
     steps:
       - uses: actions/checkout@v5
       - uses: rustsec/audit-check@v2

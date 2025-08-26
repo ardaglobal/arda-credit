@@ -16,7 +16,7 @@ jobs:
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
-      - instance-size=large
+      - instance-size=small
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Required for semantic-pull-request action
     permissions:

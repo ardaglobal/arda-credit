@@ -13,7 +13,10 @@ env:
 jobs:
   test:
     name: Run All Tests
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=medium
 
     services:
       postgres:
