@@ -43,5 +43,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  app:
+    image: ghcr.io/ardaglobal/arda-credit-app:latest
+    container_name: arda_credit_app
+    env_file:
+      - .env
+    environment:
+      - SERVER_URL=${SERVER_URL:-http://localhost:8080}
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
 volumes:
   postgres_data:
