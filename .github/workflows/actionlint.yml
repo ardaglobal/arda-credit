@@ -20,36 +20,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Cache actionlint binary
-        uses: actions/cache@v4
+      - name: actionlint
+        id: actionlint  #optional, id required only when outputs are used in the workflow steps later
+        uses: raven-actions/actionlint@v2
         with:
-          path: ~/.local/bin/actionlint
-          key: actionlint-1.6.26
-          restore-keys: |
-            actionlint-
-
-      - name: Install actionlint
+          fail-on-error: false  # optional
+          flags: "-config-file .actionlint.yaml"  # optional
+      
+      - name: actionlint Summary
+        if: ${{ steps.actionlint.outputs.exit-code != 0 }}  # example usage, do echo only when actionlint action failed
         run: |
-          if [ ! -f ~/.local/bin/actionlint ]; then
-            echo "Installing actionlint..."
-            mkdir -p ~/.local/bin
-            curl -Ls "https://github.com/rhymond/actionlint/releases/download/v1.6.26/actionlint_1.6.26_linux_amd64.tar.gz" | \
-            tar -xz -C /tmp && \
-            mv /tmp/actionlint ~/.local/bin/actionlint && \
-            chmod +x ~/.local/bin/actionlint
-          else
-            echo "actionlint already cached"
-          fi
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Run actionlint
-        run: |
-          echo "Running actionlint on all GitHub Actions workflows..."
-          actionlint -config-file .actionlint.yaml
-
-      - name: Generate actionlint report on failure
-        if: failure()
-        run: |
-          echo "ActionLint found issues. Generating detailed report..."
-          actionlint -config-file .actionlint.yaml -format '{{range $err := .}}{{$err.Filepath}}:{{$err.Line}}:{{$err.Column}}: {{$err.Message}} [{{$err.Kind}}]{{"\n"}}{{end}}' | tee actionlint-report.txt || true
-          echo "::warning::ActionLint issues found. See the full report above."
+          echo "Used actionlint version ${{ steps.actionlint.outputs.version-semver }}"
+          echo "Used actionlint release ${{ steps.actionlint.outputs.version-tag }}"
+          echo "actionlint ended with ${{ steps.actionlint.outputs.exit-code }} exit code"
+          echo "actionlint ended because '${{ steps.actionlint.outputs.exit-message }}'"
+          echo "actionlint found ${{ steps.actionlint.outputs.total-errors }} errors"
+          echo "actionlint checked ${{ steps.actionlint.outputs.total-files }} files"
+          echo "actionlint cache used: ${{ steps.actionlint.outputs.cache-hit }}"
+          exit ${{ steps.actionlint.outputs.exit-code }}

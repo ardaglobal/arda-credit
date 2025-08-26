@@ -26,6 +26,11 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 	cargo fmt
 	taplo fmt
 
+## lint: Lint code
+.PHONY: lint
+lint: yamllint actionlint docker-lint
+	cargo clippy
+
 ## env: Copy .env.example to .env
 .PHONY: env
 env:

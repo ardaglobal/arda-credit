@@ -9,4 +9,6 @@ self-hosted-runner:
     - "codebuild-arda-credit-*"
     - "run-id=*"
     - "instance-size=small"
+    - "instance-size=medium"
+    - "instance-size=large"
     - "image=ubuntu-7.0"
