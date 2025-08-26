@@ -330,7 +330,9 @@ impl EthereumClient {
         // Verify transaction was successful
         if !receipt.status() {
             error!("Transaction failed on-chain with status: false");
-            return Err(EthereumError::Transaction("Transaction failed on-chain".to_string()));
+            return Err(EthereumError::Transaction(
+                "Transaction failed on-chain".to_string(),
+            ));
         }
 
         let block_number = receipt.block_number.unwrap_or(0);
@@ -641,9 +643,13 @@ impl EthereumClient {
             })?;
 
         let current_block = self.http_provider.get_block_number().await?;
-        
+
         // Get the actual block timestamp
-        let timestamp = if let Ok(Some(block)) = self.http_provider.get_block_by_number(current_block.into()).await {
+        let timestamp = if let Ok(Some(block)) = self
+            .http_provider
+            .get_block_by_number(current_block.into())
+            .await
+        {
             block.header.timestamp
         } else {
             // Fallback to current system time if block timestamp unavailable
@@ -671,7 +677,7 @@ impl EthereumClient {
         } else {
             None
         };
-        
+
         #[cfg(not(feature = "database"))]
         let proof_id = None;
 
@@ -1015,11 +1021,9 @@ impl EthereumClient {
                 LoanEvent::ProofStored { submitter, .. } => Some(*submitter),
                 LoanEvent::StateReadRequested { reader, .. }
                 | LoanEvent::ProofReadRequested { reader, .. } => Some(*reader),
-                LoanEvent::Deposit { user, .. }
-                | LoanEvent::Withdrawal { user, .. } => Some(*user),
+                LoanEvent::Deposit { user, .. } | LoanEvent::Withdrawal { user, .. } => Some(*user),
                 LoanEvent::LoanPayment { payer, .. } => Some(*payer),
-                LoanEvent::ProofVerified { .. }
-                | LoanEvent::LoanClosed { .. } => None,
+                LoanEvent::ProofVerified { .. } | LoanEvent::LoanClosed { .. } => None,
             };
             if let Some(address) = event_address {
                 if !addresses.contains(&address) {
@@ -1061,7 +1065,7 @@ impl EthereumClient {
     #[cfg(feature = "database")]
     async fn persist_event(event: &LoanEvent, cache: &EthereumCache) -> Result<()> {
         let contract_event = Self::convert_loan_event_to_contract_event(event);
-        
+
         match cache.store_event(&contract_event).await {
             Ok(id) => {
                 debug!("Successfully persisted event to database with ID: {}", id);
@@ -1078,7 +1082,7 @@ impl EthereumClient {
     #[cfg(feature = "database")]
     fn convert_loan_event_to_contract_event(event: &LoanEvent) -> crate::types::ContractEvent {
         use crate::types::ContractEvent;
-        
+
         match event {
             LoanEvent::StateUpdated {
                 state_id,
@@ -1345,7 +1349,10 @@ impl EthereumClient {
         if let Some(cache) = &self.cache {
             // Note: This function is not async, so we use the synchronous store_event approach
             // The main event monitoring pipeline handles async persistence via persist_event()
-            debug!("StateUpdated event handled: state_id={}", hex::encode(event.stateId.as_slice()));
+            debug!(
+                "StateUpdated event handled: state_id={}",
+                hex::encode(event.stateId.as_slice())
+            );
             // Events from the main monitoring loop will be persisted automatically
             let _ = cache; // Acknowledge cache is available for future use
         }

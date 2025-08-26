@@ -821,7 +821,10 @@ impl BackgroundBatchProcessor {
         for batch in &unposted_batches {
             debug!("📦 Batch {} ready for contract posting:", batch.id);
             debug!("   Sindri proof ID: {:?}", batch.sindri_proof_id);
-            debug!("   Counter: {} -> {}", batch.previous_counter_value, batch.final_counter_value);
+            debug!(
+                "   Counter: {} -> {}",
+                batch.previous_counter_value, batch.final_counter_value
+            );
             debug!("   Transaction count: {}", batch.transaction_ids.len());
             debug!("   Status: {}", batch.proof_status);
         }
@@ -849,22 +852,38 @@ impl BackgroundBatchProcessor {
             // Submit to contract with retry logic and confirmation waiting
             match Self::submit_batch_with_retry(pool, &eth_client, &batch, 3).await {
                 Ok(tx_hash) => {
-                    info!("✅ Batch {} confirmed on-chain with tx hash: {}", batch.id, hex::encode(tx_hash));
-                    
+                    info!(
+                        "✅ Batch {} confirmed on-chain with tx hash: {}",
+                        batch.id,
+                        hex::encode(tx_hash)
+                    );
+
                     // Mark as posted only after successful confirmation with transaction hash
                     let tx_hash_hex = format!("0x{}", hex::encode(tx_hash));
-                    if let Err(e) = mark_batch_posted_to_contract_with_tx_hash(pool, batch.id, &tx_hash_hex).await {
-                        error!("❌ Failed to mark batch {} as posted after confirmation: {}", batch.id, e);
+                    if let Err(e) =
+                        mark_batch_posted_to_contract_with_tx_hash(pool, batch.id, &tx_hash_hex)
+                            .await
+                    {
+                        error!(
+                            "❌ Failed to mark batch {} as posted after confirmation: {}",
+                            batch.id, e
+                        );
                         // Even if marking fails, the transaction was successful on-chain
                         // Log this as a critical issue for manual resolution
                         error!("🚨 CRITICAL: Batch {} was successfully posted to contract (tx: {}) but database marking failed", batch.id, tx_hash_hex);
                         error!("    This batch may be re-submitted unless manually marked as posted in the database");
                     } else {
-                        info!("✅ Successfully posted and confirmed batch {} to contract with tx: {}", batch.id, tx_hash_hex);
+                        info!(
+                            "✅ Successfully posted and confirmed batch {} to contract with tx: {}",
+                            batch.id, tx_hash_hex
+                        );
                     }
                 }
                 Err(e) => {
-                    error!("❌ Failed to submit and confirm batch {} to contract after retries: {}", batch.id, e);
+                    error!(
+                        "❌ Failed to submit and confirm batch {} to contract after retries: {}",
+                        batch.id, e
+                    );
                     continue; // Continue with next batch
                 }
             }
@@ -888,30 +907,48 @@ impl BackgroundBatchProcessor {
 
         while attempts < max_retries {
             attempts += 1;
-            info!("🔄 Attempting to submit batch {} (attempt {} of {})", batch.id, attempts, max_retries);
+            info!(
+                "🔄 Attempting to submit batch {} (attempt {} of {})",
+                batch.id, attempts, max_retries
+            );
 
             match Self::submit_batch_to_contract_with_confirmation(pool, eth_client, batch).await {
                 Ok(tx_hash) => {
                     if attempts > 1 {
-                        info!("✅ Batch {} submitted successfully after {} attempts", batch.id, attempts);
+                        info!(
+                            "✅ Batch {} submitted successfully after {} attempts",
+                            batch.id, attempts
+                        );
                     }
                     return Ok(tx_hash);
                 }
                 Err(e) => {
                     last_error = e.clone();
-                    error!("❌ Attempt {} failed for batch {}: {}", attempts, batch.id, e);
-                    
+                    error!(
+                        "❌ Attempt {} failed for batch {}: {}",
+                        attempts, batch.id, e
+                    );
+
                     if attempts < max_retries {
                         let backoff_seconds = 2_u64.pow(attempts - 1); // Exponential backoff: 1s, 2s, 4s, etc.
-                        warn!("⏳ Retrying batch {} submission in {} seconds...", batch.id, backoff_seconds);
+                        warn!(
+                            "⏳ Retrying batch {} submission in {} seconds...",
+                            batch.id, backoff_seconds
+                        );
                         tokio::time::sleep(Duration::from_secs(backoff_seconds)).await;
                     }
                 }
             }
         }
 
-        error!("❌ All {} attempts failed for batch {}", max_retries, batch.id);
-        Err(format!("Failed after {} retries. Last error: {}", max_retries, last_error))
+        error!(
+            "❌ All {} attempts failed for batch {}",
+            max_retries, batch.id
+        );
+        Err(format!(
+            "Failed after {} retries. Last error: {}",
+            max_retries, last_error
+        ))
     }
 
     /// Submit a single batch to the smart contract and wait for confirmation
@@ -1010,7 +1047,8 @@ impl BackgroundBatchProcessor {
         {
             Ok(result) => {
                 // Extract transaction hash from result
-                let tx_hash = result.transaction_hash
+                let tx_hash = result
+                    .transaction_hash
                     .ok_or_else(|| "Transaction hash not available in result".to_string())?;
 
                 info!(
@@ -1022,7 +1060,7 @@ impl BackgroundBatchProcessor {
                 info!("   State ID: {}", result.state_id);
                 info!("   New state root: {}", result.new_state_root);
                 info!("   Used Sindri proof ID: {}", sindri_proof_id);
-                
+
                 // Return the transaction hash for tracking
                 Ok(tx_hash)
             }

@@ -345,17 +345,27 @@ impl LoanOperation {
     /// Convert operation to nullifier hash for Merkle tree
     pub fn to_nullifier(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
-        
+
         let mut hasher = Sha256::new();
         match self {
-            LoanOperation::LoanCreation { loan_id, borrower_id, lender_id, principal, .. } => {
+            LoanOperation::LoanCreation {
+                loan_id,
+                borrower_id,
+                lender_id,
+                principal,
+                ..
+            } => {
                 hasher.update(b"loan_creation");
                 hasher.update(loan_id);
                 hasher.update(borrower_id);
                 hasher.update(lender_id);
                 hasher.update(&principal.to_le_bytes());
             }
-            LoanOperation::Payment { loan_id, payer_id, amount } => {
+            LoanOperation::Payment {
+                loan_id,
+                payer_id,
+                amount,
+            } => {
                 hasher.update(b"payment");
                 hasher.update(loan_id);
                 hasher.update(payer_id);
@@ -366,7 +376,10 @@ impl LoanOperation {
                 hasher.update(loan_id);
                 hasher.update(lender_id);
             }
-            LoanOperation::BalanceUpdate { loan_id, new_balance } => {
+            LoanOperation::BalanceUpdate {
+                loan_id,
+                new_balance,
+            } => {
                 hasher.update(b"balance_update");
                 hasher.update(loan_id);
                 hasher.update(&new_balance.to_le_bytes());
@@ -414,7 +427,7 @@ impl MerkleTree {
 
         while current_level.len() > 1 {
             let mut next_level = Vec::new();
-            
+
             for chunk in current_level.chunks(2) {
                 let mut hasher = Sha256::new();
                 hasher.update(&chunk[0]);
@@ -425,7 +438,7 @@ impl MerkleTree {
                 }
                 next_level.push(hasher.finalize().into());
             }
-            
+
             current_level = next_level;
         }
 
@@ -442,7 +455,7 @@ pub fn process_loan_operations(
 ) -> crate::LoanBatchPublicValues {
     let mut current_balance = previous_balance;
     let mut merkle_tree = MerkleTree::from_root(previous_root);
-    
+
     // Compute transaction types hash
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
@@ -450,19 +463,19 @@ pub fn process_loan_operations(
         hasher.update(&[operation.transaction_type()]);
     }
     let transaction_types_hash: [u8; 32] = hasher.finalize().into();
-    
+
     // Process operations
     for operation in operations {
         // Update balance based on operation type
         current_balance = apply_operation_to_balance(current_balance, operation);
-        
+
         // Update Merkle tree with operation commitment
         let nullifier = operation.to_nullifier();
         merkle_tree.insert(nullifier);
     }
-    
+
     let new_root = merkle_tree.root();
-    
+
     crate::LoanBatchPublicValues {
         previous_state_root: previous_root.into(),
         new_state_root: new_root.into(),
@@ -986,7 +999,10 @@ mod tests {
         assert_eq!(public_values.batch_timestamp, batch_timestamp);
 
         // Check that state root changed (merkle tree was updated)
-        assert_ne!(public_values.previous_state_root, public_values.new_state_root);
+        assert_ne!(
+            public_values.previous_state_root,
+            public_values.new_state_root
+        );
 
         // Check that transaction types hash is computed
         assert_ne!(public_values.transaction_types_hash, [0u8; 32].into());
