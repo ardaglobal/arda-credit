@@ -19,7 +19,6 @@ services:
   server:
     # Production: Use pre-built image from GitHub Container Registry
     image: ghcr.io/ardaglobal/arda-credit:latest
-    
     container_name: arda_credit_server
     env_file:
       - .env  # Load environment variables from .env file
@@ -41,6 +40,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/ardaglobal/arda-credit-app:latest
+    container_name: arda_credit_app
+    env_file:
+      - .env
+    environment:
+      - SERVER_URL=${SERVER_URL:-http://localhost:8080}
+    ports:
+      - "3000:80"
     restart: unless-stopped
 
 volumes:
