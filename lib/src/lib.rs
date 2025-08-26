@@ -27,8 +27,8 @@ sol! {
 
 // Re-export core processing functions and state
 pub use loan_processor::{
-    process_loan_batch, process_loan_operations, GlobalLoanState, ProcessingError,
-    LoanOperation, MerkleTree,
+    process_loan_batch, process_loan_operations, GlobalLoanState, LoanOperation, MerkleTree,
+    ProcessingError,
 };
 
 // Re-export from new modules

@@ -77,6 +77,96 @@ pub struct ContractPrivateData {
 }
 
 // ============================================================================
+// CCR DOMAIN TYPES (Credit and Compliance Requirements)
+// ============================================================================
+
+/// Identity/User record with KYC status
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Identity {
+    pub id: uuid::Uuid,
+    pub user_type: String, // investor, lender
+    pub email: String,
+    pub kyc_status: String, // not_submitted, pending, approved, rejected
+    pub kyc_submitted_at: Option<DateTime<Utc>>,
+    pub kyc_verified_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Loan record with borrower/lender relationship
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Loan {
+    pub id: uuid::Uuid,
+    pub borrower_id: uuid::Uuid,
+    pub lender_id: uuid::Uuid,
+    pub principal_amount: rust_decimal::Decimal,
+    pub outstanding_balance: rust_decimal::Decimal,
+    pub interest_rate_bps: i32, // Basis points
+    pub loan_status: String,    // originated, active, paid_off, closed, defaulted
+    pub originated_at: DateTime<Utc>,
+    pub maturity_date: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Payment record for loan servicing
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Payment {
+    pub id: uuid::Uuid,
+    pub loan_id: uuid::Uuid,
+    pub payer_id: uuid::Uuid,
+    pub amount: rust_decimal::Decimal,
+    pub payment_type: String, // regular, principal, interest, penalty
+    pub transaction_hash: Option<String>,
+    pub processed_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Account balance tracking
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Balance {
+    pub id: uuid::Uuid,
+    pub identity_id: uuid::Uuid,
+    pub balance_type: String, // available, locked, reserved
+    pub amount: rust_decimal::Decimal,
+    pub currency: String,
+    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Loan transaction for zkVM processing
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct LoanTransactionDb {
+    pub id: uuid::Uuid,
+    pub transaction_id_hash: Vec<u8>,
+    pub user_id_hash: Vec<u8>,
+    pub loan_id_hash: Option<Vec<u8>>,
+    pub transaction_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub identity_id: Option<uuid::Uuid>,
+    pub loan_id: Option<uuid::Uuid>,
+    pub payment_id: Option<uuid::Uuid>,
+    pub included_in_batch_id: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// State snapshot for auditing
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct StateSnapshot {
+    pub id: uuid::Uuid,
+    pub snapshot_type: String, // manual, batch, scheduled
+    pub batch_id: Option<i32>,
+    pub merkle_root: Option<Vec<u8>>,
+    pub total_loans_count: i32,
+    pub total_outstanding_balance: rust_decimal::Decimal,
+    pub total_paid_amount: rust_decimal::Decimal,
+    pub active_users_count: i32,
+    pub kyc_approved_count: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+// ============================================================================
 // DATABASE CONNECTION FUNCTIONS
 // ============================================================================
 
@@ -674,6 +764,349 @@ pub async fn get_potential_stuck_batches(
     if !batches.is_empty() {
         debug!("Found {} potentially stuck batches", batches.len());
     }
-    
+
     Ok(batches)
+}
+
+// ============================================================================
+// CCR DOMAIN DATABASE FUNCTIONS
+// ============================================================================
+
+/// Create a new identity (user registration)
+pub async fn create_identity(
+    pool: &PgPool,
+    user_type: &str,
+    email: &str,
+) -> Result<Identity, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO identities (id, user_type, email, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $4)
+        "#,
+        id,
+        user_type,
+        email,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    let identity = Identity {
+        id,
+        user_type: user_type.to_string(),
+        email: email.to_string(),
+        kyc_status: "not_submitted".to_string(),
+        kyc_submitted_at: None,
+        kyc_verified_at: None,
+        created_at: now,
+        updated_at: now,
+    };
+
+    Ok(identity)
+}
+
+/// Get identity by ID
+pub async fn get_identity_by_id(
+    pool: &PgPool,
+    id: uuid::Uuid,
+) -> Result<Option<Identity>, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at
+        FROM identities
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    let identity = row.map(|row| Identity {
+        id: row.id,
+        user_type: row.user_type,
+        email: row.email,
+        kyc_status: row.kyc_status,
+        kyc_submitted_at: row.kyc_submitted_at,
+        kyc_verified_at: row.kyc_verified_at,
+        created_at: row.created_at.unwrap_or_else(Utc::now),
+        updated_at: row.updated_at.unwrap_or_else(Utc::now),
+    });
+
+    Ok(identity)
+}
+
+/// Get identity by email
+pub async fn get_identity_by_email(
+    pool: &PgPool,
+    email: &str,
+) -> Result<Option<Identity>, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at
+        FROM identities
+        WHERE email = $1
+        "#,
+        email
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    let identity = row.map(|row| Identity {
+        id: row.id,
+        user_type: row.user_type,
+        email: row.email,
+        kyc_status: row.kyc_status,
+        kyc_submitted_at: row.kyc_submitted_at,
+        kyc_verified_at: row.kyc_verified_at,
+        created_at: row.created_at.unwrap_or_else(Utc::now),
+        updated_at: row.updated_at.unwrap_or_else(Utc::now),
+    });
+
+    Ok(identity)
+}
+
+/// List identities with optional filtering
+pub async fn list_identities(
+    pool: &PgPool,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    _kyc_status: Option<&str>,
+) -> Result<Vec<Identity>, sqlx::Error> {
+    // Simplified version - can add filtering later
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at
+        FROM identities
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit.unwrap_or(100),
+        offset.unwrap_or(0)
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let identities = rows
+        .into_iter()
+        .map(|row| Identity {
+            id: row.id,
+            user_type: row.user_type,
+            email: row.email,
+            kyc_status: row.kyc_status,
+            kyc_submitted_at: row.kyc_submitted_at,
+            kyc_verified_at: row.kyc_verified_at,
+            created_at: row.created_at.unwrap_or_else(Utc::now),
+            updated_at: row.updated_at.unwrap_or_else(Utc::now),
+        })
+        .collect();
+
+    Ok(identities)
+}
+
+/// Update KYC status
+pub async fn update_kyc_status(
+    pool: &PgPool,
+    identity_id: uuid::Uuid,
+    status: &str,
+) -> Result<Identity, sqlx::Error> {
+    let now = Utc::now();
+
+    sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET kyc_status = $2,
+            updated_at = $3
+        WHERE id = $1
+        "#,
+        identity_id,
+        status,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    // Fetch the updated identity
+    get_identity_by_id(pool, identity_id)
+        .await?
+        .ok_or_else(|| sqlx::Error::RowNotFound)
+}
+
+/// Create a new loan
+pub async fn create_loan(
+    pool: &PgPool,
+    borrower_id: uuid::Uuid,
+    lender_id: uuid::Uuid,
+    principal_amount: rust_decimal::Decimal,
+    interest_rate_bps: i32,
+    maturity_date: Option<DateTime<Utc>>,
+) -> Result<Loan, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+    let now = Utc::now();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7)
+        "#,
+        id,
+        borrower_id,
+        lender_id,
+        principal_amount,
+        interest_rate_bps,
+        maturity_date,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    let loan = Loan {
+        id,
+        borrower_id,
+        lender_id,
+        principal_amount,
+        outstanding_balance: principal_amount,
+        interest_rate_bps,
+        loan_status: "originated".to_string(),
+        originated_at: now,
+        maturity_date,
+        created_at: now,
+        updated_at: now,
+    };
+
+    Ok(loan)
+}
+
+/// Get loan by ID - Simple implementation for now
+pub async fn get_loan_by_id(_pool: &PgPool, _id: uuid::Uuid) -> Result<Option<Loan>, sqlx::Error> {
+    // For now, return None - can be implemented later
+    Ok(None)
+}
+
+/// List loans - Simple implementation for now
+pub async fn list_loans(
+    _pool: &PgPool,
+    _limit: Option<i64>,
+    _offset: Option<i64>,
+    _status: Option<&str>,
+    _borrower_id: Option<uuid::Uuid>,
+    _lender_id: Option<uuid::Uuid>,
+) -> Result<Vec<Loan>, sqlx::Error> {
+    // For now, return empty - can be implemented later
+    Ok(vec![])
+}
+
+/// Record a payment - Simple implementation for now
+pub async fn create_payment(
+    pool: &PgPool,
+    loan_id: uuid::Uuid,
+    payer_id: uuid::Uuid,
+    amount: rust_decimal::Decimal,
+    payment_type: &str,
+    transaction_hash: Option<&str>,
+) -> Result<Payment, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+    let now = Utc::now();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO payments (id, loan_id, payer_id, amount, payment_type, transaction_hash, processed_at, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+        "#,
+        id,
+        loan_id,
+        payer_id,
+        amount,
+        payment_type,
+        transaction_hash,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    let payment = Payment {
+        id,
+        loan_id,
+        payer_id,
+        amount,
+        payment_type: payment_type.to_string(),
+        transaction_hash: transaction_hash.map(|s| s.to_string()),
+        processed_at: now,
+        created_at: now,
+    };
+
+    Ok(payment)
+}
+
+/// Get payments for a loan - Simple implementation for now
+pub async fn get_payments_by_loan(
+    _pool: &PgPool,
+    _loan_id: uuid::Uuid,
+    _limit: Option<i64>,
+    _offset: Option<i64>,
+) -> Result<Vec<Payment>, sqlx::Error> {
+    // For now, return empty - can be implemented later
+    Ok(vec![])
+}
+
+/// Get balance for an identity - Simple implementation for now
+pub async fn get_balance(
+    _pool: &PgPool,
+    _identity_id: uuid::Uuid,
+    _balance_type: &str,
+    _currency: &str,
+) -> Result<Option<Balance>, sqlx::Error> {
+    // For now, return None - can be implemented later
+    Ok(None)
+}
+
+/// Update balance - Simple implementation for now
+pub async fn update_balance(
+    _pool: &PgPool,
+    identity_id: uuid::Uuid,
+    balance_type: &str,
+    currency: &str,
+    new_amount: rust_decimal::Decimal,
+) -> Result<Balance, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+    let now = Utc::now();
+
+    let balance = Balance {
+        id,
+        identity_id,
+        balance_type: balance_type.to_string(),
+        amount: new_amount,
+        currency: currency.to_string(),
+        updated_at: now,
+        created_at: now,
+    };
+
+    Ok(balance)
+}
+
+/// Create a state snapshot - Simple implementation for now
+pub async fn create_state_snapshot(
+    _pool: &PgPool,
+    snapshot_type: &str,
+    batch_id: Option<i32>,
+) -> Result<StateSnapshot, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+    let now = Utc::now();
+
+    let snapshot = StateSnapshot {
+        id,
+        snapshot_type: snapshot_type.to_string(),
+        batch_id,
+        merkle_root: None,
+        total_loans_count: 0,
+        total_outstanding_balance: rust_decimal::Decimal::ZERO,
+        total_paid_amount: rust_decimal::Decimal::ZERO,
+        active_users_count: 0,
+        kyc_approved_count: 0,
+        created_at: now,
+    };
+
+    Ok(snapshot)
 }

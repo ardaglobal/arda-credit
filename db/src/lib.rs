@@ -47,37 +47,60 @@ pub mod error;
 pub use db::{
     // Batch functions
     create_batch,
+    // CCR Domain functions
+    create_identity,
+    create_loan,
+    create_payment,
+    create_state_snapshot,
+
     get_all_batches,
+    get_balance,
     get_batch_by_id,
     get_contract_submission_data,
     // State functions
     get_current_counter_value,
     get_current_state,
 
+    get_identity_by_email,
+    get_identity_by_id,
+    get_loan_by_id,
+    get_payments_by_loan,
     get_pending_transactions,
 
+    get_potential_stuck_batches,
     get_proven_unposted_batches,
     // Database connection
     init_db,
     init_db_with_url,
 
+    list_identities,
+    list_loans,
     mark_batch_posted_to_contract,
     mark_batch_posted_to_contract_with_tx_hash,
-    get_potential_stuck_batches,
     // ADS/Merkle functions
     store_ads_state_commit,
     // Transaction functions
     submit_transaction,
+    update_balance,
     update_batch_proof,
 
+    update_kyc_status,
     // Types
     AdsStateCommit,
+    Balance,
     ContractPrivateData,
     ContractPublicData,
     ContractSubmissionData,
     CounterState,
+    // CCR Domain types
+    Identity,
     IncomingTransaction,
+    Loan,
+    LoanTransactionDb,
+    Payment,
     ProofBatch,
+
+    StateSnapshot,
 };
 
 // Re-export essential error types
