@@ -44,14 +44,18 @@ jobs:
 
       - name: Get Branch Name
         id: branch-name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.number }}
+          SHA: ${{ github.sha }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "branch=${{ github.head_ref }}" >> $GITHUB_OUTPUT
-            echo "tag=pr-${{ github.event.number }}-${{ github.head_ref }}" >> $GITHUB_OUTPUT
+            echo "branch=$HEAD_REF" >> $GITHUB_OUTPUT
+            echo "tag=pr-$PR_NUMBER-$HEAD_REF" >> $GITHUB_OUTPUT
           else
             branch=${GITHUB_REF#refs/heads/}
             echo "branch=$branch" >> $GITHUB_OUTPUT
-            echo "tag=$branch-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            echo "tag=$branch-$(echo $SHA | cut -c1-7)" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy Circuit to Sindri

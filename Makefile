@@ -109,6 +109,22 @@ yamllint-fix:
 	yamllint --format parsable . || true
 	@echo "💡 Fix YAML issues based on the output above"
 
+## actionlint: Lint GitHub Actions workflows using actionlint
+.PHONY: actionlint
+actionlint:
+	@echo "🔍 Linting GitHub Actions workflows with actionlint..."
+	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint not found. Run 'make install' to install dependencies."; exit 1; }
+	actionlint -config-file .actionlint.yaml
+	@echo "✅ GitHub Actions linting completed"
+
+## actionlint-fix: Lint GitHub Actions workflows with verbose output for fixing issues
+.PHONY: actionlint-fix
+actionlint-fix:
+	@echo "🔧 Linting GitHub Actions workflows with detailed output..."
+	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint not found. Run 'make install' to install dependencies."; exit 1; }
+	actionlint -config-file .actionlint.yaml -verbose || true
+	@echo "💡 Fix GitHub Actions issues based on the output above"
+
 ## test: Run all tests
 .PHONY: test
 test:

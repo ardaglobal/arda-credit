@@ -15,9 +15,9 @@ jobs:
     name: conventional-commit-pr-title
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
-        image: ubuntu-7.0
-        instance-size: small
-    environment:
+      - image=ubuntu-7.0
+      - instance-size=large
+    env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Required for semantic-pull-request action
     permissions:
       contents: read

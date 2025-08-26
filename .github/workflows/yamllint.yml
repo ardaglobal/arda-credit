@@ -13,8 +13,8 @@ jobs:
     name: YAML Lint
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
-        image: ubuntu-7.0
-        instance-size: small
+      - image=ubuntu-7.0
+      - instance-size=small
 
     steps:
       - name: Checkout code

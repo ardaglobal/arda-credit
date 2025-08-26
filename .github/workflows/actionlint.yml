@@ -1,0 +1,52 @@
+name: GitHub Actions Lint
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  merge_group:
+
+jobs:
+  actionlint:
+    name: GitHub Actions Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Cache actionlint binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/bin/actionlint
+          key: actionlint-1.6.26
+          restore-keys: |
+            actionlint-
+
+      - name: Install actionlint
+        run: |
+          if [ ! -f ~/.local/bin/actionlint ]; then
+            echo "Installing actionlint..."
+            mkdir -p ~/.local/bin
+            curl -Ls "https://github.com/rhymond/actionlint/releases/download/v1.6.26/actionlint_1.6.26_linux_amd64.tar.gz" | \
+            tar -xz -C /tmp && \
+            mv /tmp/actionlint ~/.local/bin/actionlint && \
+            chmod +x ~/.local/bin/actionlint
+          else
+            echo "actionlint already cached"
+          fi
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Run actionlint
+        run: |
+          echo "Running actionlint on all GitHub Actions workflows..."
+          actionlint -config-file .actionlint.yaml
+
+      - name: Generate actionlint report on failure
+        if: failure()
+        run: |
+          echo "ActionLint found issues. Generating detailed report..."
+          actionlint -config-file .actionlint.yaml -format '{{range $err := .}}{{$err.Filepath}}:{{$err.Line}}:{{$err.Column}}: {{$err.Message}} [{{$err.Kind}}]{{"\n"}}{{end}}' | tee actionlint-report.txt || true
+          echo "::warning::ActionLint issues found. See the full report above."

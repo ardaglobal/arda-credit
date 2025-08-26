@@ -1,0 +1,12 @@
+# actionlint configuration for arda-credit repository
+# See: https://github.com/rhymond/actionlint/blob/main/docs/config.md
+
+self-hosted-runner:
+  # Custom runner labels used in this repository (AWS CodeBuild runners)
+  labels:
+    - "runs-on"
+    - "runner=1cpu-linux-x64"
+    - "codebuild-arda-credit-*"
+    - "run-id=*"
+    - "instance-size=small"
+    - "image=ubuntu-7.0"

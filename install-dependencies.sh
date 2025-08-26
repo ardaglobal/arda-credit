@@ -382,6 +382,31 @@ EOF
   esac
 }
 
+# actionlint (GitHub Actions workflow linter)
+function ensure_actionlint() {
+  check_cmd actionlint && return
+
+  case $OS in
+  Linux)
+    local cmd=$(
+      cat <<-EOF
+    curl -Ls "https://github.com/rhymond/actionlint/releases/download/v1.6.26/actionlint_1.6.26_linux_amd64.tar.gz" | \
+    tar -xz -C /tmp && \
+    mv /tmp/actionlint /usr/local/bin/actionlint && \
+    chmod +x /usr/local/bin/actionlint
+EOF
+    )
+    try_sudo "$cmd"
+    ;;
+  Darwin)
+    ensure_brew
+    brew install actionlint
+    ;;
+  *)
+    ;;
+  esac
+}
+
 # foundry
 function ensure_foundry() {
   check_cmd forge && check_cmd cast && check_cmd anvil && return
@@ -605,6 +630,7 @@ function ensure_tools() {
   ensure_sindri
   ensure_taplo
   ensure_yamllint
+  ensure_actionlint
   ensure_foundry
   ensure_sp1
   ensure_gh
