@@ -21,14 +21,13 @@ jobs:
         uses: actions/checkout@v5
 
       - name: actionlint
-        id: actionlint  #optional, id required only when outputs are used in the workflow steps later
+        id: actionlint
         uses: raven-actions/actionlint@v2
         with:
-          fail-on-error: false  # optional
-          flags: "-config-file .actionlint.yaml"  # optional
-      
+          fail-on-error: false
+          flags: "-config-file .actionlint.yaml"
       - name: actionlint Summary
-        if: ${{ steps.actionlint.outputs.exit-code != 0 }}  # example usage, do echo only when actionlint action failed
+        if: ${{ steps.actionlint.outputs.exit-code != 0 }}
         run: |
           echo "Used actionlint version ${{ steps.actionlint.outputs.version-semver }}"
           echo "Used actionlint release ${{ steps.actionlint.outputs.version-tag }}"
