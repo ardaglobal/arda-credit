@@ -41,6 +41,8 @@ jobs:
         uses: ./.github/actions/setup-sp1
 
       - name: Build SP1 Program
+        env:
+          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
         run: |
           cd program
           cargo prove build --output-directory ../build

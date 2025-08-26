@@ -20,12 +20,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Install Python dependencies
+        run: |
+          # Install pipx for pyflakes installation
+          python3 -m pip install --user pipx
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: actionlint
         id: actionlint
         uses: raven-actions/actionlint@v2
         with:
           fail-on-error: false
           flags: "-config-file .actionlint.yaml"
+
       - name: actionlint Summary
         if: ${{ steps.actionlint.outputs.exit-code != 0 }}
         run: |

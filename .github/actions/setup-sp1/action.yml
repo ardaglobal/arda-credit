@@ -38,6 +38,8 @@ runs:
         export PATH="$HOME/.sp1/bin:$PATH"
         # Run SP1 update tool
         sp1up
+        # Clear any SP1-specific Rust toolchain environment variable
+        unset RUSTUP_TOOLCHAIN
         echo "SP1 toolchain installation completed"
 
     - name: Add SP1 to PATH
@@ -48,6 +50,8 @@ runs:
     - name: Verify SP1 installation
       shell: bash
       run: |
+        # Clear any SP1-specific Rust toolchain environment variable
+        unset RUSTUP_TOOLCHAIN || true
         # Verify installation by checking cargo-prove version
         export PATH="${{ steps.sp1-cache-key.outputs.sp1-bin-path }}:$PATH"
         cargo-prove prove --version

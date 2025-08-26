@@ -33,10 +33,14 @@ jobs:
         uses: ./.github/actions/setup-sp1
 
       - name: Build SP1 program
+        env:
+          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
         run: |
           cd program
           cargo-prove prove build
 
       - name: Execute SP1 program
+        env:
+          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
         run: |
           cargo run --release

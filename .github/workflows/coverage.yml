@@ -50,6 +50,8 @@ jobs:
           components: llvm-tools
 
       - name: Install cargo-llvm-cov
+        env:
+          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
         run: cargo install cargo-llvm-cov
 
       - name: Install SP1 toolchain
@@ -81,6 +83,10 @@ jobs:
       #    echo "PostgreSQL is ready!"
 
       - name: Generate code coverage
+        env:
+          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
+          # Optimized connection pool settings for CodeBuild environment with longer timeouts
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres?pool_max_size=20&connection_timeout=60
         run: |
           # Generate HTML report with limited concurrency to avoid database connection pool exhaustion
           cargo llvm-cov --workspace --all-features --html -- --test-threads=5
@@ -88,9 +94,6 @@ jobs:
           cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=5
           # Generate text summary for display
           cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=5 > target/llvm-cov/coverage-summary.txt
-        env:
-          # Optimized connection pool settings for CodeBuild environment with longer timeouts
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres?pool_max_size=20&connection_timeout=60
 
       - name: Display coverage summary
         run: |
