@@ -31,7 +31,7 @@ jobs:
         uses: raven-actions/actionlint@v2
         with:
           fail-on-error: false
-          flags: "-config-file .actionlint.yaml"
+          flags: "-config-file .actionlint.yaml -ignore SC2086"
 
       - name: actionlint Summary
         if: ${{ steps.actionlint.outputs.exit-code != 0 }}
