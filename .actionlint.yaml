@@ -6,8 +6,8 @@ self-hosted-runner:
   labels:
     - "runs-on"
     - "runner=1cpu-linux-x64"
-    - "codebuild-arda-credit-*"
-    - "run-id=*"
+    - "codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}"
+    - "run-id=${{ github.run_id }}"
     - "instance-size=small"
     - "instance-size=medium"
     - "instance-size=large"

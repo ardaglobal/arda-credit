@@ -12,7 +12,10 @@ on:
 
 jobs:
   claude-review:
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=small
     permissions:
       contents: read
       pull-requests: read
