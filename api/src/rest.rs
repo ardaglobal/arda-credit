@@ -12,6 +12,7 @@ use sqlx::{Error as SqlxError, PgPool};
 use tracing::{error, info, instrument, warn};
 use uuid;
 use utoipa::{OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::batch_processor::BatchProcessorHandle;
 use arda_credit_db::{
@@ -504,8 +505,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/", get(api_info))
         .route("/api/v2/health", get(health_check))
         .route("/api/v2/info", get(api_info))
-        // OpenAPI documentation routes  
-        .route("/api-docs/openapi.json", get(get_openapi_spec_handler))
+        // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
+        .merge(swagger_ui())
         // Legacy transaction operations (keeping for backward compatibility)
         .route("/api/v2/transactions", post(submit_transaction_endpoint))
         .route(
@@ -1952,6 +1953,7 @@ struct GenerateLoanOperationProofRequest {
 /// Response for loan operation inclusion proof generation
 #[derive(Debug, Serialize, ToSchema)]
 struct LoanOperationProofResponse {
+    #[schema(value_type = Object)]
     proof: LoanInclusionProof,
     generated_at: DateTime<Utc>,
     verification_summary: serde_json::Value,
@@ -2306,4 +2308,11 @@ pub fn get_openapi_spec() -> utoipa::openapi::OpenApi {
 /// Axum handler for serving the OpenAPI specification as JSON
 pub async fn get_openapi_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
+}
+
+/// Create a Swagger UI router
+fn swagger_ui() -> Router<ApiState> {
+    SwaggerUi::new("/api-docs")
+        .url("/api-docs/openapi.json", get_openapi_spec())
+        .into()
 }
