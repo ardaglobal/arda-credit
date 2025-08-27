@@ -10,9 +10,9 @@ use humantime::format_duration;
 use serde::{Deserialize, Serialize};
 use sqlx::{Error as SqlxError, PgPool};
 use tracing::{error, info, instrument, warn};
-use uuid;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
+use uuid;
 
 use crate::batch_processor::BatchProcessorHandle;
 use arda_credit_db::{
