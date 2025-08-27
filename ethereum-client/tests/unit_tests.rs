@@ -41,12 +41,12 @@ mod tests {
     fn test_contract_addresses() {
         use ethereum_client::contracts::ContractAddresses;
 
-        let arithmetic_addr = Address::from_slice(&[0; 20]);
-        let verifier_addr = Address::from_slice(&[0; 20]);
+        let loan_addr = Address::from_slice(&[1; 20]);
+        let verifier_addr = Address::from_slice(&[2; 20]);
 
-        let addresses = ContractAddresses::new(arithmetic_addr, verifier_addr);
+        let addresses = ContractAddresses::new(loan_addr, verifier_addr);
 
-        assert_eq!(addresses.arithmetic, arithmetic_addr);
+        assert_eq!(addresses.loan, loan_addr);
         assert_eq!(addresses.verifier, verifier_addr);
     }
 
