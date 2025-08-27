@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE proof_batches\n        SET posted_to_contract = TRUE,\n            posted_to_contract_at = NOW(),\n            transaction_hash = $2\n        WHERE id = $1 AND posted_to_contract = FALSE\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eef808dd26b3f93fef0356513d960404edc62337128c0717e6361fcf5e3f1b6b"
+}

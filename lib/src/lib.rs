@@ -1,11 +1,16 @@
 use alloy_sol_types::sol;
 
 // Separated modules for better maintainability
+pub mod balance;
 pub mod loan;
 pub mod loan_processor;
 pub mod transactions;
 pub mod user;
 pub mod utils;
+pub mod zkvm_ads; // zkVM-compatible ADS operations
+
+#[cfg(test)]
+mod zkvm_ads_consistency_tests; // Consistency tests for zkVM ADS
 
 // Proof module only available for host-side operations
 #[cfg(feature = "sp1")]
@@ -27,15 +32,28 @@ sol! {
 
 // Re-export core processing functions and state
 pub use loan_processor::{
-    process_loan_batch, process_loan_operations, GlobalLoanState, LoanOperation, MerkleTree,
-    ProcessingError,
+    process_loan_batch, process_loan_operations, validate_transaction, GlobalLoanState,
+    LoanOperation, MerkleTree, ProcessingError,
 };
 
 // Re-export from new modules
+pub use balance::{
+    BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType,
+    UserBalance,
+};
 pub use loan::{Loan, LoanError, LoanStatus, LoanTerms};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};
 pub use utils::{cents_to_decimal, decimal_to_cents, hash_uuid};
+pub use zkvm_ads::{StateTransition, ZkVMAds, ZkVMNullifier};
 
 // Keep the old LoanState type alias for backward compatibility
 pub type LoanState = GlobalLoanState;
+
+// Input structure for zkVM program with ADS state
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ZkVMBatchInput {
+    pub initial_loan_state: GlobalLoanState,
+    pub initial_ads_state: ZkVMAds,
+    pub batch: LoanBatch,
+}

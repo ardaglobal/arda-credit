@@ -801,6 +801,698 @@ mod tests {
     }
 
     // ============================================================================
+    // CCR OPERATIONS INTEGRATION TESTS
+    // ============================================================================
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn test_ccr_operation_insertion(pool: PgPool) {
+        info!("🧪 Testing CCR operation insertion");
+
+        use crate::ccr::CcrOperation;
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let factory = AdsServiceFactory::new(pool);
+        let mut ads = factory
+            .create_indexed_merkle_tree()
+            .await
+            .expect("ADS creation should succeed");
+
+        // Create a CCR loan creation operation
+        let loan_id = Uuid::new_v4();
+        let borrower_id = Uuid::new_v4();
+        let lender_id = Uuid::new_v4();
+        let created_at = Utc::now();
+
+        let ccr_operation = CcrOperation::LoanCreation {
+            loan_id,
+            borrower_id,
+            lender_id,
+            principal_amount: 100000,
+            created_at,
+        };
+
+        // Insert CCR operation
+        let transition = ads
+            .insert_ccr_operation(&ccr_operation)
+            .await
+            .expect("CCR operation insertion should succeed");
+
+        // Verify the state transition has CCR metadata
+        assert!(transition.ccr_metadata.is_some());
+        let ccr_metadata = transition.ccr_metadata.unwrap();
+        assert_eq!(ccr_metadata.operation_type, "loan_creation");
+        assert_eq!(ccr_metadata.operation_id, loan_id.to_string());
+        assert_eq!(ccr_metadata.amount, Some(100000));
+        assert_eq!(ccr_metadata.user_ids.len(), 2); // borrower and lender
+
+        // Verify nullifier is in expected prefix range
+        let loan_creation_prefix = 1_000_000_000;
+        assert!(
+            transition.nullifier_value >= loan_creation_prefix,
+            "Nullifier should have loan creation prefix"
+        );
+        assert!(
+            transition.nullifier_value < loan_creation_prefix + 1_000_000_000,
+            "Nullifier should be within prefix range"
+        );
+
+        info!("✅ CCR operation insertion test passed");
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn test_ccr_batch_operations(pool: PgPool) {
+        info!("🧪 Testing CCR batch operations");
+
+        use crate::ccr::CcrOperation;
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let factory = AdsServiceFactory::new(pool);
+        let mut ads = factory
+            .create_indexed_merkle_tree()
+            .await
+            .expect("ADS creation should succeed");
+
+        let created_at = Utc::now();
+        let loan_id = Uuid::new_v4();
+        let borrower_id = Uuid::new_v4();
+        let lender_id = Uuid::new_v4();
+        let payment_id = Uuid::new_v4();
+        let balance_id = Uuid::new_v4();
+
+        // Create multiple CCR operations
+        let ccr_operations = vec![
+            CcrOperation::LoanCreation {
+                loan_id,
+                borrower_id,
+                lender_id,
+                principal_amount: 100000,
+                created_at,
+            },
+            CcrOperation::LoanFunding {
+                loan_id,
+                funder_id: lender_id,
+                amount: 100000,
+                created_at,
+            },
+            CcrOperation::Payment {
+                payment_id,
+                loan_id,
+                payer_id: borrower_id,
+                amount: 5000,
+                created_at,
+            },
+            CcrOperation::BalanceUpdate {
+                balance_id,
+                identity_id: borrower_id,
+                amount_delta: -5000,
+                new_balance: 95000,
+                created_at,
+            },
+        ];
+
+        // Batch insert CCR operations
+        let transitions = ads
+            .batch_insert_ccr_operations(&ccr_operations)
+            .await
+            .expect("CCR batch insertion should succeed");
+
+        assert_eq!(transitions.len(), 4);
+
+        // Verify each transition has correct CCR metadata and prefix
+        let expected_prefixes = [
+            1_000_000_000, // LoanCreation
+            2_000_000_000, // LoanFunding
+            3_000_000_000, // Payment
+            4_000_000_000, // BalanceUpdate
+        ];
+
+        let expected_types = ["loan_creation", "loan_funding", "payment", "balance_update"];
+
+        for (i, transition) in transitions.iter().enumerate() {
+            assert!(transition.ccr_metadata.is_some());
+            let ccr_metadata = transition.ccr_metadata.as_ref().unwrap();
+            assert_eq!(ccr_metadata.operation_type, expected_types[i]);
+
+            // Verify prefix ranges
+            assert!(
+                transition.nullifier_value >= expected_prefixes[i],
+                "Transition {} should have correct prefix", i
+            );
+            assert!(
+                transition.nullifier_value < expected_prefixes[i] + 1_000_000_000,
+                "Transition {} should be within prefix range", i
+            );
+        }
+
+        // Verify all nullifiers are different
+        let mut nullifiers = transitions.iter().map(|t| t.nullifier_value).collect::<Vec<_>>();
+        nullifiers.sort();
+        for i in 0..nullifiers.len()-1 {
+            assert_ne!(nullifiers[i], nullifiers[i+1], "All nullifiers should be unique");
+        }
+
+        info!("✅ CCR batch operations test passed");
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn test_ccr_audit_trail(pool: PgPool) {
+        info!("🧪 Testing CCR audit trail");
+
+        use crate::ccr::CcrOperation;
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let factory = AdsServiceFactory::new(pool);
+        let mut ads = factory
+            .create_indexed_merkle_tree()
+            .await
+            .expect("ADS creation should succeed");
+
+        let loan_id = Uuid::new_v4();
+        let borrower_id = Uuid::new_v4();
+        let lender_id = Uuid::new_v4();
+        let created_at = Utc::now();
+
+        let ccr_operation = CcrOperation::LoanCreation {
+            loan_id,
+            borrower_id,
+            lender_id,
+            principal_amount: 100000,
+            created_at,
+        };
+
+        // Insert CCR operation
+        let transition = ads
+            .insert_ccr_operation(&ccr_operation)
+            .await
+            .expect("CCR operation insertion should succeed");
+
+        // Get audit trail for the operation
+        let audit_events = ads
+            .get_ccr_audit_trail(&loan_id.to_string())
+            .await
+            .expect("Should retrieve audit trail");
+
+        assert!(!audit_events.is_empty(), "Should have audit events");
+        let audit_event = &audit_events[0];
+        assert_eq!(audit_event.event_type, crate::AuditEventType::CcrOperation);
+        assert_eq!(audit_event.root_before, transition.old_root);
+        assert_eq!(audit_event.root_after, transition.new_root);
+
+        // Verify metadata contains CCR-specific information
+        let metadata = &audit_event.metadata;
+        assert_eq!(metadata["operation_type"], "loan_creation");
+        assert_eq!(metadata["operation_id"], loan_id.to_string());
+        assert_eq!(metadata["nullifier_value"], transition.nullifier_value);
+
+        info!("✅ CCR audit trail test passed");
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn test_ccr_backward_compatibility(pool: PgPool) {
+        info!("🧪 Testing CCR backward compatibility with existing operations");
+
+        use crate::ccr::CcrOperation;
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let factory = AdsServiceFactory::new(pool);
+        let mut ads = factory
+            .create_indexed_merkle_tree()
+            .await
+            .expect("ADS creation should succeed");
+
+        // Insert a regular nullifier (existing functionality)
+        let regular_nullifier = 123456;
+        let regular_transition = ads
+            .insert(regular_nullifier)
+            .await
+            .expect("Regular insertion should succeed");
+
+        // Verify regular transition has no CCR metadata
+        assert!(regular_transition.ccr_metadata.is_none());
+
+        // Insert a CCR operation
+        let loan_id = Uuid::new_v4();
+        let ccr_operation = CcrOperation::LoanCreation {
+            loan_id,
+            borrower_id: Uuid::new_v4(),
+            lender_id: Uuid::new_v4(),
+            principal_amount: 100000,
+            created_at: Utc::now(),
+        };
+
+        let ccr_transition = ads
+            .insert_ccr_operation(&ccr_operation)
+            .await
+            .expect("CCR operation insertion should succeed");
+
+        // Verify CCR transition has metadata
+        assert!(ccr_transition.ccr_metadata.is_some());
+
+        // Verify both nullifiers are properly inserted in the tree
+        let membership_proof_regular = ads
+            .prove_membership(regular_nullifier)
+            .await
+            .expect("Should prove membership for regular nullifier");
+
+        let membership_proof_ccr = ads
+            .prove_membership(ccr_transition.nullifier_value)
+            .await
+            .expect("Should prove membership for CCR nullifier");
+
+        // Both should have valid proofs
+        assert_eq!(membership_proof_regular.nullifier_value, regular_nullifier);
+        assert_eq!(membership_proof_ccr.nullifier_value, ccr_transition.nullifier_value);
+
+        // Health check should still pass
+        assert!(ads.health_check().await.expect("Health check should succeed"));
+
+        info!("✅ CCR backward compatibility test passed");
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn test_transaction_mapper_lib_to_ccr(pool: PgPool) {
+        info!("🧪 Testing transaction mapper lib to CCR conversion");
+
+        use crate::ccr::{MappingContext, TransactionMapper};
+        use crate::{Identity, Loan};
+        use lib::transactions::{LoanTransaction, TransactionType, MetadataArray};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let mut context = MappingContext::new();
+        
+        // Add test entities to context
+        let borrower_id = Uuid::new_v4();
+        let lender_id = Uuid::new_v4();
+        let loan_id = Uuid::new_v4();
+
+        let borrower = Identity {
+            id: borrower_id,
+            user_type: "investor".to_string(),
+            email: "borrower@example.com".to_string(),
+            kyc_status: "approved".to_string(),
+            kyc_submitted_at: Some(Utc::now()),
+            kyc_verified_at: Some(Utc::now()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let loan = Loan {
+            id: loan_id,
+            borrower_id,
+            lender_id,
+            principal_amount: rust_decimal::Decimal::new(10000000, 2),
+            outstanding_balance: rust_decimal::Decimal::new(10000000, 2),
+            interest_rate_bps: 750,
+            loan_status: "active".to_string(),
+            originated_at: Utc::now(),
+            maturity_date: Some(Utc::now()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        context.add_user(borrower);
+        context.add_loan(loan);
+
+        let mapper = TransactionMapper::new(context);
+
+        // Test loan origination mapping
+        let lib_transaction = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: borrower_id.as_bytes().iter().chain([0u8; 16].iter()).cloned().collect::<Vec<u8>>().try_into().unwrap(),
+            loan_id: loan_id.as_bytes().iter().chain([0u8; 16].iter()).cloned().collect::<Vec<u8>>().try_into().unwrap(),
+            transaction_type: TransactionType::LoanOrigination,
+            amount: 100000,
+            created_at: 1640995200, // 2022-01-01
+            metadata: MetadataArray::empty(),
+        };
+
+        let ccr_operations = mapper.lib_transaction_to_ccr(&lib_transaction)
+            .expect("Should convert lib transaction to CCR");
+
+        assert_eq!(ccr_operations.len(), 1);
+        match &ccr_operations[0] {
+            crate::CcrOperation::LoanCreation { loan_id: ccr_loan_id, borrower_id: ccr_borrower_id, principal_amount, .. } => {
+                // Note: UUID conversion from bytes truncates to 16 bytes, so we compare the first 16 bytes
+                assert_eq!(ccr_loan_id.as_bytes(), &loan_id.as_bytes()[..16]);
+                assert_eq!(ccr_borrower_id.as_bytes(), &borrower_id.as_bytes()[..16]);
+                assert_eq!(*principal_amount, 100000);
+            }
+            _ => panic!("Expected LoanCreation operation"),
+        }
+
+        info!("✅ Transaction mapper lib to CCR conversion test passed");
+    }
+
+    #[traced_test] 
+    #[sqlx::test]
+    async fn test_transaction_mapper_db_to_ccr(pool: PgPool) {
+        info!("🧪 Testing transaction mapper database to CCR conversion");
+
+        use crate::ccr::{MappingContext, TransactionMapper};
+        use crate::{Identity, Loan, LoanTransactionDb};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let mut context = MappingContext::new();
+        
+        let borrower_id = Uuid::new_v4();
+        let lender_id = Uuid::new_v4();
+        let loan_id = Uuid::new_v4();
+        let payment_id = Uuid::new_v4();
+
+        // Add entities to context
+        let borrower = Identity {
+            id: borrower_id,
+            user_type: "investor".to_string(),
+            email: "borrower@example.com".to_string(),
+            kyc_status: "approved".to_string(),
+            kyc_submitted_at: Some(Utc::now()),
+            kyc_verified_at: Some(Utc::now()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let loan = Loan {
+            id: loan_id,
+            borrower_id,
+            lender_id,
+            principal_amount: rust_decimal::Decimal::new(10000000, 2),
+            outstanding_balance: rust_decimal::Decimal::new(9500000, 2),
+            interest_rate_bps: 750,
+            loan_status: "active".to_string(),
+            originated_at: Utc::now(),
+            maturity_date: Some(Utc::now()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        context.add_user(borrower);
+        context.add_loan(loan);
+
+        let mapper = TransactionMapper::new(context);
+
+        // Test database payment transaction mapping
+        let db_transaction = LoanTransactionDb {
+            id: Uuid::new_v4(),
+            transaction_id_hash: vec![1u8; 32],
+            user_id_hash: borrower_id.as_bytes().to_vec(),
+            loan_id_hash: Some(loan_id.as_bytes().to_vec()),
+            transaction_type: "loan_payment".to_string(),
+            amount: rust_decimal::Decimal::new(500000, 2), // $5,000
+            identity_id: Some(borrower_id),
+            loan_id: Some(loan_id),
+            payment_id: Some(payment_id),
+            included_in_batch_id: None,
+            metadata: None,
+            created_at: Utc::now(),
+        };
+
+        let ccr_operations = mapper.db_transaction_to_ccr(&db_transaction)
+            .expect("Should convert db transaction to CCR");
+
+        assert_eq!(ccr_operations.len(), 3); // Payment + 2 balance updates
+
+        // Verify payment operation
+        match &ccr_operations[0] {
+            crate::CcrOperation::Payment { payment_id: ccr_payment_id, loan_id: ccr_loan_id, amount, .. } => {
+                assert_eq!(*ccr_payment_id, payment_id);
+                assert_eq!(*ccr_loan_id, loan_id);
+                assert_eq!(*amount, 500000);
+            }
+            _ => panic!("Expected Payment operation"),
+        }
+
+        // Verify balance update operations
+        assert!(matches!(ccr_operations[1], crate::CcrOperation::BalanceUpdate { .. }));
+        assert!(matches!(ccr_operations[2], crate::CcrOperation::BalanceUpdate { .. }));
+
+        info!("✅ Transaction mapper database to CCR conversion test passed");
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn test_transaction_mapper_consistency(pool: PgPool) {
+        info!("🧪 Testing transaction mapper consistency and deterministic nullifiers");
+
+        use crate::ccr::{MappingContext, TransactionMapper};
+        use crate::{Identity, Loan};
+        use lib::transactions::{LoanTransaction, TransactionType, MetadataArray};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        let mut context = MappingContext::new();
+        
+        let borrower_id = Uuid::new_v4();
+        let lender_id = Uuid::new_v4();
+        let loan_id = Uuid::new_v4();
+
+        let borrower = Identity {
+            id: borrower_id,
+            user_type: "investor".to_string(),
+            email: "borrower@example.com".to_string(),
+            kyc_status: "approved".to_string(),
+            kyc_submitted_at: Some(Utc::now()),
+            kyc_verified_at: Some(Utc::now()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let loan = Loan {
+            id: loan_id,
+            borrower_id,
+            lender_id,
+            principal_amount: rust_decimal::Decimal::new(10000000, 2),
+            outstanding_balance: rust_decimal::Decimal::new(10000000, 2),
+            interest_rate_bps: 750,
+            loan_status: "active".to_string(),
+            originated_at: Utc::now(),
+            maturity_date: Some(Utc::now()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        context.add_user(borrower);
+        context.add_loan(loan);
+
+        let mapper = TransactionMapper::new(context);
+
+        let lib_transaction = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: borrower_id.as_bytes().iter().chain([0u8; 16].iter()).cloned().collect::<Vec<u8>>().try_into().unwrap(),
+            loan_id: loan_id.as_bytes().iter().chain([0u8; 16].iter()).cloned().collect::<Vec<u8>>().try_into().unwrap(),
+            transaction_type: TransactionType::LoanPayment,
+            amount: 5000,
+            created_at: 1640995200,
+            metadata: MetadataArray::empty(),
+        };
+
+        // Convert the same transaction multiple times
+        let ccr_operations1 = mapper.lib_transaction_to_ccr(&lib_transaction)
+            .expect("First conversion should succeed");
+        let ccr_operations2 = mapper.lib_transaction_to_ccr(&lib_transaction)
+            .expect("Second conversion should succeed");
+
+        assert_eq!(ccr_operations1.len(), ccr_operations2.len());
+
+        // Verify deterministic nullifier generation
+        for (op1, op2) in ccr_operations1.iter().zip(ccr_operations2.iter()) {
+            let nullifier1 = op1.to_nullifier();
+            let nullifier2 = op2.to_nullifier();
+            assert_eq!(nullifier1, nullifier2, "Nullifiers should be deterministic");
+        }
+
+        // Verify all operations have correct prefix ranges
+        for operation in &ccr_operations1 {
+            let nullifier = operation.to_nullifier();
+            match operation {
+                crate::CcrOperation::LoanCreation { .. } => {
+                    assert!(nullifier >= 1_000_000_000 && nullifier < 2_000_000_000, 
+                            "LoanCreation nullifier should have correct prefix");
+                }
+                crate::CcrOperation::LoanFunding { .. } => {
+                    assert!(nullifier >= 2_000_000_000 && nullifier < 3_000_000_000, 
+                            "LoanFunding nullifier should have correct prefix");
+                }
+                crate::CcrOperation::Payment { .. } => {
+                    assert!(nullifier >= 3_000_000_000 && nullifier < 4_000_000_000, 
+                            "Payment nullifier should have correct prefix");
+                }
+                crate::CcrOperation::BalanceUpdate { .. } => {
+                    assert!(nullifier >= 4_000_000_000 && nullifier < 5_000_000_000, 
+                            "BalanceUpdate nullifier should have correct prefix");
+                }
+            }
+        }
+
+        info!("✅ Transaction mapper consistency test passed");
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn test_transaction_mapper_integration_with_ads(pool: PgPool) {
+        info!("🧪 Testing transaction mapper integration with ADS service");
+
+        use crate::ccr::{MappingContext, TransactionMapper};
+        use crate::{Identity, Loan};
+        use lib::transactions::{LoanTransaction, TransactionType, MetadataArray};
+        use chrono::Utc;
+        use uuid::Uuid;
+
+        // Create ADS service
+        let factory = AdsServiceFactory::new(pool);
+        let mut ads = factory
+            .create_indexed_merkle_tree()
+            .await
+            .expect("ADS creation should succeed");
+
+        // Create mapping context
+        let mut context = MappingContext::new();
+        
+        let borrower_id = Uuid::new_v4();
+        let lender_id = Uuid::new_v4();
+        let loan_id = Uuid::new_v4();
+
+        let borrower = Identity {
+            id: borrower_id,
+            user_type: "investor".to_string(),
+            email: "borrower@example.com".to_string(),
+            kyc_status: "approved".to_string(),
+            kyc_submitted_at: Some(Utc::now()),
+            kyc_verified_at: Some(Utc::now()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let loan = Loan {
+            id: loan_id,
+            borrower_id,
+            lender_id,
+            principal_amount: rust_decimal::Decimal::new(10000000, 2),
+            outstanding_balance: rust_decimal::Decimal::new(10000000, 2),
+            interest_rate_bps: 750,
+            loan_status: "active".to_string(),
+            originated_at: Utc::now(),
+            maturity_date: Some(Utc::now()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        context.add_user(borrower);
+        context.add_loan(loan);
+
+        let mapper = TransactionMapper::new(context);
+
+        // Create lib transaction
+        let lib_transaction = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: borrower_id.as_bytes().iter().chain([0u8; 16].iter()).cloned().collect::<Vec<u8>>().try_into().unwrap(),
+            loan_id: loan_id.as_bytes().iter().chain([0u8; 16].iter()).cloned().collect::<Vec<u8>>().try_into().unwrap(),
+            transaction_type: TransactionType::LoanPayment,
+            amount: 5000,
+            created_at: 1640995200,
+            metadata: MetadataArray::empty(),
+        };
+
+        // Map to CCR operations
+        let ccr_operations = mapper.lib_transaction_to_ccr(&lib_transaction)
+            .expect("Should convert to CCR operations");
+
+        // Process through ADS service
+        let transitions = ads.batch_insert_ccr_operations(&ccr_operations)
+            .await
+            .expect("Should process CCR operations through ADS");
+
+        assert_eq!(transitions.len(), ccr_operations.len());
+
+        // Verify all transitions have CCR metadata
+        for transition in &transitions {
+            assert!(transition.ccr_metadata.is_some(), "All transitions should have CCR metadata");
+            let metadata = transition.ccr_metadata.as_ref().unwrap();
+            assert!(!metadata.operation_type.is_empty(), "Operation type should not be empty");
+        }
+
+        // Verify membership proofs work for mapped operations
+        for transition in &transitions {
+            let membership_proof = ads.prove_membership(transition.nullifier_value)
+                .await
+                .expect("Should prove membership for mapped operation");
+            
+            assert_eq!(membership_proof.nullifier_value, transition.nullifier_value);
+        }
+
+        info!("✅ Transaction mapper integration with ADS test passed");
+    }
+
+    #[traced_test]
+    #[sqlx::test]
+    async fn test_ccr_collision_resistance(pool: PgPool) {
+        info!("🧪 Testing CCR operation collision resistance");
+
+        use crate::ccr::CcrOperation;
+        use chrono::Utc;
+        use uuid::Uuid;
+        use std::collections::HashSet;
+
+        let factory = AdsServiceFactory::new(pool);
+        let mut ads = factory
+            .create_indexed_merkle_tree()
+            .await
+            .expect("ADS creation should succeed");
+
+        let mut inserted_nullifiers = HashSet::new();
+        let created_at = Utc::now();
+
+        // Insert multiple operations of different types with potentially similar data
+        for i in 0..50 {
+            let base_uuid = Uuid::new_v4();
+            
+            let operations = vec![
+                CcrOperation::LoanCreation {
+                    loan_id: base_uuid,
+                    borrower_id: base_uuid,
+                    lender_id: base_uuid,
+                    principal_amount: i,
+                    created_at,
+                },
+                CcrOperation::Payment {
+                    payment_id: base_uuid,
+                    loan_id: base_uuid,
+                    payer_id: base_uuid,
+                    amount: i,
+                    created_at,
+                },
+            ];
+
+            for operation in operations {
+                let transition = ads
+                    .insert_ccr_operation(&operation)
+                    .await
+                    .expect("CCR operation insertion should succeed");
+
+                // Verify no collisions
+                assert!(
+                    inserted_nullifiers.insert(transition.nullifier_value),
+                    "Nullifier collision detected: {}",
+                    transition.nullifier_value
+                );
+            }
+        }
+
+        assert_eq!(inserted_nullifiers.len(), 100); // 50 * 2 operations
+        info!("✅ CCR collision resistance test passed");
+    }
+
+    // ============================================================================
     // HELPER FUNCTIONS
     // ============================================================================
 

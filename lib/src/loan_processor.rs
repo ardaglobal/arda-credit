@@ -4,6 +4,7 @@
 //! the SP1 zkVM. It processes batches of mixed transaction types while maintaining
 //! privacy guarantees.
 
+use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
 use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
@@ -20,6 +21,9 @@ pub enum ProcessingError {
 
     #[error("Loan error: {0}")]
     LoanError(#[from] LoanError),
+
+    #[error("Balance error: {0}")]
+    BalanceError(#[from] BalanceError),
 
     #[error("Invalid transaction type for operation")]
     InvalidTransactionType,
@@ -47,6 +51,9 @@ pub struct GlobalLoanState {
     /// All loans in the system
     pub loans: HashMap<[u8; 32], Loan>,
 
+    /// User balance tracking state
+    pub balance_state: BalanceState,
+
     /// Configurable loan terms
     pub loan_terms: LoanTerms,
 
@@ -62,6 +69,7 @@ impl Default for GlobalLoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
+            balance_state: BalanceState::new(),
             loan_terms: LoanTerms::default(),
             transaction_count: 0,
             last_updated: 0,
@@ -80,6 +88,7 @@ impl GlobalLoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
+            balance_state: BalanceState::new(),
             loan_terms,
             transaction_count: 0,
             last_updated: 0,
@@ -127,13 +136,59 @@ impl GlobalLoanState {
                 };
                 loan_state.process_loan_origination(transaction, &self.users, &self.loan_terms)?;
                 self.loans = loan_state.loans;
+
+                // Create balance updates for loan origination
+                let metadata = transaction.metadata.as_bytes();
+                let mut borrower_id = [0u8; 32];
+                let mut lender_id = [0u8; 32];
+                borrower_id.copy_from_slice(&metadata[0..32]);
+                lender_id.copy_from_slice(&metadata[32..64]);
+
+                let balance_updates = self.balance_state.create_origination_updates(
+                    transaction.transaction_id,
+                    transaction.loan_id,
+                    borrower_id,
+                    lender_id,
+                    transaction.amount as u128,
+                    transaction.created_at,
+                )?;
+
+                // Apply balance updates to state
+                for update in balance_updates {
+                    self.balance_state.apply_update(update)?;
+                }
             }
             TransactionType::LoanPayment => {
+                // Get loan info before processing payment for balance updates
+                let loan =
+                    self.loans
+                        .get(&transaction.loan_id)
+                        .ok_or(ProcessingError::LoanError(LoanError::LoanNotFound {
+                            loan_id: transaction.loan_id,
+                        }))?;
+                let lender_id = loan.lender_id;
+                let payer_id = transaction.user_id;
+
                 let mut loan_state = crate::loan::LoanState {
                     loans: self.loans.clone(),
                 };
                 loan_state.process_loan_payment(transaction, &self.users)?;
                 self.loans = loan_state.loans;
+
+                // Create balance updates for loan payment
+                let balance_updates = self.balance_state.create_payment_updates(
+                    transaction.transaction_id,
+                    transaction.loan_id,
+                    payer_id,
+                    lender_id,
+                    transaction.amount as u128,
+                    transaction.created_at,
+                )?;
+
+                // Apply balance updates to state
+                for update in balance_updates {
+                    self.balance_state.apply_update(update)?;
+                }
             }
             TransactionType::LoanCloseout => {
                 let mut loan_state = crate::loan::LoanState {
@@ -202,6 +257,30 @@ impl GlobalLoanState {
 
         total_balance
     }
+
+    /// Get user's current balance
+    pub fn get_user_balance(&self, user_id: &[u8; 32]) -> u128 {
+        self.balance_state.get_balance(user_id)
+    }
+
+    /// Get balance update history for a user
+    pub fn get_user_balance_history(
+        &self,
+        user_id: &[u8; 32],
+        limit: Option<usize>,
+    ) -> Vec<&BalanceUpdate> {
+        self.balance_state.get_user_update_history(user_id, limit)
+    }
+
+    /// Get balance updates for a specific loan
+    pub fn get_loan_balance_updates(&self, loan_id: &[u8; 32]) -> Vec<&BalanceUpdate> {
+        self.balance_state.get_loan_balance_updates(loan_id)
+    }
+
+    /// Get total value of all user balances
+    pub fn compute_total_user_balance(&self) -> u128 {
+        self.balance_state.compute_total_balance()
+    }
 }
 
 /// Process a complete loan batch and return the state transition
@@ -224,9 +303,28 @@ pub fn process_loan_batch(
 
 /// Validate a loan transaction before processing
 pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), ProcessingError> {
-    // Use the validation from the transactions module
-    crate::transactions::validate_transaction(transaction)
-        .map_err(|_| ProcessingError::InvalidTransactionType)?;
+    // Basic validation
+    match transaction.transaction_type {
+        TransactionType::LoanOrigination | TransactionType::LoanPayment => {
+            if transaction.amount == 0 {
+                return Err(ProcessingError::InvalidTransactionType);
+            }
+        }
+        _ => {}
+    }
+
+    // Validate all zeros loan_id for non-loan transactions
+    let zero_loan_id = [0u8; 32];
+    match transaction.transaction_type {
+        TransactionType::UserRegistration
+        | TransactionType::KycSubmission
+        | TransactionType::KycVerification => {
+            if transaction.loan_id != zero_loan_id {
+                return Err(ProcessingError::InvalidTransactionType);
+            }
+        }
+        _ => {}
+    }
 
     // Additional validation for timestamp bounds
     validate_timestamp_bounds(transaction.created_at)?;
@@ -1005,7 +1103,8 @@ mod tests {
         );
 
         // Check that transaction types hash is computed
-        assert_ne!(public_values.transaction_types_hash, [0u8; 32].into());
+        let zero_hash: alloy_sol_types::private::FixedBytes<32> = [0u8; 32].into();
+        assert_ne!(public_values.transaction_types_hash, zero_hash);
     }
 
     #[test]

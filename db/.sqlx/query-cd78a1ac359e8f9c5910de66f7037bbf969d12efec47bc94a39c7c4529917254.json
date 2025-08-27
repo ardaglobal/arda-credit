@@ -1,0 +1,94 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id as \"id!\", value as \"value!\", next_index, next_value as \"next_value!\", tree_index as \"tree_index!\", created_at as \"created_at!\", is_active as \"is_active!: bool\",\n                   loan_operation_type, loan_id, user_id, operation_amount,\n                   operation_metadata, batch_id\n            FROM nullifiers\n            WHERE batch_id IS NULL AND loan_operation_type = 'balance_update'\n            ORDER BY created_at ASC\n            LIMIT $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "value!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "next_index",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "next_value!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "tree_index!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "is_active!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "loan_operation_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "loan_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 10,
+        "name": "operation_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 11,
+        "name": "operation_metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "batch_id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "cd78a1ac359e8f9c5910de66f7037bbf969d12efec47bc94a39c7c4529917254"
+}

@@ -1,0 +1,130 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT\n                    event_id,\n                    loan_id,\n                    user_id,\n                    loan_operation_type,\n                    operation_amount,\n                    nullifier_value,\n                    \"timestamp\",\n                    batch_id,\n                    transaction_hash,\n                    root_before,\n                    root_after,\n                    metadata,\n                    principal_amount,\n                    outstanding_balance,\n                    loan_status,\n                    originated_at,\n                    user_email,\n                    user_type,\n                    kyc_status\n                FROM loan_audit_comprehensive\n                ORDER BY \"timestamp\" DESC\n                LIMIT $1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "event_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "loan_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "loan_operation_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "operation_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "nullifier_value",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "timestamp",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "batch_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "transaction_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "root_before",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 10,
+        "name": "root_after",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 11,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "principal_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 13,
+        "name": "outstanding_balance",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 14,
+        "name": "loan_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "originated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "user_email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 17,
+        "name": "user_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 18,
+        "name": "kyc_status",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "21165471b7b2ae31456acbd9f2ec9b79044ce34834b48f75c526a5a2db582563"
+}
