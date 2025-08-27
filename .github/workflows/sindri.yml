@@ -64,3 +64,9 @@ jobs:
       - name: Deploy Circuit to Sindri
         run: |
           sindri deploy --tag "${{ steps.branch-name.outputs.tag }}"
+
+      - name: Test Circuit
+        env:
+          SINDRI_API_KEY: ${{ secrets.SINDRI_API_KEY }}
+          SINDRI_TAG: ${{ steps.branch-name.outputs.tag }}
+        run: cargo run --release -- --sindri

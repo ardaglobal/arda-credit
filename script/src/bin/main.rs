@@ -16,7 +16,7 @@
 use alloy_sol_types::SolType;
 use arda_credit_lib::{
     hash_uuid, LoanBatch, LoanBatchPublicValues, LoanState, LoanTransaction, MetadataArray,
-    TransactionType, UserType,
+    TransactionType, UserType, ZkVMBatchInput, ZkVMAds,
 };
 use clap::Parser;
 use eyre::Result;
@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
     }
 
     // Create test scenario: Complete loan workflow
-    let (initial_state, batch) = create_test_loan_scenario();
+    let (initial_state, batch, _alice_id, _bob_id) = create_test_loan_scenario();
 
     info!("📊 Test scenario:");
     info!("  Initial users: {}", initial_state.users.len());
@@ -91,8 +91,15 @@ fn run_locally(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
 
     // Create inputs for the zkVM program
     let mut stdin = SP1Stdin::new();
-    stdin.write(initial_state);
-    stdin.write(batch);
+    
+    // Create the ZkVMBatchInput structure expected by the program
+    let zkvm_input = ZkVMBatchInput {
+        initial_loan_state: initial_state.clone(),
+        initial_ads_state: ZkVMAds::new(), // Initialize empty ADS state
+        batch: batch.clone(),
+    };
+    
+    stdin.write(&zkvm_input);
 
     // Generate a Core proof (fast for local development)
     let (pk, vk) = client.setup(LOAN_PROGRAM_ELF);
@@ -157,10 +164,17 @@ async fn submit_to_sindri_for_proving(initial_state: &LoanState, batch: &LoanBat
     }
 
     // Create SP1 inputs for loan processing and serialize for Sindri
-    info!("📝 Creating SP1 stdin with initial_state and batch for Sindri proving");
+    info!("📝 Creating SP1 stdin with ZkVMBatchInput for Sindri proving");
     let mut stdin = SP1Stdin::new();
-    stdin.write(initial_state);
-    stdin.write(batch);
+    
+    // Create the ZkVMBatchInput structure expected by the program
+    let zkvm_input = ZkVMBatchInput {
+        initial_loan_state: initial_state.clone(),
+        initial_ads_state: ZkVMAds::new(), // Initialize empty ADS state
+        batch: batch.clone(),
+    };
+    
+    stdin.write(&zkvm_input);
 
     info!("📝 Serializing SP1 stdin to JSON for Sindri");
     let stdin_json = serde_json::to_string(&stdin).map_err(|e| {
@@ -274,7 +288,7 @@ fn analyze_proof_output(proof: &sp1_sdk::SP1ProofWithPublicValues) -> Result<()>
 }
 
 /// Create a comprehensive test scenario demonstrating the loan lifecycle
-fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
+fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let batch_id = [1u8; 32];
     let batch_timestamp = 1640995200; // January 1, 2022
 
@@ -287,8 +301,14 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
     let loan_uuid = uuid::Uuid::new_v4();
     let loan_id = hash_uuid(&loan_uuid);
 
-    // Start with empty state
-    let initial_state = LoanState::new();
+    // Start with empty state and fund Alice so she can make loans
+    let mut initial_state = LoanState::new();
+    
+    // Fund Alice with $100,000 so she can lend $50,000 to Bob
+    initial_state.balance_state.balances.insert(
+        alice_id,
+        arda_credit_lib::UserBalance::new(alice_id, 100_000_00, batch_timestamp), // $100,000.00 in cents
+    );
 
     // Create a batch demonstrating the complete loan workflow
     let mut transactions = Vec::new();
@@ -416,5 +436,5 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
         created_at: batch_timestamp,
     };
 
-    (initial_state, batch)
+    (initial_state, batch, alice_id, bob_id)
 }
