@@ -2209,13 +2209,13 @@ async fn get_loan_lifecycle_summary_endpoint(
             HealthResponse,
             ApiInfoResponse,
             EndpointInfo,
-            
+
             // Transaction Models
             SubmitTransactionRequest,
             SubmitTransactionResponse,
             TransactionInfo,
             PendingTransactionsResponse,
-            
+
             // Batch Models
             CreateBatchRequest,
             CreateBatchResponse,
@@ -2226,7 +2226,7 @@ async fn get_loan_lifecycle_summary_endpoint(
             CurrentStateResponse,
             BatchProcessorStatsResponse,
             TriggerBatchResponse,
-            
+
             // User Management
             RegisterUserRequest,
             RegisterUserResponse,
@@ -2237,20 +2237,20 @@ async fn get_loan_lifecycle_summary_endpoint(
             UpdateKycStatusRequest,
             ListIdentitiesQuery,
             ListIdentitiesResponse,
-            
+
             // Loan Management
             CreateLoanRequest,
             LoanDetailsResponse,
             ListLoansQuery,
             ListLoansResponse,
             LoanStatsResponse,
-            
+
             // Payment Processing
             RecordPaymentRequest,
             PaymentResponse,
             PaymentDetailsResponse,
             LoanPaymentHistoryResponse,
-            
+
             // State Management
             StateSummaryResponse,
             LoanStatsSummary,
@@ -2263,13 +2263,13 @@ async fn get_loan_lifecycle_summary_endpoint(
             VerificationResult,
             StateHistoryResponse,
             StateTransition,
-            
+
             // Batch Operations
             CreateLoanBatchRequest,
             CreateLoanBatchResponse,
             PendingLoanTransactionsResponse,
             PendingTransactionInfo,
-            
+
             // Proof Management
             GenerateLoanOperationProofRequest,
             LoanOperationProofResponse
