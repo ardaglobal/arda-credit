@@ -16,6 +16,7 @@ thiserror       = "2.0"
 rust_decimal = { workspace = true }
 sha2         = { workspace = true }
 uuid         = { workspace = true }
+blake3       = "1.5" # For nullifier generation consistency
 
 # SP1 dependencies (for host-side proof operations)
 sindri  = { version = "0.3.1", features = [ "sp1-v5" ], optional = true }

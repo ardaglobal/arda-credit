@@ -175,6 +175,15 @@ sol! {
             bytes calldata publicValues,
             bytes calldata proof
         ) external view returns (bool isValid, string memory message);
+
+        // Loan batch public values getters
+        function getPreviousTotalBalance(bytes32 stateId) external view returns (uint128);
+
+        function getCurrentTotalBalance(bytes32 stateId) external view returns (uint128);
+
+        function getPreviousStateRootFromBatch(bytes32 stateId) external view returns (bytes32);
+
+        function getNewStateRootFromBatch(bytes32 stateId) external view returns (bytes32);
     }
 }
 

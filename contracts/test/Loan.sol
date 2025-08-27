@@ -47,12 +47,12 @@ contract LoanGroth16Test is Test {
             abi.encode(true)
         );
 
-        int32 result = loan.verifyLoanProof(
+        uint128 result = loan.verifyLoanProof(
             fixture.publicValues,
             fixture.proof
         );
 
-        // Function returns final_balance which should be 12 based on our public values
+        // Function returns final_balance which should be 12 based on groth16 fixture publicValues (legacy format)
         assert(result == 12);
     }
 
@@ -101,12 +101,12 @@ contract LoanPlonkTest is Test {
             abi.encode(true)
         );
 
-        int32 result = loan.verifyLoanProof(
+        uint128 result = loan.verifyLoanProof(
             fixture.publicValues,
             fixture.proof
         );
 
-        // Function returns final_balance which should be 12 based on our public values
+        // Function returns final_balance which should be 12 based on plonk fixture (legacy format)
         assert(result == 12);
     }
 
@@ -312,7 +312,7 @@ contract StateRootTest is Test {
         );
 
         // Verify current state is still correct
-        bytes32 currentState = loan.getCurrentState(STATE_ID_1);
+        bytes32 currentState = loan.getCurrentStateRoot(STATE_ID_1);
         assertEq(
             currentState,
             STATE_ROOT_3,
@@ -375,6 +375,260 @@ contract StateRootTest is Test {
             bytes32(0),
             "STATE_ID_2 should have no previous state"
         );
+
+        vm.stopPrank();
+    }
+}
+
+contract LoanBatchPublicValuesTest is Test {
+    Loan public loan;
+    address public verifier;
+
+    address public owner = address(0x123);
+    address public authorizedUser = address(0x456);
+    bytes32 public constant PROGRAM_VKEY = bytes32(uint256(0x1234));
+
+    // Test state identifiers
+    bytes32 public constant STATE_ID_1 = keccak256("batch-test-state-1");
+    bytes32 public constant STATE_ID_2 = keccak256("batch-test-state-2");
+
+    // Test state roots
+    bytes32 public constant PREV_STATE_ROOT = keccak256("prev-state-root");
+    bytes32 public constant NEW_STATE_ROOT = keccak256("new-state-root");
+
+    // Test balance values
+    uint128 public constant PREV_BALANCE = 50000;
+    uint128 public constant CURR_BALANCE = 55000;
+
+    function setUp() public {
+        vm.startPrank(owner);
+
+        verifier = address(new SP1VerifierGateway(address(1)));
+        loan = new Loan(verifier, PROGRAM_VKEY);
+        loan.setAuthorization(authorizedUser, true);
+
+        vm.stopPrank();
+    }
+
+    function test_GetPreviousTotalBalance_NoProof() public view {
+        uint128 prevBalance = loan.getPreviousTotalBalance(STATE_ID_1);
+        assertEq(prevBalance, 0, "Should return 0 when no proof exists");
+    }
+
+    function test_GetCurrentTotalBalance_NoProof() public view {
+        uint128 currBalance = loan.getCurrentTotalBalance(STATE_ID_1);
+        assertEq(currBalance, 0, "Should return 0 when no proof exists");
+    }
+
+    function test_GetPreviousStateRootFromBatch_NoProof() public view {
+        bytes32 prevStateRoot = loan.getPreviousStateRootFromBatch(STATE_ID_1);
+        assertEq(prevStateRoot, bytes32(0), "Should return zero when no proof exists");
+    }
+
+    function test_GetNewStateRootFromBatch_NoProof() public view {
+        bytes32 newStateRoot = loan.getNewStateRootFromBatch(STATE_ID_1);
+        assertEq(newStateRoot, bytes32(0), "Should return zero when no proof exists");
+    }
+
+    function test_GetBalances_WithValidBatchProof() public {
+        vm.startPrank(authorizedUser);
+
+        // Mock verifier to always succeed
+        vm.mockCall(
+            verifier,
+            abi.encodeWithSelector(SP1VerifierGateway.verifyProof.selector),
+            abi.encode(true)
+        );
+
+        // Create LoanBatchPublicValues encoded data (224 bytes = 7 * 32)
+        bytes memory publicValues = abi.encode(
+            PREV_STATE_ROOT,    // previous_state_root
+            NEW_STATE_ROOT,     // new_state_root
+            uint32(5),          // transaction_count
+            uint64(block.timestamp), // batch_timestamp
+            keccak256("test_hash"), // transaction_types_hash
+            PREV_BALANCE,       // previous_total_balance
+            CURR_BALANCE        // current_total_balance
+        );
+
+        bytes memory mockProof = "mock_batch_proof";
+
+        loan.updateState(
+            STATE_ID_1,
+            NEW_STATE_ROOT,
+            mockProof,
+            publicValues
+        );
+
+        // Test balance getters
+        uint128 prevBalance = loan.getPreviousTotalBalance(STATE_ID_1);
+        uint128 currBalance = loan.getCurrentTotalBalance(STATE_ID_1);
+
+        assertEq(prevBalance, PREV_BALANCE, "Previous balance should match");
+        assertEq(currBalance, CURR_BALANCE, "Current balance should match");
+
+        // Test state root getters
+        bytes32 prevStateRoot = loan.getPreviousStateRootFromBatch(STATE_ID_1);
+        bytes32 newStateRoot = loan.getNewStateRootFromBatch(STATE_ID_1);
+
+        assertEq(prevStateRoot, PREV_STATE_ROOT, "Previous state root should match");
+        assertEq(newStateRoot, NEW_STATE_ROOT, "New state root should match");
+
+        vm.stopPrank();
+    }
+
+    function test_GetBalances_WithLegacyProof() public {
+        vm.startPrank(authorizedUser);
+
+        // Mock verifier to always succeed
+        vm.mockCall(
+            verifier,
+            abi.encodeWithSelector(SP1VerifierGateway.verifyProof.selector),
+            abi.encode(true)
+        );
+
+        // Create legacy format proof (64 bytes = 2 * 32)
+        bytes memory legacyPublicValues = abi.encode(
+            int32(100),  // initial_balance
+            int32(150)   // final_balance
+        );
+
+        bytes memory mockProof = "mock_legacy_proof";
+
+        loan.updateState(
+            STATE_ID_1,
+            NEW_STATE_ROOT,
+            mockProof,
+            legacyPublicValues
+        );
+
+        // For legacy proofs, balance getters should return 0 since they can't decode the new format
+        uint128 prevBalance = loan.getPreviousTotalBalance(STATE_ID_1);
+        uint128 currBalance = loan.getCurrentTotalBalance(STATE_ID_1);
+
+        assertEq(prevBalance, 0, "Legacy proof should return 0 for previous balance");
+        assertEq(currBalance, 0, "Legacy proof should return 0 for current balance");
+
+        // State root getters should also return 0 for legacy format
+        bytes32 prevStateRoot = loan.getPreviousStateRootFromBatch(STATE_ID_1);
+        bytes32 newStateRoot = loan.getNewStateRootFromBatch(STATE_ID_1);
+
+        assertEq(prevStateRoot, bytes32(0), "Legacy proof should return zero for previous state root");
+        assertEq(newStateRoot, bytes32(0), "Legacy proof should return zero for new state root");
+
+        vm.stopPrank();
+    }
+
+    function test_GetBalances_MultipleProofs() public {
+        vm.startPrank(authorizedUser);
+
+        // Mock verifier to always succeed
+        vm.mockCall(
+            verifier,
+            abi.encodeWithSelector(SP1VerifierGateway.verifyProof.selector),
+            abi.encode(true)
+        );
+
+        // First proof
+        bytes memory publicValues1 = abi.encode(
+            PREV_STATE_ROOT,
+            NEW_STATE_ROOT,
+            uint32(3),
+            uint64(block.timestamp),
+            keccak256("test_hash_1"),
+            uint128(10000),  // prev balance
+            uint128(15000)   // curr balance
+        );
+
+        loan.updateState(
+            STATE_ID_1,
+            NEW_STATE_ROOT,
+            "mock_proof_1",
+            publicValues1
+        );
+
+        // Second proof with different balances
+        bytes32 secondStateRoot = keccak256("second-state-root");
+        bytes memory publicValues2 = abi.encode(
+            NEW_STATE_ROOT,      // previous becomes the new from first proof
+            secondStateRoot,
+            uint32(2),
+            uint64(block.timestamp + 100),
+            keccak256("test_hash_2"),
+            uint128(15000),  // prev balance (matches curr from first proof)
+            uint128(20000)   // new curr balance
+        );
+
+        loan.updateState(
+            STATE_ID_1,
+            secondStateRoot,
+            "mock_proof_2",
+            publicValues2
+        );
+
+        // Should return values from the latest proof
+        uint128 prevBalance = loan.getPreviousTotalBalance(STATE_ID_1);
+        uint128 currBalance = loan.getCurrentTotalBalance(STATE_ID_1);
+
+        assertEq(prevBalance, 15000, "Should return previous balance from latest proof");
+        assertEq(currBalance, 20000, "Should return current balance from latest proof");
+
+        vm.stopPrank();
+    }
+
+    function test_GetBalances_DifferentStateIds() public {
+        vm.startPrank(authorizedUser);
+
+        // Mock verifier to always succeed
+        vm.mockCall(
+            verifier,
+            abi.encodeWithSelector(SP1VerifierGateway.verifyProof.selector),
+            abi.encode(true)
+        );
+
+        // Proof for STATE_ID_1 (starting from 0 balance)
+        bytes memory publicValues1 = abi.encode(
+            PREV_STATE_ROOT,
+            NEW_STATE_ROOT,
+            uint32(3),
+            uint64(block.timestamp),
+            keccak256("test_hash_1"),
+            uint128(0),     // Start from 0 (initial portfolio balance)
+            uint128(15000)  // New balance
+        );
+
+        loan.updateState(
+            STATE_ID_1,
+            NEW_STATE_ROOT,
+            "mock_proof_1",
+            publicValues1
+        );
+
+        // Proof for STATE_ID_2 (continuing from 15000 balance)
+        bytes32 state2Root = keccak256("state-2-root");
+        bytes memory publicValues2 = abi.encode(
+            keccak256("prev-state-2"),
+            state2Root,
+            uint32(5),
+            uint64(block.timestamp + 50),
+            keccak256("test_hash_2"),
+            uint128(15000), // Previous balance matches current portfolio balance
+            uint128(30000)  // New balance
+        );
+
+        loan.updateState(
+            STATE_ID_2,
+            state2Root,
+            "mock_proof_2",
+            publicValues2
+        );
+
+        // Check that each state ID returns its own values
+        assertEq(loan.getPreviousTotalBalance(STATE_ID_1), 0, "STATE_ID_1 prev balance");
+        assertEq(loan.getCurrentTotalBalance(STATE_ID_1), 15000, "STATE_ID_1 curr balance");
+        
+        assertEq(loan.getPreviousTotalBalance(STATE_ID_2), 15000, "STATE_ID_2 prev balance");
+        assertEq(loan.getCurrentTotalBalance(STATE_ID_2), 30000, "STATE_ID_2 curr balance");
 
         vm.stopPrank();
     }

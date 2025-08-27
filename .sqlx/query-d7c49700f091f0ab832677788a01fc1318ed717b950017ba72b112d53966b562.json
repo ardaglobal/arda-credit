@@ -1,0 +1,72 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT lt.loan_id, lt.payment_id, lt.transaction_type, lt.amount, lt.identity_id,\n                       l.borrower_id, l.lender_id, l.loan_status, lt.created_at\n                FROM loan_transactions lt\n                JOIN loans l ON lt.loan_id = l.id\n                WHERE lt.loan_id = $1 AND (l.borrower_id = $2 OR l.lender_id = $2)\n                  AND lt.transaction_type = $3\n                ORDER BY lt.created_at DESC\n                LIMIT 1\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "loan_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "payment_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "transaction_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "identity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "borrower_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "lender_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "loan_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "d7c49700f091f0ab832677788a01fc1318ed717b950017ba72b112d53966b562"
+}

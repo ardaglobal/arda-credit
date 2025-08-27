@@ -708,6 +708,76 @@ impl EthereumClient {
         Ok(previous_state_root)
     }
 
+    /// Get the previous total balance from the latest batch public values
+    pub async fn get_previous_total_balance(&self, state_id: FixedBytes<32>) -> Result<u128> {
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
+
+        let previous_balance = contract
+            .getPreviousTotalBalance(state_id)
+            .call()
+            .await
+            .map_err(|e| {
+                warn!("Failed to get previous total balance: {e}");
+                EthereumError::from_contract_error(&format!("Previous balance query failed: {e}"))
+            })?;
+
+        Ok(previous_balance)
+    }
+
+    /// Get the current total balance from the latest batch public values
+    pub async fn get_current_total_balance(&self, state_id: FixedBytes<32>) -> Result<u128> {
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
+
+        let current_balance = contract
+            .getCurrentTotalBalance(state_id)
+            .call()
+            .await
+            .map_err(|e| {
+                warn!("Failed to get current total balance: {e}");
+                EthereumError::from_contract_error(&format!("Current balance query failed: {e}"))
+            })?;
+
+        Ok(current_balance)
+    }
+
+    /// Get the previous state root from the latest batch public values
+    pub async fn get_previous_state_root_from_batch(
+        &self,
+        state_id: FixedBytes<32>,
+    ) -> Result<FixedBytes<32>> {
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
+
+        let previous_state_root = contract
+            .getPreviousStateRootFromBatch(state_id)
+            .call()
+            .await
+            .map_err(|e| {
+                warn!("Failed to get previous state root from batch: {e}");
+                EthereumError::from_contract_error(&format!("Previous state root from batch query failed: {e}"))
+            })?;
+
+        Ok(previous_state_root)
+    }
+
+    /// Get the new state root from the latest batch public values
+    pub async fn get_new_state_root_from_batch(
+        &self,
+        state_id: FixedBytes<32>,
+    ) -> Result<FixedBytes<32>> {
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
+
+        let new_state_root = contract
+            .getNewStateRootFromBatch(state_id)
+            .call()
+            .await
+            .map_err(|e| {
+                warn!("Failed to get new state root from batch: {e}");
+                EthereumError::from_contract_error(&format!("New state root from batch query failed: {e}"))
+            })?;
+
+        Ok(new_state_root)
+    }
+
     #[cfg(feature = "database")]
     pub fn with_cache(mut self, cache: EthereumCache) -> Result<Self> {
         self.cache = Some(cache);
