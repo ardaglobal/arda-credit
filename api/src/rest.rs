@@ -12,7 +12,6 @@ use sqlx::{Error as SqlxError, PgPool};
 use tracing::{error, info, instrument, warn};
 use uuid;
 use utoipa::{OpenApi, ToSchema};
-use utoipa_swagger_ui::SwaggerUi;
 
 use crate::batch_processor::BatchProcessorHandle;
 use arda_credit_db::{
@@ -505,11 +504,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/", get(api_info))
         .route("/api/v2/health", get(health_check))
         .route("/api/v2/info", get(api_info))
-        // OpenAPI documentation routes
-        .merge(
-            SwaggerUi::new("/api-docs")
-                .url("/api-docs/openapi.json", get_openapi_spec())
-        )
+        // OpenAPI documentation routes  
+        .route("/api-docs/openapi.json", get(get_openapi_spec_handler))
         // Legacy transaction operations (keeping for backward compatibility)
         .route("/api/v2/transactions", post(submit_transaction_endpoint))
         .route(
@@ -2305,4 +2301,9 @@ pub struct ApiDoc;
 /// Get the OpenAPI specification as JSON
 pub fn get_openapi_spec() -> utoipa::openapi::OpenApi {
     ApiDoc::openapi()
+}
+
+/// Axum handler for serving the OpenAPI specification as JSON
+pub async fn get_openapi_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    Json(ApiDoc::openapi())
 }
