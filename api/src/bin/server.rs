@@ -157,6 +157,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("   • GET    /api/v2/state/{{id}}/contract     - Get contract submission data");
     println!("   • GET    /api/v2/health                 - Health check");
     println!("   • GET    /health                        - Health check (legacy path)");
+    println!();
+    println!("📖 API Documentation:");
+    println!("   • Swagger UI:     http://{bind_address}/api-docs/");
+    println!("   • OpenAPI JSON:   http://{bind_address}/api-docs/openapi.json");
 
     println!();
     println!("🔗 Example cURL Commands:");

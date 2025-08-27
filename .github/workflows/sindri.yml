@@ -57,12 +57,9 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "branch=$HEAD_REF" >> $GITHUB_OUTPUT
-            echo "tag=pr-$PR_NUMBER-$HEAD_REF" >> $GITHUB_OUTPUT
+            echo "tag=pr-$PR_NUMBER" >> $GITHUB_OUTPUT
           else
-            branch=${HEAD_REF#refs/heads/}
-            echo "branch=$branch" >> $GITHUB_OUTPUT
-            echo "tag=$branch-$(echo $SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+            echo "tag=$(echo $SHA | cut -c1-7)" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy Circuit to Sindri

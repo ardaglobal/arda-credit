@@ -10,6 +10,8 @@ use humantime::format_duration;
 use serde::{Deserialize, Serialize};
 use sqlx::{Error as SqlxError, PgPool};
 use tracing::{error, info, instrument, warn};
+use utoipa::{OpenApi, ToSchema};
+use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
 use crate::batch_processor::BatchProcessorHandle;
@@ -60,13 +62,13 @@ impl Default for ApiConfig {
 // ============================================================================
 
 /// Request to submit a single transaction
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SubmitTransactionRequest {
     pub amount: i32,
 }
 
 /// Response from transaction submission
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SubmitTransactionResponse {
     pub transaction_id: i32,
     pub amount: i32,
@@ -75,13 +77,13 @@ pub struct SubmitTransactionResponse {
 }
 
 /// Request to create a batch
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateBatchRequest {
     pub batch_size: Option<i32>,
 }
 
 /// Response from batch creation
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateBatchResponse {
     pub batch_id: i32,
     pub previous_counter_value: i64,
@@ -92,7 +94,7 @@ pub struct CreateBatchResponse {
 }
 
 /// Response for pending transactions
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PendingTransactionsResponse {
     pub transactions: Vec<TransactionInfo>,
     pub total_count: usize,
@@ -100,7 +102,7 @@ pub struct PendingTransactionsResponse {
 }
 
 /// Transaction info for API responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct TransactionInfo {
     pub id: i32,
     pub amount: i32,
@@ -108,14 +110,14 @@ pub struct TransactionInfo {
 }
 
 /// Response for batch listing
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchListResponse {
     pub batches: Vec<BatchInfo>,
     pub total_count: usize,
 }
 
 /// Batch info for API responses
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchInfo {
     pub id: i32,
     pub previous_counter_value: i64,
@@ -128,7 +130,7 @@ pub struct BatchInfo {
 }
 
 /// Response for current state
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CurrentStateResponse {
     pub counter_value: i64,
     pub has_merkle_root: bool,
@@ -137,7 +139,7 @@ pub struct CurrentStateResponse {
 }
 
 /// Request to update batch with proof
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UpdateBatchProofRequest {
     pub sindri_proof_id: String,
     pub status: String,              // "proven", "failed"
@@ -145,13 +147,13 @@ pub struct UpdateBatchProofRequest {
 }
 
 /// Query parameters for batch listing
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct BatchListQuery {
     pub limit: Option<i32>,
 }
 
 /// API information response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ApiInfoResponse {
     pub server_name: String,
     pub version: String,
@@ -159,7 +161,7 @@ pub struct ApiInfoResponse {
     pub endpoints: Vec<EndpointInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct EndpointInfo {
     pub method: String,
     pub path: String,
@@ -167,7 +169,7 @@ pub struct EndpointInfo {
 }
 
 /// Health check response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
     pub status: String,
     pub timestamp: DateTime<Utc>,
@@ -175,7 +177,7 @@ pub struct HealthResponse {
 }
 
 /// Batch processor stats response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchProcessorStatsResponse {
     pub total_batches_created: u64,
     pub total_transactions_processed: u64,
@@ -187,7 +189,7 @@ pub struct BatchProcessorStatsResponse {
 }
 
 /// Manual batch trigger response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct TriggerBatchResponse {
     pub triggered: bool,
     pub message: String,
@@ -198,7 +200,7 @@ pub struct TriggerBatchResponse {
 // ============================================================================
 
 /// Request to register a new user identity
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserRequest {
     pub user_type: String, // "Investor" | "Lender"
     pub email: String,
@@ -206,7 +208,7 @@ pub struct RegisterUserRequest {
 }
 
 /// Response from user registration
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserResponse {
     pub user_id: String, // UUID as string
     pub user_type: String,
@@ -215,7 +217,7 @@ pub struct RegisterUserResponse {
 }
 
 /// User details response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserDetailsResponse {
     pub user_id: String,
     pub user_type: String,
@@ -226,12 +228,12 @@ pub struct UserDetailsResponse {
 }
 
 /// KYC submission request
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SubmitKycRequest {
     pub kyc_data: KycData,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct KycData {
     pub document_type: String,
     pub document_hash: String,
@@ -239,7 +241,7 @@ pub struct KycData {
 }
 
 /// KYC submission response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SubmitKycResponse {
     pub user_id: String,
     pub kyc_status: String,
@@ -247,14 +249,14 @@ pub struct SubmitKycResponse {
 }
 
 /// Update KYC status request (admin only)
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UpdateKycStatusRequest {
     pub status: String, // "Pending" | "Approved" | "Rejected"
     pub notes: Option<String>,
 }
 
 /// List identities query parameters
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListIdentitiesQuery {
     pub user_type: Option<String>,
     pub kyc_status: Option<String>,
@@ -263,7 +265,7 @@ pub struct ListIdentitiesQuery {
 }
 
 /// List identities response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListIdentitiesResponse {
     pub identities: Vec<UserDetailsResponse>,
     pub total_count: usize,
@@ -271,7 +273,7 @@ pub struct ListIdentitiesResponse {
 }
 
 /// Create new loan request
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateLoanRequest {
     pub borrower_id: String,
     pub lender_id: String,
@@ -282,7 +284,7 @@ pub struct CreateLoanRequest {
 }
 
 /// Loan details response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LoanDetailsResponse {
     pub loan_id: String,
     pub borrower_id: String,
@@ -296,7 +298,7 @@ pub struct LoanDetailsResponse {
 }
 
 /// List loans query parameters
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ListLoansQuery {
     pub status: Option<String>,
     pub borrower_id: Option<String>,
@@ -306,7 +308,7 @@ pub struct ListLoansQuery {
 }
 
 /// List loans response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListLoansResponse {
     pub loans: Vec<LoanDetailsResponse>,
     pub total_count: usize,
@@ -314,7 +316,7 @@ pub struct ListLoansResponse {
 }
 
 /// Loan statistics response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LoanStatsResponse {
     pub total_loans: u64,
     pub total_principal: String,   // Total principal amount as string
@@ -324,7 +326,7 @@ pub struct LoanStatsResponse {
 }
 
 /// Record loan payment request
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RecordPaymentRequest {
     pub loan_id: String,
     pub amount: String,                    // Amount in cents as string
@@ -334,7 +336,7 @@ pub struct RecordPaymentRequest {
 }
 
 /// Payment response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PaymentResponse {
     pub transaction_id: String,
     pub loan_id: String,
@@ -345,7 +347,7 @@ pub struct PaymentResponse {
 }
 
 /// Payment details response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PaymentDetailsResponse {
     pub transaction_id: String,
     pub loan_id: String,
@@ -358,7 +360,7 @@ pub struct PaymentDetailsResponse {
 }
 
 /// Loan payment history response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LoanPaymentHistoryResponse {
     pub loan_id: String,
     pub payments: Vec<PaymentDetailsResponse>,
@@ -367,7 +369,7 @@ pub struct LoanPaymentHistoryResponse {
 }
 
 /// Current state summary response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct StateSummaryResponse {
     pub current_state_root: String,
     pub transaction_count: u64,
@@ -377,21 +379,21 @@ pub struct StateSummaryResponse {
     pub user_summary: UserStatsSummary,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LoanStatsSummary {
     pub total_loans: u64,
     pub total_principal: String,
     pub total_outstanding: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserStatsSummary {
     pub total_users: u64,
     pub kyc_approved_users: u64,
 }
 
 /// Transaction inclusion proof response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct TransactionProofResponse {
     pub transaction_id: String,
     pub transaction_type: String,
@@ -399,14 +401,14 @@ pub struct TransactionProofResponse {
     pub verification_data: VerificationData,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ProofData {
     pub merkle_proof: String,
     pub batch_proof: String,
     pub state_root: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct VerificationData {
     pub batch_id: String,
     pub batch_timestamp: u64,
@@ -414,7 +416,7 @@ pub struct VerificationData {
 }
 
 /// Verify transaction inclusion request
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct VerifyTransactionRequest {
     pub transaction_id: String,
     pub proof_data: ProofData,
@@ -422,14 +424,14 @@ pub struct VerifyTransactionRequest {
 }
 
 /// Transaction verification response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct TransactionVerificationResponse {
     pub is_valid: bool,
     pub verification_result: VerificationResult,
     pub verified_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct VerificationResult {
     pub merkle_proof_valid: bool,
     pub batch_proof_valid: bool,
@@ -438,13 +440,13 @@ pub struct VerificationResult {
 }
 
 /// State transition history response
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct StateHistoryResponse {
     pub state_transitions: Vec<StateTransition>,
     pub total_batches: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct StateTransition {
     pub batch_id: String,
     pub previous_state_root: String,
@@ -456,7 +458,7 @@ pub struct StateTransition {
 }
 
 /// Batch creation request for loans
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateLoanBatchRequest {
     pub max_transaction_count: Option<u32>,
     pub force_create: Option<bool>,
@@ -464,7 +466,7 @@ pub struct CreateLoanBatchRequest {
 }
 
 /// Batch creation response for loans
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreateLoanBatchResponse {
     pub batch_id: String,
     pub transaction_count: u32,
@@ -474,7 +476,7 @@ pub struct CreateLoanBatchResponse {
 }
 
 /// Pending transactions ready for batching
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PendingLoanTransactionsResponse {
     pub pending_transactions: Vec<PendingTransactionInfo>,
     pub total_pending: usize,
@@ -482,7 +484,7 @@ pub struct PendingLoanTransactionsResponse {
     pub oldest_pending: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PendingTransactionInfo {
     pub transaction_id: String,
     pub transaction_type: String,
@@ -503,6 +505,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/", get(api_info))
         .route("/api/v2/health", get(health_check))
         .route("/api/v2/info", get(api_info))
+        // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
+        .merge(swagger_ui())
         // Legacy transaction operations (keeping for backward compatibility)
         .route("/api/v2/transactions", post(submit_transaction_endpoint))
         .route(
@@ -621,6 +625,15 @@ pub fn create_router(state: ApiState) -> Router {
 // ============================================================================
 
 /// Health check endpoint
+#[utoipa::path(
+    get,
+    path = "/api/v2/health",
+    responses(
+        (status = 200, description = "Health check passed", body = HealthResponse),
+        (status = 500, description = "Health check failed")
+    ),
+    tag = "Health"
+)]
 #[instrument(skip(state), level = "info")]
 async fn health_check(
     State(state): State<ApiState>,
@@ -800,6 +813,16 @@ async fn api_info(State(state): State<ApiState>) -> Json<ApiInfoResponse> {
 }
 
 /// Submit a new transaction
+#[utoipa::path(
+    post,
+    path = "/api/v2/transactions",
+    request_body = SubmitTransactionRequest,
+    responses(
+        (status = 200, description = "Transaction submitted successfully", body = SubmitTransactionResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Transactions"
+)]
 #[instrument(skip(state), level = "info")]
 async fn submit_transaction_endpoint(
     State(state): State<ApiState>,
@@ -830,6 +853,15 @@ async fn submit_transaction_endpoint(
 }
 
 /// Get pending transactions
+#[utoipa::path(
+    get,
+    path = "/api/v2/transactions/pending",
+    responses(
+        (status = 200, description = "List of pending transactions", body = PendingTransactionsResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Transactions"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_pending_transactions_endpoint(
     State(state): State<ApiState>,
@@ -871,6 +903,16 @@ async fn get_pending_transactions_endpoint(
 }
 
 /// Create a new batch using unified ADS-integrated workflow
+#[utoipa::path(
+    post,
+    path = "/api/v2/batches",
+    request_body = CreateBatchRequest,
+    responses(
+        (status = 200, description = "Batch created successfully", body = CreateBatchResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn create_batch_endpoint(
     State(state): State<ApiState>,
@@ -957,6 +999,18 @@ async fn create_batch_endpoint(
 }
 
 /// Get all batches (paginated)
+#[utoipa::path(
+    get,
+    path = "/api/v2/batches",
+    params(
+        ("limit" = Option<i32>, Query, description = "Limit the number of batches returned")
+    ),
+    responses(
+        (status = 200, description = "List of batches", body = BatchListResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_batches_endpoint(
     State(state): State<ApiState>,
@@ -1000,6 +1054,19 @@ async fn get_batches_endpoint(
 }
 
 /// Get specific batch by ID
+#[utoipa::path(
+    get,
+    path = "/api/v2/batches/{batch_id}",
+    params(
+        ("batch_id" = i32, Path, description = "Batch ID")
+    ),
+    responses(
+        (status = 200, description = "Batch details", body = BatchInfo),
+        (status = 404, description = "Batch not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_batch_endpoint(
     State(state): State<ApiState>,
@@ -1873,7 +1940,7 @@ async fn get_pending_loan_transactions_endpoint(
 // ============================================================================
 
 /// Request body for generating loan operation inclusion proof
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 struct GenerateLoanOperationProofRequest {
     user_id: uuid::Uuid,
     loan_id: Option<uuid::Uuid>,
@@ -1884,8 +1951,9 @@ struct GenerateLoanOperationProofRequest {
 }
 
 /// Response for loan operation inclusion proof generation
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 struct LoanOperationProofResponse {
+    #[schema(value_type = Object)]
     proof: LoanInclusionProof,
     generated_at: DateTime<Utc>,
     verification_summary: serde_json::Value,
@@ -2118,4 +2186,133 @@ async fn get_loan_lifecycle_summary_endpoint(
         summary.total_operations, summary.total_payments
     );
     Ok(Json(summary))
+}
+
+// ============================================================================
+// OPENAPI SPECIFICATION
+// ============================================================================
+
+/// OpenAPI specification for the Arda Credit API
+#[derive(OpenApi)]
+#[openapi(
+    paths(
+        health_check,
+        submit_transaction_endpoint,
+        get_pending_transactions_endpoint,
+        create_batch_endpoint,
+        get_batches_endpoint,
+        get_batch_endpoint
+    ),
+    components(
+        schemas(
+            // Health & Core
+            HealthResponse,
+            ApiInfoResponse,
+            EndpointInfo,
+            
+            // Transaction Models
+            SubmitTransactionRequest,
+            SubmitTransactionResponse,
+            TransactionInfo,
+            PendingTransactionsResponse,
+            
+            // Batch Models
+            CreateBatchRequest,
+            CreateBatchResponse,
+            BatchListQuery,
+            BatchListResponse,
+            BatchInfo,
+            UpdateBatchProofRequest,
+            CurrentStateResponse,
+            BatchProcessorStatsResponse,
+            TriggerBatchResponse,
+            
+            // User Management
+            RegisterUserRequest,
+            RegisterUserResponse,
+            UserDetailsResponse,
+            SubmitKycRequest,
+            KycData,
+            SubmitKycResponse,
+            UpdateKycStatusRequest,
+            ListIdentitiesQuery,
+            ListIdentitiesResponse,
+            
+            // Loan Management
+            CreateLoanRequest,
+            LoanDetailsResponse,
+            ListLoansQuery,
+            ListLoansResponse,
+            LoanStatsResponse,
+            
+            // Payment Processing
+            RecordPaymentRequest,
+            PaymentResponse,
+            PaymentDetailsResponse,
+            LoanPaymentHistoryResponse,
+            
+            // State Management
+            StateSummaryResponse,
+            LoanStatsSummary,
+            UserStatsSummary,
+            TransactionProofResponse,
+            ProofData,
+            VerificationData,
+            VerifyTransactionRequest,
+            TransactionVerificationResponse,
+            VerificationResult,
+            StateHistoryResponse,
+            StateTransition,
+            
+            // Batch Operations
+            CreateLoanBatchRequest,
+            CreateLoanBatchResponse,
+            PendingLoanTransactionsResponse,
+            PendingTransactionInfo,
+            
+            // Proof Management
+            GenerateLoanOperationProofRequest,
+            LoanOperationProofResponse
+        )
+    ),
+    tags(
+        (name = "Health", description = "Health check and system status endpoints"),
+        (name = "Transactions", description = "Transaction submission and management"),
+        (name = "Batches", description = "Batch processing and proof management"),
+        (name = "Users", description = "User registration and KYC management"),
+        (name = "Loans", description = "Loan creation and management"),
+        (name = "Payments", description = "Payment processing and history"),
+        (name = "State", description = "System state and proof verification"),
+        (name = "Proofs", description = "Zero-knowledge proof generation and verification")
+    ),
+    info(
+        title = "Arda Credit API",
+        version = "2.0.0",
+        description = "Zero-knowledge proof system for batched transaction processing and loan management",
+        contact(
+            name = "Arda Global",
+            url = "https://ardaglobal.com"
+        )
+    ),
+    servers(
+        (url = "/", description = "Default server")
+    )
+)]
+pub struct ApiDoc;
+
+/// Get the OpenAPI specification as JSON
+pub fn get_openapi_spec() -> utoipa::openapi::OpenApi {
+    ApiDoc::openapi()
+}
+
+/// Axum handler for serving the OpenAPI specification as JSON
+pub async fn get_openapi_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    Json(ApiDoc::openapi())
+}
+
+/// Create a Swagger UI router
+fn swagger_ui() -> Router<ApiState> {
+    SwaggerUi::new("/api-docs")
+        .url("/api-docs/openapi.json", get_openapi_spec())
+        .into()
 }
