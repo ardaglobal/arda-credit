@@ -28,14 +28,17 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install SP1 toolchain
-        uses: ./.github/actions/setup-sp1
+        run: |
+          curl -L https://sp1.succinct.xyz | bash
+          ~/.sp1/bin/sp1up
+          ~/.sp1/bin/cargo-prove prove --version
 
       - name: Build SP1 program
         env:
           RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
         run: |
           cd program
-          cargo-prove prove build
+          ~/.sp1/bin/cargo-prove prove build
 
       - name: Execute SP1 program
         env:
