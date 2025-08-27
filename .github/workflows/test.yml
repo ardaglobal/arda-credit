@@ -40,26 +40,31 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Install Rust toolchain
+      - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools, rustc-dev
 
-      - name: Install SP1 toolchain
-        run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up
-          ~/.sp1/bin/cargo-prove prove --version
-          echo "$HOME/.sp1/bin" >> $GITHUB_PATH
-
-      - name: Cache Rust dependencies
+      - name: Cache dependencies
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/circuits/plonk/
+            ~/.sp1/circuits/groth16/
+          key: rust-1.81.0-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-
+
+      - name: Install SP1 toolchain
+        run: |
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --token "${{ secrets.SP1_PAT }}"
+          ~/.sp1/bin/cargo-prove prove --version
 
       - name: Wait for PostgreSQL to be ready
         run: |
