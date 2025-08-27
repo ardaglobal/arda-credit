@@ -50,8 +50,6 @@ jobs:
           components: llvm-tools
 
       - name: Install cargo-llvm-cov
-        env:
-          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
         run: cargo install cargo-llvm-cov
 
       - name: Install SP1 toolchain
@@ -92,7 +90,6 @@ jobs:
 
       - name: Generate code coverage
         env:
-          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
           # Optimized connection pool settings for CodeBuild environment with longer timeouts
           DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres?pool_max_size=20&connection_timeout=60
         run: |

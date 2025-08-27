@@ -66,7 +66,6 @@ jobs:
 
       - name: Run all tests
         env:
-          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
           DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres
         run: |
           cargo test --verbose -- --nocapture

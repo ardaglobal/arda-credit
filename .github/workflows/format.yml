@@ -30,14 +30,10 @@ jobs:
           ~/.sp1/bin/sp1up
           ~/.sp1/bin/cargo-prove prove --version
       - name: Build SP1 program
-        env:
-          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
         run: |
           cd program
           ~/.sp1/bin/cargo-prove prove build
       - name: Clippy
-        env:
-          RUSTUP_TOOLCHAIN: ""  # Clear SP1-specific toolchain to use default
         run: |
           cargo clippy \
             --all-targets \
