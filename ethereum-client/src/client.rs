@@ -753,7 +753,9 @@ impl EthereumClient {
             .await
             .map_err(|e| {
                 warn!("Failed to get previous state root from batch: {e}");
-                EthereumError::from_contract_error(&format!("Previous state root from batch query failed: {e}"))
+                EthereumError::from_contract_error(&format!(
+                    "Previous state root from batch query failed: {e}"
+                ))
             })?;
 
         Ok(previous_state_root)
@@ -772,7 +774,9 @@ impl EthereumClient {
             .await
             .map_err(|e| {
                 warn!("Failed to get new state root from batch: {e}");
-                EthereumError::from_contract_error(&format!("New state root from batch query failed: {e}"))
+                EthereumError::from_contract_error(&format!(
+                    "New state root from batch query failed: {e}"
+                ))
             })?;
 
         Ok(new_state_root)

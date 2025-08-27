@@ -997,27 +997,43 @@ impl BackgroundBatchProcessor {
                 data
             }
             Err(e) => {
-                error!("❌ Failed to get contract submission data for batch {}: {}", batch.id, e);
+                error!(
+                    "❌ Failed to get contract submission data for batch {}: {}",
+                    batch.id, e
+                );
                 return Err(format!("Failed to get contract submission data: {}", e));
             }
         };
 
         // Convert hex strings to FixedBytes (removing 0x prefix if present)
         let previous_state_root = FixedBytes::from_slice(
-            &hex::decode(contract_data.public.prev_merkle_root.trim_start_matches("0x"))
-                .map_err(|e| format!("Invalid previous state root hex: {}", e))?
+            &hex::decode(
+                contract_data
+                    .public
+                    .prev_merkle_root
+                    .trim_start_matches("0x"),
+            )
+            .map_err(|e| format!("Invalid previous state root hex: {}", e))?,
         );
 
         let new_state_root = FixedBytes::from_slice(
-            &hex::decode(contract_data.public.new_merkle_root.trim_start_matches("0x"))
-                .map_err(|e| format!("Invalid new state root hex: {}", e))?
+            &hex::decode(
+                contract_data
+                    .public
+                    .new_merkle_root
+                    .trim_start_matches("0x"),
+            )
+            .map_err(|e| format!("Invalid new state root hex: {}", e))?,
         );
 
         // Use a deterministic state_id based on previous state root
         let state_id = previous_state_root;
 
         info!("🌳 Using real ADS state roots for contract submission:");
-        info!("   Previous state root: 0x{}", hex::encode(previous_state_root));
+        info!(
+            "   Previous state root: 0x{}",
+            hex::encode(previous_state_root)
+        );
         info!("   New state root: 0x{}", hex::encode(new_state_root));
         info!("   State ID: 0x{}", hex::encode(state_id));
 
@@ -1061,20 +1077,24 @@ impl BackgroundBatchProcessor {
                         warn!("   SP1: 0x{}", hex::encode(decoded.previous_state_root));
                         warn!("   ADS: 0x{}", hex::encode(previous_state_root));
                     }
-                    
+
                     if decoded.new_state_root.as_slice() != new_state_root.as_slice() {
                         warn!("⚠️ SP1 proof new state root doesn't match ADS state root");
                         warn!("   SP1: 0x{}", hex::encode(decoded.new_state_root));
                         warn!("   ADS: 0x{}", hex::encode(new_state_root));
                     }
-                    
-                    if decoded.previous_state_root.as_slice() == previous_state_root.as_slice() &&
-                       decoded.new_state_root.as_slice() == new_state_root.as_slice() {
+
+                    if decoded.previous_state_root.as_slice() == previous_state_root.as_slice()
+                        && decoded.new_state_root.as_slice() == new_state_root.as_slice()
+                    {
                         info!("✅ SP1 proof state roots match ADS state roots perfectly");
                     }
                 }
                 Err(e) => {
-                    warn!("⚠️ Failed to decode SP1 public values for validation: {}", e);
+                    warn!(
+                        "⚠️ Failed to decode SP1 public values for validation: {}",
+                        e
+                    );
                 }
             }
         }
@@ -1100,7 +1120,10 @@ impl BackgroundBatchProcessor {
                 );
                 info!("   Transaction hash: {}", hex::encode(tx_hash));
                 info!("   Block number: {:?}", result.block_number);
-                info!("   Previous state root: 0x{}", hex::encode(previous_state_root));
+                info!(
+                    "   Previous state root: 0x{}",
+                    hex::encode(previous_state_root)
+                );
                 info!("   New state root: 0x{}", hex::encode(new_state_root));
                 info!("   Used Sindri proof ID: {}", sindri_proof_id);
                 info!("   🎉 No more placeholder state roots - using real ADS-generated Merkle roots!");

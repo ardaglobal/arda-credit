@@ -23,21 +23,20 @@ use sha2::{Digest, Sha256};
 pub fn main() {
     // Read the complete input structure with ADS state
     let input = sp1_zkvm::io::read::<ZkVMBatchInput>();
-    
+
     // Validate all transactions in the batch first
     for transaction in &input.batch.transactions {
         validate_transaction(transaction).expect("Invalid transaction in batch");
     }
 
     // Process the loan batch for business logic validation and balance computation
-    let final_loan_state = process_loan_batch(
-        input.initial_loan_state.clone(), 
-        &input.batch
-    ).expect("Failed to process loan batch");
+    let final_loan_state = process_loan_batch(input.initial_loan_state.clone(), &input.batch)
+        .expect("Failed to process loan batch");
 
     // CRITICAL: Process through ADS to get real state roots
     let mut ads_state = input.initial_ads_state;
-    let state_transition = ads_state.process_transactions(&input.batch.transactions)
+    let state_transition = ads_state
+        .process_transactions(&input.batch.transactions)
         .expect("Failed to process ADS state transition");
 
     // Use ADS-generated state roots (not simple hashes)
@@ -68,9 +67,9 @@ pub fn main() {
 
     let bytes = LoanBatchPublicValues::abi_encode(&public_values);
 
-    // Commit to the public values with real ADS-generated state roots. The final proof will 
-    // have a commitment to all the bytes that were committed to. Individual loan amounts, 
-    // user details, and transaction specifics remain private within the zkVM execution, 
+    // Commit to the public values with real ADS-generated state roots. The final proof will
+    // have a commitment to all the bytes that were committed to. Individual loan amounts,
+    // user details, and transaction specifics remain private within the zkVM execution,
     // while the state roots are cryptographically consistent with off-chain ADS processing.
     sp1_zkvm::io::commit_slice(&bytes);
 }
