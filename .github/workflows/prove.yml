@@ -25,10 +25,7 @@ jobs:
           submodules: recursive
 
       - name: Install rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: 1.88.0
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install SP1 toolchain
         run: |

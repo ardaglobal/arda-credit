@@ -10,7 +10,10 @@ env:
   SQLX_OFFLINE: true
 jobs:
   lint-compile-deploy:
-    runs-on: ubuntu-latest
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=small
     env:
       SINDRI_API_KEY: ${{ secrets.SINDRI_API_KEY }}
     steps:
@@ -47,14 +50,19 @@ jobs:
 
       - name: Get Branch Name
         id: branch-name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.number }}
+          SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "branch=${{ github.head_ref }}" >> $GITHUB_OUTPUT
-            echo "tag=pr-${{ github.event.number }}-${{ github.head_ref }}" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "branch=$HEAD_REF" >> $GITHUB_OUTPUT
+            echo "tag=pr-$PR_NUMBER-$HEAD_REF" >> $GITHUB_OUTPUT
           else
-            branch=${GITHUB_REF#refs/heads/}
+            branch=${HEAD_REF#refs/heads/}
             echo "branch=$branch" >> $GITHUB_OUTPUT
-            echo "tag=$branch-$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            echo "tag=$branch-$(echo $SHA | cut -c1-7)" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy Circuit to Sindri

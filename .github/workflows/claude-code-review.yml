@@ -12,6 +12,7 @@ on:
 
 jobs:
   claude-review:
+    # Using github runners for now, to use codebuild we need to be able to pass the github token.
     runs-on: ubuntu-latest
     permissions:
       contents: read

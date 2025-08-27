@@ -20,6 +20,17 @@ help: Makefile
 install:
 	./install-dependencies.sh
 
+## fmt: Format code
+.PHONY: fmt
+fmt: yamllint-fix actionlint-fix docker-lint-fix
+	cargo fmt
+	taplo fmt
+
+## lint: Lint code
+.PHONY: lint
+lint: yamllint actionlint docker-lint
+	SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::style -W clippy::complexity -W clippy::perf -W clippy::suspicious -W clippy::correctness
+
 ## env: Copy .env.example to .env
 .PHONY: env
 env:
@@ -108,6 +119,22 @@ yamllint-fix:
 	@command -v yamllint >/dev/null 2>&1 || { echo "❌ yamllint not found. Run 'make install' to install dependencies."; exit 1; }
 	yamllint --format parsable . || true
 	@echo "💡 Fix YAML issues based on the output above"
+
+## actionlint: Lint GitHub Actions workflows using actionlint
+.PHONY: actionlint
+actionlint:
+	@echo "🔍 Linting GitHub Actions workflows with actionlint..."
+	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint not found. Run 'make install' to install dependencies."; exit 1; }
+	actionlint -config-file .actionlint.yaml
+	@echo "✅ GitHub Actions linting completed"
+
+## actionlint-fix: Lint GitHub Actions workflows with verbose output for fixing issues
+.PHONY: actionlint-fix
+actionlint-fix:
+	@echo "🔧 Linting GitHub Actions workflows with detailed output..."
+	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint not found. Run 'make install' to install dependencies."; exit 1; }
+	actionlint -config-file .actionlint.yaml -verbose || true
+	@echo "💡 Fix GitHub Actions issues based on the output above"
 
 ## test: Run all tests
 .PHONY: test
@@ -276,9 +303,18 @@ initDB:
 	@echo "💡 You can now use 'SQLX_OFFLINE=true cargo check' without a database connection."
 	@echo "📝 The .sqlx/ directory has been updated and should be committed to version control."
 
+## setup-hooks: Setup git hooks for pre-commit linting and formatting
+.PHONY: setup-hooks
+setup-hooks:
+	@echo "🔧 Setting up git hooks..."
+	@git config core.hooksPath .githooks
+	@chmod +x .githooks/pre-commit
+	@echo "✅ Git hooks configured successfully"
+	@echo "💡 Pre-commit hook will run 'make fmt' and 'make lint' automatically"
+
 ## setup: Complete setup from scratch
 .PHONY: setup
-setup: install env initDB
+setup: install env initDB setup-hooks
 	@echo ""
 	@echo "🎉 Setup complete! Next steps:"
 	@echo "1. Edit .env and add your SINDRI_API_KEY"

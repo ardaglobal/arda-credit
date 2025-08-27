@@ -19,9 +19,9 @@ jobs:
 
     name: Foundry project
     runs-on:
-      - runs-on
-      - runner=1cpu-linux-x64
-      - run-id=${{ github.run_id }}
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=large
     steps:
       - uses: actions/checkout@v5
         with:

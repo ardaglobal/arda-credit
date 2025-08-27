@@ -1,0 +1,33 @@
+name: GitHub Actions Lint
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  merge_group:
+
+jobs:
+  actionlint:
+    name: GitHub Actions Lint
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=small
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Python dependencies
+        run: |
+          # Install pipx for pyflakes installation
+          python3 -m pip install --user pipx
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: actionlint
+        id: actionlint
+        uses: raven-actions/actionlint@v2
+        with:
+          flags: "-config-file .actionlint.yaml -ignore SC2086"
