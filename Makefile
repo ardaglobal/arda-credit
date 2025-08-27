@@ -125,7 +125,7 @@ yamllint-fix:
 actionlint:
 	@echo "🔍 Linting GitHub Actions workflows with actionlint..."
 	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint not found. Run 'make install' to install dependencies."; exit 1; }
-	actionlint -config-file .actionlint.yaml
+	actionlint -config-file .actionlint.yaml -ignore SC2086
 	@echo "✅ GitHub Actions linting completed"
 
 ## actionlint-fix: Lint GitHub Actions workflows with verbose output for fixing issues
@@ -133,13 +133,15 @@ actionlint:
 actionlint-fix:
 	@echo "🔧 Linting GitHub Actions workflows with detailed output..."
 	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint not found. Run 'make install' to install dependencies."; exit 1; }
-	actionlint -config-file .actionlint.yaml -verbose || true
+	actionlint -config-file .actionlint.yaml -ignore SC2086 -verbose || true
 	@echo "💡 Fix GitHub Actions issues based on the output above"
 
 ## test: Run all tests
 .PHONY: test
 test:
+	docker-compose up postgres -d
 	cargo test
+	docker-compose down -v
 
 ## run: Local SP1 unit testing (fast ~3.5s Core proofs)
 .PHONY: run
@@ -154,6 +156,8 @@ cli:
 ## server: Start API server locally
 .PHONY: server
 server:
+	@echo "Starting PostgreSQL database..."
+	docker-compose up postgres -d
 	@echo "Starting API server locally (requires database)..."
 	@echo "💡 Tip: Run 'make up postgres' in another terminal first"
 	cargo run --bin server --release

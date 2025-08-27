@@ -8,7 +8,7 @@ OS=$(uname -s)
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 TMPDIR=${TMPDIR:-/tmp}
 ROOT="$DIR/"
-CARGO_CRATES="cargo-nextest sqlx-cli"
+CARGO_CRATES="cargo-nextest sqlx-cli cargo-deny"
 
 # ==========//=========//=========//=========//==========//==========//==========
 # general functions
@@ -588,6 +588,18 @@ function ensure_envrc() {
   
   # Add Foundry bin directory to PATH
   add_path_to_profile "$PROFILE" "$HOME/.foundry/bin"
+  
+  # Add PostgreSQL client tools to PATH (macOS)
+  case "$(uname -s)" in
+  Darwin)
+    # Add PostgreSQL@15 to PATH if it exists
+    if [ -d "/opt/homebrew/opt/postgresql@15/bin" ]; then
+      add_path_to_profile "$PROFILE" "/opt/homebrew/opt/postgresql@15/bin"
+    elif [ -d "/usr/local/opt/postgresql@15/bin" ]; then
+      add_path_to_profile "$PROFILE" "/usr/local/opt/postgresql@15/bin"
+    fi
+    ;;
+  esac
 
   case "$(uname -s)-$(uname -m)" in
   Darwin-*)
