@@ -39,6 +39,9 @@ pub mod rest;
 pub mod server;
 pub mod unified_batch_service;
 
+#[cfg(test)]
+pub mod openapi_test;
+
 // Temporarily disabled for minimal PoC:
 // pub mod graphql;       // 883 lines - GraphQL API for old nullifier system (depends on disabled modules)
 // pub mod integration;   // 480 lines - Complex deployment/scaling configs (depends on disabled modules)

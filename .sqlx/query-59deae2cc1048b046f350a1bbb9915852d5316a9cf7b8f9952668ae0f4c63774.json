@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM loans",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "59deae2cc1048b046f350a1bbb9915852d5316a9cf7b8f9952668ae0f4c63774"
+}
