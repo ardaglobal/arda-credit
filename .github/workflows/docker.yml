@@ -8,6 +8,11 @@ on:
   release:
     types: [published]
 
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}

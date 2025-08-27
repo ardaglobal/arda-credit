@@ -13,6 +13,11 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
 
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   audit:
     runs-on:

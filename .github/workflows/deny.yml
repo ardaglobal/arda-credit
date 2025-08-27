@@ -1,6 +1,12 @@
 name: deny
 on:
   pull_request:
+
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   cargo-deny:
     # Using github runners as there is a docker login issue with codebuild. See ARDGBL-177

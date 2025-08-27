@@ -10,6 +10,11 @@ on:
     #   - "src/**/*.js"
     #   - "src/**/*.jsx"
 
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   claude-review:
     # Only run if the pull request is not a draft
