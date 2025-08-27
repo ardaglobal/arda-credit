@@ -75,6 +75,10 @@ url    = "2.5"
 # Time formatting
 humantime = "2"
 
+# OpenAPI/Swagger documentation
+utoipa = { version = "4.0", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "6.0", features = ["axum"] }
+
 [dev-dependencies]
 axum-test          = "18.0.0"
 tempfile           = "3.21"
