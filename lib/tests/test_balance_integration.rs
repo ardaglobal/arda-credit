@@ -6,7 +6,27 @@ use lib::*;
 mod tests {
     use super::*;
     use crate::transactions::MetadataArray;
-    use crate::user::{KycStatus, UserType};
+
+    fn fund_user_account(
+        state: &mut GlobalLoanState,
+        user_id: [u8; 32],
+        amount: u128,
+        timestamp: u64,
+    ) {
+        let funding = BalanceUpdate::new(
+            [99u8; 32], // funding transaction ID
+            user_id,
+            None,
+            None,
+            BalanceUpdateType::ManualAdjustment,
+            amount,
+            0, // previous balance
+            timestamp,
+            Some("Test funding".to_string()),
+        )
+        .unwrap();
+        state.balance_state.apply_update(funding).unwrap();
+    }
 
     fn create_test_user_registration(user_id: [u8; 32], user_type: u8) -> LoanTransaction {
         LoanTransaction {
@@ -90,10 +110,13 @@ mod tests {
         state.process_transaction(&borrower_kyc).unwrap();
         state.process_transaction(&lender_kyc).unwrap();
 
-        // Initial balance state should be empty
+        // Initial balance state should be empty (before funding)
         assert_eq!(state.get_user_balance(&borrower_id), 0);
         assert_eq!(state.get_user_balance(&lender_id), 0);
         assert_eq!(state.balance_state.updates.len(), 0);
+
+        // Fund lender for loan origination (required for balance validation)
+        fund_user_account(&mut state, lender_id, 100000, 1640995150);
 
         // Process loan origination
         let loan_origination = create_loan_origination(loan_id, borrower_id, lender_id, 50000);
@@ -105,8 +128,8 @@ mod tests {
         assert_eq!(loan.borrower_id, borrower_id);
         assert_eq!(loan.lender_id, lender_id);
 
-        // Verify balance updates were created
-        assert_eq!(state.balance_state.updates.len(), 2);
+        // Verify balance updates were created (funding + 2 origination updates)
+        assert_eq!(state.balance_state.updates.len(), 3);
 
         // Find borrower credit update
         let borrower_updates: Vec<_> = state
@@ -134,21 +157,26 @@ mod tests {
             .iter()
             .filter(|u| u.user_id == lender_id)
             .collect();
-        assert_eq!(lender_updates.len(), 1);
+        assert_eq!(lender_updates.len(), 2); // Funding + DebitFromOrigination
 
-        let lender_update = lender_updates[0];
+        // Find the origination debit update (not the funding)
+        let lender_debit_update = lender_updates
+            .iter()
+            .find(|u| u.update_type == BalanceUpdateType::DebitFromOrigination)
+            .expect("Should find debit from origination");
+
         assert_eq!(
-            lender_update.update_type,
+            lender_debit_update.update_type,
             BalanceUpdateType::DebitFromOrigination
         );
-        assert_eq!(lender_update.amount, 50000);
-        assert_eq!(lender_update.previous_balance, 0);
-        assert_eq!(lender_update.new_balance, 0); // Can't go negative, saturates at 0
-        assert_eq!(lender_update.loan_id, Some(loan_id));
+        assert_eq!(lender_debit_update.amount, 50000);
+        assert_eq!(lender_debit_update.previous_balance, 100000); // After funding
+        assert_eq!(lender_debit_update.new_balance, 50000); // 100000 - 50000
+        assert_eq!(lender_debit_update.loan_id, Some(loan_id));
 
         // Verify current balances
         assert_eq!(state.get_user_balance(&borrower_id), 50000);
-        assert_eq!(state.get_user_balance(&lender_id), 0);
+        assert_eq!(state.get_user_balance(&lender_id), 50000); // 100000 funding - 50000 lent
     }
 
     #[test]
@@ -170,11 +198,15 @@ mod tests {
         state.process_transaction(&lender_reg).unwrap();
         state.process_transaction(&borrower_kyc).unwrap();
         state.process_transaction(&lender_kyc).unwrap();
+
+        // Fund lender for loan origination
+        fund_user_account(&mut state, lender_id, 100000, 1640995150);
+
         state.process_transaction(&loan_origination).unwrap();
 
-        // Clear balance updates from origination for cleaner test
+        // Check balance updates count (funding + origination)
         let initial_update_count = state.balance_state.updates.len();
-        assert_eq!(initial_update_count, 2); // Origination creates 2 updates
+        assert_eq!(initial_update_count, 3); // 1 funding update + 2 origination updates
 
         // Process loan payment
         let payment = create_loan_payment([4u8; 32], loan_id, borrower_id, 25000, 1640995500);
@@ -185,23 +217,23 @@ mod tests {
         assert_eq!(loan.outstanding_balance, 25000); // 50000 - 25000
 
         // Verify balance update was created for the payment
-        assert_eq!(state.balance_state.updates.len(), 3); // 2 origination + 1 payment
+        assert_eq!(state.balance_state.updates.len(), 4); // 1 funding + 2 origination + 1 payment
 
-        let payment_update = &state.balance_state.updates[2]; // Latest update
+        let payment_update = &state.balance_state.updates[3]; // Latest update
         assert_eq!(payment_update.user_id, lender_id); // Lender receives the payment
         assert_eq!(
             payment_update.update_type,
             BalanceUpdateType::CreditFromPayment
         );
         assert_eq!(payment_update.amount, 25000);
-        assert_eq!(payment_update.previous_balance, 0); // Lender balance before payment
-        assert_eq!(payment_update.new_balance, 25000);
+        assert_eq!(payment_update.previous_balance, 50000); // Lender balance before payment (after funding and lending)
+        assert_eq!(payment_update.new_balance, 75000); // 50000 + 25000 payment
         assert_eq!(payment_update.loan_id, Some(loan_id));
         assert_eq!(payment_update.triggering_transaction_id, Some([4u8; 32]));
 
         // Verify updated balances
         assert_eq!(state.get_user_balance(&borrower_id), 50000); // Unchanged from origination
-        assert_eq!(state.get_user_balance(&lender_id), 25000); // Received payment
+        assert_eq!(state.get_user_balance(&lender_id), 75000); // 50000 remaining + 25000 payment
     }
 
     #[test]
@@ -213,31 +245,47 @@ mod tests {
         let loan_id = [10u8; 32];
 
         // Setup and process full loan lifecycle
-        let transactions = vec![
+        let setup_transactions = vec![
             create_test_user_registration(borrower_id, 1),
             create_test_user_registration(lender_id, 2),
             create_kyc_verification(borrower_id, true),
             create_kyc_verification(lender_id, true),
+        ];
+
+        for tx in setup_transactions {
+            state.process_transaction(&tx).unwrap();
+        }
+
+        // Fund lender for loan origination
+        fund_user_account(&mut state, lender_id, 200000, 1640995150);
+
+        let loan_transactions = vec![
             create_loan_origination(loan_id, borrower_id, lender_id, 100000),
             create_loan_payment([5u8; 32], loan_id, borrower_id, 25000, 1640995500),
             create_loan_payment([6u8; 32], loan_id, borrower_id, 35000, 1640995600),
             create_loan_payment([7u8; 32], loan_id, borrower_id, 40000, 1640995700), // Final payment
         ];
 
-        for tx in transactions {
+        for tx in loan_transactions {
             state.process_transaction(&tx).unwrap();
         }
 
         // Verify complete balance history for lender
         let lender_history = state.get_user_balance_history(&lender_id, None);
-        assert_eq!(lender_history.len(), 4); // 1 debit from origination + 3 credits from payments
+        assert_eq!(lender_history.len(), 5); // 1 funding + 1 debit from origination + 3 credits from payments
 
         // Check balance progression for lender
-        let mut expected_balances = vec![
-            (BalanceUpdateType::DebitFromOrigination, 100000, 0, 0), // Lends out money
-            (BalanceUpdateType::CreditFromPayment, 25000, 0, 25000), // First payment
-            (BalanceUpdateType::CreditFromPayment, 35000, 25000, 60000), // Second payment
-            (BalanceUpdateType::CreditFromPayment, 40000, 60000, 100000), // Final payment
+        let expected_balances = vec![
+            (BalanceUpdateType::ManualAdjustment, 200000, 0, 200000), // Initial funding
+            (
+                BalanceUpdateType::DebitFromOrigination,
+                100000,
+                200000,
+                100000,
+            ), // Lends out money
+            (BalanceUpdateType::CreditFromPayment, 25000, 100000, 125000), // First payment
+            (BalanceUpdateType::CreditFromPayment, 35000, 125000, 160000), // Second payment
+            (BalanceUpdateType::CreditFromPayment, 40000, 160000, 200000), // Final payment
         ];
 
         // Sort history by timestamp for comparison
@@ -251,11 +299,17 @@ mod tests {
             assert_eq!(update.amount, expected_amount);
             assert_eq!(update.previous_balance, expected_prev);
             assert_eq!(update.new_balance, expected_new);
-            assert_eq!(update.loan_id, Some(loan_id));
+
+            // Only loan-related updates have loan_id (not funding updates)
+            if expected_type != BalanceUpdateType::ManualAdjustment {
+                assert_eq!(update.loan_id, Some(loan_id));
+            } else {
+                assert_eq!(update.loan_id, None);
+            }
         }
 
         // Verify final balance
-        assert_eq!(state.get_user_balance(&lender_id), 100000); // Fully repaid
+        assert_eq!(state.get_user_balance(&lender_id), 200000); // Back to original funded amount
     }
 
     #[test]
@@ -277,11 +331,15 @@ mod tests {
         state.process_transaction(&lender_reg).unwrap();
         state.process_transaction(&borrower_kyc).unwrap();
         state.process_transaction(&lender_kyc).unwrap();
+
+        // Fund lender for loan origination
+        fund_user_account(&mut state, lender_id, 100000, 1640995150);
+
         state.process_transaction(&loan_origination).unwrap();
 
         // Get balance updates and test nullifier generation
         let balance_updates = &state.balance_state.updates;
-        assert_eq!(balance_updates.len(), 2);
+        assert_eq!(balance_updates.len(), 3); // 1 funding + 2 origination updates
 
         for update in balance_updates {
             let nullifier1 = update.to_nullifier();
@@ -384,6 +442,9 @@ mod tests {
             state.process_transaction(&tx).unwrap();
         }
 
+        // Fund lender for both loan originations
+        fund_user_account(&mut state, lender_id, 200000, 1640995150); // Enough for both loans
+
         // Originate two loans
         let loan1_origination = create_loan_origination(loan1_id, borrower1_id, lender_id, 50000);
         let loan2_origination = create_loan_origination(loan2_id, borrower2_id, lender_id, 75000);
@@ -392,12 +453,12 @@ mod tests {
         state.process_transaction(&loan2_origination).unwrap();
 
         // Verify balance updates for multiple loans
-        assert_eq!(state.balance_state.updates.len(), 4); // 2 loans × 2 updates each
+        assert_eq!(state.balance_state.updates.len(), 5); // 1 funding + 2 loans × 2 updates each
 
         // Check borrower balances
         assert_eq!(state.get_user_balance(&borrower1_id), 50000);
         assert_eq!(state.get_user_balance(&borrower2_id), 75000);
-        assert_eq!(state.get_user_balance(&lender_id), 0); // Debits don't reduce below 0
+        assert_eq!(state.get_user_balance(&lender_id), 75000); // 200000 funding - 50000 - 75000 loans
 
         // Check loan-specific balance updates
         let loan1_updates = state.get_loan_balance_updates(&loan1_id);
@@ -433,10 +494,10 @@ mod tests {
         state.process_transaction(&payment2).unwrap();
 
         // Verify payment balance updates
-        assert_eq!(state.balance_state.updates.len(), 6); // 4 origination + 2 payment
+        assert_eq!(state.balance_state.updates.len(), 7); // 1 funding + 4 origination + 2 payment
 
         // Final lender balance should reflect both payments
-        assert_eq!(state.get_user_balance(&lender_id), 60000); // 25000 + 35000
+        assert_eq!(state.get_user_balance(&lender_id), 135000); // 75000 remaining + 25000 + 35000 payments
     }
 
     #[test]
@@ -448,16 +509,26 @@ mod tests {
         let loan_id = [10u8; 32];
 
         // Process full loan lifecycle
-        let transactions = vec![
+        let setup_transactions = vec![
             create_test_user_registration(borrower_id, 1),
             create_test_user_registration(lender_id, 2),
             create_kyc_verification(borrower_id, true),
             create_kyc_verification(lender_id, true),
+        ];
+
+        for tx in setup_transactions {
+            state.process_transaction(&tx).unwrap();
+        }
+
+        // Fund lender for loan origination
+        fund_user_account(&mut state, lender_id, 200000, 1640995150);
+
+        let loan_transactions = vec![
             create_loan_origination(loan_id, borrower_id, lender_id, 100000),
             create_loan_payment([5u8; 32], loan_id, borrower_id, 100000, 1640995500), // Full payment
         ];
 
-        for tx in transactions {
+        for tx in loan_transactions {
             state.process_transaction(&tx).unwrap();
         }
 
@@ -486,7 +557,7 @@ mod tests {
         assert_eq!(loan.outstanding_balance, 0);
         assert_eq!(loan.loan_status, LoanStatus::PaidOff);
 
-        // Lender should have received full repayment
-        assert_eq!(lender_balance, 100000);
+        // Lender should have received full repayment (200000 initial - 100000 lent + 100000 repaid)
+        assert_eq!(lender_balance, 200000);
     }
 }

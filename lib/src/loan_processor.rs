@@ -4,7 +4,7 @@
 //! the SP1 zkVM. It processes batches of mixed transaction types while maintaining
 //! privacy guarantees.
 
-use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
+use crate::balance::{BalanceError, BalanceState, BalanceUpdate, BalanceUpdateType};
 use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
@@ -675,7 +675,22 @@ mod tests {
         assert_eq!(borrower.kyc_status, KycStatus::Approved);
         assert_eq!(lender.kyc_status, KycStatus::Approved);
 
-        // 3. Loan origination
+        // 3. Give lender sufficient balance for loan origination (for testing)
+        let initial_funding = BalanceUpdate::new(
+            [99u8; 32], // funding transaction ID
+            lender_id,
+            None,
+            None,
+            BalanceUpdateType::ManualAdjustment,
+            100000,     // Give enough for the 50000 loan
+            0,          // previous balance
+            1640995100, // before loan origination
+            Some("Test funding".to_string()),
+        )
+        .unwrap();
+        state.balance_state.apply_update(initial_funding).unwrap();
+
+        // 4. Loan origination
         let loan_origination = create_loan_origination(loan_id, borrower_id, lender_id, 50000);
         state.process_transaction(&loan_origination).unwrap();
 
@@ -683,7 +698,7 @@ mod tests {
         assert_eq!(loan.loan_status, LoanStatus::Originated);
         assert_eq!(loan.principal_amount, 50000);
 
-        // 4. Loan payment
+        // 5. Loan payment
         let payment = LoanTransaction {
             transaction_id: [4u8; 32],
             user_id: borrower_id,
@@ -819,6 +834,21 @@ mod tests {
             created_at: base_timestamp + 5000,
             metadata: loan_metadata,
         };
+
+        // Give lender sufficient balance for loan origination (for testing)
+        let initial_funding = BalanceUpdate::new(
+            [98u8; 32], // funding transaction ID
+            lender_id,
+            None,
+            None,
+            BalanceUpdateType::ManualAdjustment,
+            2_000_000,      // Give enough for the 1,000,000 loan
+            0,              // previous balance
+            base_timestamp, // same timeframe
+            Some("Test funding for configurable terms".to_string()),
+        )
+        .unwrap();
+        state.balance_state.apply_update(initial_funding).unwrap();
 
         state.process_transaction(&loan_tx).unwrap();
 
