@@ -12,10 +12,8 @@ on:
 
 jobs:
   claude-review:
-    runs-on:
-      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
-      - image=ubuntu-7.0
-      - instance-size=small
+    # Using github runners for now, to use codebuild we need to be able to pass the github token.
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read

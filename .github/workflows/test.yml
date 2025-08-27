@@ -13,6 +13,7 @@ env:
 jobs:
   test:
     name: Run All Tests
+    # Using github runners as there is a docker login issue with codebuild. See ARDGBL-177
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
