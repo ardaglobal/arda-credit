@@ -12,6 +12,8 @@ on:
 
 jobs:
   claude-review:
+    # Only run if the pull request is not a draft
+    if: github.event.pull_request.draft == false
     # Using github runners for now, to use codebuild we need to be able to pass the github token.
     runs-on: ubuntu-latest
     permissions:

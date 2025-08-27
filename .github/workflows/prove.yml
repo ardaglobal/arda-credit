@@ -24,19 +24,19 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
-      - name: Install SP1 toolchain
+      - name: Install SP1 Toolchain
         run: |
           curl -L https://sp1.succinct.xyz | bash
           ~/.sp1/bin/sp1up
-          ~/.sp1/bin/cargo-prove prove --version
+          echo "$HOME/.sp1/bin" >> $GITHUB_PATH
 
-      - name: Build SP1 program
+      - name: Build SP1 Program
         run: |
           cd program
-          ~/.sp1/bin/cargo-prove prove build
+          cargo prove build
 
       - name: Execute SP1 program
         run: |

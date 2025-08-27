@@ -51,7 +51,6 @@ jobs:
       - name: Get Branch Name
         id: branch-name
         env:
-          HEAD_REF: ${{ github.head_ref }}
           PR_NUMBER: ${{ github.event.number }}
           SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
