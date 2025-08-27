@@ -16,7 +16,7 @@
 use alloy_sol_types::SolType;
 use arda_credit_lib::{
     hash_uuid, LoanBatch, LoanBatchPublicValues, LoanState, LoanTransaction, MetadataArray,
-    TransactionType, UserType, ZkVMBatchInput, ZkVMAds,
+    TransactionType, UserType, ZkVMAds, ZkVMBatchInput,
 };
 use clap::Parser;
 use eyre::Result;
@@ -91,14 +91,14 @@ fn run_locally(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
 
     // Create inputs for the zkVM program
     let mut stdin = SP1Stdin::new();
-    
+
     // Create the ZkVMBatchInput structure expected by the program
     let zkvm_input = ZkVMBatchInput {
         initial_loan_state: initial_state.clone(),
         initial_ads_state: ZkVMAds::new(), // Initialize empty ADS state
         batch: batch.clone(),
     };
-    
+
     stdin.write(&zkvm_input);
 
     // Generate a Core proof (fast for local development)
@@ -166,14 +166,14 @@ async fn submit_to_sindri_for_proving(initial_state: &LoanState, batch: &LoanBat
     // Create SP1 inputs for loan processing and serialize for Sindri
     info!("📝 Creating SP1 stdin with ZkVMBatchInput for Sindri proving");
     let mut stdin = SP1Stdin::new();
-    
+
     // Create the ZkVMBatchInput structure expected by the program
     let zkvm_input = ZkVMBatchInput {
         initial_loan_state: initial_state.clone(),
         initial_ads_state: ZkVMAds::new(), // Initialize empty ADS state
         batch: batch.clone(),
     };
-    
+
     stdin.write(&zkvm_input);
 
     info!("📝 Serializing SP1 stdin to JSON for Sindri");
@@ -303,7 +303,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
 
     // Start with empty state and fund Alice so she can make loans
     let mut initial_state = LoanState::new();
-    
+
     // Fund Alice with $100,000 so she can lend $50,000 to Bob
     initial_state.balance_state.balances.insert(
         alice_id,
