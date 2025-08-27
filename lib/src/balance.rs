@@ -654,12 +654,28 @@ mod tests {
 
     #[test]
     fn test_origination_updates_creation() {
-        let state = BalanceState::new();
+        let mut state = BalanceState::new();
         let origination_tx_id = [1u8; 32];
         let loan_id = [2u8; 32];
         let borrower_id = [3u8; 32];
         let lender_id = [4u8; 32];
         let amount = 100000u128;
+
+        // First, give the lender sufficient funds to originate the loan
+        let initial_funding = BalanceUpdate::new(
+            [0u8; 32], // funding_tx_id
+            lender_id,
+            None, // no loan associated
+            None, // no triggering transaction
+            BalanceUpdateType::ManualAdjustment,
+            amount + 10000, // Give extra funds for safety
+            0,              // previous balance is 0
+            1640995100,     // timestamp before origination
+            Some("Initial funding for test".to_string()),
+        )
+        .unwrap();
+
+        state.apply_update(initial_funding).unwrap();
 
         let updates = state
             .create_origination_updates(
