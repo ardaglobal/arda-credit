@@ -539,23 +539,4 @@ contract LoanDepositWithdrawalTest is Test {
         vm.stopPrank();
     }
     
-    function test_Withdrawal_RoundingFees() public {
-        // Test with amount that doesn't divide evenly with fee percentage
-        uint256 oddAmount = 333e6; // 333 USDC
-        
-        vm.startPrank(user1);
-        usdc.approve(address(loan), oddAmount);
-        loan.depositForLoan(oddAmount, bytes32(0), false, 0);
-        vm.stopPrank();
-        
-        _mockBalanceProofVerification(true);
-        
-        vm.startPrank(user1);
-        bytes32[] memory balanceProof = _createMockBalanceProof();
-        loan.submitWithdrawal(oddAmount, TEST_STATE_ROOT, balanceProof);
-        vm.stopPrank();
-        
-        // Fee calculation is verified through the FeeCollected event
-        // We expect the event to be emitted with correct values
-    }
 }

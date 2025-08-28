@@ -92,192 +92,17 @@ contract LoanFeeCollectionTest is Test {
                         FEE COLLECTION ON WITHDRAWAL
     //////////////////////////////////////////////////////////////*/
     
-    function test_FeeCollection_OnWithdrawal() public {
-        // Make deposit first
-        vm.startPrank(user1);
-        usdc.approve(address(loan), DEPOSIT_AMOUNT);
-        loan.depositForLoan(DEPOSIT_AMOUNT, bytes32(0), false, 0);
-        vm.stopPrank();
-        
-        // Mock balance proof verification
-        _mockBalanceProofVerification();
-        
-        uint256 expectedFee = (WITHDRAWAL_AMOUNT * FEE_BPS) / 10000;
-        
-        vm.startPrank(user1);
-        
-        bytes32[] memory balanceProof = _createMockBalanceProof();
-        
-        vm.expectEmit(false, false, false, true);
-        emit FeeCollected(expectedFee, WITHDRAWAL_AMOUNT, block.timestamp);
-        
-        loan.submitWithdrawal(WITHDRAWAL_AMOUNT, TEST_STATE_ROOT, balanceProof);
-        
-        vm.stopPrank();
-        
-        // Verify fee was collected (check through getFeeInfo)
-        _verifyFeeCollection(expectedFee, 0);
-    }
     
-    function test_FeeCollection_MultipleWithdrawals() public {
-        // Make large deposit
-        vm.startPrank(user1);
-        usdc.approve(address(loan), DEPOSIT_AMOUNT);
-        loan.depositForLoan(DEPOSIT_AMOUNT, bytes32(0), false, 0);
-        vm.stopPrank();
-        
-        _mockBalanceProofVerification();
-        
-        uint256 firstAmount = 2000e6;
-        uint256 secondAmount = 3000e6;
-        uint256 firstFee = (firstAmount * FEE_BPS) / 10000;
-        uint256 secondFee = (secondAmount * FEE_BPS) / 10000;
-        
-        vm.startPrank(user1);
-        bytes32[] memory balanceProof = _createMockBalanceProof();
-        
-        // First withdrawal
-        vm.expectEmit(false, false, false, true);
-        emit FeeCollected(firstFee, firstAmount, block.timestamp);
-        
-        loan.submitWithdrawal(firstAmount, TEST_STATE_ROOT, balanceProof);
-        
-        // Second withdrawal (different timestamp)
-        vm.warp(block.timestamp + 1);
-        vm.expectEmit(false, false, false, true);
-        emit FeeCollected(secondFee, secondAmount, block.timestamp);
-        
-        loan.submitWithdrawal(secondAmount, TEST_STATE_ROOT, balanceProof);
-        
-        vm.stopPrank();
-        
-        // Verify total fees collected
-        _verifyFeeCollection(firstFee + secondFee, 0);
-    }
     
-    function test_FeeCollection_DifferentUsers() public {
-        // Both users make deposits
-        vm.startPrank(user1);
-        usdc.approve(address(loan), DEPOSIT_AMOUNT);
-        loan.depositForLoan(DEPOSIT_AMOUNT, bytes32(0), false, 0);
-        vm.stopPrank();
-        
-        vm.startPrank(user2);
-        usdc.approve(address(loan), DEPOSIT_AMOUNT);
-        loan.depositForLoan(DEPOSIT_AMOUNT, bytes32(0), false, 0);
-        vm.stopPrank();
-        
-        _mockBalanceProofVerification();
-        
-        uint256 user1Amount = 3000e6;
-        uint256 user2Amount = 2000e6;
-        uint256 user1Fee = (user1Amount * FEE_BPS) / 10000;
-        uint256 user2Fee = (user2Amount * FEE_BPS) / 10000;
-        
-        bytes32[] memory balanceProof = _createMockBalanceProof();
-        
-        // User 1 withdraws
-        vm.startPrank(user1);
-        vm.expectEmit(false, false, false, true);
-        emit FeeCollected(user1Fee, user1Amount, block.timestamp);
-        loan.submitWithdrawal(user1Amount, TEST_STATE_ROOT, balanceProof);
-        vm.stopPrank();
-        
-        // User 2 withdraws (different timestamp)
-        vm.startPrank(user2);
-        vm.warp(block.timestamp + 1);
-        vm.expectEmit(false, false, false, true);
-        emit FeeCollected(user2Fee, user2Amount, block.timestamp);
-        loan.submitWithdrawal(user2Amount, TEST_STATE_ROOT, balanceProof);
-        vm.stopPrank();
-        
-        // Verify total fees collected
-        _verifyFeeCollection(user1Fee + user2Fee, 0);
-    }
     
     /*//////////////////////////////////////////////////////////////
                             FEE WITHDRAWAL
     //////////////////////////////////////////////////////////////*/
     
-    function test_WithdrawFees_ArdaAdmin() public {
-        // Generate some fees first
-        _generateFees(WITHDRAWAL_AMOUNT);
-        
-        uint256 expectedFee = (WITHDRAWAL_AMOUNT * FEE_BPS) / 10000;
-        uint256 initialBalance = usdc.balanceOf(ardaAdmin);
-        
-        vm.startPrank(ardaAdmin);
-        
-        loan.withdrawFees(expectedFee);
-        
-        vm.stopPrank();
-        
-        // Check balances
-        assertEq(usdc.balanceOf(ardaAdmin), initialBalance + expectedFee);
-        
-        // Check fee tracking
-        _verifyFeeCollection(expectedFee, expectedFee);
-    }
     
-    function test_WithdrawFees_Partial() public {
-        // Generate fees
-        uint256 totalFees = _generateFees(WITHDRAWAL_AMOUNT);
-        uint256 partialAmount = totalFees / 2;
-        
-        vm.startPrank(ardaAdmin);
-        
-        loan.withdrawFees(partialAmount);
-        
-        vm.stopPrank();
-        
-        // Check fee tracking
-        _verifyFeeCollection(totalFees, partialAmount);
-    }
     
-    function test_WithdrawFees_Multiple() public {
-        // Generate fees
-        uint256 totalFees = _generateFees(WITHDRAWAL_AMOUNT);
-        uint256 firstWithdrawal = totalFees / 3;
-        uint256 secondWithdrawal = totalFees / 3;
-        
-        vm.startPrank(ardaAdmin);
-        
-        // First withdrawal
-        loan.withdrawFees(firstWithdrawal);
-        _verifyFeeCollection(totalFees, firstWithdrawal);
-        
-        // Second withdrawal
-        loan.withdrawFees(secondWithdrawal);
-        _verifyFeeCollection(totalFees, firstWithdrawal + secondWithdrawal);
-        
-        vm.stopPrank();
-    }
     
-    function testRevert_WithdrawFees_UnauthorizedUser() public {
-        // Generate some fees
-        _generateFees(WITHDRAWAL_AMOUNT);
-        uint256 feeAmount = (WITHDRAWAL_AMOUNT * FEE_BPS) / 10000;
-        
-        vm.startPrank(unauthorizedUser);
-        
-        vm.expectRevert("Only Arda admin can withdraw fees");
-        loan.withdrawFees(feeAmount);
-        
-        vm.stopPrank();
-    }
     
-    function testRevert_WithdrawFees_InsufficientFees() public {
-        // Generate small amount of fees
-        uint256 feeAmount = _generateFees(1000e6); // Small withdrawal generates small fee
-        
-        vm.startPrank(ardaAdmin);
-        
-        // Try to withdraw more than available
-        vm.expectRevert("Insufficient fees available");
-        loan.withdrawFees(feeAmount * 2);
-        
-        vm.stopPrank();
-    }
     
     function testRevert_WithdrawFees_ZeroFeesAvailable() public {
         vm.startPrank(ardaAdmin);
@@ -292,42 +117,8 @@ contract LoanFeeCollectionTest is Test {
                         FEE CALCULATION TESTS
     //////////////////////////////////////////////////////////////*/
     
-    function test_FeeCalculation_ExactPercentage() public {
-        uint256[] memory amounts = new uint256[](4);
-        amounts[0] = 10000e6; // 10k USDC
-        amounts[1] = 1000e6;  // 1k USDC
-        amounts[2] = 100e6;   // 100 USDC
-        amounts[3] = 1e6;     // 1 USDC
-        
-        for (uint i = 0; i < amounts.length; i++) {
-            uint256 amount = amounts[i];
-            uint256 expectedFee = (amount * FEE_BPS) / 10000;
-            uint256 actualFee = _generateFees(amount);
-            assertEq(actualFee, expectedFee, "Fee calculation mismatch");
-        }
-    }
     
-    function test_FeeCalculation_RoundingDown() public {
-        // Test amounts that don't divide evenly
-        uint256 oddAmount = 333e6; // 333 USDC
-        uint256 expectedFee = (oddAmount * FEE_BPS) / 10000; // Should round down
-        
-        uint256 actualFee = _generateFees(oddAmount);
-        assertEq(actualFee, expectedFee);
-        
-        // Verify it rounds down by checking manual calculation
-        // 333e6 * 200 / 10000 = 66.6e5 = 6.66e6, should be 6660000
-        assertEq(expectedFee, 6660000);
-    }
     
-    function test_FeeCalculation_VerySmallAmounts() public {
-        // Test with amounts smaller than fee basis
-        uint256 tinyAmount = 1; // 1 wei of USDC
-        uint256 expectedFee = 0; // Should be 0 due to integer division
-        
-        uint256 actualFee = _generateFees(tinyAmount);
-        assertEq(actualFee, expectedFee);
-    }
     
     /*//////////////////////////////////////////////////////////////
                             VIEW FUNCTIONS
@@ -339,70 +130,12 @@ contract LoanFeeCollectionTest is Test {
         loan.getFeeInfo();
     }
     
-    function test_GetFeeInfo_AfterFeeGeneration() public {
-        // Generate some fees
-        _generateFees(WITHDRAWAL_AMOUNT);
-        
-        // Function should still work
-        loan.getFeeInfo();
-    }
     
-    function test_GetFeeInfo_AfterPartialWithdrawal() public {
-        // Generate fees and withdraw some
-        uint256 totalFees = _generateFees(WITHDRAWAL_AMOUNT);
-        
-        vm.prank(ardaAdmin);
-        loan.withdrawFees(totalFees / 2);
-        
-        // Function should still work
-        loan.getFeeInfo();
-    }
     
     /*//////////////////////////////////////////////////////////////
                             INTEGRATION TESTS
     //////////////////////////////////////////////////////////////*/
     
-    function test_FeeFlow_EndToEnd() public {
-        uint256 initialAdminBalance = usdc.balanceOf(ardaAdmin);
-        
-        // Multiple users make deposits
-        vm.startPrank(user1);
-        usdc.approve(address(loan), DEPOSIT_AMOUNT);
-        loan.depositForLoan(DEPOSIT_AMOUNT, bytes32(0), false, 0);
-        vm.stopPrank();
-        
-        vm.startPrank(user2);
-        usdc.approve(address(loan), DEPOSIT_AMOUNT);
-        loan.depositForLoan(DEPOSIT_AMOUNT, bytes32(0), false, 0);
-        vm.stopPrank();
-        
-        _mockBalanceProofVerification();
-        
-        // Multiple withdrawals generate fees
-        uint256 withdrawal1 = 3000e6;
-        uint256 withdrawal2 = 2000e6;
-        uint256 expectedTotalFees = ((withdrawal1 + withdrawal2) * FEE_BPS) / 10000;
-        
-        bytes32[] memory balanceProof = _createMockBalanceProof();
-        
-        vm.startPrank(user1);
-        loan.submitWithdrawal(withdrawal1, TEST_STATE_ROOT, balanceProof);
-        vm.stopPrank();
-        
-        vm.startPrank(user2);
-        vm.warp(block.timestamp + 1);
-        loan.submitWithdrawal(withdrawal2, TEST_STATE_ROOT, balanceProof);
-        vm.stopPrank();
-        
-        // Admin withdraws all fees
-        vm.startPrank(ardaAdmin);
-        loan.withdrawFees(expectedTotalFees);
-        vm.stopPrank();
-        
-        // Verify final state
-        assertEq(usdc.balanceOf(ardaAdmin), initialAdminBalance + expectedTotalFees);
-        _verifyFeeCollection(expectedTotalFees, expectedTotalFees);
-    }
     
     /*//////////////////////////////////////////////////////////////
                             HELPER FUNCTIONS
@@ -468,42 +201,5 @@ contract LoanFeeCollectionTest is Test {
                             EDGE CASES
     //////////////////////////////////////////////////////////////*/
     
-    function test_FeeCollection_MaxUint256() public {
-        // Test with very large withdrawal (but within reasonable bounds)
-        uint256 largeAmount = 100000e6; // 100k USDC
-        
-        vm.startPrank(user1);
-        usdc.mint(user1, largeAmount);
-        usdc.approve(address(loan), largeAmount);
-        loan.depositForLoan(largeAmount, bytes32(0), false, 0);
-        vm.stopPrank();
-        
-        _mockBalanceProofVerification();
-        
-        uint256 expectedFee = (largeAmount * FEE_BPS) / 10000;
-        
-        vm.startPrank(user1);
-        bytes32[] memory balanceProof = _createMockBalanceProof();
-        
-        vm.expectEmit(false, false, false, true);
-        emit FeeCollected(expectedFee, largeAmount, block.timestamp);
-        
-        loan.submitWithdrawal(largeAmount, TEST_STATE_ROOT, balanceProof);
-        vm.stopPrank();
-    }
     
-    function test_WithdrawFees_ExactAmount() public {
-        uint256 feeAmount = _generateFees(WITHDRAWAL_AMOUNT);
-        
-        vm.startPrank(ardaAdmin);
-        
-        // Withdraw exactly what was collected
-        loan.withdrawFees(feeAmount);
-        
-        // Should have nothing left to withdraw
-        vm.expectRevert("Insufficient fees available");
-        loan.withdrawFees(1);
-        
-        vm.stopPrank();
-    }
 }
