@@ -140,6 +140,7 @@ actionlint-fix:
 .PHONY: test
 test:
 	docker-compose up postgres -d
+	@sleep 2
 	sqlx migrate run --source db/migrations
 	cargo test
 	docker-compose down -v
@@ -151,6 +152,7 @@ cover:
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "❌ cargo-llvm-cov not found. Run 'make install' to install dependencies."; exit 1; }
 	@echo "🚀 Starting PostgreSQL database..."
 	@docker-compose up postgres -d
+	@sleep 2
 	@echo "📦 Running database migrations..."
 	@sqlx migrate run --source db/migrations
 	@echo "📊 Generating coverage reports..."
@@ -192,6 +194,7 @@ cli:
 server:
 	@echo "Starting PostgreSQL database..."
 	docker-compose up postgres -d
+	@sleep 2
 	sqlx migrate run --source db/migrations
 	@echo "Starting API server locally (requires database)..."
 	@echo "💡 Tip: Run 'make up postgres' in another terminal first"

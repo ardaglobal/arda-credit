@@ -1095,6 +1095,12 @@ async fn health_check(client: &BatchApiClient) -> Result<()> {
             );
             println!("   Response time: {:?}", duration);
             println!("   Timestamp: {}", response.timestamp);
+            println!("   API Version: {}", response.api_version);
+            println!("   Git Tag: {}", response.git_tag);
+            println!("   Git SHA: {}", response.git_sha_short);
+            if response.git_dirty {
+                println!("   ⚠️  Working directory has uncommitted changes");
+            }
         }
         Err(e) => {
             let duration = start.elapsed();

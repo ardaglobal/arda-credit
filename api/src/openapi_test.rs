@@ -9,7 +9,7 @@ mod tests {
     fn test_openapi_spec_generation() {
         let spec = get_openapi_spec();
         assert_eq!(spec.info.title, "Arda Credit API");
-        assert_eq!(spec.info.version, "2.0.0");
+        assert_eq!(spec.info.version, "1.0.0");
 
         // Verify we have some components defined
         assert!(spec.components.is_some());

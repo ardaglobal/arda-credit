@@ -611,6 +611,15 @@ EOF
     ;;
   esac
 
+  # Ensure dotenv is added to automatically load .env file
+  if [ ! -f "$PROFILE" ] || ! grep -q '^dotenv' "$PROFILE"; then
+    cat <<-'EOF' | sed 's/^[[:space:]]*//' >>"$PROFILE"
+
+# Load .env file automatically
+dotenv
+EOF
+  fi
+
   local shell=$(get_shell_name)
   local message=$(
     cat <<-EOF | sed 's/^[[:space:]]*//'
