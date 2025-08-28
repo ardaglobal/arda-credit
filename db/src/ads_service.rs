@@ -2117,7 +2117,7 @@ impl IndexedMerkleTreeADS {
             hasher.update(payment_id.as_bytes());
         }
         if let Some(amount) = loan_operation.amount {
-            hasher.update(&amount.to_string().as_bytes());
+            hasher.update(amount.to_string().as_bytes());
         }
 
         let hash = hasher.finalize();

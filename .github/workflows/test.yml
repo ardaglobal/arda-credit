@@ -46,7 +46,7 @@ jobs:
           curl -L https://sp1.succinct.xyz | bash
           ~/.sp1/bin/sp1up
           ~/.sp1/bin/cargo-prove prove --version
-          echo "$HOME/.sp1/bin" >> $GITHUB_PATH
+          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4

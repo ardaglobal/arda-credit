@@ -215,7 +215,7 @@ mod tests {
             loan_id,
             borrower_id,
             lender_id,
-            principal_amount: 100000,
+            principal_amount: 100_000,
             created_at,
         };
 
@@ -241,13 +241,13 @@ mod tests {
                 loan_id,
                 borrower_id,
                 lender_id,
-                principal_amount: 100000,
+                principal_amount: 100_000,
                 created_at,
             },
             CcrOperation::LoanFunding {
                 loan_id,
                 funder_id: lender_id,
-                amount: 100000,
+                amount: 100_000,
                 created_at,
             },
             CcrOperation::Payment {
@@ -286,14 +286,14 @@ mod tests {
             loan_id,
             borrower_id,
             lender_id,
-            principal_amount: 100000,
+            principal_amount: 100_000,
             created_at,
         };
 
         let loan_funding = CcrOperation::LoanFunding {
             loan_id,
             funder_id: lender_id,
-            amount: 100000,
+            amount: 100_000,
             created_at,
         };
 
@@ -352,7 +352,7 @@ mod tests {
         let loan_id = Uuid::new_v4();
         let user_id = Uuid::new_v4();
         let created_at = Utc::now();
-        let amount = 100000;
+        let amount = 100_000;
 
         let loan_creation = CcrOperation::LoanCreation {
             loan_id,
@@ -387,14 +387,14 @@ mod tests {
             loan_id,
             borrower_id,
             lender_id,
-            principal_amount: 100000,
+            principal_amount: 100_000,
             created_at,
         };
 
         assert_eq!(operation.operation_type(), "loan_creation");
         assert_eq!(operation.primary_id(), loan_id);
         assert_eq!(operation.created_at(), created_at);
-        assert_eq!(operation.amount(), Some(100000));
+        assert_eq!(operation.amount(), Some(100_000));
     }
 
     #[test]

@@ -61,7 +61,7 @@ jobs:
           # Run SP1 update tool
           sp1up
           # Add SP1 to PATH for subsequent steps
-          echo "$HOME/.sp1/bin" >> $GITHUB_PATH
+          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
 
       - name: Cache Rust dependencies
         uses: actions/cache@v4

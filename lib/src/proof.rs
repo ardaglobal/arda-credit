@@ -439,10 +439,7 @@ pub async fn verify_sindri_proof(
     let is_valid = cryptographic_proof_valid && batch_details_match_expected;
 
     let verification_message = if is_valid {
-        format!(
-            "✅ LOAN BATCH PROCESSING VERIFIED: {} transactions processed at timestamp {} (cryptographically verified)",
-            actual_transaction_count, actual_batch_timestamp
-        )
+        format!("✅ LOAN BATCH PROCESSING VERIFIED: {actual_transaction_count} transactions processed at timestamp {actual_batch_timestamp} (cryptographically verified)")
     } else {
         format!(
             "❌ Loan batch verification failed: Expected {} txs @ {}, got {} txs @ {}",

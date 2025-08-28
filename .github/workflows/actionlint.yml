@@ -24,7 +24,7 @@ jobs:
         run: |
           # Install pipx for pyflakes installation
           python3 -m pip install --user pipx
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: actionlint
         id: actionlint

@@ -178,7 +178,7 @@ async fn submit_to_sindri_for_proving(initial_state: &LoanState, batch: &LoanBat
 
     // Get circuit name with configurable tag from environment
     let circuit_tag = env::var("SINDRI_CIRCUIT_TAG").unwrap_or_else(|_| "latest".to_string());
-    let circuit_name = format!("arda-credit:{}", circuit_tag);
+    let circuit_name = format!("arda-credit:{circuit_tag}");
 
     info!("📋 Using circuit: {} (tag: {})", circuit_name, circuit_tag);
 
@@ -239,24 +239,21 @@ fn analyze_proof_output(proof: &sp1_sdk::SP1ProofWithPublicValues) -> Result<()>
     info!("📤 Public outputs (what goes on-chain):");
     info!(
         "  Previous state root: 0x{}",
-        hex::encode(&output.previous_state_root)
+        hex::encode(output.previous_state_root)
     );
-    info!(
-        "  New state root: 0x{}",
-        hex::encode(&output.new_state_root)
-    );
+    info!("  New state root: 0x{}", hex::encode(output.new_state_root));
     info!("  Transaction count: {}", output.transaction_count);
     info!("  Batch timestamp: {}", output.batch_timestamp);
     info!(
         "  Transaction types hash: 0x{}",
-        hex::encode(&output.transaction_types_hash)
+        hex::encode(output.transaction_types_hash)
     );
 
     // Verify state transition occurred
     if output.previous_state_root != output.new_state_root {
         info!("✅ State transition verified:");
-        let prev_hex = hex::encode(&output.previous_state_root);
-        let new_hex = hex::encode(&output.new_state_root);
+        let prev_hex = hex::encode(output.previous_state_root);
+        let new_hex = hex::encode(output.new_state_root);
         info!(
             "  State successfully changed from 0x{} to 0x{}",
             &prev_hex[..16],
@@ -276,7 +273,7 @@ fn analyze_proof_output(proof: &sp1_sdk::SP1ProofWithPublicValues) -> Result<()>
 /// Create a comprehensive test scenario demonstrating the loan lifecycle
 fn create_test_loan_scenario() -> (LoanState, LoanBatch) {
     let batch_id = [1u8; 32];
-    let batch_timestamp = 1640995200; // January 1, 2022
+    let batch_timestamp = 1_640_995_200; // January 1, 2022
 
     // Create test user IDs
     let alice_uuid = uuid::Uuid::new_v4();

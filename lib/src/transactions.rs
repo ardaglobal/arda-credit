@@ -13,6 +13,7 @@ pub struct MetadataArray {
 
 impl MetadataArray {
     /// Create empty metadata
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             data: vec![0u8; 64],
@@ -20,6 +21,7 @@ impl MetadataArray {
     }
 
     /// Create metadata from bytes (truncates if too long, pads if too short)
+    #[must_use]
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let mut data = vec![0u8; 64];
         let len = bytes.len().min(64);
@@ -28,6 +30,7 @@ impl MetadataArray {
     }
 
     /// Get the inner byte array as a slice
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
     }
@@ -52,6 +55,7 @@ pub enum TransactionType {
 
 impl TransactionType {
     /// Check if transaction type requires KYC
+    #[must_use]
     pub const fn requires_kyc(&self) -> bool {
         matches!(
             self,
@@ -60,6 +64,7 @@ impl TransactionType {
     }
 
     /// Check if transaction type is monetary
+    #[must_use]
     pub const fn is_monetary(&self) -> bool {
         matches!(self, Self::LoanOrigination | Self::LoanPayment)
     }
