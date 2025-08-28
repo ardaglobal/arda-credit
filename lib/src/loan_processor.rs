@@ -4,7 +4,9 @@
 //! the SP1 zkVM. It processes batches of mixed transaction types while maintaining
 //! privacy guarantees.
 
-use crate::balance::{BalanceError, BalanceState, BalanceUpdate, BalanceUpdateType};
+#[cfg(test)]
+use crate::balance::BalanceUpdateType;
+use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
 use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
@@ -259,11 +261,13 @@ impl GlobalLoanState {
     }
 
     /// Get user's current balance
+    #[must_use]
     pub fn get_user_balance(&self, user_id: &[u8; 32]) -> u128 {
         self.balance_state.get_balance(user_id)
     }
 
     /// Get balance update history for a user
+    #[must_use]
     pub fn get_user_balance_history(
         &self,
         user_id: &[u8; 32],
@@ -273,17 +277,22 @@ impl GlobalLoanState {
     }
 
     /// Get balance updates for a specific loan
+    #[must_use]
     pub fn get_loan_balance_updates(&self, loan_id: &[u8; 32]) -> Vec<&BalanceUpdate> {
         self.balance_state.get_loan_balance_updates(loan_id)
     }
 
     /// Get total value of all user balances
+    #[must_use]
     pub fn compute_total_user_balance(&self) -> u128 {
         self.balance_state.compute_total_balance()
     }
 }
 
 /// Process a complete loan batch and return the state transition
+///
+/// # Errors
+/// Returns `ProcessingError` if batch processing fails due to validation or state transition errors.
 pub fn process_loan_batch(
     initial_state: GlobalLoanState,
     batch: &LoanBatch,
@@ -302,6 +311,9 @@ pub fn process_loan_batch(
 }
 
 /// Validate a loan transaction before processing
+///
+/// # Errors
+/// Returns `ProcessingError` if transaction validation fails.
 pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), ProcessingError> {
     // Basic validation
     match transaction.transaction_type {
@@ -333,6 +345,9 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
 }
 
 /// Validate a loan transaction with state context for temporal ordering
+///
+/// # Errors
+/// Returns `ProcessingError` if transaction validation or temporal ordering fails.
 pub fn validate_transaction_with_state(
     transaction: &LoanTransaction,
     current_state: &GlobalLoanState,
@@ -356,10 +371,10 @@ fn validate_timestamp_bounds(timestamp: u64) -> Result<(), ProcessingError> {
     // Define reasonable bounds for loan system timestamps
     // Min: January 1, 2020 (1577836800)
     // Max: January 1, 2030 (1893456000) - 10 years from now for reasonable future limit
-    const MIN_TIMESTAMP: u64 = 1577836800; // Jan 1, 2020
-    const MAX_TIMESTAMP: u64 = 1893456000; // Jan 1, 2030
+    const MIN_TIMESTAMP: u64 = 1_577_836_800; // Jan 1, 2020
+    const MAX_TIMESTAMP: u64 = 1_893_456_000; // Jan 1, 2030
 
-    if timestamp < MIN_TIMESTAMP || timestamp > MAX_TIMESTAMP {
+    if !(MIN_TIMESTAMP..=MAX_TIMESTAMP).contains(&timestamp) {
         return Err(ProcessingError::InvalidTimestamp {
             timestamp,
             min_timestamp: MIN_TIMESTAMP,
@@ -399,7 +414,7 @@ pub type LoanState = GlobalLoanState;
 // NEW LOAN OPERATIONS INTERFACE
 // ============================================================================
 
-/// Operations for loan processing (alternative to LoanTransaction)
+/// Operations for loan processing (alternative to `LoanTransaction`)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoanOperation {
     /// Create a new loan
@@ -431,22 +446,24 @@ pub enum LoanOperation {
 
 impl LoanOperation {
     /// Get the transaction type for this operation
-    pub fn transaction_type(&self) -> u8 {
+    #[must_use]
+    pub const fn transaction_type(&self) -> u8 {
         match self {
-            LoanOperation::LoanCreation { .. } => 1,
-            LoanOperation::Payment { .. } => 2,
-            LoanOperation::LoanFunding { .. } => 3,
-            LoanOperation::BalanceUpdate { .. } => 4,
+            Self::LoanCreation { .. } => 1,
+            Self::Payment { .. } => 2,
+            Self::LoanFunding { .. } => 3,
+            Self::BalanceUpdate { .. } => 4,
         }
     }
 
     /// Convert operation to nullifier hash for Merkle tree
+    #[must_use]
     pub fn to_nullifier(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
 
         let mut hasher = Sha256::new();
         match self {
-            LoanOperation::LoanCreation {
+            Self::LoanCreation {
                 loan_id,
                 borrower_id,
                 lender_id,
@@ -457,9 +474,9 @@ impl LoanOperation {
                 hasher.update(loan_id);
                 hasher.update(borrower_id);
                 hasher.update(lender_id);
-                hasher.update(&principal.to_le_bytes());
+                hasher.update(principal.to_le_bytes());
             }
-            LoanOperation::Payment {
+            Self::Payment {
                 loan_id,
                 payer_id,
                 amount,
@@ -467,20 +484,20 @@ impl LoanOperation {
                 hasher.update(b"payment");
                 hasher.update(loan_id);
                 hasher.update(payer_id);
-                hasher.update(&amount.to_le_bytes());
+                hasher.update(amount.to_le_bytes());
             }
-            LoanOperation::LoanFunding { loan_id, lender_id } => {
+            Self::LoanFunding { loan_id, lender_id } => {
                 hasher.update(b"funding");
                 hasher.update(loan_id);
                 hasher.update(lender_id);
             }
-            LoanOperation::BalanceUpdate {
+            Self::BalanceUpdate {
                 loan_id,
                 new_balance,
             } => {
                 hasher.update(b"balance_update");
                 hasher.update(loan_id);
-                hasher.update(&new_balance.to_le_bytes());
+                hasher.update(new_balance.to_le_bytes());
             }
         }
         hasher.finalize().into()
@@ -496,7 +513,8 @@ pub struct MerkleTree {
 
 impl MerkleTree {
     /// Create a new Merkle tree from an existing root
-    pub fn from_root(root: [u8; 32]) -> Self {
+    #[must_use]
+    pub const fn from_root(root: [u8; 32]) -> Self {
         Self {
             root,
             leaves: Vec::new(),
@@ -510,17 +528,19 @@ impl MerkleTree {
     }
 
     /// Get the current root hash
-    pub fn root(&self) -> [u8; 32] {
+    #[must_use]
+    pub const fn root(&self) -> [u8; 32] {
         self.root
     }
 
     /// Compute the Merkle root from all leaves
     fn compute_root(&self) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+
         if self.leaves.is_empty() {
             return [0u8; 32];
         }
 
-        use sha2::{Digest, Sha256};
         let mut current_level = self.leaves.clone();
 
         while current_level.len() > 1 {
@@ -528,11 +548,11 @@ impl MerkleTree {
 
             for chunk in current_level.chunks(2) {
                 let mut hasher = Sha256::new();
-                hasher.update(&chunk[0]);
+                hasher.update(chunk[0]);
                 if chunk.len() > 1 {
-                    hasher.update(&chunk[1]);
+                    hasher.update(chunk[1]);
                 } else {
-                    hasher.update(&chunk[0]); // Duplicate if odd number
+                    hasher.update(chunk[0]); // Duplicate if odd number
                 }
                 next_level.push(hasher.finalize().into());
             }
@@ -545,6 +565,7 @@ impl MerkleTree {
 }
 
 /// Process a batch of loan operations and return public state transition
+#[must_use]
 pub fn process_loan_operations(
     previous_balance: u128,
     operations: &[LoanOperation],
@@ -558,7 +579,7 @@ pub fn process_loan_operations(
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     for operation in operations {
-        hasher.update(&[operation.transaction_type()]);
+        hasher.update([operation.transaction_type()]);
     }
     let transaction_types_hash: [u8; 32] = hasher.finalize().into();
 
@@ -577,7 +598,7 @@ pub fn process_loan_operations(
     crate::LoanBatchPublicValues {
         previous_state_root: previous_root.into(),
         new_state_root: new_root.into(),
-        transaction_count: operations.len() as u32,
+        transaction_count: u32::try_from(operations.len()).unwrap_or(u32::MAX),
         batch_timestamp,
         transaction_types_hash: transaction_types_hash.into(),
         previousTotalBalance: previous_balance,
@@ -586,7 +607,7 @@ pub fn process_loan_operations(
 }
 
 /// Apply a loan operation to the current balance
-fn apply_operation_to_balance(balance: u128, operation: &LoanOperation) -> u128 {
+const fn apply_operation_to_balance(balance: u128, operation: &LoanOperation) -> u128 {
     match operation {
         LoanOperation::LoanCreation { principal, .. } => balance.saturating_add(*principal),
         LoanOperation::Payment { amount, .. } => balance.saturating_add(*amount),
@@ -609,7 +630,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1640995200, // January 1, 2022 - valid timestamp
+            created_at: 1_640_995_200, // January 1, 2022 - valid timestamp
             metadata: MetadataArray::from_bytes(&[user_type]),
         }
     }
@@ -621,8 +642,8 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycVerification,
             amount: 0,
-            created_at: 1640995300, // January 1, 2022 - valid timestamp
-            metadata: MetadataArray::from_bytes(&[if approved { 1 } else { 0 }]),
+            created_at: 1_640_995_300, // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::from_bytes(&[u8::from(approved)]),
         }
     }
 
@@ -642,7 +663,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanOrigination,
             amount,
-            created_at: 1640995400, // January 1, 2022 - valid timestamp
+            created_at: 1_640_995_400, // January 1, 2022 - valid timestamp
             metadata: MetadataArray::from_bytes(&metadata),
         }
     }
@@ -682,9 +703,9 @@ mod tests {
             None,
             None,
             BalanceUpdateType::ManualAdjustment,
-            100000,     // Give enough for the 50000 loan
-            0,          // previous balance
-            1640995100, // before loan origination
+            100_000,       // Give enough for the 50000 loan
+            0,             // previous balance
+            1_640_995_100, // before loan origination
             Some("Test funding".to_string()),
         )
         .unwrap();
@@ -704,8 +725,8 @@ mod tests {
             user_id: borrower_id,
             loan_id,
             transaction_type: TransactionType::LoanPayment,
-            amount: 25000,          // Partial payment
-            created_at: 1640995500, // January 1, 2022 - valid timestamp
+            amount: 25000,             // Partial payment
+            created_at: 1_640_995_500, // January 1, 2022 - valid timestamp
             metadata: MetadataArray::empty(),
         };
         state.process_transaction(&payment).unwrap();
@@ -720,8 +741,8 @@ mod tests {
             user_id: borrower_id,
             loan_id,
             transaction_type: TransactionType::LoanPayment,
-            amount: 25000,          // Final payment
-            created_at: 1640995600, // January 1, 2022 - valid timestamp
+            amount: 25000,             // Final payment
+            created_at: 1_640_995_600, // January 1, 2022 - valid timestamp
             metadata: MetadataArray::empty(),
         };
         state.process_transaction(&final_payment).unwrap();
@@ -737,7 +758,7 @@ mod tests {
             loan_id,
             transaction_type: TransactionType::LoanCloseout,
             amount: 0,
-            created_at: 1640995700, // January 1, 2022 - valid timestamp
+            created_at: 1_640_995_700, // January 1, 2022 - valid timestamp
             metadata: MetadataArray::empty(),
         };
         state.process_transaction(&closeout).unwrap();
@@ -792,7 +813,7 @@ mod tests {
                 create_kyc_verification(lender_id, true),
             ],
             previous_state_root: [0u8; 32],
-            created_at: 1640995200, // January 1, 2022 - valid timestamp
+            created_at: 1_640_995_200, // January 1, 2022 - valid timestamp
         };
 
         let result = state.process_batch(&batch);
@@ -968,7 +989,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1640995200, // January 1, 2022 - valid
+            created_at: 1_640_995_200, // January 1, 2022 - valid
             metadata: MetadataArray::empty(),
         };
         assert!(validate_transaction(&valid_transaction).is_ok());
@@ -980,7 +1001,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1000000000, // September 9, 2001 - too old
+            created_at: 1_000_000_000, // September 9, 2001 - too old
             metadata: MetadataArray::empty(),
         };
         assert!(validate_transaction(&old_transaction).is_err());
@@ -992,7 +1013,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 2000000000, // May 18, 2033 - too far in future
+            created_at: 2_000_000_000, // May 18, 2033 - too far in future
             metadata: MetadataArray::empty(),
         };
         assert!(validate_transaction(&future_transaction).is_err());
@@ -1010,7 +1031,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1640995200, // Valid timestamp after state
+            created_at: 1_640_995_200, // Valid timestamp after state
             metadata: MetadataArray::empty(),
         };
         assert!(validate_transaction_with_state(&newer_transaction, &state).is_ok());
@@ -1038,7 +1059,7 @@ mod tests {
                 loan_id: [0u8; 32],
                 transaction_type: TransactionType::UserRegistration,
                 amount: 0,
-                created_at: 1640995200, // Base time
+                created_at: 1_640_995_200, // Base time
                 metadata: MetadataArray::empty(),
             },
             LoanTransaction {
@@ -1047,7 +1068,7 @@ mod tests {
                 loan_id: [0u8; 32],
                 transaction_type: TransactionType::UserRegistration,
                 amount: 0,
-                created_at: 1640995300, // 100 seconds later
+                created_at: 1_640_995_300, // 100 seconds later
                 metadata: MetadataArray::empty(),
             },
         ];
@@ -1056,7 +1077,7 @@ mod tests {
             batch_id: [1u8; 32],
             transactions,
             previous_state_root: [0u8; 32],
-            created_at: 1640995200,
+            created_at: 1_640_995_200,
         };
         assert!(validate_batch_temporal_ordering(&valid_batch).is_ok());
 
@@ -1068,7 +1089,7 @@ mod tests {
                 loan_id: [0u8; 32],
                 transaction_type: TransactionType::UserRegistration,
                 amount: 0,
-                created_at: 1640995300, // Later time first
+                created_at: 1_640_995_300, // Later time first
                 metadata: MetadataArray::empty(),
             },
             LoanTransaction {
@@ -1077,7 +1098,7 @@ mod tests {
                 loan_id: [0u8; 32],
                 transaction_type: TransactionType::UserRegistration,
                 amount: 0,
-                created_at: 1640995200, // Earlier time second - invalid!
+                created_at: 1_640_995_200, // Earlier time second - invalid!
                 metadata: MetadataArray::empty(),
             },
         ];
@@ -1086,7 +1107,7 @@ mod tests {
             batch_id: [1u8; 32],
             transactions: invalid_transactions,
             previous_state_root: [0u8; 32],
-            created_at: 1640995200,
+            created_at: 1_640_995_200,
         };
         assert!(validate_batch_temporal_ordering(&invalid_batch).is_err());
     }
@@ -1095,7 +1116,7 @@ mod tests {
     fn test_process_loan_operations() {
         let previous_balance = 100_000u128; // $1000
         let previous_root = [0u8; 32];
-        let batch_timestamp = 1640995200;
+        let batch_timestamp = 1_640_995_200;
 
         let operations = vec![
             LoanOperation::LoanCreation {
@@ -1213,9 +1234,9 @@ mod tests {
             interest_rate: 750,
             term_months: 36,
             loan_status: LoanStatus::Active,
-            originated_at: 1640995200,
-            funded_at: 1640995200,
-            maturity_date: 1640995200 + (36 * 30 * 24 * 60 * 60),
+            originated_at: 1_640_995_200,
+            funded_at: 1_640_995_200,
+            maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
         };
 
         // Loan 2: Originated with $200 outstanding balance
@@ -1228,9 +1249,9 @@ mod tests {
             interest_rate: 750,
             term_months: 36,
             loan_status: LoanStatus::Originated,
-            originated_at: 1640995200,
+            originated_at: 1_640_995_200,
             funded_at: 0,
-            maturity_date: 1640995200 + (36 * 30 * 24 * 60 * 60),
+            maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
         };
 
         // Loan 3: PaidOff (should not count toward balance)
@@ -1243,9 +1264,9 @@ mod tests {
             interest_rate: 750,
             term_months: 36,
             loan_status: LoanStatus::PaidOff,
-            originated_at: 1640995200,
-            funded_at: 1640995200,
-            maturity_date: 1640995200 + (36 * 30 * 24 * 60 * 60),
+            originated_at: 1_640_995_200,
+            funded_at: 1_640_995_200,
+            maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
         };
 
         state.loans.insert(loan1_id, loan1);

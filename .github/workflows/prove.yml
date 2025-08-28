@@ -9,6 +9,11 @@ on:
 env:
   FOUNDRY_PROFILE: ci
 
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     strategy:
@@ -24,16 +29,31 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install rust toolchain
+      - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/circuits/plonk/
+            ~/.sp1/circuits/groth16/
+          key: rust-1.81.0-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-
 
       - name: Install SP1 toolchain
         run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --token "${{ secrets.SP1_PAT }}"
           ~/.sp1/bin/cargo-prove prove --version
 
-      - name: Build SP1 program
+      - name: Build SP1 Program
         run: |
           cd program
           ~/.sp1/bin/cargo-prove prove build

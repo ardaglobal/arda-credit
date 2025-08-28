@@ -23,7 +23,7 @@ mod consistency_tests {
             loan_id: [2u8; 32],
             transaction_type: TransactionType::LoanPayment,
             amount: 15,
-            created_at: 1000000000,
+            created_at: 1_000_000_000,
             metadata: MetadataArray::empty(),
         };
 
@@ -45,7 +45,7 @@ mod consistency_tests {
         );
 
         // Test different transactions produce different nullifiers
-        let mut transaction2 = transaction.clone();
+        let mut transaction2 = transaction;
         transaction2.amount = 16;
         let nullifier3 = ads.transaction_to_nullifier(&transaction2);
         assert_ne!(
@@ -93,8 +93,8 @@ mod consistency_tests {
             assert!(nullifier > 0, "All nullifiers should be positive");
         }
 
-        let mut sorted_nullifiers = transition.nullifiers_inserted.clone();
-        sorted_nullifiers.sort();
+        let mut sorted_nullifiers = transition.nullifiers_inserted;
+        sorted_nullifiers.sort_unstable();
         sorted_nullifiers.dedup();
         assert_eq!(
             sorted_nullifiers.len(),
@@ -214,10 +214,10 @@ mod consistency_tests {
             .collect();
 
         // Same transactions should generate same nullifiers regardless of order
-        let mut sorted_nullifiers1 = nullifiers1.clone();
-        sorted_nullifiers1.sort();
-        let mut sorted_nullifiers2 = nullifiers2.clone();
-        sorted_nullifiers2.sort();
+        let mut sorted_nullifiers1 = nullifiers1;
+        sorted_nullifiers1.sort_unstable();
+        let mut sorted_nullifiers2 = nullifiers2;
+        sorted_nullifiers2.sort_unstable();
         assert_eq!(
             sorted_nullifiers1, sorted_nullifiers2,
             "Same transactions should produce same set of nullifiers"

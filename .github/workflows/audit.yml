@@ -1,3 +1,4 @@
+# Developer note: This workflow does not pass locally with act, but does pass on GitHub Actions.
 name: Security audit
 permissions:
   checks: write
@@ -13,6 +14,11 @@ on:
       - "**/Cargo.toml"
       - "**/Cargo.lock"
 
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   audit:
     runs-on:
@@ -21,7 +27,7 @@ jobs:
       - instance-size=small
     steps:
       - uses: actions/checkout@v5
-      - name: Install Rust toolchain
+      - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
       - uses: rustsec/audit-check@v2
         with:

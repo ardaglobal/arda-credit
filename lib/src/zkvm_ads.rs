@@ -59,7 +59,8 @@ pub struct StateTransition {
 
 impl ZkVMAds {
     /// Create new empty ADS state
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             tree_height: 32,
             nullifiers: Vec::new(),
@@ -69,6 +70,9 @@ impl ZkVMAds {
     }
 
     /// Process transactions and return state transition
+    ///
+    /// # Errors
+    /// Returns error string if nullifier insertion fails due to duplicates or invalid data.
     pub fn process_transactions(
         &mut self,
         transactions: &[crate::LoanTransaction],
@@ -93,13 +97,14 @@ impl ZkVMAds {
     }
 
     /// Convert transaction to nullifier value
-    /// CRITICAL: This must match exactly the logic in db/src/background_processor.rs
+    /// CRITICAL: This must match exactly the logic in `db/src/background_processor.rs`
+    #[must_use]
     pub fn transaction_to_nullifier(&self, transaction: &crate::LoanTransaction) -> i64 {
         self.transaction_to_nullifier_with_prefix(transaction, transaction_prefixes::LEGACY_DEFAULT)
     }
 
     /// Convert transaction to nullifier with specific prefix
-    /// CRITICAL: This must match exactly db/src/background_processor.rs::transaction_to_nullifier_with_prefix
+    /// CRITICAL: This must match exactly `db/src/background_processor.rs::transaction_to_nullifier_with_prefix`
     fn transaction_to_nullifier_with_prefix(
         &self,
         transaction: &crate::LoanTransaction,
@@ -114,7 +119,7 @@ impl ZkVMAds {
         // We need to derive equivalent values from LoanTransaction
 
         // Hash transaction amount (convert from u64 to i32 for compatibility)
-        let amount_i32 = transaction.amount as i32;
+        let amount_i32 = i32::try_from(transaction.amount).unwrap_or(i32::MAX);
         hasher.update(&amount_i32.to_le_bytes());
 
         // Hash a unique identifier derived from transaction_id
@@ -140,20 +145,21 @@ impl ZkVMAds {
 
         // Convert to positive value within prefix range
         // Take modulo to fit within the prefix range (999,999,999), then add 1 to avoid zero
-        let base_nullifier =
-            ((hash_u64 % (transaction_prefixes::PREFIX_RANGE_SIZE as u64)) as i64) + 1;
+        let base_nullifier = i64::try_from(
+            hash_u64 % u64::try_from(transaction_prefixes::PREFIX_RANGE_SIZE).unwrap_or(u64::MAX),
+        )
+        .unwrap_or(i64::MAX)
+            + 1;
 
         // Apply prefix for namespace isolation
-        let final_nullifier = prefix + base_nullifier;
-
-        final_nullifier
+        prefix + base_nullifier
     }
 
     /// Insert nullifier into indexed Merkle tree
     fn insert_nullifier(&mut self, nullifier: i64) -> Result<(), String> {
         // Check for duplicate nullifier
         if self.nullifiers.iter().any(|n| n.value == nullifier) {
-            return Err(format!("Nullifier {} already exists", nullifier));
+            return Err(format!("Nullifier {nullifier} already exists"));
         }
 
         // Find insertion point using binary search
@@ -168,7 +174,7 @@ impl ZkVMAds {
         };
 
         // Update tree structure (this is the complex part)
-        self.update_tree_structure(insertion_index, new_nullifier)?;
+        self.update_tree_structure(insertion_index, new_nullifier);
 
         self.nullifier_count += 1;
         self.next_available_index += 1;
@@ -186,17 +192,13 @@ impl ZkVMAds {
 
     /// Update tree structure after nullifier insertion
     /// This implements the indexed Merkle tree insertion logic
-    fn update_tree_structure(
-        &mut self,
-        insertion_index: usize,
-        mut nullifier: ZkVMNullifier,
-    ) -> Result<(), String> {
+    fn update_tree_structure(&mut self, insertion_index: usize, mut nullifier: ZkVMNullifier) {
         // Handle empty tree case
         if self.nullifiers.is_empty() {
             nullifier.next_value = 0; // 0 means this is the maximum value
             nullifier.next_index = None;
             self.nullifiers.push(nullifier);
-            return Ok(());
+            return;
         }
 
         // Set next pointers for the new nullifier
@@ -220,11 +222,10 @@ impl ZkVMAds {
 
         // Insert the new nullifier at the correct position
         self.nullifiers.insert(insertion_index, nullifier);
-
-        Ok(())
     }
 
     /// Compute current Merkle root
+    #[must_use]
     pub fn compute_merkle_root(&self) -> [u8; 32] {
         if self.nullifiers.is_empty() {
             return [0u8; 32]; // Empty tree root
@@ -234,7 +235,7 @@ impl ZkVMAds {
         let leaves: Vec<[u8; 32]> = self
             .nullifiers
             .iter()
-            .map(|n| self.hash_nullifier(n))
+            .map(|n| Self::hash_nullifier(n))
             .collect();
 
         self.compute_merkle_root_from_leaves(&leaves)
@@ -242,7 +243,7 @@ impl ZkVMAds {
 
     /// Hash a nullifier for Merkle tree leaf
     /// This creates a leaf node hash from nullifier data
-    fn hash_nullifier(&self, nullifier: &ZkVMNullifier) -> [u8; 32] {
+    fn hash_nullifier(nullifier: &ZkVMNullifier) -> [u8; 32] {
         let mut hasher = Sha256::new();
         hasher.update(nullifier.value.to_le_bytes());
         hasher.update(nullifier.tree_index.to_le_bytes());
@@ -273,10 +274,10 @@ impl ZkVMAds {
             // Process pairs of nodes
             for chunk in current_level.chunks(2) {
                 let hash = if chunk.len() == 2 {
-                    self.hash_pair(chunk[0], chunk[1])
+                    Self::hash_pair(chunk[0], chunk[1])
                 } else {
                     // Odd number of nodes, hash with zero padding
-                    self.hash_pair(chunk[0], [0u8; 32])
+                    Self::hash_pair(chunk[0], [0u8; 32])
                 };
                 next_level.push(hash);
             }
@@ -288,7 +289,7 @@ impl ZkVMAds {
     }
 
     /// Hash two nodes together for parent node
-    fn hash_pair(&self, left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
+    fn hash_pair(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
         let mut hasher = Sha256::new();
         hasher.update(left);
         hasher.update(right);
@@ -296,11 +297,13 @@ impl ZkVMAds {
     }
 
     /// Get the current root hash
+    #[must_use]
     pub fn get_root(&self) -> [u8; 32] {
         self.compute_merkle_root()
     }
 
     /// Get current state as vector for serialization
+    #[must_use]
     pub fn get_nullifiers(&self) -> &[ZkVMNullifier] {
         &self.nullifiers
     }
@@ -327,7 +330,7 @@ mod tests {
             loan_id: [2u8; 32],
             transaction_type: TransactionType::LoanPayment,
             amount,
-            created_at: 1000000000, // Fixed timestamp for deterministic testing
+            created_at: 1_000_000_000, // Fixed timestamp for deterministic testing
             metadata: MetadataArray::empty(),
         }
     }

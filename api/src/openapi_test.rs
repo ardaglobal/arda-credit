@@ -1,5 +1,5 @@
 // Test file to validate OpenAPI implementation compiles correctly
-use crate::rest::{get_openapi_spec, ApiDoc};
+use crate::rest::get_openapi_spec;
 
 #[cfg(test)]
 mod tests {
@@ -14,7 +14,7 @@ mod tests {
         // Verify we have some components defined
         assert!(spec.components.is_some());
         let components = spec.components.unwrap();
-        assert!(components.schemas.is_some());
+        assert!(!components.schemas.is_empty());
 
         // Verify we have some paths defined
         assert!(!spec.paths.paths.is_empty());
