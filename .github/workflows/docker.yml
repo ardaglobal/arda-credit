@@ -19,9 +19,10 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
-      # AWS Codebuild Trigger
-      # - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=large
     permissions:
       contents: read
       packages: write
