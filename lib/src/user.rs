@@ -39,6 +39,7 @@ pub struct User {
 
 impl User {
     /// Check if user is KYC approved
+    #[must_use]
     pub const fn is_kyc_approved(&self) -> bool {
         matches!(self.kyc_status, KycStatus::Approved)
     }
@@ -67,6 +68,7 @@ pub struct UserState {
 
 impl UserState {
     /// Create a new empty user state
+    #[must_use]
     pub fn new() -> Self {
         Self {
             users: HashMap::new(),
@@ -74,6 +76,9 @@ impl UserState {
     }
 
     /// Process user registration transaction
+    ///
+    /// # Errors
+    /// Returns `UserError` if registration fails due to duplicate user or invalid data.
     pub fn process_user_registration(
         &mut self,
         transaction: &LoanTransaction,
@@ -111,6 +116,9 @@ impl UserState {
     }
 
     /// Process KYC submission transaction
+    ///
+    /// # Errors
+    /// Returns `UserError` if KYC submission fails due to user not found or invalid transaction.
     pub fn process_kyc_submission(
         &mut self,
         transaction: &LoanTransaction,
@@ -134,6 +142,9 @@ impl UserState {
     }
 
     /// Process KYC verification transaction (admin operation)
+    ///
+    /// # Errors
+    /// Returns `UserError` if KYC verification fails due to user not found or invalid transaction.
     pub fn process_kyc_verification(
         &mut self,
         transaction: &LoanTransaction,
@@ -163,11 +174,15 @@ impl UserState {
     }
 
     /// Get user by ID (read-only)
+    #[must_use]
     pub fn get_user(&self, user_id: &[u8; 32]) -> Option<&User> {
         self.users.get(user_id)
     }
 
     /// Check if user exists and is KYC approved
+    ///
+    /// # Errors
+    /// Returns `UserError` if user is not found.
     pub fn is_user_kyc_approved(&self, user_id: &[u8; 32]) -> Result<bool, UserError> {
         let user = self
             .users
@@ -198,7 +213,7 @@ mod tests {
             loan_id: [0u8; 32], // Should be all zeros for user registration
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1234567890,
+            created_at: 1_234_567_890,
             metadata: MetadataArray::from_bytes(&[user_type]),
         }
     }
@@ -249,7 +264,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
-            created_at: 1234567900,
+            created_at: 1_234_567_900,
             metadata: MetadataArray::empty(),
         };
 
@@ -258,7 +273,7 @@ mod tests {
 
         let user = user_state.get_user(&user_id).unwrap();
         assert_eq!(user.kyc_status, KycStatus::Pending);
-        assert_eq!(user.kyc_submitted_at, 1234567900);
+        assert_eq!(user.kyc_submitted_at, 1_234_567_900);
     }
 
     #[test]
@@ -278,7 +293,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
-            created_at: 1234567900,
+            created_at: 1_234_567_900,
             metadata: MetadataArray::empty(),
         };
         user_state.process_kyc_submission(&kyc_submission).unwrap();
@@ -290,7 +305,7 @@ mod tests {
             loan_id: [0u8; 32],
             transaction_type: TransactionType::KycVerification,
             amount: 0,
-            created_at: 1234567910,
+            created_at: 1_234_567_910,
             metadata: MetadataArray::from_bytes(&[1u8]), // 1 = approved
         };
 
@@ -299,7 +314,7 @@ mod tests {
 
         let user = user_state.get_user(&user_id).unwrap();
         assert_eq!(user.kyc_status, KycStatus::Approved);
-        assert_eq!(user.kyc_verified_at, 1234567910);
+        assert_eq!(user.kyc_verified_at, 1_234_567_910);
         assert!(user.is_kyc_approved());
     }
 }

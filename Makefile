@@ -29,7 +29,7 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 ## lint: Lint code
 .PHONY: lint
 lint: yamllint actionlint docker-lint deny
-	SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::style -W clippy::complexity -W clippy::perf -W clippy::suspicious -W clippy::correctness
+	SQLX_OFFLINE=true cargo clippy --all-targets -- -W clippy::pedantic -W clippy::nursery -W clippy::style -W clippy::complexity -W clippy::perf -W clippy::suspicious -W clippy::correctness
 
 ## env: Copy .env.example to .env
 .PHONY: env

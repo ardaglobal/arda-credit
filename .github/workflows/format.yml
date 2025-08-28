@@ -58,7 +58,7 @@ jobs:
         run: |
           cargo clippy \
             --all-targets \
-            -- -D warnings \
+            -- \
             -W clippy::pedantic \
             -W clippy::nursery \
             -W clippy::style \

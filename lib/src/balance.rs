@@ -521,8 +521,8 @@ mod tests {
         let loan_id = [3u8; 32];
         let tx_id = [4u8; 32];
         let amount = 50000u128; // $500.00
-        let previous_balance = 100000u128; // $1000.00
-        let timestamp = 1640995200;
+        let previous_balance = 100_000_u128; // $1000.00
+        let timestamp = 1_640_995_200;
 
         let update = BalanceUpdate::new(
             update_id,
@@ -549,7 +549,7 @@ mod tests {
         let update_id = [1u8; 32];
         let user_id = [2u8; 32];
         let amount = 30000u128; // $300.00
-        let previous_balance = 100000u128; // $1000.00
+        let previous_balance = 100_000_u128; // $1000.00
 
         let update = BalanceUpdate::new(
             update_id,
@@ -559,13 +559,13 @@ mod tests {
             BalanceUpdateType::DebitFromOrigination,
             amount,
             previous_balance,
-            1640995200,
+            1_640_995_200,
             None,
         )
         .unwrap();
 
         assert_eq!(update.new_balance, previous_balance - amount);
-        assert_eq!(update.signed_change(), -(amount as i128));
+        assert_eq!(update.signed_change(), -i128::try_from(amount).unwrap());
     }
 
     #[test]
@@ -576,9 +576,9 @@ mod tests {
             None,
             None,
             BalanceUpdateType::DebitFromOrigination,
-            150000u128, // More than available
-            100000u128, // Available balance
-            1640995200,
+            150_000_u128, // More than available
+            100_000_u128, // Available balance
+            1_640_995_200,
             None,
         );
 
@@ -605,7 +605,7 @@ mod tests {
             BalanceUpdateType::CreditFromPayment,
             50000u128,
             0, // Previous balance
-            1640995200,
+            1_640_995_200,
             None,
         )
         .unwrap();
@@ -636,7 +636,7 @@ mod tests {
                 payer_id,
                 recipient_id,
                 amount,
-                1640995200,
+                1_640_995_200,
             )
             .unwrap();
 
@@ -659,7 +659,7 @@ mod tests {
         let loan_id = [2u8; 32];
         let borrower_id = [3u8; 32];
         let lender_id = [4u8; 32];
-        let amount = 100000u128;
+        let amount = 100_000_u128;
 
         // First, give the lender sufficient funds to originate the loan
         let initial_funding = BalanceUpdate::new(
@@ -670,7 +670,7 @@ mod tests {
             BalanceUpdateType::ManualAdjustment,
             amount + 10000, // Give extra funds for safety
             0,              // previous balance is 0
-            1640995100,     // timestamp before origination
+            1_640_995_100,  // timestamp before origination
             Some("Initial funding for test".to_string()),
         )
         .unwrap();
@@ -684,7 +684,7 @@ mod tests {
                 borrower_id,
                 lender_id,
                 amount,
-                1640995200,
+                1_640_995_200,
             )
             .unwrap();
 
@@ -718,8 +718,8 @@ mod tests {
             Some([4u8; 32]),
             BalanceUpdateType::CreditFromPayment,
             50000u128,
-            100000u128,
-            1640995200,
+            100_000_u128,
+            1_640_995_200,
             None,
         )
         .unwrap();
@@ -738,8 +738,8 @@ mod tests {
             Some([4u8; 32]),
             BalanceUpdateType::CreditFromPayment,
             50000u128,
-            100000u128,
-            1640995200,
+            100_000_u128,
+            1_640_995_200,
             None,
         )
         .unwrap();
@@ -756,8 +756,8 @@ mod tests {
             Some([4u8; 32]),
             BalanceUpdateType::CreditFromPayment,
             50000u128,
-            100000u128,
-            1640995200,
+            100_000_u128,
+            1_640_995_200,
             None,
         )
         .unwrap();
@@ -768,17 +768,18 @@ mod tests {
 
         // Calculate what the root should be with this path
         use sha2::{Digest, Sha256};
+
         let mut current_hash = balance_update.to_nullifier();
         let mut index = leaf_index;
 
         for sibling in &merkle_path {
             let mut hasher = Sha256::new();
             if index % 2 == 0 {
-                hasher.update(&current_hash);
+                hasher.update(current_hash);
                 hasher.update(sibling);
             } else {
                 hasher.update(sibling);
-                hasher.update(&current_hash);
+                hasher.update(current_hash);
             }
             current_hash = hasher.finalize().into();
             index /= 2;

@@ -13,7 +13,9 @@ impl TestDatabase {
 
         // Use environment-compatible connection URL (supports both localhost and 127.0.0.1)
         let admin_url = env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgresql://postgres:password@127.0.0.1:5432/postgres".to_string())
+            .unwrap_or_else(|_| {
+                "postgresql://postgres:password@127.0.0.1:5432/postgres".to_string()
+            })
             .replace("/arda_credit_db", "/postgres")
             .replace("/postgres?", "/postgres?"); // Handle existing query params
 
@@ -26,7 +28,11 @@ impl TestDatabase {
         admin_pool.close().await;
 
         // Extract host from admin_url for consistency
-        let host = if admin_url.contains("localhost") { "localhost" } else { "127.0.0.1" };
+        let host = if admin_url.contains("localhost") {
+            "localhost"
+        } else {
+            "127.0.0.1"
+        };
         let test_db_url = format!("postgresql://postgres:password@{host}:5432/{database_name}");
 
         env::set_var("DATABASE_URL", &test_db_url);
@@ -45,7 +51,9 @@ impl Drop for TestDatabase {
         let database_name = self.database_name.clone();
         tokio::spawn(async move {
             let admin_url = env::var("DATABASE_URL")
-                .unwrap_or_else(|_| "postgresql://postgres:password@127.0.0.1:5432/postgres".to_string())
+                .unwrap_or_else(|_| {
+                    "postgresql://postgres:password@127.0.0.1:5432/postgres".to_string()
+                })
                 .replace("/arda_credit_db", "/postgres")
                 .replace("/postgres?", "/postgres?");
 
