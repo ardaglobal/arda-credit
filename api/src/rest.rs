@@ -1252,7 +1252,7 @@ async fn get_batch_processor_stats_endpoint(
 // LOAN PROCESSING ENDPOINT HANDLERS
 // ============================================================================
 
-// ---- IDENTITY MANAGEMENT ENDPOINTS ----
+// ---- USER MANAGEMENT ENDPOINTS ----
 
 /// Register a new user identity
 #[instrument(skip(state), level = "info")]
