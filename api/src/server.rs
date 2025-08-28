@@ -228,6 +228,7 @@ impl ApiServer {
                 "/".to_string(),
                 "/api/auth/login".to_string(),
                 "/api/v1/user".to_string(), // Allow registration
+                "/api/v1/invite-code/".to_string(), // Allow invite code checking
                 "/api-docs".to_string(),    // Allow OpenAPI docs
                 "/api-docs/openapi.json".to_string(),
             ],

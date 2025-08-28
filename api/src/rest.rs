@@ -19,7 +19,7 @@ use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use arda_credit_db::{
-    create_identity_with_password, get_all_batches, get_batch_by_id, get_contract_submission_data,
+    check_invite_code, create_identity_with_password, get_all_batches, get_batch_by_id, get_contract_submission_data,
     get_current_state, get_identity_by_email, get_identity_by_id, get_pending_transactions,
     store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
     update_identity_profile, update_kyc_status, update_last_login, AuditEvent, Identity,
@@ -404,6 +404,14 @@ pub struct LogoutResponse {
     pub message: String,
 }
 
+/// Invite code validation response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct InviteCodeResponse {
+    pub code: String,
+    pub is_valid: bool,
+    pub message: String,
+}
+
 /// Response from user registration
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserResponse {
@@ -733,6 +741,7 @@ pub fn create_router(state: ApiState) -> Router {
         // Authentication endpoints
         .route("/api/auth/login", post(login_endpoint))
         .route("/api/auth/logout", post(logout_endpoint))
+        .route("/api/v1/invite-code/{code}", get(check_invite_code_endpoint))
         // Transaction operations
         .route(paths::STATE_TRANSACTIONS, post(submit_transaction_endpoint))
         .route(
@@ -1768,6 +1777,63 @@ async fn logout_endpoint(
     Ok(Json(LogoutResponse {
         message: "Logout successful. Please remove the token from client storage.".to_string(),
     }))
+}
+
+/// Check invite code validity
+#[utoipa::path(
+    get,
+    path = "/api/v1/invite-code/{code}",
+    responses(
+        (status = 200, description = "Invite code validation result", body = InviteCodeResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("code" = String, Path, description = "Invite code to validate")
+    ),
+    tag = "Authentication"
+)]
+#[instrument(skip(state), level = "info")]
+async fn check_invite_code_endpoint(
+    State(state): State<ApiState>,
+    Path(code): Path<String>,
+) -> Result<Json<InviteCodeResponse>, (StatusCode, String)> {
+    info!("🎫 API: Checking invite code: code={}", code);
+
+    // Validate input
+    if code.trim().is_empty() {
+        warn!("❌ API: Empty invite code provided");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invite code cannot be empty".to_string(),
+        ));
+    }
+
+    // Check code validity
+    match check_invite_code(&state.pool, &code).await {
+        Ok(is_valid) => {
+            let message = if is_valid {
+                "Invite code is valid"
+            } else {
+                "Invite code is invalid or expired"
+            };
+
+            info!("✅ API: Invite code check result: code={}, valid={}", code, is_valid);
+            
+            Ok(Json(InviteCodeResponse {
+                code,
+                is_valid,
+                message: message.to_string(),
+            }))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to check invite code: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to validate invite code".to_string(),
+            ))
+        }
+    }
 }
 
 /// List user identities
@@ -2815,6 +2881,7 @@ async fn get_loan_lifecycle_summary_endpoint(
         // Authentication endpoints
         login_endpoint,
         logout_endpoint,
+        check_invite_code_endpoint,
 
         // User Management endpoints
         register_user_endpoint,
@@ -2861,6 +2928,7 @@ async fn get_loan_lifecycle_summary_endpoint(
             UserSummary,
             LogoutRequest,
             LogoutResponse,
+            InviteCodeResponse,
 
             // User Management
             RegisterUserRequest,

@@ -86,6 +86,8 @@ pub use db::{
     reset_password_with_token,
     set_email_verification_token,
     set_password_reset_token,
+    // Invite code functions
+    check_invite_code,
     // ADS/Merkle functions
     store_ads_state_commit,
     submit_kyc_data,

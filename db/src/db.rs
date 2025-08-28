@@ -1507,3 +1507,23 @@ pub async fn get_identity_by_reset_token(
 
     Ok(identity)
 }
+
+// ============================================================================
+// INVITE CODE FUNCTIONS
+// ============================================================================
+
+/// Check if an invite code is valid and available for use
+///
+/// # Errors
+/// Returns error if database operation fails
+pub async fn check_invite_code(pool: &PgPool, code: &str) -> Result<bool, sqlx::Error> {
+    debug!("Checking invite code validity: code={}", code);
+
+    let is_valid: bool = sqlx::query_scalar!("SELECT is_invite_code_valid($1)", code)
+        .fetch_one(pool)
+        .await?
+        .unwrap_or(false);
+
+    debug!("Invite code {} is valid: {}", code, is_valid);
+    Ok(is_valid)
+}
