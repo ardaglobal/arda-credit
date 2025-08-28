@@ -64,8 +64,8 @@ confidence-threshold = 0.8
 # Allow 1 or more licenses on a per-crate basis, so that particular licenses
 # aren't accepted for every possible crate as with the normal allow list
 exceptions = [
-    # Allow LGPL-3.0 for downloader crate
-    { allow = [ "LGPL-3.0" ], name = "downloader" },
+    # Allow LGPL-3.0-or-later for downloader crate
+    { allow = [ "LGPL-3.0-or-later" ], name = "downloader" },
 ]
 
 # Some crates don't have (easily) machine readable licensing information,
@@ -113,7 +113,7 @@ highlight = "all"
 skip = [
     # Skip duplicate base64 versions from SP1/AWS dependencies
     { name = "base64", version = "=0.21.7" },
-    # Skip duplicate bindgen versions from build dependencies  
+    # Skip duplicate bindgen versions from build dependencies
     { name = "bindgen", version = "=0.69.5" },
     # Skip additional duplicates from transitive dependencies
     { name = "core-foundation", version = "=0.9.4" },

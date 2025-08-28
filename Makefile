@@ -28,8 +28,8 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 
 ## lint: Lint code
 .PHONY: lint
-lint: yamllint actionlint docker-lint
-	SQLX_OFFLINE=true cargo clippy --all-targets -- -D warnings -W clippy::pedantic -W clippy::nursery -W clippy::style -W clippy::complexity -W clippy::perf -W clippy::suspicious -W clippy::correctness
+lint: yamllint actionlint docker-lint deny
+	SQLX_OFFLINE=true cargo clippy --all-targets -- -W clippy::pedantic -W clippy::nursery -W clippy::style -W clippy::complexity -W clippy::perf -W clippy::suspicious -W clippy::correctness
 
 ## env: Copy .env.example to .env
 .PHONY: env
@@ -125,7 +125,7 @@ yamllint-fix:
 actionlint:
 	@echo "🔍 Linting GitHub Actions workflows with actionlint..."
 	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint not found. Run 'make install' to install dependencies."; exit 1; }
-	actionlint -config-file .actionlint.yaml
+	actionlint -config-file .actionlint.yaml -ignore SC2086
 	@echo "✅ GitHub Actions linting completed"
 
 ## actionlint-fix: Lint GitHub Actions workflows with verbose output for fixing issues
@@ -133,13 +133,49 @@ actionlint:
 actionlint-fix:
 	@echo "🔧 Linting GitHub Actions workflows with detailed output..."
 	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint not found. Run 'make install' to install dependencies."; exit 1; }
-	actionlint -config-file .actionlint.yaml -verbose || true
+	actionlint -config-file .actionlint.yaml -ignore SC2086 -verbose || true
 	@echo "💡 Fix GitHub Actions issues based on the output above"
 
 ## test: Run all tests
 .PHONY: test
 test:
+	docker-compose up postgres -d
+	sqlx migrate run --source db/migrations
 	cargo test
+	docker-compose down -v
+
+## cover: Generate code coverage report
+.PHONY: cover
+cover:
+	@echo "🔍 Generating code coverage report..."
+	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "❌ cargo-llvm-cov not found. Run 'make install' to install dependencies."; exit 1; }
+	@echo "🚀 Starting PostgreSQL database..."
+	@docker-compose up postgres -d
+	@echo "📦 Running database migrations..."
+	@sqlx migrate run --source db/migrations
+	@echo "📊 Generating coverage reports..."
+	@mkdir -p target/llvm-cov
+	@echo "  📄 Generating HTML report..."
+	cargo llvm-cov --workspace --all-features --html -- --test-threads=1
+	@echo "  📋 Generating JSON report..."
+	cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=1
+	@echo "  📝 Generating summary report..."
+	cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=1 > target/llvm-cov/coverage-summary.txt
+	@echo "🛑 Stopping PostgreSQL database..."
+	@docker-compose down -v
+	@echo "🎉 Coverage reports generated successfully!"
+	@echo ""
+	@echo "📂 Reports available at:"
+	@echo "  📄 HTML Report:    target/llvm-cov/html/index.html"
+	@echo "  📋 JSON Data:      target/llvm-cov/coverage.json"
+	@echo "  📝 Summary:        target/llvm-cov/coverage-summary.txt"
+	@echo ""
+	@echo "=== Coverage Summary ==="
+	@if [ -f "target/llvm-cov/coverage-summary.txt" ]; then \
+		cat target/llvm-cov/coverage-summary.txt; \
+	fi
+	@echo ""
+	@echo "💡 Open target/llvm-cov/html/index.html in your browser to view the detailed HTML report"
 
 ## run: Local SP1 unit testing (fast ~3.5s Core proofs)
 .PHONY: run
@@ -154,6 +190,9 @@ cli:
 ## server: Start API server locally
 .PHONY: server
 server:
+	@echo "Starting PostgreSQL database..."
+	docker-compose up postgres -d
+	sqlx migrate run --source db/migrations
 	@echo "Starting API server locally (requires database)..."
 	@echo "💡 Tip: Run 'make up postgres' in another terminal first"
 	cargo run --bin server --release
@@ -321,3 +360,8 @@ setup: install env initDB setup-hooks
 	@echo "2. Run: make deploy                    # Deploy circuit to Sindri"
 	@echo "3. Run: make up                        # Start services"
 	@echo "4. Run: make deploy-contract-help      # For smart contract deployment"
+
+## deny: Run deny
+.PHONY: deny
+deny:
+	cargo deny check

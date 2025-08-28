@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE nullifiers SET next_value = $1 WHERE value = $2 AND tree_index = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a040cbc83c42caed595636e9425aee2dc1a154012bdc01e1948731c595f6706e"
+}

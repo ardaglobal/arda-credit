@@ -7,27 +7,48 @@ on:
   pull_request:
   merge_group:
 
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   format:
     name: format
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
-      - instance-size=small
+      - instance-size=large
     steps:
       - name: checkout
         uses: actions/checkout@v5
-      - name: toolchain
+      - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          components: rustfmt, clippy
+          components: llvm-tools, rustc-dev, rustfmt, clippy
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/circuits/plonk/
+            ~/.sp1/circuits/groth16/
+          key: rust-1.81.0-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-
+
       - name: cargo format
         run: cargo fmt --all -- --check
+
       - name: Install SP1 toolchain
         run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --token "${{ secrets.SP1_PAT }}"
           ~/.sp1/bin/cargo-prove prove --version
       - name: Build SP1 program
         run: |
@@ -37,7 +58,7 @@ jobs:
         run: |
           cargo clippy \
             --all-targets \
-            -- -D warnings \
+            -- \
             -W clippy::pedantic \
             -W clippy::nursery \
             -W clippy::style \

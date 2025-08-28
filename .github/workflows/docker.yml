@@ -8,6 +8,11 @@ on:
   release:
     types: [published]
 
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -15,8 +20,9 @@ env:
 jobs:
   build-and-push:
     runs-on:
-      # AWS Codebuild Trigger
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=large
     permissions:
       contents: read
       packages: write
@@ -93,11 +99,3 @@ jobs:
           # See: https://docs.aws.amazon.com/codebuild/latest/userguide/specify-caching-local.html
           build-args: |
             BUILDKIT_INLINE_CACHE=1
-
-      - name: Generate artifact attestation
-        uses: actions/attest-build-provenance@v2
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true

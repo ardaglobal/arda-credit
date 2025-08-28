@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT event_id, event_type, timestamp, root_before, root_after,\n                   transaction_hash, block_height, operator, metadata, nullifier_value\n            FROM audit_events \n            WHERE metadata->>'operation_id' = $1\n            ORDER BY timestamp DESC\n            ",
+  "query": "\n            SELECT event_id, event_type, timestamp, root_before, root_after,\n                   transaction_hash, block_height, operator, metadata, nullifier_value\n            FROM audit_events\n            WHERE metadata->>'operation_id' = $1\n            ORDER BY timestamp DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -72,5 +72,5 @@
       false
     ]
   },
-  "hash": "e8bcf46ddab8a6bc13dac4619f9470a97e53f1f19a18e9e9cfac66787dc0b7cc"
+  "hash": "89373b890deebcf947cc6b8ff09b091895531e91612ab60c1c8e660556a85b38"
 }

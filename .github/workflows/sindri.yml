@@ -8,6 +8,12 @@ on:
 env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: true
+
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-compile-deploy:
     runs-on:
@@ -34,24 +40,38 @@ jobs:
         run: |
           sindri lint
 
-      - name: Setup Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Install SP1 Toolchain
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/circuits/plonk/
+            ~/.sp1/circuits/groth16/
+          key: rust-1.81.0-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-
+
+      - name: Install SP1 toolchain
         run: |
-          curl -L https://sp1.succinct.xyz | bash
-          ~/.sp1/bin/sp1up
-          echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
+          curl -L https://sp1up.succinct.xyz | bash
+          ~/.sp1/bin/sp1up --token "${{ secrets.SP1_PAT }}"
+          ~/.sp1/bin/cargo-prove prove --version
 
       - name: Build SP1 Program
         run: |
           cd program
-          cargo prove build --output-directory ../build
+          ~/.sp1/bin/cargo-prove prove build --output-directory ../build
 
       - name: Get Branch Name
         id: branch-name
         env:
-          HEAD_REF: ${{ github.head_ref }}
           PR_NUMBER: ${{ github.event.number }}
           SHA: ${{ github.sha }}
           EVENT_NAME: ${{ github.event_name }}
@@ -65,3 +85,8 @@ jobs:
       - name: Deploy Circuit to Sindri
         run: |
           sindri deploy --tag "${{ steps.branch-name.outputs.tag }}"
+
+      - name: Test Circuit
+        env:
+          SINDRI_TAG: ${{ steps.branch-name.outputs.tag }}
+        run: cargo run --release -- --sindri

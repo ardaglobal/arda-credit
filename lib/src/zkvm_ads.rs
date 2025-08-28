@@ -14,7 +14,7 @@ pub mod transaction_prefixes {
     /// Loan origination transactions: 1,000,000,000 - 1,999,999,999
     pub const LOAN_ORIGINATION: i64 = 1_000_000_000;
 
-    /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999  
+    /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999
     pub const LOAN_CLOSEOUT: i64 = 2_000_000_000;
 
     /// Default/legacy transactions (for backward compatibility): 0 - 999,999,999
@@ -121,7 +121,7 @@ impl ZkVMAds {
         // We need to derive equivalent values from LoanTransaction
 
         // Hash transaction amount (convert from u64 to i32 for compatibility)
-        let amount_i32 = i32::try_from(transaction.amount).unwrap_or(0);
+        let amount_i32 = i32::try_from(transaction.amount).unwrap_or(i32::MAX);
         hasher.update(&amount_i32.to_le_bytes());
 
         // Hash a unique identifier derived from transaction_id
@@ -147,14 +147,11 @@ impl ZkVMAds {
 
         // Convert to positive value within prefix range
         // Take modulo to fit within the prefix range (999,999,999), then add 1 to avoid zero
-        let base_nullifier = i64::wrapping_add(
-            i64::try_from(
-                hash_u64
-                    % u64::try_from(transaction_prefixes::PREFIX_RANGE_SIZE).unwrap_or(999_999_999),
-            )
-            .unwrap_or(0),
-            1,
-        );
+        let base_nullifier = i64::try_from(
+            hash_u64 % u64::try_from(transaction_prefixes::PREFIX_RANGE_SIZE).unwrap_or(u64::MAX),
+        )
+        .unwrap_or(i64::MAX)
+        .wrapping_add(1);
 
         // Apply prefix for namespace isolation
         prefix + base_nullifier

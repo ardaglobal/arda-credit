@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*)::INT\n            FROM audit_events ae\n            JOIN proof_batches pb ON pb.created_at <= ae.timestamp\n            WHERE pb.id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "df2ef41e8aa7dccfb0499ec504a22d62c6101cff0948d35b8a868d481341d6d3"
+}

@@ -10,17 +10,19 @@ env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: true
 
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   coverage:
     name: Generate Code Coverage
-    runs-on:
-      # AWS Codebuild Trigger
-      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
-      - run-id=${{ github.run_id }}
+    runs-on: ubuntu-latest
 
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:15
+        image: postgres:15
         env:
           POSTGRES_DB: postgres
           POSTGRES_USER: postgres
@@ -38,16 +40,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Install Rust toolchain
+      - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools
+          components: llvm-tools, rustc-dev
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/circuits/plonk/
+            ~/.sp1/circuits/groth16/
+          key: rust-1.81.0-coverage-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-
 
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov
@@ -94,11 +105,11 @@ jobs:
           DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres?pool_max_size=20&connection_timeout=60
         run: |
           # Generate HTML report with limited concurrency to avoid database connection pool exhaustion
-          cargo llvm-cov --workspace --all-features --html -- --test-threads=5
+          cargo llvm-cov --workspace --all-features --html -- --test-threads=1
           # Generate JSON report for programmatic use
-          cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=5
+          cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=1
           # Generate text summary for display
-          cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=5 > target/llvm-cov/coverage-summary.txt
+          cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=1 > target/llvm-cov/coverage-summary.txt
 
       - name: Display coverage summary
         run: |

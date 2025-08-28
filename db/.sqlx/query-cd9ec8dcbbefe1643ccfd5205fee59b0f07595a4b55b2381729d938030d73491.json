@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                SELECT pb.id, pb.created_at as \"created_at!\", ads.merkle_root\n                FROM proof_batches pb\n                JOIN ads_state_commits ads ON pb.id = ads.batch_id\n                JOIN audit_events ae ON ae.nullifier_value = $1\n                WHERE pb.id = $2\n                ",
+  "query": "\n            SELECT pb.id, pb.created_at as \"created_at!\", ads.merkle_root\n            FROM proof_batches pb\n            JOIN ads_state_commits ads ON pb.id = ads.batch_id\n            JOIN audit_events ae ON ae.nullifier_value = $1\n            WHERE ($2 = -1 OR pb.id = $2)\n            ORDER BY pb.created_at DESC\n            LIMIT 1\n            ",
   "describe": {
     "columns": [
       {
@@ -31,5 +31,5 @@
       false
     ]
   },
-  "hash": "55e08a8ba632cec9206da8703f259bed9f2c5428308f3abc35d9e51f6048a876"
+  "hash": "cd9ec8dcbbefe1643ccfd5205fee59b0f07595a4b55b2381729d938030d73491"
 }
