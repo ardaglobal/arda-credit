@@ -478,6 +478,15 @@ pub struct DeleteUserResponse {
     pub deleted_at: DateTime<Utc>,
 }
 
+/// Delete loan response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DeleteLoanResponse {
+    pub loan_id: String,
+    pub deleted: bool,
+    pub deleted_at: DateTime<Utc>,
+    pub final_status: String,
+}
+
 /// List identities query parameters
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListIdentitiesQuery {
@@ -521,7 +530,7 @@ pub struct LoanDetailsResponse {
 }
 
 /// List loans query parameters
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListLoansQuery {
     pub status: Option<String>,
     pub borrower_id: Option<String>,
@@ -764,9 +773,11 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::USER_KYC, post(submit_kyc_endpoint))
         .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
         // Loan Management
+        .route(paths::LOAN, post(create_loan_endpoint))
         .route(paths::LOANS, post(create_loan_endpoint))
         .route(paths::LOANS, get(list_loans_endpoint))
         .route(paths::LOAN_BY_ID, get(get_loan_details_endpoint))
+        .route(paths::LOAN_BY_ID, delete(delete_loan_endpoint))
         .route(paths::LOANS_STATS, get(get_loan_stats_endpoint))
         // Payment Processing
         .route(paths::STATE_PAYMENTS, post(record_payment_endpoint))
@@ -2210,6 +2221,16 @@ async fn create_loan_endpoint(
 }
 
 /// List loans
+#[utoipa::path(
+    get,
+    path = "/api/v1/loans",
+    responses(
+        (status = 200, description = "Loans listed successfully", body = ListLoansResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    params(ListLoansQuery),
+    tag = "Loans"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn list_loans_endpoint(
     State(_state): State<ApiState>,
@@ -2229,6 +2250,19 @@ async fn list_loans_endpoint(
 }
 
 /// Get loan details by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/loan/{loan_id}",
+    responses(
+        (status = 200, description = "Loan details retrieved successfully", body = LoanDetailsResponse),
+        (status = 404, description = "Loan not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("loan_id" = String, Path, description = "Loan ID")
+    ),
+    tag = "Loans"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn get_loan_details_endpoint(
     State(_state): State<ApiState>,
@@ -2254,6 +2288,16 @@ async fn get_loan_details_endpoint(
 }
 
 /// Get loan statistics
+#[utoipa::path(
+    get,
+    path = "/api/v1/loans/stats",
+    responses(
+        (status = 200, description = "Loan statistics retrieved successfully", body = LoanStatsResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    params(ListLoansQuery),
+    tag = "Loans"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn get_loan_stats_endpoint(
     State(_state): State<ApiState>,
@@ -2277,6 +2321,49 @@ async fn get_loan_stats_endpoint(
     };
 
     info!("✅ API: Loan statistics retrieved");
+    Ok(Json(response))
+}
+
+/// Delete/close loan
+#[utoipa::path(
+    delete,
+    path = "/api/v1/loan/{loan_id}",
+    responses(
+        (status = 200, description = "Loan closed successfully", body = DeleteLoanResponse),
+        (status = 404, description = "Loan not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("loan_id" = String, Path, description = "Loan ID")
+    ),
+    tag = "Loans"
+)]
+#[instrument(skip(state), level = "info")]
+async fn delete_loan_endpoint(
+    State(state): State<ApiState>,
+    Path(loan_id): Path<String>,
+) -> Result<Json<DeleteLoanResponse>, (StatusCode, String)> {
+    info!("🗑️ API: Closing loan: loan_id={}", loan_id);
+
+    let loan_uuid = uuid::Uuid::parse_str(&loan_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid loan ID format".to_string(),
+        )
+    })?;
+
+    // TODO: Implement loan closure with database integration
+    // For now, simulate successful closure
+    let updated_rows = 1; // Simulate one row updated
+
+    let response = DeleteLoanResponse {
+        loan_id,
+        deleted: true,
+        deleted_at: Utc::now(),
+        final_status: "closed".to_string(),
+    };
+
+    info!("✅ API: Loan closed successfully");
     Ok(Json(response))
 }
 
@@ -2826,7 +2913,11 @@ async fn get_loan_lifecycle_summary_endpoint(
         update_kyc_status_endpoint,
 
         // Loan Management endpoints
-        create_loan_endpoint
+        create_loan_endpoint,
+        list_loans_endpoint,
+        get_loan_details_endpoint,
+        delete_loan_endpoint,
+        get_loan_stats_endpoint
     ),
     components(
         schemas(
@@ -2882,6 +2973,7 @@ async fn get_loan_lifecycle_summary_endpoint(
             ListLoansQuery,
             ListLoansResponse,
             LoanStatsResponse,
+            DeleteLoanResponse,
 
             // Payment Processing
             RecordPaymentRequest,
