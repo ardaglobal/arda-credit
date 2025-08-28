@@ -83,6 +83,9 @@ pub const LOAN_LIFECYCLE_SUMMARY: &str = api_path!("/loan/{loan_id}/lifecycle-su
 /// Current state
 pub const STATE_CURRENT: &str = api_path!("/state/current");
 
+/// State summary (comprehensive overview)
+pub const STATE_SUMMARY: &str = api_path!("/state/summary");
+
 /// State history
 pub const STATE_HISTORY: &str = api_path!("/state/history");
 
@@ -114,6 +117,9 @@ pub const STATE_CONTRACT: &str = api_path!("/state/{batch_id}/contract");
 
 /// Create batch from loan transactions
 pub const STATE_BATCH_CREATE: &str = api_path!("/state/batch/create");
+
+/// Get loan batch details
+pub const STATE_LOAN_BATCH_BY_ID: &str = api_path!("/state/loan-batch/{batch_id}");
 
 /// Get pending loan transactions ready for batching
 pub const STATE_BATCH_PENDING: &str = api_path!("/state/batch/pending");
@@ -198,6 +204,11 @@ pub fn loan_lifecycle_summary_path(loan_id: &str) -> String {
 /// Build batch path with batch_id parameter
 pub fn batch_path(batch_id: i32) -> String {
     replace_param(STATE_BATCH_BY_ID, "batch_id", &batch_id.to_string())
+}
+
+/// Build loan batch path with batch_id parameter
+pub fn loan_batch_path(batch_id: i32) -> String {
+    replace_param(STATE_LOAN_BATCH_BY_ID, "batch_id", &batch_id.to_string())
 }
 
 /// Build batch proof path with batch_id parameter
@@ -322,6 +333,11 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),
+            path: STATE_SUMMARY.to_string(),
+            description: "Get comprehensive state summary with loan and user stats".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
             path: STATE_HISTORY.to_string(),
             description: "Get state transition history".to_string(),
         },
@@ -371,6 +387,11 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
             method: "POST".to_string(),
             path: STATE_BATCH_CREATE.to_string(),
             description: "Create batch from loan transactions".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: STATE_LOAN_BATCH_BY_ID.to_string(),
+            description: "Get loan batch details by ID".to_string(),
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),

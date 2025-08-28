@@ -51,7 +51,7 @@ impl Default for ApiConfig {
     fn default() -> Self {
         Self {
             server_name: "Batch Processing API".to_string(),
-            version: "2.0.0".to_string(),
+            version: "1.0.0".to_string(),
             max_batch_size: 50,
             enable_debug_endpoints: false,
         }
@@ -554,13 +554,13 @@ pub fn create_router(state: ApiState) -> Router {
         )
         .route(paths::LOAN_PAYMENTS, get(get_loan_payment_history_endpoint))
         // State Management & ZK Proofs
-        .route(paths::STATE_CURRENT, get(get_state_summary_endpoint))
+        .route(paths::STATE_SUMMARY, get(get_state_summary_endpoint))
         .route(paths::STATE_PROOF, get(get_transaction_proof_endpoint))
         .route(paths::STATE_VERIFY, post(verify_transaction_endpoint))
         .route(paths::STATE_HISTORY, get(get_state_history_endpoint))
         // Batch Operations for Loans
         .route(paths::STATE_BATCH_CREATE, post(create_loan_batch_endpoint))
-        .route(paths::STATE_BATCH_BY_ID, get(get_loan_batch_endpoint))
+        .route(paths::STATE_LOAN_BATCH_BY_ID, get(get_loan_batch_endpoint))
         .route(
             paths::STATE_BATCH_PENDING,
             get(get_pending_loan_transactions_endpoint),
