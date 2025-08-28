@@ -435,7 +435,7 @@ pub async fn auth_middleware(
             if let Some(token) = auth_str.strip_prefix("Bearer ") {
                 if let Some(jwt_secret) = &config.jwt_secret {
                     // Use proper JWT validation with jsonwebtoken library
-                    if let Ok(claims) = validate_jwt_token_proper(token, jwt_secret) {
+                    if let Ok(claims) = validate_jwt_token(token, jwt_secret) {
                         debug!("JWT authentication successful for user: {}", claims.sub);
 
                         // Add user information to request headers for downstream use
@@ -490,8 +490,8 @@ pub struct JwtClaims {
     pub jti: String,       // JWT ID
 }
 
-/// Proper JWT token validation using jsonwebtoken library
-fn validate_jwt_token_proper(
+/// JWT token validation using jsonwebtoken library
+fn validate_jwt_token(
     token: &str,
     jwt_secret: &str,
 ) -> Result<JwtClaims, jsonwebtoken::errors::Error> {
@@ -500,11 +500,6 @@ fn validate_jwt_token_proper(
 
     let token_data = decode::<JwtClaims>(token, &decoding_key, &validation)?;
     Ok(token_data.claims)
-}
-
-fn validate_jwt_token(token: &str) -> bool {
-    // Simplified JWT validation - deprecated, use validate_jwt_token_proper instead
-    !token.is_empty() && token.len() > 20 && token.contains('.')
 }
 
 // ============================================================================
