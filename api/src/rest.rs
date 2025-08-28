@@ -2,27 +2,63 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use chrono::{DateTime, Utc};
 use humantime::format_duration;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sqlx::{Error as SqlxError, PgPool};
 use tracing::{error, info, instrument, warn};
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
 use crate::batch_processor::BatchProcessorHandle;
+use crate::paths;
 use arda_credit_db::{
-    get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
-    get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
-    AuditEvent, ContractSubmissionData, IndexedMerkleTreeADS, LoanInclusionProof,
+    create_identity, get_all_batches, get_batch_by_id, get_contract_submission_data,
+    get_current_state, get_identity_by_id, get_pending_transactions, store_ads_state_commit,
+    submit_kyc_data, submit_transaction, update_batch_proof, update_identity_profile,
+    update_kyc_status, AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof,
     LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Helper function to parse UUID from string
+fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
+    uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
+}
+
+/// Convert database Identity to API UserDetailsResponse
+fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
+    UserDetailsResponse {
+        user_id: identity.id.to_string(),
+        email: identity.email,
+        user_type: identity.user_type.parse().unwrap_or(UserType::User),
+        kyc_status: identity.kyc_status,
+        kyc_submitted_at: identity.kyc_submitted_at,
+        kyc_verified_at: identity.kyc_verified_at,
+        created_at: identity.created_at,
+        updated_at: Some(identity.updated_at),
+    }
+}
+
+/// Convert database Identity to API RegisterUserResponse
+fn identity_to_register_response(identity: Identity) -> RegisterUserResponse {
+    RegisterUserResponse {
+        user_id: identity.id.to_string(),
+        user_type: identity.user_type.parse().unwrap_or(UserType::User),
+        kyc_status: identity.kyc_status,
+        created_at: identity.created_at,
+    }
+}
 
 // ============================================================================
 // API STATE
@@ -38,7 +74,7 @@ pub struct ApiState {
 }
 
 /// Configuration for API server
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ToSchema)]
 pub struct ApiConfig {
     pub server_name: String,
     pub version: String,
@@ -50,7 +86,7 @@ impl Default for ApiConfig {
     fn default() -> Self {
         Self {
             server_name: "Batch Processing API".to_string(),
-            version: "2.0.0".to_string(),
+            version: "1.0.0".to_string(),
             max_batch_size: 50,
             enable_debug_endpoints: false,
         }
@@ -152,6 +188,29 @@ pub struct BatchListQuery {
     pub limit: Option<i32>,
 }
 
+/// Contract submission data
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ContractSubmissionData {
+    pub public: ContractPublicData,
+    pub private: ContractPrivateData,
+}
+
+/// Contract public data
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ContractPublicData {
+    pub prev_merkle_root: String,
+    pub new_merkle_root: String,
+    pub zk_proof: String,
+}
+
+/// Contract private data
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ContractPrivateData {
+    pub prev_counter_value: i64,
+    pub new_counter_value: i64,
+    pub transactions: Vec<i32>,
+}
+
 /// API information response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ApiInfoResponse {
@@ -174,6 +233,11 @@ pub struct HealthResponse {
     pub status: String,
     pub timestamp: DateTime<Utc>,
     pub database_connected: bool,
+    pub api_version: String,
+    pub git_tag: String,
+    pub git_sha: String,
+    pub git_sha_short: String,
+    pub git_dirty: bool,
 }
 
 /// Batch processor stats response
@@ -199,10 +263,45 @@ pub struct TriggerBatchResponse {
 // LOAN PROCESSING MODELS
 // ============================================================================
 
+/// User type enumeration for allowed user types
+#[derive(Debug, Serialize, Deserialize, ToSchema, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum UserType {
+    User,
+    Investor,
+    Originator,
+    Admin,
+}
+
+impl std::fmt::Display for UserType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::User => write!(f, "user"),
+            Self::Investor => write!(f, "investor"),
+            Self::Originator => write!(f, "originator"),
+            Self::Admin => write!(f, "admin"),
+        }
+    }
+}
+
+impl std::str::FromStr for UserType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "user" => Ok(Self::User),
+            "investor" => Ok(Self::Investor),
+            "originator" => Ok(Self::Originator),
+            "admin" => Ok(Self::Admin),
+            _ => Err(format!("Invalid user type: {}", s)),
+        }
+    }
+}
+
 /// Request to register a new user identity
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserRequest {
-    pub user_type: String, // "Investor" | "Lender"
+    pub user_type: UserType,
     pub email: String,
     pub jurisdiction: Option<String>, // Optional, defaults to "US"
 }
@@ -211,7 +310,7 @@ pub struct RegisterUserRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserResponse {
     pub user_id: String, // UUID as string
-    pub user_type: String,
+    pub user_type: UserType,
     pub kyc_status: String,
     pub created_at: DateTime<Utc>,
 }
@@ -220,11 +319,13 @@ pub struct RegisterUserResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserDetailsResponse {
     pub user_id: String,
-    pub user_type: String,
+    pub email: String,
+    pub user_type: UserType,
     pub kyc_status: String,
     pub kyc_submitted_at: Option<DateTime<Utc>>,
     pub kyc_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// KYC submission request
@@ -255,10 +356,34 @@ pub struct UpdateKycStatusRequest {
     pub notes: Option<String>,
 }
 
+/// Update user profile request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateUserRequest {
+    pub email: Option<String>,
+    pub user_type: Option<UserType>,
+    pub jurisdiction: Option<String>,
+}
+
+/// Update user response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateUserResponse {
+    pub user_id: String,
+    pub updated_fields: Vec<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Delete user response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DeleteUserResponse {
+    pub user_id: String,
+    pub deleted: bool,
+    pub deleted_at: DateTime<Utc>,
+}
+
 /// List identities query parameters
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListIdentitiesQuery {
-    pub user_type: Option<String>,
+    pub user_type: Option<UserType>,
     pub kyc_status: Option<String>,
     pub limit: Option<i32>,
     pub offset: Option<i32>,
@@ -500,121 +625,90 @@ pub struct PendingTransactionInfo {
 /// Create the main API router with all batch processing and loan endpoints
 pub fn create_router(state: ApiState) -> Router {
     Router::new()
-        // Health and info endpoints (additional legacy paths)
-        .route("/health", get(health_check))
-        .route("/", get(api_info))
-        .route("/api/v2/health", get(health_check))
-        .route("/api/v2/info", get(api_info))
+        // Health and info endpoints
+        .route(paths::HEALTH, get(health_check))
+        .route(paths::ROOT, get(api_info))
+        .route(paths::API_HEALTH, get(health_check))
+        .route(paths::API_INFO, get(api_info))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
-        // Legacy transaction operations (keeping for backward compatibility)
-        .route("/api/v2/transactions", post(submit_transaction_endpoint))
+        // Transaction operations
+        .route(paths::STATE_TRANSACTIONS, post(submit_transaction_endpoint))
         .route(
-            "/api/v2/transactions/pending",
+            paths::STATE_TRANSACTIONS_PENDING,
             get(get_pending_transactions_endpoint),
         )
-        // Legacy batch operations (keeping for backward compatibility)
-        .route("/api/v2/batches", post(create_batch_endpoint))
-        .route("/api/v2/batches", get(get_batches_endpoint))
-        .route("/api/v2/batches/{batch_id}", get(get_batch_endpoint))
+        // Batch operations
+        .route(paths::STATE_BATCHES, post(create_batch_endpoint))
+        .route(paths::STATE_BATCHES, get(get_batches_endpoint))
+        .route(paths::STATE_BATCH_BY_ID, get(get_batch_endpoint))
+        .route(paths::STATE_BATCH_PROOF, post(update_batch_proof_endpoint))
+        .route(paths::STATE_BATCHES_TRIGGER, post(trigger_batch_endpoint))
         .route(
-            "/api/v2/batches/{batch_id}/proof",
-            post(update_batch_proof_endpoint),
-        )
-        .route("/api/v2/batches/trigger", post(trigger_batch_endpoint))
-        .route(
-            "/api/v2/batches/stats",
+            paths::STATE_BATCHES_STATS,
             get(get_batch_processor_stats_endpoint),
         )
-        // Legacy state operations (keeping for backward compatibility)
-        .route("/api/v2/state/current", get(get_current_state_endpoint))
-        .route(
-            "/api/v2/state/{batch_id}/contract",
-            get(get_contract_data_endpoint),
-        )
+        // State operations
+        .route(paths::STATE_CURRENT, get(get_current_state_endpoint))
+        .route(paths::STATE_CONTRACT, get(get_contract_data_endpoint))
         // ========================================================================
-        // LOAN PROCESSING ENDPOINTS (CCR - Credit Computation & Reporting)
+        // LOAN PROCESSING ENDPOINTS
         // ========================================================================
-        // Identity Management
-        .route("/api/v2/ccr/identities", post(register_user_endpoint))
-        .route("/api/v2/ccr/identities", get(list_identities_endpoint))
-        .route(
-            "/api/v2/ccr/identities/{user_id}",
-            get(get_user_details_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/identities/{user_id}/kyc",
-            post(submit_kyc_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/identities/{user_id}/kyc-status",
-            post(update_kyc_status_endpoint),
-        )
+        // User Management
+        .route(paths::USER, post(register_user_endpoint))
+        .route(paths::USERS, get(list_identities_endpoint))
+        .route(paths::USER_BY_ID, get(get_user_details_endpoint))
+        .route(paths::USER_BY_ID, put(update_user_endpoint))
+        .route(paths::USER_BY_ID, delete(delete_user_endpoint))
+        .route(paths::USER_KYC, post(submit_kyc_endpoint))
+        .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
         // Loan Management
-        .route("/api/v2/ccr/loans", post(create_loan_endpoint))
-        .route("/api/v2/ccr/loans", get(list_loans_endpoint))
-        .route(
-            "/api/v2/ccr/loans/{loan_id}",
-            get(get_loan_details_endpoint),
-        )
-        .route("/api/v2/ccr/loans/stats", get(get_loan_stats_endpoint))
+        .route(paths::LOANS, post(create_loan_endpoint))
+        .route(paths::LOANS, get(list_loans_endpoint))
+        .route(paths::LOAN_BY_ID, get(get_loan_details_endpoint))
+        .route(paths::LOANS_STATS, get(get_loan_stats_endpoint))
         // Payment Processing
-        .route("/api/v2/ccr/payments", post(record_payment_endpoint))
+        .route(paths::STATE_PAYMENTS, post(record_payment_endpoint))
         .route(
-            "/api/v2/ccr/payments/{transaction_id}",
+            paths::STATE_PAYMENT_BY_ID,
             get(get_payment_details_endpoint),
         )
-        .route(
-            "/api/v2/ccr/loans/{loan_id}/payments",
-            get(get_loan_payment_history_endpoint),
-        )
+        .route(paths::LOAN_PAYMENTS, get(get_loan_payment_history_endpoint))
         // State Management & ZK Proofs
-        .route("/api/v2/ccr/state/current", get(get_state_summary_endpoint))
-        .route(
-            "/api/v2/ccr/state/proof/{transaction_type}/{transaction_id}",
-            get(get_transaction_proof_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/state/verify",
-            post(verify_transaction_endpoint),
-        )
-        .route("/api/v2/ccr/state/history", get(get_state_history_endpoint))
+        .route(paths::STATE_SUMMARY, get(get_state_summary_endpoint))
+        .route(paths::STATE_PROOF, get(get_transaction_proof_endpoint))
+        .route(paths::STATE_VERIFY, post(verify_transaction_endpoint))
+        .route(paths::STATE_HISTORY, get(get_state_history_endpoint))
         // Batch Operations for Loans
-        .route("/api/v2/ccr/batch/create", post(create_loan_batch_endpoint))
-        .route("/api/v2/ccr/batch/{batch_id}", get(get_loan_batch_endpoint))
+        .route(paths::STATE_BATCH_CREATE, post(create_loan_batch_endpoint))
+        .route(paths::STATE_LOAN_BATCH_BY_ID, get(get_loan_batch_endpoint))
         .route(
-            "/api/v2/ccr/batch/pending",
+            paths::STATE_BATCH_PENDING,
             get(get_pending_loan_transactions_endpoint),
         )
         // ========================================================================
         // LOAN OPERATION INCLUSION PROOF ENDPOINTS
         // ========================================================================
         .route(
-            "/api/v2/ccr/proofs/loan-operation",
+            paths::STATE_PROOFS_LOAN_OPERATION,
             post(generate_loan_operation_proof_endpoint),
         )
         .route(
-            "/api/v2/ccr/proofs/loan-payment/{user_id}/{loan_id}/{payment_id}/{batch_id}",
+            paths::STATE_PROOFS_LOAN_PAYMENT,
             get(generate_loan_payment_proof_endpoint),
         )
+        .route(paths::STATE_PROOFS_VERIFY, post(verify_loan_proof_endpoint))
         .route(
-            "/api/v2/ccr/proofs/verify",
-            post(verify_loan_proof_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/proofs/report",
+            paths::STATE_PROOFS_REPORT,
             post(generate_proof_report_endpoint),
         )
         .route(
-            "/api/v2/ccr/proofs/batch-verify",
+            paths::STATE_PROOFS_BATCH_VERIFY,
             post(batch_verify_proofs_endpoint),
         )
+        .route(paths::LOAN_AUDIT_TRAIL, get(get_loan_audit_trail_endpoint))
         .route(
-            "/api/v2/ccr/loans/{loan_id}/audit-trail",
-            get(get_loan_audit_trail_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/loans/{loan_id}/lifecycle-summary",
+            paths::LOAN_LIFECYCLE_SUMMARY,
             get(get_loan_lifecycle_summary_endpoint),
         )
         .with_state(state)
@@ -627,7 +721,7 @@ pub fn create_router(state: ApiState) -> Router {
 /// Health check endpoint
 #[utoipa::path(
     get,
-    path = "/api/v2/health",
+    path = "/api/v1/health",
     responses(
         (status = 200, description = "Health check passed", body = HealthResponse),
         (status = 500, description = "Health check failed")
@@ -657,6 +751,11 @@ async fn health_check(
         },
         timestamp: Utc::now(),
         database_connected: db_connected,
+        api_version: state.config.version.clone(),
+        git_tag: env!("GIT_TAG").to_string(),
+        git_sha: env!("GIT_SHA").to_string(),
+        git_sha_short: env!("GIT_SHA_SHORT").to_string(),
+        git_dirty: env!("GIT_DIRTY").parse().unwrap_or(false),
     };
 
     if db_connected {
@@ -673,133 +772,19 @@ async fn health_check(
 
 /// API information endpoint
 #[instrument(skip(state), level = "info")]
+/// Get API information
+#[utoipa::path(
+    get,
+    path = "/api/v1/info",
+    responses(
+        (status = 200, description = "API information", body = ApiInfoResponse),
+    ),
+    tag = "Info"
+)]
 async fn api_info(State(state): State<ApiState>) -> Json<ApiInfoResponse> {
     info!("📋 API: API info requested");
 
-    let endpoints = vec![
-        // Core endpoints
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/health".to_string(),
-            description: "Health check".to_string(),
-        },
-        // Legacy batch processing (maintained for backward compatibility)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/transactions".to_string(),
-            description: "Submit a new transaction".to_string(),
-        },
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/batches".to_string(),
-            description: "Create a new batch from pending transactions".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/state/current".to_string(),
-            description: "Get current counter state".to_string(),
-        },
-        // Identity Management (CCR)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/identities".to_string(),
-            description: "Register new user identity".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/identities".to_string(),
-            description: "List user identities with filters".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/identities/{user_id}".to_string(),
-            description: "Get user details by ID".to_string(),
-        },
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/identities/{user_id}/kyc".to_string(),
-            description: "Submit KYC information".to_string(),
-        },
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/identities/{user_id}/kyc-status".to_string(),
-            description: "Update KYC status (admin only)".to_string(),
-        },
-        // Loan Management (CCR)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/loans".to_string(),
-            description: "Create new loan".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/loans".to_string(),
-            description: "List loans with filters".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/loans/{loan_id}".to_string(),
-            description: "Get loan details by ID".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/loans/stats".to_string(),
-            description: "Get loan statistics".to_string(),
-        },
-        // Payment Processing (CCR)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/payments".to_string(),
-            description: "Record loan payment".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/payments/{transaction_id}".to_string(),
-            description: "Get payment details".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/loans/{loan_id}/payments".to_string(),
-            description: "Get loan payment history".to_string(),
-        },
-        // State Management & ZK Proofs (CCR)
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/state/current".to_string(),
-            description: "Get current state summary".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/state/proof/{transaction_type}/{transaction_id}".to_string(),
-            description: "Generate transaction inclusion proof".to_string(),
-        },
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/state/verify".to_string(),
-            description: "Verify transaction inclusion".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/state/history".to_string(),
-            description: "Get state transition history".to_string(),
-        },
-        // Batch Operations (CCR)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/batch/create".to_string(),
-            description: "Create batch from pending loan transactions".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/batch/{batch_id}".to_string(),
-            description: "Get loan batch details".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/batch/pending".to_string(),
-            description: "Get pending loan transactions ready for batching".to_string(),
-        },
-    ];
+    let endpoints = paths::get_all_endpoints();
 
     let response = ApiInfoResponse {
         server_name: state.config.server_name.clone(),
@@ -815,7 +800,7 @@ async fn api_info(State(state): State<ApiState>) -> Json<ApiInfoResponse> {
 /// Submit a new transaction
 #[utoipa::path(
     post,
-    path = "/api/v2/transactions",
+    path = "/api/v1/state/transactions",
     request_body = SubmitTransactionRequest,
     responses(
         (status = 200, description = "Transaction submitted successfully", body = SubmitTransactionResponse),
@@ -855,7 +840,7 @@ async fn submit_transaction_endpoint(
 /// Get pending transactions
 #[utoipa::path(
     get,
-    path = "/api/v2/transactions/pending",
+    path = "/api/v1/state/transactions/pending",
     responses(
         (status = 200, description = "List of pending transactions", body = PendingTransactionsResponse),
         (status = 500, description = "Internal server error")
@@ -905,7 +890,7 @@ async fn get_pending_transactions_endpoint(
 /// Create a new batch using unified ADS-integrated workflow
 #[utoipa::path(
     post,
-    path = "/api/v2/batches",
+    path = "/api/v1/state/batches",
     request_body = CreateBatchRequest,
     responses(
         (status = 200, description = "Batch created successfully", body = CreateBatchResponse),
@@ -1001,7 +986,7 @@ async fn create_batch_endpoint(
 /// Get all batches (paginated)
 #[utoipa::path(
     get,
-    path = "/api/v2/batches",
+    path = "/api/v1/state/batches",
     params(
         ("limit" = Option<i32>, Query, description = "Limit the number of batches returned")
     ),
@@ -1056,7 +1041,7 @@ async fn get_batches_endpoint(
 /// Get specific batch by ID
 #[utoipa::path(
     get,
-    path = "/api/v2/batches/{batch_id}",
+    path = "/api/v1/state/batch/{batch_id}",
     params(
         ("batch_id" = i32, Path, description = "Batch ID")
     ),
@@ -1114,6 +1099,21 @@ async fn get_batch_endpoint(
 /// - When status is "proven", merkle_root is required and must be exactly 32 bytes
 /// - When status is not "proven", merkle_root is optional but if provided must be valid hex and 32 bytes
 /// - Hex values can optionally start with "0x" prefix
+#[utoipa::path(
+    post,
+    path = "/api/v1/state/batch/{batch_id}/proof",
+    request_body = UpdateBatchProofRequest,
+    responses(
+        (status = 200, description = "Batch proof updated successfully", body = BatchInfo),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "Batch not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("batch_id" = i32, Path, description = "Batch ID")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn update_batch_proof_endpoint(
     State(state): State<ApiState>,
@@ -1259,6 +1259,15 @@ async fn update_batch_proof_endpoint(
 }
 
 /// Get current counter state
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/current",
+    responses(
+        (status = 200, description = "Current state information", body = CurrentStateResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "State"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_current_state_endpoint(
     State(state): State<ApiState>,
@@ -1298,6 +1307,19 @@ async fn get_current_state_endpoint(
 }
 
 /// Get contract submission data (dry run)
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/{batch_id}/contract",
+    responses(
+        (status = 200, description = "Contract submission data", body = ContractSubmissionData),
+        (status = 404, description = "Batch not found or not proven"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("batch_id" = i32, Path, description = "Batch ID")
+    ),
+    tag = "State"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_contract_data_endpoint(
     State(state): State<ApiState>,
@@ -1306,8 +1328,23 @@ async fn get_contract_data_endpoint(
     info!("📄 API: Getting contract data for batch: id={}", batch_id);
 
     match get_contract_submission_data(&state.pool, batch_id).await {
-        Ok(contract_data) => {
+        Ok(db_contract_data) => {
             info!("✅ API: Contract data prepared for batch: id={}", batch_id);
+
+            // Convert from db type to API type
+            let contract_data = ContractSubmissionData {
+                public: ContractPublicData {
+                    prev_merkle_root: db_contract_data.public.prev_merkle_root,
+                    new_merkle_root: db_contract_data.public.new_merkle_root,
+                    zk_proof: db_contract_data.public.zk_proof,
+                },
+                private: ContractPrivateData {
+                    prev_counter_value: db_contract_data.private.prev_counter_value,
+                    new_counter_value: db_contract_data.private.new_counter_value,
+                    transactions: db_contract_data.private.transactions,
+                },
+            };
+
             Ok(Json(contract_data))
         }
         Err(SqlxError::RowNotFound) => {
@@ -1328,6 +1365,15 @@ async fn get_contract_data_endpoint(
 }
 
 /// Manually trigger batch processing
+#[utoipa::path(
+    post,
+    path = "/api/v1/state/batches/trigger",
+    responses(
+        (status = 200, description = "Batch processing triggered successfully", body = TriggerBatchResponse),
+        (status = 500, description = "Failed to trigger batch processing")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn trigger_batch_endpoint(
     State(state): State<ApiState>,
@@ -1361,6 +1407,15 @@ async fn trigger_batch_endpoint(
 }
 
 /// Get batch processor statistics
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/batches/stats",
+    responses(
+        (status = 200, description = "Batch processor statistics", body = BatchProcessorStatsResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_batch_processor_stats_endpoint(
     State(state): State<ApiState>,
@@ -1397,65 +1452,79 @@ async fn get_batch_processor_stats_endpoint(
 // LOAN PROCESSING ENDPOINT HANDLERS
 // ============================================================================
 
-// ---- IDENTITY MANAGEMENT ENDPOINTS ----
+// ---- USER MANAGEMENT ENDPOINTS ----
 
 /// Register a new user identity
+#[utoipa::path(
+    post,
+    path = "/api/v1/user",
+    request_body = RegisterUserRequest,
+    responses(
+        (status = 200, description = "User registered successfully", body = RegisterUserResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Users"
+)]
 #[instrument(skip(state), level = "info")]
 async fn register_user_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<RegisterUserRequest>,
 ) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
     info!(
-        "👤 CCR: Registering new user: type={}, email={}",
+        "👤 API: Registering new user: type={}, email={}",
         request.user_type, request.email
     );
 
-    // Basic user registration using direct SQL
-    let user_id = uuid::Uuid::new_v4();
-    let now = chrono::Utc::now();
+    // Validate email format using regex
+    let email_regex =
+        Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Email regex compilation error: {}", e),
+            )
+        })?;
 
-    let result = sqlx::query!(
-        r#"
-        INSERT INTO identities (id, user_type, email, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $4)
-        "#,
-        user_id,
-        request.user_type,
-        request.email,
-        now
-    )
-    .execute(&state.pool)
-    .await;
+    if !email_regex.is_match(&request.email) {
+        return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
+    }
 
-    match result {
-        Ok(_) => {
-            let response = RegisterUserResponse {
-                user_id: user_id.to_string(),
-                user_type: request.user_type,
-                kyc_status: "not_submitted".to_string(),
-                created_at: now,
-            };
-
-            info!("✅ CCR: User registered successfully: id={}", user_id);
-            Ok(Json(response))
+    match create_identity(&state.pool, &request.user_type.to_string(), &request.email).await {
+        Ok(identity) => {
+            info!("✅ API: User registered successfully: id={}", identity.id);
+            Ok(Json(identity_to_register_response(identity)))
         }
         Err(e) => {
-            error!("❌ CCR: Failed to register user: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to register user: {}", e),
-            ))
+            error!("❌ API: Failed to register user: {}", e);
+            let error_msg = if e.to_string().contains("duplicate key") {
+                "User with this email already exists".to_string()
+            } else {
+                "Failed to register user".to_string()
+            };
+            Err((StatusCode::BAD_REQUEST, error_msg))
         }
     }
 }
 
 /// List user identities
+#[utoipa::path(
+    get,
+    path = "/api/v1/users",
+    params(
+        ListIdentitiesQuery
+    ),
+    responses(
+        (status = 200, description = "List of user identities", body = ListIdentitiesResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Users"
+)]
 #[instrument(skip(state), level = "info")]
 async fn list_identities_endpoint(
     State(state): State<ApiState>,
     Query(params): Query<ListIdentitiesQuery>,
 ) -> Result<Json<ListIdentitiesResponse>, (StatusCode, String)> {
-    info!("📋 CCR: Listing identities with filters");
+    info!("📋 API: Listing identities with filters");
 
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
@@ -1480,11 +1549,13 @@ async fn list_identities_endpoint(
                 .into_iter()
                 .map(|row| UserDetailsResponse {
                     user_id: row.id.to_string(),
-                    user_type: row.user_type,
+                    email: row.email,
+                    user_type: row.user_type.parse().unwrap_or(UserType::User),
                     kyc_status: row.kyc_status,
                     kyc_submitted_at: row.kyc_submitted_at,
                     kyc_verified_at: row.kyc_verified_at,
                     created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
+                    updated_at: Some(row.updated_at.unwrap_or_else(chrono::Utc::now)),
                 })
                 .collect::<Vec<_>>();
 
@@ -1496,11 +1567,11 @@ async fn list_identities_endpoint(
                 has_more: total_count >= limit as u64,
             };
 
-            info!("✅ CCR: Listed {} identities", response.total_count);
+            info!("✅ API: Listed {} identities", response.total_count);
             Ok(Json(response))
         }
         Err(e) => {
-            error!("❌ CCR: Failed to list identities: {}", e);
+            error!("❌ API: Failed to list identities: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to list identities: {}", e),
@@ -1510,87 +1581,348 @@ async fn list_identities_endpoint(
 }
 
 /// Get user details by ID
-#[instrument(skip(_state), level = "info")]
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{user_id}",
+    responses(
+        (status = 200, description = "User details retrieved successfully", body = UserDetailsResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
 async fn get_user_details_endpoint(
-    State(_state): State<ApiState>,
+    State(state): State<ApiState>,
     Path(user_id): Path<String>,
 ) -> Result<Json<UserDetailsResponse>, (StatusCode, String)> {
-    info!("🔍 CCR: Getting user details: user_id={}", user_id);
+    info!("🔍 API: Getting user details: user_id={}", user_id);
 
-    // TODO: Implement user lookup with database integration
-    // For now, return mock user
-    let response = UserDetailsResponse {
-        user_id,
-        user_type: "Investor".to_string(),
-        kyc_status: "NotSubmitted".to_string(),
-        kyc_submitted_at: None,
-        kyc_verified_at: None,
-        created_at: Utc::now(),
+    let uuid = match parse_user_id(&user_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            warn!("❌ API: Invalid user ID format: {}", e);
+            return Err((StatusCode::BAD_REQUEST, e));
+        }
     };
 
-    info!("✅ CCR: User details retrieved");
-    Ok(Json(response))
+    match get_identity_by_id(&state.pool, uuid).await {
+        Ok(Some(identity)) => {
+            info!("✅ API: User details retrieved for ID: {}", identity.id);
+            Ok(Json(identity_to_user_details(identity)))
+        }
+        Ok(None) => {
+            warn!("❌ API: User not found: {}", user_id);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Database error retrieving user: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user".to_string(),
+            ))
+        }
+    }
 }
 
 /// Submit KYC information
-#[instrument(skip(_state), level = "info")]
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/{user_id}/kyc",
+    request_body = SubmitKycRequest,
+    responses(
+        (status = 200, description = "KYC information submitted successfully", body = SubmitKycResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
 async fn submit_kyc_endpoint(
-    State(_state): State<ApiState>,
+    State(state): State<ApiState>,
     Path(user_id): Path<String>,
     Json(request): Json<SubmitKycRequest>,
 ) -> Result<Json<SubmitKycResponse>, (StatusCode, String)> {
     info!(
-        "📄 CCR: KYC submission: user_id={}, doc_type={}",
+        "📄 API: KYC submission: user_id={}, doc_type={}",
         user_id, request.kyc_data.document_type
     );
 
-    // TODO: Implement KYC submission with database integration
-    let response = SubmitKycResponse {
-        user_id,
-        kyc_status: "Pending".to_string(),
-        submitted_at: Utc::now(),
+    let uuid = match parse_user_id(&user_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            warn!("❌ API: Invalid user ID format: {}", e);
+            return Err((StatusCode::BAD_REQUEST, e));
+        }
     };
 
-    info!("✅ CCR: KYC submitted successfully");
-    Ok(Json(response))
+    match submit_kyc_data(
+        &state.pool,
+        uuid,
+        &request.kyc_data.document_type,
+        &request.kyc_data.document_hash,
+        request.kyc_data.jurisdiction.as_deref(),
+    )
+    .await
+    {
+        Ok(identity) => {
+            info!(
+                "✅ API: KYC submitted successfully for user: {}",
+                identity.id
+            );
+            let response = SubmitKycResponse {
+                user_id: identity.id.to_string(),
+                kyc_status: identity.kyc_status,
+                submitted_at: identity.kyc_submitted_at.unwrap_or_else(Utc::now),
+            };
+            Ok(Json(response))
+        }
+        Err(e) => {
+            if e.to_string().contains("violates foreign key constraint")
+                || e.to_string().contains("not found")
+            {
+                warn!("❌ API: User not found: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+            } else {
+                error!("❌ API: Database error submitting KYC: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to submit KYC".to_string(),
+                ))
+            }
+        }
+    }
 }
 
 /// Update KYC status (admin only)
-#[instrument(skip(_state), level = "info")]
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/{user_id}/kyc-status",
+    request_body = UpdateKycStatusRequest,
+    responses(
+        (status = 200, description = "KYC status updated successfully", body = UserDetailsResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
 async fn update_kyc_status_endpoint(
-    State(_state): State<ApiState>,
+    State(state): State<ApiState>,
     Path(user_id): Path<String>,
     Json(request): Json<UpdateKycStatusRequest>,
 ) -> Result<Json<UserDetailsResponse>, (StatusCode, String)> {
     info!(
-        "⚖️ CCR: Updating KYC status: user_id={}, new_status={}",
+        "⚖️ API: Updating KYC status: user_id={}, new_status={}",
         user_id, request.status
     );
 
-    // TODO: Implement KYC status update with database integration
-    let response = UserDetailsResponse {
-        user_id,
-        user_type: "Investor".to_string(),
-        kyc_status: request.status,
-        kyc_submitted_at: Some(Utc::now()),
-        kyc_verified_at: Some(Utc::now()),
-        created_at: Utc::now(),
+    let uuid = match parse_user_id(&user_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            warn!("❌ API: Invalid user ID format: {}", e);
+            return Err((StatusCode::BAD_REQUEST, e));
+        }
     };
 
-    info!("✅ CCR: KYC status updated successfully");
+    match update_kyc_status(&state.pool, uuid, &request.status, request.notes.as_deref()).await {
+        Ok(identity) => {
+            info!(
+                "✅ API: KYC status updated successfully for user: {}",
+                identity.id
+            );
+            Ok(Json(identity_to_user_details(identity)))
+        }
+        Err(e) => {
+            if e.to_string().contains("violates foreign key constraint")
+                || e.to_string().contains("not found")
+            {
+                warn!("❌ API: User not found: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+            } else {
+                error!("❌ API: Database error updating KYC status: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to update KYC status".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+/// Update user profile
+#[utoipa::path(
+    put,
+    path = "/api/v1/user/{user_id}",
+    request_body = UpdateUserRequest,
+    responses(
+        (status = 200, description = "User updated successfully", body = UpdateUserResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+async fn update_user_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+    Json(request): Json<UpdateUserRequest>,
+) -> Result<Json<UpdateUserResponse>, (StatusCode, String)> {
+    info!("🔄 API: Updating user profile: user_id={}", user_id);
+
+    let uuid = match parse_user_id(&user_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            warn!("❌ API: Invalid user ID format: {}", e);
+            return Err((StatusCode::BAD_REQUEST, e));
+        }
+    };
+
+    // Build list of fields being updated
+    let mut updated_fields = Vec::new();
+    if request.email.is_some() {
+        updated_fields.push("email".to_string());
+    }
+    if request.user_type.is_some() {
+        updated_fields.push("user_type".to_string());
+    }
+    if request.jurisdiction.is_some() {
+        updated_fields.push("jurisdiction".to_string());
+    }
+
+    match update_identity_profile(
+        &state.pool,
+        uuid,
+        request.email.as_deref(),
+        request
+            .user_type
+            .as_ref()
+            .map(std::string::ToString::to_string)
+            .as_deref(),
+        request.jurisdiction.as_deref(),
+    )
+    .await
+    {
+        Ok(identity) => {
+            info!(
+                "✅ API: User profile updated successfully for ID: {}",
+                identity.id
+            );
+            let response = UpdateUserResponse {
+                user_id: identity.id.to_string(),
+                updated_fields,
+                updated_at: identity.updated_at,
+            };
+            Ok(Json(response))
+        }
+        Err(e) => {
+            if e.to_string().contains("violates foreign key constraint")
+                || e.to_string().contains("not found")
+            {
+                warn!("❌ API: User not found: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+            } else {
+                error!("❌ API: Database error updating user: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to update user".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+/// Delete user
+#[utoipa::path(
+    delete,
+    path = "/api/v1/user/{user_id}",
+    responses(
+        (status = 200, description = "User deleted successfully", body = DeleteUserResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+async fn delete_user_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<DeleteUserResponse>, (StatusCode, String)> {
+    info!("🗑️ API: Deleting user: user_id={}", user_id);
+
+    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid user ID format".to_string(),
+        )
+    })?;
+
+    // Check if user exists and delete
+    let deleted_rows = sqlx::query!("DELETE FROM identities WHERE id = $1", user_uuid)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to delete user: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to delete user".to_string(),
+            )
+        })?
+        .rows_affected();
+
+    if deleted_rows == 0 {
+        return Err((StatusCode::NOT_FOUND, "User not found".to_string()));
+    }
+
+    let response = DeleteUserResponse {
+        user_id,
+        deleted: true,
+        deleted_at: Utc::now(),
+    };
+
+    info!("✅ API: User deleted successfully");
     Ok(Json(response))
 }
 
 // ---- LOAN MANAGEMENT ENDPOINTS ----
 
 /// Create a new loan
+#[utoipa::path(
+    post,
+    path = "/api/v1/loans",
+    request_body = CreateLoanRequest,
+    responses(
+        (status = 200, description = "Loan created successfully", body = LoanDetailsResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Loans"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn create_loan_endpoint(
     State(_state): State<ApiState>,
     Json(request): Json<CreateLoanRequest>,
 ) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
     info!(
-        "💰 CCR: Creating loan: borrower={}, lender={}, amount={}",
+        "💰 API: Creating loan: borrower={}, lender={}, amount={}",
         request.borrower_id, request.lender_id, request.principal_amount
     );
 
@@ -1609,7 +1941,7 @@ async fn create_loan_endpoint(
         last_updated: None,
     };
 
-    info!("✅ CCR: Loan created successfully");
+    info!("✅ API: Loan created successfully");
     Ok(Json(response))
 }
 
@@ -1619,7 +1951,7 @@ async fn list_loans_endpoint(
     State(_state): State<ApiState>,
     Query(params): Query<ListLoansQuery>,
 ) -> Result<Json<ListLoansResponse>, (StatusCode, String)> {
-    info!("📋 CCR: Listing loans with filters");
+    info!("📋 API: Listing loans with filters");
 
     // TODO: Implement loan listing with database integration
     let response = ListLoansResponse {
@@ -1628,7 +1960,7 @@ async fn list_loans_endpoint(
         has_more: false,
     };
 
-    info!("✅ CCR: Listed {} loans", response.total_count);
+    info!("✅ API: Listed {} loans", response.total_count);
     Ok(Json(response))
 }
 
@@ -1638,7 +1970,7 @@ async fn get_loan_details_endpoint(
     State(_state): State<ApiState>,
     Path(loan_id): Path<String>,
 ) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
-    info!("🔍 CCR: Getting loan details: loan_id={}", loan_id);
+    info!("🔍 API: Getting loan details: loan_id={}", loan_id);
 
     // TODO: Implement loan lookup with database integration
     let response = LoanDetailsResponse {
@@ -1653,7 +1985,7 @@ async fn get_loan_details_endpoint(
         last_updated: Some(Utc::now()),
     };
 
-    info!("✅ CCR: Loan details retrieved");
+    info!("✅ API: Loan details retrieved");
     Ok(Json(response))
 }
 
@@ -1663,7 +1995,7 @@ async fn get_loan_stats_endpoint(
     State(_state): State<ApiState>,
     Query(params): Query<ListLoansQuery>, // Reuse query params for filtering
 ) -> Result<Json<LoanStatsResponse>, (StatusCode, String)> {
-    info!("📊 CCR: Getting loan statistics");
+    info!("📊 API: Getting loan statistics");
 
     // TODO: Implement loan statistics with database integration
     let mut status_breakdown = std::collections::HashMap::new();
@@ -1680,7 +2012,7 @@ async fn get_loan_stats_endpoint(
         status_breakdown,
     };
 
-    info!("✅ CCR: Loan statistics retrieved");
+    info!("✅ API: Loan statistics retrieved");
     Ok(Json(response))
 }
 
@@ -1693,7 +2025,7 @@ async fn record_payment_endpoint(
     Json(request): Json<RecordPaymentRequest>,
 ) -> Result<Json<PaymentResponse>, (StatusCode, String)> {
     info!(
-        "💳 CCR: Recording payment: loan_id={}, amount={}, type={}",
+        "💳 API: Recording payment: loan_id={}, amount={}, type={}",
         request.loan_id, request.amount, request.payment_type
     );
 
@@ -1709,7 +2041,7 @@ async fn record_payment_endpoint(
         created_at: Utc::now(),
     };
 
-    info!("✅ CCR: Payment recorded successfully");
+    info!("✅ API: Payment recorded successfully");
     Ok(Json(response))
 }
 
@@ -1720,7 +2052,7 @@ async fn get_payment_details_endpoint(
     Path(transaction_id): Path<String>,
 ) -> Result<Json<PaymentDetailsResponse>, (StatusCode, String)> {
     info!(
-        "🔍 CCR: Getting payment details: transaction_id={}",
+        "🔍 API: Getting payment details: transaction_id={}",
         transaction_id
     );
 
@@ -1736,7 +2068,7 @@ async fn get_payment_details_endpoint(
         processed_at: Some(Utc::now()),
     };
 
-    info!("✅ CCR: Payment details retrieved");
+    info!("✅ API: Payment details retrieved");
     Ok(Json(response))
 }
 
@@ -1747,7 +2079,7 @@ async fn get_loan_payment_history_endpoint(
     Path(loan_id): Path<String>,
     Query(params): Query<ListLoansQuery>, // Reuse query params for limit/offset
 ) -> Result<Json<LoanPaymentHistoryResponse>, (StatusCode, String)> {
-    info!("📜 CCR: Getting payment history: loan_id={}", loan_id);
+    info!("📜 API: Getting payment history: loan_id={}", loan_id);
 
     // TODO: Implement payment history lookup with database integration
     let response = LoanPaymentHistoryResponse {
@@ -1757,7 +2089,7 @@ async fn get_loan_payment_history_endpoint(
         total_amount_paid: "0".to_string(),
     };
 
-    info!("✅ CCR: Payment history retrieved");
+    info!("✅ API: Payment history retrieved");
     Ok(Json(response))
 }
 
@@ -1768,7 +2100,7 @@ async fn get_loan_payment_history_endpoint(
 async fn get_state_summary_endpoint(
     State(_state): State<ApiState>,
 ) -> Result<Json<StateSummaryResponse>, (StatusCode, String)> {
-    info!("🎯 CCR: Getting current state summary");
+    info!("🎯 API: Getting current state summary");
 
     // TODO: Implement state summary with database integration
     let response = StateSummaryResponse {
@@ -1787,7 +2119,7 @@ async fn get_state_summary_endpoint(
         },
     };
 
-    info!("✅ CCR: State summary retrieved");
+    info!("✅ API: State summary retrieved");
     Ok(Json(response))
 }
 
@@ -1798,7 +2130,7 @@ async fn get_transaction_proof_endpoint(
     Path((transaction_type, transaction_id)): Path<(String, String)>,
 ) -> Result<Json<TransactionProofResponse>, (StatusCode, String)> {
     info!(
-        "🔐 CCR: Generating inclusion proof: type={}, id={}",
+        "🔐 API: Generating inclusion proof: type={}, id={}",
         transaction_type, transaction_id
     );
 
@@ -1818,7 +2150,7 @@ async fn get_transaction_proof_endpoint(
         },
     };
 
-    info!("✅ CCR: Transaction proof generated");
+    info!("✅ API: Transaction proof generated");
     Ok(Json(response))
 }
 
@@ -1829,7 +2161,7 @@ async fn verify_transaction_endpoint(
     Json(request): Json<VerifyTransactionRequest>,
 ) -> Result<Json<TransactionVerificationResponse>, (StatusCode, String)> {
     info!(
-        "🔍 CCR: Verifying transaction inclusion: id={}",
+        "🔍 API: Verifying transaction inclusion: id={}",
         request.transaction_id
     );
 
@@ -1845,7 +2177,7 @@ async fn verify_transaction_endpoint(
         verified_at: Utc::now(),
     };
 
-    info!("✅ CCR: Transaction verified successfully");
+    info!("✅ API: Transaction verified successfully");
     Ok(Json(response))
 }
 
@@ -1855,7 +2187,7 @@ async fn get_state_history_endpoint(
     State(_state): State<ApiState>,
     Query(params): Query<BatchListQuery>, // Reuse query params for limit
 ) -> Result<Json<StateHistoryResponse>, (StatusCode, String)> {
-    info!("📜 CCR: Getting state transition history");
+    info!("📜 API: Getting state transition history");
 
     // TODO: Implement state history with database integration
     let response = StateHistoryResponse {
@@ -1863,7 +2195,7 @@ async fn get_state_history_endpoint(
         total_batches: 0,
     };
 
-    info!("✅ CCR: State history retrieved");
+    info!("✅ API: State history retrieved");
     Ok(Json(response))
 }
 
@@ -1876,7 +2208,7 @@ async fn create_loan_batch_endpoint(
     Json(request): Json<CreateLoanBatchRequest>,
 ) -> Result<Json<CreateLoanBatchResponse>, (StatusCode, String)> {
     info!(
-        "🔄 CCR: Creating loan batch: max_count={:?}, force={:?}",
+        "🔄 API: Creating loan batch: max_count={:?}, force={:?}",
         request.max_transaction_count, request.force_create
     );
 
@@ -1891,7 +2223,7 @@ async fn create_loan_batch_endpoint(
         created_at: Utc::now(),
     };
 
-    info!("✅ CCR: Loan batch created successfully");
+    info!("✅ API: Loan batch created successfully");
     Ok(Json(response))
 }
 
@@ -1901,7 +2233,7 @@ async fn get_loan_batch_endpoint(
     State(state): State<ApiState>,
     Path(batch_id): Path<String>,
 ) -> Result<Json<BatchInfo>, (StatusCode, String)> {
-    info!("🔍 CCR: Getting loan batch details: batch_id={}", batch_id);
+    info!("🔍 API: Getting loan batch details: batch_id={}", batch_id);
 
     // TODO: Implement loan batch lookup with database integration
     // For now, delegate to existing batch endpoint
@@ -1921,7 +2253,7 @@ async fn get_pending_loan_transactions_endpoint(
     State(_state): State<ApiState>,
     Query(params): Query<BatchListQuery>, // Reuse query params for limit
 ) -> Result<Json<PendingLoanTransactionsResponse>, (StatusCode, String)> {
-    info!("📋 CCR: Getting pending loan transactions");
+    info!("📋 API: Getting pending loan transactions");
 
     // TODO: Implement pending loan transactions lookup with database integration
     let response = PendingLoanTransactionsResponse {
@@ -1931,7 +2263,7 @@ async fn get_pending_loan_transactions_endpoint(
         oldest_pending: None,
     };
 
-    info!("✅ CCR: Pending loan transactions retrieved");
+    info!("✅ API: Pending loan transactions retrieved");
     Ok(Json(response))
 }
 
@@ -2196,12 +2528,37 @@ async fn get_loan_lifecycle_summary_endpoint(
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        // Core endpoints
         health_check,
+        api_info,
+
+        // Transaction endpoints
         submit_transaction_endpoint,
         get_pending_transactions_endpoint,
+
+        // Batch endpoints
         create_batch_endpoint,
         get_batches_endpoint,
-        get_batch_endpoint
+        get_batch_endpoint,
+        update_batch_proof_endpoint,
+        trigger_batch_endpoint,
+        get_batch_processor_stats_endpoint,
+
+        // State endpoints
+        get_current_state_endpoint,
+        get_contract_data_endpoint,
+
+        // User Management endpoints
+        register_user_endpoint,
+        list_identities_endpoint,
+        get_user_details_endpoint,
+        update_user_endpoint,
+        delete_user_endpoint,
+        submit_kyc_endpoint,
+        update_kyc_status_endpoint,
+
+        // Loan Management endpoints
+        create_loan_endpoint
     ),
     components(
         schemas(
@@ -2209,6 +2566,9 @@ async fn get_loan_lifecycle_summary_endpoint(
             HealthResponse,
             ApiInfoResponse,
             EndpointInfo,
+            ContractSubmissionData,
+            ContractPublicData,
+            ContractPrivateData,
 
             // Transaction Models
             SubmitTransactionRequest,
@@ -2235,6 +2595,9 @@ async fn get_loan_lifecycle_summary_endpoint(
             KycData,
             SubmitKycResponse,
             UpdateKycStatusRequest,
+            UpdateUserRequest,
+            UpdateUserResponse,
+            DeleteUserResponse,
             ListIdentitiesQuery,
             ListIdentitiesResponse,
 
@@ -2287,7 +2650,7 @@ async fn get_loan_lifecycle_summary_endpoint(
     ),
     info(
         title = "Arda Credit API",
-        version = "2.0.0",
+        version = "1.0.0",
         description = "Zero-knowledge proof system for batched transaction processing and loan management",
         contact(
             name = "Arda Global",
@@ -2306,7 +2669,7 @@ pub fn get_openapi_spec() -> utoipa::openapi::OpenApi {
 }
 
 /// Axum handler for serving the OpenAPI specification as JSON
-pub async fn get_openapi_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+pub fn get_openapi_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
 }
 

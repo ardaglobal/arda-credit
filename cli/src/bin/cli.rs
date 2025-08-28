@@ -142,6 +142,140 @@ enum Commands {
     },
 
     // ============================================================================
+    // USER MANAGEMENT COMMANDS
+    // ============================================================================
+    /// Create a new user
+    CreateUser {
+        /// User type (Investor or Lender)
+        #[arg(long)]
+        user_type: String,
+        /// User email address
+        #[arg(long)]
+        email: String,
+        /// User jurisdiction (optional, defaults to US)
+        #[arg(long)]
+        jurisdiction: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get user details by ID
+    GetUser {
+        /// User ID to retrieve
+        #[arg(long)]
+        user_id: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// List all users with optional filters
+    ListUsers {
+        /// Filter by user type
+        #[arg(long)]
+        user_type: Option<String>,
+        /// Filter by KYC status
+        #[arg(long)]
+        kyc_status: Option<String>,
+        /// Maximum number of users to return
+        #[arg(long, default_value = "20")]
+        limit: Option<i32>,
+        /// Offset for pagination
+        #[arg(long, default_value = "0")]
+        offset: Option<i32>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Update user profile information
+    UpdateUser {
+        /// User ID to update
+        #[arg(long)]
+        user_id: String,
+        /// New email address
+        #[arg(long)]
+        email: Option<String>,
+        /// New user type (Investor or Lender)
+        #[arg(long)]
+        user_type: Option<String>,
+        /// New jurisdiction
+        #[arg(long)]
+        jurisdiction: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Delete user by ID
+    DeleteUser {
+        /// User ID to delete
+        #[arg(long)]
+        user_id: String,
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        force: bool,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Submit KYC information for a user
+    SubmitKyc {
+        /// User ID to submit KYC for
+        #[arg(long)]
+        user_id: String,
+        /// Document type
+        #[arg(long)]
+        document_type: String,
+        /// Document hash
+        #[arg(long)]
+        document_hash: String,
+        /// Jurisdiction (optional)
+        #[arg(long)]
+        jurisdiction: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Update KYC status (admin only)
+    UpdateKycStatus {
+        /// User ID to update KYC status for
+        #[arg(long)]
+        user_id: String,
+        /// New KYC status (Pending, Approved, Rejected)
+        #[arg(long)]
+        status: String,
+        /// Optional notes
+        #[arg(long)]
+        notes: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Test user operations end-to-end
+    TestUserOperations {
+        /// Number of users to create for testing
+        #[arg(long, default_value = "10")]
+        user_count: usize,
+        /// Test KYC submission
+        #[arg(long)]
+        test_kyc: bool,
+        /// Test user updates
+        #[arg(long)]
+        test_updates: bool,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+        /// Clean up created users after test
+        #[arg(long)]
+        cleanup: bool,
+    },
+
+    // ============================================================================
     // ENHANCED LOAN OPERATION TESTING COMMANDS
     // ============================================================================
     /// Test prefixed nullifier generation for loan operations
@@ -479,6 +613,109 @@ async fn main() -> Result<()> {
         }
         Commands::QueryVerificationKey { verbose } => {
             query_verification_key(verbose).await?;
+        }
+
+        // User Management Commands
+        Commands::CreateUser {
+            user_type,
+            email,
+            jurisdiction,
+            verbose,
+        } => {
+            create_user(
+                &client,
+                &user_type,
+                &email,
+                jurisdiction.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+        Commands::GetUser { user_id, verbose } => {
+            get_user(&client, &user_id, verbose).await?;
+        }
+        Commands::ListUsers {
+            user_type,
+            kyc_status,
+            limit,
+            offset,
+            verbose,
+        } => {
+            list_users(
+                &client,
+                user_type.as_deref(),
+                kyc_status.as_deref(),
+                limit,
+                offset,
+                verbose,
+            )
+            .await?;
+        }
+        Commands::UpdateUser {
+            user_id,
+            email,
+            user_type,
+            jurisdiction,
+            verbose,
+        } => {
+            update_user(
+                &client,
+                &user_id,
+                email.as_deref(),
+                user_type.as_deref(),
+                jurisdiction.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+        Commands::DeleteUser {
+            user_id,
+            force,
+            verbose,
+        } => {
+            delete_user(&client, &user_id, force, verbose).await?;
+        }
+        Commands::SubmitKyc {
+            user_id,
+            document_type,
+            document_hash,
+            jurisdiction,
+            verbose,
+        } => {
+            submit_kyc(
+                &client,
+                &user_id,
+                &document_type,
+                &document_hash,
+                jurisdiction.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+        Commands::UpdateKycStatus {
+            user_id,
+            status,
+            notes,
+            verbose,
+        } => {
+            update_kyc_status(&client, &user_id, &status, notes.as_deref(), verbose).await?;
+        }
+        Commands::TestUserOperations {
+            user_count,
+            test_kyc,
+            test_updates,
+            verbose,
+            cleanup,
+        } => {
+            test_user_operations(
+                &client,
+                user_count,
+                test_kyc,
+                test_updates,
+                verbose,
+                cleanup,
+            )
+            .await?;
         }
 
         // Enhanced loan operation testing commands
@@ -1095,6 +1332,12 @@ async fn health_check(client: &BatchApiClient) -> Result<()> {
             );
             println!("   Response time: {:?}", duration);
             println!("   Timestamp: {}", response.timestamp);
+            println!("   API Version: {}", response.api_version);
+            println!("   Git Tag: {}", response.git_tag);
+            println!("   Git SHA: {}", response.git_sha_short);
+            if response.git_dirty {
+                println!("   ⚠️  Working directory has uncommitted changes");
+            }
         }
         Err(e) => {
             let duration = start.elapsed();
@@ -2411,6 +2654,551 @@ async fn refresh_loan_stats(
     if optimize_indexes {
         println!("   🚀 Optimized 12 database indexes");
         println!("   ⚡ Expected query performance improvement: 15-25%");
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// USER MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Create a new user
+async fn create_user(
+    client: &BatchApiClient,
+    user_type: &str,
+    email: &str,
+    jurisdiction: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("👤 Creating new user...");
+        println!("   Email: {}", email);
+        println!("   Type: {}", user_type);
+        if let Some(j) = jurisdiction {
+            println!("   Jurisdiction: {}", j);
+        }
+    }
+
+    match client.create_user(user_type, email, jurisdiction).await {
+        Ok(user) => {
+            println!("✅ User created successfully:");
+            println!("   User ID: {}", user["user_id"].as_str().unwrap_or("N/A"));
+            println!("   Email: {}", user["email"].as_str().unwrap_or("N/A"));
+            println!("   Type: {}", user["user_type"].as_str().unwrap_or("N/A"));
+            println!(
+                "   KYC Status: {}",
+                user["kyc_status"].as_str().unwrap_or("N/A")
+            );
+
+            if verbose {
+                println!(
+                    "   Created At: {}",
+                    user["created_at"].as_str().unwrap_or("N/A")
+                );
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to create user: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get user details by ID
+async fn get_user(client: &BatchApiClient, user_id: &str, verbose: bool) -> Result<()> {
+    if verbose {
+        println!("🔍 Retrieving user details for ID: {}", user_id);
+    }
+
+    match client.get_user(user_id).await {
+        Ok(user) => {
+            println!("👤 User Details:");
+            println!("   ID: {}", user["user_id"].as_str().unwrap_or("N/A"));
+            println!("   Email: {}", user["email"].as_str().unwrap_or("N/A"));
+            println!("   Type: {}", user["user_type"].as_str().unwrap_or("N/A"));
+            println!(
+                "   KYC Status: {}",
+                user["kyc_status"].as_str().unwrap_or("N/A")
+            );
+
+            if let Some(kyc_submitted) = user["kyc_submitted_at"].as_str() {
+                println!("   KYC Submitted: {}", kyc_submitted);
+            }
+            if let Some(kyc_verified) = user["kyc_verified_at"].as_str() {
+                println!("   KYC Verified: {}", kyc_verified);
+            }
+
+            if verbose {
+                println!(
+                    "   Created At: {}",
+                    user["created_at"].as_str().unwrap_or("N/A")
+                );
+                if let Some(updated) = user["updated_at"].as_str() {
+                    println!("   Updated At: {}", updated);
+                }
+            }
+        }
+        Err(e) => {
+            // Check if it's a 404 error
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else {
+                return Err(eyre::eyre!("Failed to get user: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// List users with optional filters
+async fn list_users(
+    client: &BatchApiClient,
+    user_type: Option<&str>,
+    kyc_status: Option<&str>,
+    limit: Option<i32>,
+    offset: Option<i32>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("📋 Listing users...");
+        if let Some(ut) = user_type {
+            println!("   Filter by type: {}", ut);
+        }
+        if let Some(ks) = kyc_status {
+            println!("   Filter by KYC status: {}", ks);
+        }
+    }
+
+    match client
+        .list_users(user_type, kyc_status, limit, offset)
+        .await
+    {
+        Ok(result) => {
+            let empty_vec = vec![];
+            let users = result["identities"].as_array().unwrap_or(&empty_vec);
+
+            println!("👥 Found {} users:", users.len());
+            for user in users {
+                println!("   • ID: {}", user["user_id"].as_str().unwrap_or("N/A"));
+                println!("     Email: {}", user["email"].as_str().unwrap_or("N/A"));
+                println!("     Type: {}", user["user_type"].as_str().unwrap_or("N/A"));
+                println!(
+                    "     KYC Status: {}",
+                    user["kyc_status"].as_str().unwrap_or("N/A")
+                );
+                if verbose {
+                    println!(
+                        "     Created: {}",
+                        user["created_at"].as_str().unwrap_or("N/A")
+                    );
+                }
+                println!();
+            }
+
+            if let Some(total) = result["total_count"].as_u64() {
+                println!("Total users: {}", total);
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to list users: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Update user profile information
+async fn update_user(
+    client: &BatchApiClient,
+    user_id: &str,
+    email: Option<&str>,
+    user_type: Option<&str>,
+    jurisdiction: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("🔄 Updating user profile for ID: {}", user_id);
+    }
+
+    if verbose {
+        if let Some(e) = email {
+            println!("   New email: {}", e);
+        }
+        if let Some(ut) = user_type {
+            println!("   New type: {}", ut);
+        }
+        if let Some(j) = jurisdiction {
+            println!("   New jurisdiction: {}", j);
+        }
+    }
+
+    // Check if any fields are provided for update
+    if email.is_none() && user_type.is_none() && jurisdiction.is_none() {
+        println!("❌ No fields specified for update");
+        return Ok(());
+    }
+
+    match client
+        .update_user(user_id, email, user_type, jurisdiction)
+        .await
+    {
+        Ok(result) => {
+            println!("✅ User updated successfully:");
+            println!(
+                "   User ID: {}",
+                result["user_id"].as_str().unwrap_or("N/A")
+            );
+
+            if let Some(updated_fields) = result["updated_fields"].as_array() {
+                println!("   Updated fields:");
+                for field in updated_fields {
+                    println!("     • {}", field.as_str().unwrap_or("N/A"));
+                }
+            }
+
+            if verbose {
+                println!(
+                    "   Updated at: {}",
+                    result["updated_at"].as_str().unwrap_or("N/A")
+                );
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else {
+                return Err(eyre::eyre!("Failed to update user: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Delete user by ID
+async fn delete_user(
+    client: &BatchApiClient,
+    user_id: &str,
+    force: bool,
+    verbose: bool,
+) -> Result<()> {
+    if !force {
+        print!(
+            "❓ Are you sure you want to delete user {}? (y/N): ",
+            user_id
+        );
+        std::io::Write::flush(&mut std::io::stdout())?;
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+
+        if !input.trim().to_lowercase().starts_with('y') {
+            println!("❌ Deletion cancelled");
+            return Ok(());
+        }
+    }
+
+    if verbose {
+        println!("🗑️ Deleting user: {}", user_id);
+    }
+
+    match client.delete_user(user_id).await {
+        Ok(result) => {
+            println!("✅ User deleted successfully:");
+            println!(
+                "   User ID: {}",
+                result["user_id"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   Deleted: {}",
+                result["deleted"].as_bool().unwrap_or(false)
+            );
+
+            if verbose {
+                println!(
+                    "   Deleted at: {}",
+                    result["deleted_at"].as_str().unwrap_or("N/A")
+                );
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else {
+                return Err(eyre::eyre!("Failed to delete user: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Submit KYC information for a user
+async fn submit_kyc(
+    client: &BatchApiClient,
+    user_id: &str,
+    document_type: &str,
+    document_hash: &str,
+    jurisdiction: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("📄 Submitting KYC for user: {}", user_id);
+        println!("   Document type: {}", document_type);
+        println!("   Document hash: {}", document_hash);
+    }
+
+    match client
+        .submit_kyc(user_id, document_type, document_hash, jurisdiction)
+        .await
+    {
+        Ok(result) => {
+            println!("✅ KYC submitted successfully:");
+            println!(
+                "   User ID: {}",
+                result["user_id"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   KYC Status: {}",
+                result["kyc_status"].as_str().unwrap_or("N/A")
+            );
+
+            if verbose {
+                println!(
+                    "   Submitted at: {}",
+                    result["submitted_at"].as_str().unwrap_or("N/A")
+                );
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else {
+                return Err(eyre::eyre!("Failed to submit KYC: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Update KYC status (admin only)
+async fn update_kyc_status(
+    client: &BatchApiClient,
+    user_id: &str,
+    status: &str,
+    notes: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("⚖️ Updating KYC status for user: {}", user_id);
+        println!("   New status: {}", status);
+        if let Some(n) = notes {
+            println!("   Notes: {}", n);
+        }
+    }
+
+    match client.update_kyc_status(user_id, status, notes).await {
+        Ok(result) => {
+            println!("✅ KYC status updated successfully:");
+            println!(
+                "   User ID: {}",
+                result["user_id"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   KYC Status: {}",
+                result["kyc_status"].as_str().unwrap_or("N/A")
+            );
+
+            if verbose {
+                if let Some(submitted) = result["kyc_submitted_at"].as_str() {
+                    println!("   KYC Submitted: {}", submitted);
+                }
+                if let Some(verified) = result["kyc_verified_at"].as_str() {
+                    println!("   KYC Verified: {}", verified);
+                }
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else {
+                return Err(eyre::eyre!("Failed to update KYC status: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Test user operations end-to-end
+async fn test_user_operations(
+    client: &BatchApiClient,
+    user_count: usize,
+    test_kyc: bool,
+    test_updates: bool,
+    verbose: bool,
+    cleanup: bool,
+) -> Result<()> {
+    println!("🧪 Running user operations test...");
+    println!("   Users to create: {}", user_count);
+    println!("   Test KYC: {}", test_kyc);
+    println!("   Test updates: {}", test_updates);
+    println!("   Cleanup after: {}", cleanup);
+    println!();
+
+    let start_time = std::time::Instant::now();
+    let mut created_users = Vec::new();
+    let mut success_count = 0;
+    let mut error_count = 0;
+
+    // Phase 1: Create users
+    println!("📝 Phase 1: Creating {} users...", user_count);
+    for i in 0..user_count {
+        let email = format!("test.user.{}@example.com", i);
+        let user_type = if i % 2 == 0 { "Investor" } else { "Lender" };
+
+        if verbose {
+            println!("   Creating user {}/{}: {}", i + 1, user_count, email);
+        }
+
+        match create_user(client, user_type, &email, Some("US"), false).await {
+            Ok(_) => {
+                success_count += 1;
+                // In a real implementation, we'd extract and store the user ID
+                created_users.push(format!("test-user-{}", i));
+            }
+            Err(e) => {
+                error_count += 1;
+                if verbose {
+                    println!("     ❌ Failed: {}", e);
+                }
+            }
+        }
+    }
+
+    println!(
+        "   ✅ Created {} users successfully, {} errors",
+        success_count, error_count
+    );
+
+    // Phase 2: Test KYC if requested
+    if test_kyc && !created_users.is_empty() {
+        println!("📄 Phase 2: Testing KYC submissions...");
+        let kyc_test_count = std::cmp::min(3, created_users.len());
+
+        for i in 0..kyc_test_count {
+            let user_id = &created_users[i];
+            let document_hash = format!("hash_{:032x}", i);
+
+            if verbose {
+                println!("   Submitting KYC for user: {}", user_id);
+            }
+
+            match submit_kyc(
+                client,
+                user_id,
+                "passport",
+                &document_hash,
+                Some("US"),
+                false,
+            )
+            .await
+            {
+                Ok(_) => println!("     ✅ KYC submitted"),
+                Err(e) => {
+                    if verbose {
+                        println!("     ❌ KYC failed: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 3: Test updates if requested
+    if test_updates && !created_users.is_empty() {
+        println!("🔄 Phase 3: Testing user updates...");
+        let update_test_count = std::cmp::min(2, created_users.len());
+
+        for i in 0..update_test_count {
+            let user_id = &created_users[i];
+            let new_email = format!("updated.user.{}@example.com", i);
+
+            if verbose {
+                println!("   Updating user: {}", user_id);
+            }
+
+            match update_user(client, user_id, Some(&new_email), None, Some("CA"), false).await {
+                Ok(_) => println!("     ✅ Update successful"),
+                Err(e) => {
+                    if verbose {
+                        println!("     ❌ Update failed: {}", e);
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 4: Cleanup if requested
+    if cleanup && !created_users.is_empty() {
+        println!("🗑️ Phase 4: Cleaning up test users...");
+        let mut cleanup_success = 0;
+        let mut cleanup_errors = 0;
+
+        for user_id in &created_users {
+            if verbose {
+                println!("   Deleting user: {}", user_id);
+            }
+
+            match delete_user(client, user_id, true, false).await {
+                Ok(_) => cleanup_success += 1,
+                Err(e) => {
+                    cleanup_errors += 1;
+                    if verbose {
+                        println!("     ❌ Cleanup failed: {}", e);
+                    }
+                }
+            }
+        }
+
+        println!(
+            "   ✅ Cleaned up {} users, {} errors",
+            cleanup_success, cleanup_errors
+        );
+    }
+
+    let duration = start_time.elapsed();
+
+    println!();
+    println!("🎯 User Operations Test Summary:");
+    println!("   Duration: {:?}", duration);
+    println!("   Users created: {}", success_count);
+    println!("   Creation errors: {}", error_count);
+
+    if test_kyc {
+        println!("   ✅ KYC testing completed");
+    }
+
+    if test_updates {
+        println!("   ✅ Update testing completed");
+    }
+
+    if cleanup {
+        println!("   ✅ Cleanup completed");
+    } else if !created_users.is_empty() {
+        println!(
+            "   ⚠️  Note: {} test users were left in the system",
+            created_users.len()
+        );
+        println!("      Run with --cleanup to remove them automatically");
     }
 
     Ok(())

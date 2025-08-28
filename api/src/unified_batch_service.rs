@@ -1076,16 +1076,11 @@ impl UnifiedBatchService {
             }
         }
 
-        // Validate each loan's lifecycle integrity in parallel
-        let loan_validation_futures: Vec<_> = loan_states
+        // Validate each loan's lifecycle integrity
+        let validation_results: Vec<_> = loan_states
             .into_iter()
-            .map(|(loan_id, ops)| async move {
-                self.validate_single_loan_lifecycle(loan_id, &ops).await
-            })
+            .map(|(loan_id, ops)| self.validate_single_loan_lifecycle(loan_id, &ops))
             .collect();
-
-        // Execute validations in parallel
-        let validation_results = future::join_all(loan_validation_futures).await;
 
         let mut total_integrity_score = 0.0;
         let mut validated_loan_count = 0;
@@ -1145,7 +1140,7 @@ impl UnifiedBatchService {
     }
 
     /// Validate a single loan's lifecycle integrity
-    async fn validate_single_loan_lifecycle(
+    fn validate_single_loan_lifecycle(
         &self,
         loan_id: uuid::Uuid,
         operations: &[LoanOperation],

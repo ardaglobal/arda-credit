@@ -89,7 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Create API configuration
     let api_config = ApiConfig {
         server_name: "Batch Processing API".to_string(),
-        version: "2.0.0".to_string(),
+        version: "1.0.0".to_string(),
         max_batch_size: args.max_batch_size,
         enable_debug_endpoints: args.debug,
     };

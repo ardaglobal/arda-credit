@@ -53,6 +53,7 @@ pub use db::{
     create_loan,
     create_payment,
     create_state_snapshot,
+    delete_identity,
 
     get_all_batches,
     get_balance,
@@ -80,10 +81,12 @@ pub use db::{
     mark_batch_posted_to_contract_with_tx_hash,
     // ADS/Merkle functions
     store_ads_state_commit,
+    submit_kyc_data,
     // Transaction functions
     submit_transaction,
     update_balance,
     update_batch_proof,
+    update_identity_profile,
 
     update_kyc_status,
     // Types

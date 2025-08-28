@@ -35,6 +35,7 @@
 
 pub mod batch_processor;
 pub mod client;
+pub mod paths;
 pub mod rest;
 pub mod server;
 pub mod unified_batch_service;
