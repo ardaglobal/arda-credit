@@ -111,6 +111,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             vec![]
         },
         rate_limit_per_minute: 1000, // Allow high throughput for batch processing
+        jwt_secret: std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+            "default-secret-change-in-production-at-least-32-characters".to_string()
+        }),
+        jwt_expiry_hours: std::env::var("JWT_EXPIRY_HOURS")
+            .unwrap_or_else(|_| "24".to_string())
+            .parse()
+            .unwrap_or(24),
     };
 
     // Create API server

@@ -80,7 +80,7 @@ pub struct ContractPrivateData {
 // CCR DOMAIN TYPES (Credit and Compliance Requirements)
 // ============================================================================
 
-/// Identity/User record with KYC status
+/// Identity/User record with KYC status and authentication
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Identity {
     pub id: uuid::Uuid,
@@ -91,6 +91,13 @@ pub struct Identity {
     pub kyc_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // Authentication fields
+    pub password_hash: Option<String>,
+    pub last_login_at: Option<DateTime<Utc>>,
+    pub email_verified: Option<bool>,
+    pub email_verification_token: Option<String>,
+    pub password_reset_token: Option<String>,
+    pub password_reset_expires_at: Option<DateTime<Utc>>,
 }
 
 /// Loan record with borrower/lender relationship
@@ -783,13 +790,14 @@ pub async fn create_identity(
 
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, user_type, email, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $4)
+        INSERT INTO identities (id, user_type, email, created_at, updated_at, email_verified)
+        VALUES ($1, $2, $3, $4, $4, $5)
         "#,
         id,
         user_type,
         email,
-        now
+        now,
+        false // email_verified starts as false
     )
     .execute(pool)
     .await?;
@@ -803,6 +811,57 @@ pub async fn create_identity(
         kyc_verified_at: None,
         created_at: now,
         updated_at: now,
+        password_hash: None,
+        last_login_at: None,
+        email_verified: Some(false),
+        email_verification_token: None,
+        password_reset_token: None,
+        password_reset_expires_at: None,
+    };
+
+    Ok(identity)
+}
+
+/// Create identity with password (for registration)
+pub async fn create_identity_with_password(
+    pool: &PgPool,
+    user_type: &str,
+    email: &str,
+    password_hash: &str,
+) -> Result<Identity, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+    let now = chrono::Utc::now();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO identities (id, user_type, email, password_hash, created_at, updated_at, email_verified)
+        VALUES ($1, $2, $3, $4, $5, $5, $6)
+        "#,
+        id,
+        user_type,
+        email,
+        password_hash,
+        now,
+        false // email_verified starts as false
+    )
+    .execute(pool)
+    .await?;
+
+    let identity = Identity {
+        id,
+        user_type: user_type.to_string(),
+        email: email.to_string(),
+        kyc_status: "not_submitted".to_string(),
+        kyc_submitted_at: None,
+        kyc_verified_at: None,
+        created_at: now,
+        updated_at: now,
+        password_hash: Some(password_hash.to_string()),
+        last_login_at: None,
+        email_verified: Some(false),
+        email_verification_token: None,
+        password_reset_token: None,
+        password_reset_expires_at: None,
     };
 
     Ok(identity)
@@ -815,7 +874,10 @@ pub async fn get_identity_by_id(
 ) -> Result<Option<Identity>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at as "created_at!", updated_at as "updated_at!"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
+               created_at as "created_at!", updated_at as "updated_at!", 
+               password_hash, last_login_at, email_verified, email_verification_token, 
+               password_reset_token, password_reset_expires_at
         FROM identities
         WHERE id = $1
         "#,
@@ -833,6 +895,12 @@ pub async fn get_identity_by_id(
         kyc_verified_at: row.kyc_verified_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        password_hash: row.password_hash,
+        last_login_at: row.last_login_at,
+        email_verified: row.email_verified,
+        email_verification_token: row.email_verification_token,
+        password_reset_token: row.password_reset_token,
+        password_reset_expires_at: row.password_reset_expires_at,
     });
 
     Ok(identity)
@@ -845,7 +913,10 @@ pub async fn get_identity_by_email(
 ) -> Result<Option<Identity>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at as "created_at!", updated_at as "updated_at!"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
+               created_at as "created_at!", updated_at as "updated_at!", 
+               password_hash, last_login_at, email_verified, email_verification_token, 
+               password_reset_token, password_reset_expires_at
         FROM identities
         WHERE email = $1
         "#,
@@ -863,6 +934,12 @@ pub async fn get_identity_by_email(
         kyc_verified_at: row.kyc_verified_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        password_hash: row.password_hash,
+        last_login_at: row.last_login_at,
+        email_verified: row.email_verified,
+        email_verification_token: row.email_verification_token,
+        password_reset_token: row.password_reset_token,
+        password_reset_expires_at: row.password_reset_expires_at,
     });
 
     Ok(identity)
@@ -878,7 +955,10 @@ pub async fn list_identities(
     // Simplified version - can add filtering later
     let rows = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at as "created_at!", updated_at as "updated_at!"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
+               created_at as "created_at!", updated_at as "updated_at!", 
+               password_hash, last_login_at, email_verified, email_verification_token, 
+               password_reset_token, password_reset_expires_at
         FROM identities
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -900,6 +980,12 @@ pub async fn list_identities(
             kyc_verified_at: row.kyc_verified_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            password_hash: row.password_hash,
+            last_login_at: row.last_login_at,
+            email_verified: row.email_verified,
+            email_verification_token: row.email_verification_token,
+            password_reset_token: row.password_reset_token,
+            password_reset_expires_at: row.password_reset_expires_at,
         })
         .collect();
 
@@ -1228,4 +1314,196 @@ pub async fn create_state_snapshot(
     };
 
     Ok(snapshot)
+}
+
+// ============================================================================
+// AUTHENTICATION HELPER FUNCTIONS
+// ============================================================================
+
+/// Update last login timestamp for a user
+pub async fn update_last_login(pool: &PgPool, user_id: uuid::Uuid) -> Result<(), sqlx::Error> {
+    let now = Utc::now();
+
+    sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET last_login_at = $1, updated_at = $1
+        WHERE id = $2
+        "#,
+        now,
+        user_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Set password for a user (for password updates)
+pub async fn update_user_password(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    password_hash: &str,
+) -> Result<(), sqlx::Error> {
+    let now = Utc::now();
+
+    sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET password_hash = $1, updated_at = $2
+        WHERE id = $3
+        "#,
+        password_hash,
+        now,
+        user_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Set email verification token for a user
+pub async fn set_email_verification_token(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    token: &str,
+) -> Result<(), sqlx::Error> {
+    let now = Utc::now();
+
+    sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET email_verification_token = $1, updated_at = $2
+        WHERE id = $3
+        "#,
+        token,
+        now,
+        user_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Verify email address using verification token
+pub async fn verify_email_with_token(pool: &PgPool, token: &str) -> Result<bool, sqlx::Error> {
+    let now = Utc::now();
+
+    let result = sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET email_verified = true, email_verification_token = NULL, updated_at = $1
+        WHERE email_verification_token = $2
+          AND created_at > $3  -- Token expires after 7 days
+        "#,
+        now,
+        token,
+        now - chrono::Duration::days(7)
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Set password reset token with expiration
+pub async fn set_password_reset_token(
+    pool: &PgPool,
+    email: &str,
+    token: &str,
+    expires_in_hours: i64,
+) -> Result<bool, sqlx::Error> {
+    let now = Utc::now();
+    let expires_at = now + chrono::Duration::hours(expires_in_hours);
+
+    let result = sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET password_reset_token = $1, 
+            password_reset_expires_at = $2, 
+            updated_at = $3
+        WHERE email = $4
+        "#,
+        token,
+        expires_at,
+        now,
+        email
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Reset password using reset token
+pub async fn reset_password_with_token(
+    pool: &PgPool,
+    token: &str,
+    new_password_hash: &str,
+) -> Result<bool, sqlx::Error> {
+    let now = Utc::now();
+
+    let result = sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET password_hash = $1, 
+            password_reset_token = NULL, 
+            password_reset_expires_at = NULL,
+            updated_at = $2
+        WHERE password_reset_token = $3
+          AND password_reset_expires_at > $2
+        "#,
+        new_password_hash,
+        now,
+        token
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Get identity by password reset token (if valid)
+pub async fn get_identity_by_reset_token(
+    pool: &PgPool,
+    token: &str,
+) -> Result<Option<Identity>, sqlx::Error> {
+    let now = Utc::now();
+
+    let row = sqlx::query!(
+        r#"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
+               created_at as "created_at!", updated_at as "updated_at!", 
+               password_hash, last_login_at, email_verified, email_verification_token, 
+               password_reset_token, password_reset_expires_at
+        FROM identities
+        WHERE password_reset_token = $1
+          AND password_reset_expires_at > $2
+        "#,
+        token,
+        now
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    let identity = row.map(|row| Identity {
+        id: row.id,
+        user_type: row.user_type,
+        email: row.email,
+        kyc_status: row.kyc_status,
+        kyc_submitted_at: row.kyc_submitted_at,
+        kyc_verified_at: row.kyc_verified_at,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        password_hash: row.password_hash,
+        last_login_at: row.last_login_at,
+        email_verified: row.email_verified,
+        email_verification_token: row.email_verification_token,
+        password_reset_token: row.password_reset_token,
+        password_reset_expires_at: row.password_reset_expires_at,
+    });
+
+    Ok(identity)
 }

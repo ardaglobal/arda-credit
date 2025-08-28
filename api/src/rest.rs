@@ -7,7 +7,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use humantime::format_duration;
-use regex::Regex;
+
 use serde::{Deserialize, Serialize};
 use sqlx::{Error as SqlxError, PgPool};
 use tracing::{error, info, instrument, warn};
@@ -15,14 +15,15 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
+use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use arda_credit_db::{
-    create_identity, get_all_batches, get_batch_by_id, get_contract_submission_data,
-    get_current_state, get_identity_by_id, get_pending_transactions, store_ads_state_commit,
-    submit_kyc_data, submit_transaction, update_batch_proof, update_identity_profile,
-    update_kyc_status, AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof,
-    LoanLifecycleSummary,
+    create_identity_with_password, get_all_batches, get_batch_by_id, get_contract_submission_data,
+    get_current_state, get_identity_by_email, get_identity_by_id, get_pending_transactions,
+    store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
+    update_identity_profile, update_kyc_status, update_last_login, AuditEvent, Identity,
+    IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -34,6 +35,58 @@ use tokio::sync::RwLock;
 /// Helper function to parse UUID from string
 fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
     uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
+}
+
+/// Extract authenticated user ID from request headers (set by auth middleware)
+fn extract_authenticated_user_id(
+    request: &axum::extract::Request<axum::body::Body>,
+) -> Result<uuid::Uuid, String> {
+    let user_id_header = request
+        .headers()
+        .get("x-user-id")
+        .ok_or_else(|| "No authenticated user ID found".to_string())?;
+
+    let user_id_str = user_id_header
+        .to_str()
+        .map_err(|_| "Invalid user ID header format".to_string())?;
+
+    parse_user_id(user_id_str)
+}
+
+/// Extract authenticated user info from request headers (set by auth middleware)
+#[derive(Debug)]
+pub struct AuthenticatedUser {
+    pub user_id: uuid::Uuid,
+    pub email: String,
+    pub user_type: String,
+}
+
+fn extract_authenticated_user(
+    request: &axum::extract::Request<axum::body::Body>,
+) -> Result<AuthenticatedUser, String> {
+    let user_id = extract_authenticated_user_id(request)?;
+
+    let email = request
+        .headers()
+        .get("x-user-email")
+        .ok_or_else(|| "No authenticated user email found".to_string())?
+        .to_str()
+        .map_err(|_| "Invalid user email header format".to_string())?
+        .to_string();
+
+    let user_type = request
+        .headers()
+        .get("x-user-type")
+        .ok_or_else(|| "No authenticated user type found".to_string())?
+        .to_str()
+        .map_err(|_| "Invalid user type header format".to_string())?
+        .to_string();
+
+    Ok(AuthenticatedUser {
+        user_id,
+        email,
+        user_type,
+    })
 }
 
 /// Convert database Identity to API UserDetailsResponse
@@ -71,6 +124,7 @@ pub struct ApiState {
     pub config: ApiConfig,
     pub batch_processor: Option<BatchProcessorHandle>,
     pub ads_service: Arc<RwLock<IndexedMerkleTreeADS>>,
+    pub auth_service: Arc<AuthService>,
 }
 
 /// Configuration for API server
@@ -302,8 +356,52 @@ impl std::str::FromStr for UserType {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserRequest {
     pub user_type: UserType,
+    #[schema(example = "user@example.com")]
     pub email: String,
+    #[schema(example = "SecureP@ssw0rd123")]
+    pub password: String,
     pub jurisdiction: Option<String>, // Optional, defaults to "US"
+}
+
+/// Request to login with email and password
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LoginRequest {
+    #[schema(example = "user@example.com")]
+    pub email: String,
+    #[schema(example = "SecureP@ssw0rd123")]
+    pub password: String,
+}
+
+/// Response for successful login
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LoginResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: i64,
+    pub user: UserSummary,
+}
+
+/// Summary user information for login response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserSummary {
+    pub user_id: String,
+    pub email: String,
+    pub user_type: UserType,
+    pub kyc_status: String,
+    pub email_verified: bool,
+}
+
+/// Request to logout (optional - for token blacklisting)
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LogoutRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revoke_all_tokens: Option<bool>,
+}
+
+/// Response for logout
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LogoutResponse {
+    pub message: String,
 }
 
 /// Response from user registration
@@ -632,6 +730,9 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::API_INFO, get(api_info))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
+        // Authentication endpoints
+        .route("/api/auth/login", post(login_endpoint))
+        .route("/api/auth/logout", post(logout_endpoint))
         // Transaction operations
         .route(paths::STATE_TRANSACTIONS, post(submit_transaction_endpoint))
         .route(
@@ -1476,20 +1577,38 @@ async fn register_user_endpoint(
         request.user_type, request.email
     );
 
-    // Validate email format using regex
-    let email_regex =
-        Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Email regex compilation error: {}", e),
-            )
-        })?;
-
-    if !email_regex.is_match(&request.email) {
-        return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
+    // Validate email and password using AuthService
+    if let Err(e) = state.auth_service.validate_email(&request.email) {
+        warn!("❌ API: Invalid email format: {}", e);
+        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
     }
 
-    match create_identity(&state.pool, &request.user_type.to_string(), &request.email).await {
+    if let Err(e) = state.auth_service.validate_password(&request.password) {
+        warn!("❌ API: Invalid password format: {}", e);
+        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    }
+
+    // Hash the password
+    let password_hash = match state.auth_service.hash_password(&request.password) {
+        Ok(hash) => hash,
+        Err(e) => {
+            error!("❌ API: Failed to hash password: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.user_message().to_string(),
+            ));
+        }
+    };
+
+    // Create user with password
+    match create_identity_with_password(
+        &state.pool,
+        &request.user_type.to_string(),
+        &request.email,
+        &password_hash,
+    )
+    .await
+    {
         Ok(identity) => {
             info!("✅ API: User registered successfully: id={}", identity.id);
             Ok(Json(identity_to_register_response(identity)))
@@ -1504,6 +1623,151 @@ async fn register_user_endpoint(
             Err((StatusCode::BAD_REQUEST, error_msg))
         }
     }
+}
+
+/// Login endpoint for user authentication
+#[utoipa::path(
+    post,
+    path = "/api/auth/login",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "Login successful", body = LoginResponse),
+        (status = 401, description = "Invalid credentials"),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 403, description = "Account not verified or locked"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Authentication"
+)]
+#[instrument(skip(state), level = "info")]
+async fn login_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, (StatusCode, String)> {
+    info!("🔐 API: Login attempt: email={}", request.email);
+
+    // Get user by email
+    let user = match get_identity_by_email(&state.pool, &request.email).await {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            warn!("❌ API: Login failed - user not found: {}", request.email);
+            return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
+        }
+        Err(e) => {
+            error!("❌ API: Database error during login: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Authentication error".to_string(),
+            ));
+        }
+    };
+
+    // Check if user has a password set
+    let password_hash = user.password_hash.as_ref().ok_or_else(|| {
+        warn!("❌ API: User has no password set: {}", request.email);
+        (StatusCode::UNAUTHORIZED, "Invalid credentials".to_string())
+    })?;
+
+    // Verify password
+    let is_valid_password = match state
+        .auth_service
+        .verify_password(&request.password, password_hash)
+    {
+        Ok(valid) => valid,
+        Err(e) => {
+            error!("❌ API: Password verification error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Authentication error".to_string(),
+            ));
+        }
+    };
+
+    if !is_valid_password {
+        warn!("❌ API: Login failed - invalid password: {}", request.email);
+        return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
+    }
+
+    // Check if email is verified (optional - can be disabled for development)
+    if user.email_verified == Some(false) {
+        warn!(
+            "❌ API: Login failed - email not verified: {}",
+            request.email
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Please verify your email address before logging in".to_string(),
+        ));
+    }
+
+    // Generate JWT token
+    let token = match state
+        .auth_service
+        .generate_token(user.id, &user.email, &user.user_type)
+    {
+        Ok(token) => token,
+        Err(e) => {
+            error!("❌ API: Token generation error: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Authentication error".to_string(),
+            ));
+        }
+    };
+
+    // Update last login timestamp
+    if let Err(e) = update_last_login(&state.pool, user.id).await {
+        warn!("⚠️ API: Failed to update last login: {}", e);
+        // Don't fail the login for this
+    }
+
+    info!("✅ API: Login successful: user_id={}", user.id);
+
+    Ok(Json(LoginResponse {
+        access_token: token,
+        token_type: "Bearer".to_string(),
+        expires_in: state.auth_service.token_expiry_seconds(),
+        user: UserSummary {
+            user_id: user.id.to_string(),
+            email: user.email,
+            user_type: user.user_type.parse().unwrap_or(UserType::User),
+            kyc_status: user.kyc_status,
+            email_verified: user.email_verified.unwrap_or(false),
+        },
+    }))
+}
+
+/// Logout endpoint (stateless JWT - mainly for logging)
+#[utoipa::path(
+    post,
+    path = "/api/auth/logout",
+    request_body = LogoutRequest,
+    responses(
+        (status = 200, description = "Logout successful", body = LogoutResponse),
+        (status = 401, description = "Invalid or expired token"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(
+        ("Bearer" = [])
+    ),
+    tag = "Authentication"
+)]
+#[instrument(skip(_state), level = "info")]
+async fn logout_endpoint(
+    State(_state): State<ApiState>,
+    Json(_request): Json<LogoutRequest>,
+) -> Result<Json<LogoutResponse>, (StatusCode, String)> {
+    // For stateless JWT, we don't need to invalidate tokens on the server side
+    // In a production system, you might:
+    // 1. Add token to a blacklist with expiration
+    // 2. Use short-lived tokens with refresh tokens
+    // 3. Store active sessions in Redis
+
+    info!("📤 API: User logged out");
+
+    Ok(Json(LogoutResponse {
+        message: "Logout successful. Please remove the token from client storage.".to_string(),
+    }))
 }
 
 /// List user identities
@@ -2548,6 +2812,10 @@ async fn get_loan_lifecycle_summary_endpoint(
         get_current_state_endpoint,
         get_contract_data_endpoint,
 
+        // Authentication endpoints
+        login_endpoint,
+        logout_endpoint,
+
         // User Management endpoints
         register_user_endpoint,
         list_identities_endpoint,
@@ -2586,6 +2854,13 @@ async fn get_loan_lifecycle_summary_endpoint(
             CurrentStateResponse,
             BatchProcessorStatsResponse,
             TriggerBatchResponse,
+
+            // Authentication
+            LoginRequest,
+            LoginResponse,
+            UserSummary,
+            LogoutRequest,
+            LogoutResponse,
 
             // User Management
             RegisterUserRequest,
@@ -2640,6 +2915,7 @@ async fn get_loan_lifecycle_summary_endpoint(
     ),
     tags(
         (name = "Health", description = "Health check and system status endpoints"),
+        (name = "Authentication", description = "User login, logout and token management"),
         (name = "Transactions", description = "Transaction submission and management"),
         (name = "Batches", description = "Batch processing and proof management"),
         (name = "Users", description = "User registration and KYC management"),

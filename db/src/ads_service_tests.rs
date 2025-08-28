@@ -1104,6 +1104,13 @@ mod tests {
             kyc_verified_at: Some(Utc::now()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            // Authentication fields
+            password_hash: None,
+            last_login_at: None,
+            email_verified: Some(true),
+            email_verification_token: None,
+            password_reset_token: None,
+            password_reset_expires_at: None,
         };
 
         let loan = Loan {
@@ -1180,6 +1187,13 @@ mod tests {
             kyc_verified_at: Some(Utc::now()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            // Authentication fields
+            password_hash: None,
+            last_login_at: None,
+            email_verified: Some(true),
+            email_verification_token: None,
+            password_reset_token: None,
+            password_reset_expires_at: None,
         };
 
         let loan = Loan {
@@ -1265,6 +1279,13 @@ mod tests {
             kyc_verified_at: Some(Utc::now()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            // Authentication fields
+            password_hash: None,
+            last_login_at: None,
+            email_verified: Some(true),
+            email_verification_token: None,
+            password_reset_token: None,
+            password_reset_expires_at: None,
         };
 
         let loan = Loan {
@@ -1371,6 +1392,13 @@ mod tests {
             kyc_verified_at: Some(Utc::now()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
+            // Authentication fields
+            password_hash: None,
+            last_login_at: None,
+            email_verified: Some(true),
+            email_verification_token: None,
+            password_reset_token: None,
+            password_reset_expires_at: None,
         };
 
         let loan = Loan {

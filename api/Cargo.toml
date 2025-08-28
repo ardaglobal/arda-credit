@@ -65,6 +65,11 @@ tracing-subscriber = { version = "0.3", features = [ "env-filter" ] }
 # HTTP client dependencies
 reqwest = { version = "0.12", features = [ "json" ] }
 
+# Authentication dependencies
+argon2       = "0.5"                                         # Password hashing
+jsonwebtoken = "9.3"                                         # JWT token generation/validation
+validator    = { version = "0.20", features = [ "derive" ] } # Email/password validation
+
 # Middleware dependencies
 blake3 = "1"
 rand   = "0.9"

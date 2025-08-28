@@ -50,6 +50,7 @@ pub use db::{
     create_batch,
     // CCR Domain functions
     create_identity,
+    create_identity_with_password,
     create_loan,
     create_payment,
     create_state_snapshot,
@@ -65,6 +66,7 @@ pub use db::{
 
     get_identity_by_email,
     get_identity_by_id,
+    get_identity_by_reset_token,
     get_loan_by_id,
     get_payments_by_loan,
     get_pending_transactions,
@@ -79,6 +81,11 @@ pub use db::{
     list_loans,
     mark_batch_posted_to_contract,
     mark_batch_posted_to_contract_with_tx_hash,
+
+    // Authentication functions
+    reset_password_with_token,
+    set_email_verification_token,
+    set_password_reset_token,
     // ADS/Merkle functions
     store_ads_state_commit,
     submit_kyc_data,
@@ -89,6 +96,9 @@ pub use db::{
     update_identity_profile,
 
     update_kyc_status,
+    update_last_login,
+    update_user_password,
+    verify_email_with_token,
     // Types
     AdsStateCommit,
     Balance,
