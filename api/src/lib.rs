@@ -33,8 +33,10 @@
 #![allow(clippy::struct_excessive_bools)]
 #![allow(clippy::suboptimal_flops)]
 
+pub mod auth;
 pub mod batch_processor;
 pub mod client;
+pub mod middleware;
 pub mod paths;
 pub mod rest;
 pub mod server;
@@ -46,7 +48,6 @@ pub mod openapi_test;
 // Temporarily disabled for minimal PoC:
 // pub mod graphql;       // 883 lines - GraphQL API for old nullifier system (depends on disabled modules)
 // pub mod integration;   // 480 lines - Complex deployment/scaling configs (depends on disabled modules)
-// pub mod middleware;    // 654 lines - Comprehensive middleware (rate limiting, auth, etc. - overkill for PoC)
 
 // Re-export main API types for convenience
 pub use client::{
@@ -79,6 +80,8 @@ pub use rest::{
 pub use server::{ApiServer, ApiServerBuilder, ApiServerConfig};
 
 pub use unified_batch_service::{BatchCreationResult, UnifiedBatchService};
+
+pub use auth::{AuthError, AuthService, Claims};
 
 // Re-export database types that the API uses
 pub use arda_credit_db::{

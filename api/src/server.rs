@@ -15,7 +15,9 @@ use tower_http::{
 };
 use tracing::{info, instrument};
 
+use crate::auth::AuthService;
 use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
+use crate::middleware::AuthConfig;
 use crate::rest::{ApiConfig, ApiState};
 use arda_credit_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
 use std::sync::Arc;
@@ -49,6 +51,10 @@ pub struct ApiServerConfig {
     /// Security configuration
     pub cors_origins: Vec<String>,
     pub rate_limit_per_minute: u32,
+
+    /// Authentication configuration
+    pub jwt_secret: String,
+    pub jwt_expiry_hours: i64,
 }
 
 impl Default for ApiServerConfig {
@@ -65,6 +71,8 @@ impl Default for ApiServerConfig {
             max_request_size_bytes: 1024 * 1024, // 1MB
             cors_origins: vec!["*".to_string()],
             rate_limit_per_minute: 100,
+            jwt_secret: "default-secret-change-in-production-at-least-32-characters".to_string(),
+            jwt_expiry_hours: 24,
         }
     }
 }
@@ -107,12 +115,19 @@ impl ApiServer {
         let batch_processor_handle =
             start_batch_processor(pool.clone(), batch_processor_config, ads_service.clone()).await;
 
+        // Initialize authentication service
+        let auth_service = Arc::new(AuthService::new(
+            config.jwt_secret.clone(),
+            Some(config.jwt_expiry_hours),
+        ));
+
         // Create API state
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
             batch_processor: Some(batch_processor_handle),
             ads_service,
+            auth_service,
         };
 
         let server = Self { config, state };
@@ -137,11 +152,18 @@ impl ApiServer {
         let batch_processor_handle =
             start_batch_processor(pool.clone(), batch_processor_config, ads_service.clone()).await;
 
+        // Initialize authentication service
+        let auth_service = Arc::new(AuthService::new(
+            config.jwt_secret.clone(),
+            Some(config.jwt_expiry_hours),
+        ));
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
             batch_processor: Some(batch_processor_handle),
             ads_service,
+            auth_service,
         };
 
         Ok(Self { config, state })
@@ -196,10 +218,31 @@ impl ApiServer {
                 .with_state(self.state.clone())
         };
 
-        // Add middleware layers
+        // Configure authentication middleware
+        let auth_config = AuthConfig {
+            enabled: true,          // Enable authentication
+            valid_api_keys: vec![], // Optional: keep for service-to-service auth
+            jwt_secret: Some(self.config.jwt_secret.clone()),
+            allow_anonymous_endpoints: vec![
+                "/health".to_string(),
+                "/".to_string(),
+                "/api/auth/login".to_string(),
+                "/api/v1/user".to_string(), // Allow registration
+                "/api-docs".to_string(),    // Allow OpenAPI docs
+                "/api-docs/openapi.json".to_string(),
+            ],
+        };
+
+        // Apply authentication middleware
+        let router = router.layer(axum::middleware::from_fn_with_state(
+            auth_config,
+            crate::middleware::auth_middleware,
+        ));
+
+        // Add other middleware layers
         let router = self.add_middleware_with_state(router);
 
-        info!("✅ API router built successfully");
+        info!("✅ API router built successfully with authentication");
         router
     }
 

@@ -7,7 +7,8 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -398,7 +399,7 @@ impl Default for AuthConfig {
 #[instrument(skip(config, request, next), level = "debug")]
 pub async fn auth_middleware(
     State(config): State<AuthConfig>,
-    request: Request<Body>,
+    mut request: Request<Body>,
     next: Next,
 ) -> Response {
     if !config.enabled {
@@ -418,7 +419,7 @@ pub async fn auth_middleware(
         return next.run(request).await;
     }
 
-    // Check for API key authentication
+    // Check for API key authentication first
     if let Some(api_key) = request.headers().get("x-api-key") {
         if let Ok(key_str) = api_key.to_str() {
             if config.valid_api_keys.contains(&key_str.to_string()) {
@@ -432,9 +433,34 @@ pub async fn auth_middleware(
     if let Some(auth_header) = request.headers().get("authorization") {
         if let Ok(auth_str) = auth_header.to_str() {
             if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                if let Some(_jwt_secret) = &config.jwt_secret {
-                    if validate_jwt_token(token) {
-                        debug!("JWT authentication successful");
+                if let Some(jwt_secret) = &config.jwt_secret {
+                    // Use proper JWT validation with jsonwebtoken library
+                    if let Ok(claims) = validate_jwt_token_proper(token, jwt_secret) {
+                        debug!("JWT authentication successful for user: {}", claims.sub);
+
+                        // Add user information to request headers for downstream use
+                        request.headers_mut().insert(
+                            "x-user-id",
+                            claims
+                                .sub
+                                .parse()
+                                .unwrap_or_else(|_| "invalid".parse().unwrap()),
+                        );
+                        request.headers_mut().insert(
+                            "x-user-email",
+                            claims
+                                .email
+                                .parse()
+                                .unwrap_or_else(|_| "invalid".parse().unwrap()),
+                        );
+                        request.headers_mut().insert(
+                            "x-user-type",
+                            claims
+                                .user_type
+                                .parse()
+                                .unwrap_or_else(|_| "invalid".parse().unwrap()),
+                        );
+
                         return next.run(request).await;
                     }
                 }
@@ -453,9 +479,31 @@ pub async fn auth_middleware(
     (StatusCode::UNAUTHORIZED, error_response).into_response()
 }
 
+/// JWT Claims structure for validation
+#[derive(Debug, Serialize, Deserialize)]
+pub struct JwtClaims {
+    pub sub: String,       // User ID
+    pub email: String,     // User email
+    pub user_type: String, // User type
+    pub exp: i64,          // Expiration time
+    pub iat: i64,          // Issued at
+    pub jti: String,       // JWT ID
+}
+
+/// Proper JWT token validation using jsonwebtoken library
+fn validate_jwt_token_proper(
+    token: &str,
+    jwt_secret: &str,
+) -> Result<JwtClaims, jsonwebtoken::errors::Error> {
+    let decoding_key = DecodingKey::from_secret(jwt_secret.as_ref());
+    let validation = Validation::default();
+
+    let token_data = decode::<JwtClaims>(token, &decoding_key, &validation)?;
+    Ok(token_data.claims)
+}
+
 fn validate_jwt_token(token: &str) -> bool {
-    // Simplified JWT validation - would use proper JWT library in real implementation
-    // For now, just check if token is non-empty and matches a simple pattern
+    // Simplified JWT validation - deprecated, use validate_jwt_token_proper instead
     !token.is_empty() && token.len() > 20 && token.contains('.')
 }
 
