@@ -10,7 +10,7 @@ use humantime::format_duration;
 use serde::{Deserialize, Serialize};
 use sqlx::{Error as SqlxError, PgPool};
 use tracing::{error, info, instrument, warn};
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
@@ -19,8 +19,7 @@ use crate::paths;
 use arda_credit_db::{
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
     get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
-    AuditEvent, ContractSubmissionData, IndexedMerkleTreeADS, LoanInclusionProof,
-    LoanLifecycleSummary,
+    AuditEvent, IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -39,7 +38,7 @@ pub struct ApiState {
 }
 
 /// Configuration for API server
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ToSchema)]
 pub struct ApiConfig {
     pub server_name: String,
     pub version: String,
@@ -153,6 +152,29 @@ pub struct BatchListQuery {
     pub limit: Option<i32>,
 }
 
+/// Contract submission data
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ContractSubmissionData {
+    pub public: ContractPublicData,
+    pub private: ContractPrivateData,
+}
+
+/// Contract public data
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ContractPublicData {
+    pub prev_merkle_root: String,
+    pub new_merkle_root: String,
+    pub zk_proof: String,
+}
+
+/// Contract private data
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ContractPrivateData {
+    pub prev_counter_value: i64,
+    pub new_counter_value: i64,
+    pub transactions: Vec<i32>,
+}
+
 /// API information response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ApiInfoResponse {
@@ -262,7 +284,7 @@ pub struct UpdateKycStatusRequest {
 }
 
 /// List identities query parameters
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListIdentitiesQuery {
     pub user_type: Option<String>,
     pub kyc_status: Option<String>,
@@ -651,6 +673,15 @@ async fn health_check(
 
 /// API information endpoint
 #[instrument(skip(state), level = "info")]
+/// Get API information
+#[utoipa::path(
+    get,
+    path = "/api/v1/info",
+    responses(
+        (status = 200, description = "API information", body = ApiInfoResponse),
+    ),
+    tag = "Info"
+)]
 async fn api_info(State(state): State<ApiState>) -> Json<ApiInfoResponse> {
     info!("📋 API: API info requested");
 
@@ -969,6 +1000,21 @@ async fn get_batch_endpoint(
 /// - When status is "proven", merkle_root is required and must be exactly 32 bytes
 /// - When status is not "proven", merkle_root is optional but if provided must be valid hex and 32 bytes
 /// - Hex values can optionally start with "0x" prefix
+#[utoipa::path(
+    post,
+    path = "/api/v1/state/batch/{batch_id}/proof",
+    request_body = UpdateBatchProofRequest,
+    responses(
+        (status = 200, description = "Batch proof updated successfully", body = BatchInfo),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "Batch not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("batch_id" = i32, Path, description = "Batch ID")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn update_batch_proof_endpoint(
     State(state): State<ApiState>,
@@ -1114,6 +1160,15 @@ async fn update_batch_proof_endpoint(
 }
 
 /// Get current counter state
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/current",
+    responses(
+        (status = 200, description = "Current state information", body = CurrentStateResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "State"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_current_state_endpoint(
     State(state): State<ApiState>,
@@ -1153,6 +1208,19 @@ async fn get_current_state_endpoint(
 }
 
 /// Get contract submission data (dry run)
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/{batch_id}/contract",
+    responses(
+        (status = 200, description = "Contract submission data", body = ContractSubmissionData),
+        (status = 404, description = "Batch not found or not proven"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("batch_id" = i32, Path, description = "Batch ID")
+    ),
+    tag = "State"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_contract_data_endpoint(
     State(state): State<ApiState>,
@@ -1161,8 +1229,23 @@ async fn get_contract_data_endpoint(
     info!("📄 API: Getting contract data for batch: id={}", batch_id);
 
     match get_contract_submission_data(&state.pool, batch_id).await {
-        Ok(contract_data) => {
+        Ok(db_contract_data) => {
             info!("✅ API: Contract data prepared for batch: id={}", batch_id);
+
+            // Convert from db type to API type
+            let contract_data = ContractSubmissionData {
+                public: ContractPublicData {
+                    prev_merkle_root: db_contract_data.public.prev_merkle_root,
+                    new_merkle_root: db_contract_data.public.new_merkle_root,
+                    zk_proof: db_contract_data.public.zk_proof,
+                },
+                private: ContractPrivateData {
+                    prev_counter_value: db_contract_data.private.prev_counter_value,
+                    new_counter_value: db_contract_data.private.new_counter_value,
+                    transactions: db_contract_data.private.transactions,
+                },
+            };
+
             Ok(Json(contract_data))
         }
         Err(SqlxError::RowNotFound) => {
@@ -1183,6 +1266,15 @@ async fn get_contract_data_endpoint(
 }
 
 /// Manually trigger batch processing
+#[utoipa::path(
+    post,
+    path = "/api/v1/state/batches/trigger",
+    responses(
+        (status = 200, description = "Batch processing triggered successfully", body = TriggerBatchResponse),
+        (status = 500, description = "Failed to trigger batch processing")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn trigger_batch_endpoint(
     State(state): State<ApiState>,
@@ -1216,6 +1308,15 @@ async fn trigger_batch_endpoint(
 }
 
 /// Get batch processor statistics
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/batches/stats",
+    responses(
+        (status = 200, description = "Batch processor statistics", body = BatchProcessorStatsResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Batches"
+)]
 #[instrument(skip(state), level = "info")]
 async fn get_batch_processor_stats_endpoint(
     State(state): State<ApiState>,
@@ -1255,6 +1356,17 @@ async fn get_batch_processor_stats_endpoint(
 // ---- USER MANAGEMENT ENDPOINTS ----
 
 /// Register a new user identity
+#[utoipa::path(
+    post,
+    path = "/api/v1/users",
+    request_body = RegisterUserRequest,
+    responses(
+        (status = 200, description = "User registered successfully", body = RegisterUserResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Users"
+)]
 #[instrument(skip(state), level = "info")]
 async fn register_user_endpoint(
     State(state): State<ApiState>,
@@ -1305,6 +1417,18 @@ async fn register_user_endpoint(
 }
 
 /// List user identities
+#[utoipa::path(
+    get,
+    path = "/api/v1/users",
+    params(
+        ListIdentitiesQuery
+    ),
+    responses(
+        (status = 200, description = "List of user identities", body = ListIdentitiesResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Users"
+)]
 #[instrument(skip(state), level = "info")]
 async fn list_identities_endpoint(
     State(state): State<ApiState>,
@@ -1439,6 +1563,17 @@ async fn update_kyc_status_endpoint(
 // ---- LOAN MANAGEMENT ENDPOINTS ----
 
 /// Create a new loan
+#[utoipa::path(
+    post,
+    path = "/api/v1/loans",
+    request_body = CreateLoanRequest,
+    responses(
+        (status = 200, description = "Loan created successfully", body = LoanDetailsResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Loans"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn create_loan_endpoint(
     State(_state): State<ApiState>,
@@ -2051,12 +2186,32 @@ async fn get_loan_lifecycle_summary_endpoint(
 #[derive(OpenApi)]
 #[openapi(
     paths(
+        // Core endpoints
         health_check,
+        api_info,
+
+        // Transaction endpoints
         submit_transaction_endpoint,
         get_pending_transactions_endpoint,
+
+        // Batch endpoints
         create_batch_endpoint,
         get_batches_endpoint,
-        get_batch_endpoint
+        get_batch_endpoint,
+        update_batch_proof_endpoint,
+        trigger_batch_endpoint,
+        get_batch_processor_stats_endpoint,
+
+        // State endpoints
+        get_current_state_endpoint,
+        get_contract_data_endpoint,
+
+        // User Management endpoints
+        register_user_endpoint,
+        list_identities_endpoint,
+
+        // Loan Management endpoints
+        create_loan_endpoint
     ),
     components(
         schemas(
@@ -2064,6 +2219,9 @@ async fn get_loan_lifecycle_summary_endpoint(
             HealthResponse,
             ApiInfoResponse,
             EndpointInfo,
+            ContractSubmissionData,
+            ContractPublicData,
+            ContractPrivateData,
 
             // Transaction Models
             SubmitTransactionRequest,
