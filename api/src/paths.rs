@@ -42,8 +42,11 @@ pub const API_INFO: &str = api_path!("/info");
 // USER MANAGEMENT PATHS
 // ============================================================================
 
-/// Users collection (list users, register user)
+/// Users collection (list users)
 pub const USERS: &str = api_path!("/users");
+
+/// User creation (single user)
+pub const USER: &str = api_path!("/user");
 
 /// Individual user operations
 pub const USER_BY_ID: &str = api_path!("/user/{user_id}");

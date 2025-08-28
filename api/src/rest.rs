@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use chrono::{DateTime, Utc};
@@ -283,6 +283,30 @@ pub struct UpdateKycStatusRequest {
     pub notes: Option<String>,
 }
 
+/// Update user profile request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateUserRequest {
+    pub email: Option<String>,
+    pub user_type: Option<String>, // "Investor" | "Lender"
+    pub jurisdiction: Option<String>,
+}
+
+/// Update user response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateUserResponse {
+    pub user_id: String,
+    pub updated_fields: Vec<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Delete user response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DeleteUserResponse {
+    pub user_id: String,
+    pub deleted: bool,
+    pub deleted_at: DateTime<Utc>,
+}
+
 /// List identities query parameters
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListIdentitiesQuery {
@@ -558,9 +582,11 @@ pub fn create_router(state: ApiState) -> Router {
         // LOAN PROCESSING ENDPOINTS
         // ========================================================================
         // User Management
-        .route(paths::USERS, post(register_user_endpoint))
+        .route(paths::USER, post(register_user_endpoint))
         .route(paths::USERS, get(list_identities_endpoint))
         .route(paths::USER_BY_ID, get(get_user_details_endpoint))
+        .route(paths::USER_BY_ID, put(update_user_endpoint))
+        .route(paths::USER_BY_ID, delete(delete_user_endpoint))
         .route(paths::USER_KYC, post(submit_kyc_endpoint))
         .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
         // Loan Management
@@ -1358,7 +1384,7 @@ async fn get_batch_processor_stats_endpoint(
 /// Register a new user identity
 #[utoipa::path(
     post,
-    path = "/api/v1/users",
+    path = "/api/v1/user",
     request_body = RegisterUserRequest,
     responses(
         (status = 200, description = "User registered successfully", body = RegisterUserResponse),
@@ -1489,6 +1515,19 @@ async fn list_identities_endpoint(
 }
 
 /// Get user details by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{user_id}",
+    responses(
+        (status = 200, description = "User details retrieved successfully", body = UserDetailsResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn get_user_details_endpoint(
     State(_state): State<ApiState>,
@@ -1512,6 +1551,21 @@ async fn get_user_details_endpoint(
 }
 
 /// Submit KYC information
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/{user_id}/kyc",
+    request_body = SubmitKycRequest,
+    responses(
+        (status = 200, description = "KYC information submitted successfully", body = SubmitKycResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn submit_kyc_endpoint(
     State(_state): State<ApiState>,
@@ -1535,6 +1589,21 @@ async fn submit_kyc_endpoint(
 }
 
 /// Update KYC status (admin only)
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/{user_id}/kyc-status",
+    request_body = UpdateKycStatusRequest,
+    responses(
+        (status = 200, description = "KYC status updated successfully", body = UserDetailsResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn update_kyc_status_endpoint(
     State(_state): State<ApiState>,
@@ -1557,6 +1626,171 @@ async fn update_kyc_status_endpoint(
     };
 
     info!("✅ API: KYC status updated successfully");
+    Ok(Json(response))
+}
+
+/// Update user profile
+#[utoipa::path(
+    put,
+    path = "/api/v1/user/{user_id}",
+    request_body = UpdateUserRequest,
+    responses(
+        (status = 200, description = "User updated successfully", body = UpdateUserResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+async fn update_user_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+    Json(request): Json<UpdateUserRequest>,
+) -> Result<Json<UpdateUserResponse>, (StatusCode, String)> {
+    info!("🔄 API: Updating user profile: user_id={}", user_id);
+
+    // Validate user exists first
+    let user_exists = sqlx::query!(
+        "SELECT id FROM identities WHERE id = $1::uuid",
+        uuid::Uuid::parse_str(&user_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid user ID format".to_string(),
+            )
+        })?
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to check if user exists: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database error".to_string(),
+        )
+    })?;
+
+    if user_exists.is_none() {
+        return Err((StatusCode::NOT_FOUND, "User not found".to_string()));
+    }
+
+    let mut updated_fields = Vec::new();
+    let now = Utc::now();
+
+    // Build dynamic update query based on provided fields
+    let mut query = "UPDATE identities SET updated_at = $1".to_string();
+    let mut param_count = 1;
+
+    if request.email.is_some() {
+        param_count += 1;
+        query.push_str(&format!(", email = ${}", param_count));
+        updated_fields.push("email".to_string());
+    }
+
+    if request.user_type.is_some() {
+        param_count += 1;
+        query.push_str(&format!(", user_type = ${}", param_count));
+        updated_fields.push("user_type".to_string());
+    }
+
+    if request.jurisdiction.is_some() {
+        param_count += 1;
+        query.push_str(&format!(", jurisdiction = ${}", param_count));
+        updated_fields.push("jurisdiction".to_string());
+    }
+
+    param_count += 1;
+    query.push_str(&format!(" WHERE id = ${}", param_count));
+
+    // Execute the update
+    let user_uuid = uuid::Uuid::parse_str(&user_id).unwrap();
+    let mut query_builder = sqlx::query(&query).bind(now);
+
+    if let Some(email) = &request.email {
+        query_builder = query_builder.bind(email);
+    }
+    if let Some(user_type) = &request.user_type {
+        query_builder = query_builder.bind(user_type);
+    }
+    if let Some(jurisdiction) = &request.jurisdiction {
+        query_builder = query_builder.bind(jurisdiction);
+    }
+
+    query_builder = query_builder.bind(user_uuid);
+
+    query_builder.execute(&state.pool).await.map_err(|e| {
+        error!("Failed to update user: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to update user".to_string(),
+        )
+    })?;
+
+    let response = UpdateUserResponse {
+        user_id,
+        updated_fields,
+        updated_at: now,
+    };
+
+    info!("✅ API: User profile updated successfully");
+    Ok(Json(response))
+}
+
+/// Delete user
+#[utoipa::path(
+    delete,
+    path = "/api/v1/user/{user_id}",
+    responses(
+        (status = 200, description = "User deleted successfully", body = DeleteUserResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+async fn delete_user_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<DeleteUserResponse>, (StatusCode, String)> {
+    info!("🗑️ API: Deleting user: user_id={}", user_id);
+
+    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid user ID format".to_string(),
+        )
+    })?;
+
+    // Check if user exists and delete
+    let deleted_rows = sqlx::query!("DELETE FROM identities WHERE id = $1", user_uuid)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to delete user: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to delete user".to_string(),
+            )
+        })?
+        .rows_affected();
+
+    if deleted_rows == 0 {
+        return Err((StatusCode::NOT_FOUND, "User not found".to_string()));
+    }
+
+    let response = DeleteUserResponse {
+        user_id,
+        deleted: true,
+        deleted_at: Utc::now(),
+    };
+
+    info!("✅ API: User deleted successfully");
     Ok(Json(response))
 }
 
@@ -2209,6 +2443,11 @@ async fn get_loan_lifecycle_summary_endpoint(
         // User Management endpoints
         register_user_endpoint,
         list_identities_endpoint,
+        get_user_details_endpoint,
+        update_user_endpoint,
+        delete_user_endpoint,
+        submit_kyc_endpoint,
+        update_kyc_status_endpoint,
 
         // Loan Management endpoints
         create_loan_endpoint
@@ -2248,6 +2487,9 @@ async fn get_loan_lifecycle_summary_endpoint(
             KycData,
             SubmitKycResponse,
             UpdateKycStatusRequest,
+            UpdateUserRequest,
+            UpdateUserResponse,
+            DeleteUserResponse,
             ListIdentitiesQuery,
             ListIdentitiesResponse,
 

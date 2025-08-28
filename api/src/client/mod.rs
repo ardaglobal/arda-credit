@@ -301,6 +301,143 @@ impl BatchApiClient {
         self.handle_response(response).await
     }
 
+    /// Create a new user
+    pub async fn create_user(
+        &self,
+        user_type: &str,
+        email: &str,
+        jurisdiction: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::USER);
+        let request = serde_json::json!({
+            "user_type": user_type,
+            "email": email,
+            "jurisdiction": jurisdiction.unwrap_or("US")
+        });
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get user details by ID
+    pub async fn get_user(&self, user_id: &str) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::user_path(user_id));
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// List users with optional filters
+    pub async fn list_users(
+        &self,
+        user_type: Option<&str>,
+        kyc_status: Option<&str>,
+        limit: Option<i32>,
+        offset: Option<i32>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let mut query_params = Vec::new();
+        if let Some(ut) = user_type {
+            query_params.push(format!("user_type={}", ut));
+        }
+        if let Some(ks) = kyc_status {
+            query_params.push(format!("kyc_status={}", ks));
+        }
+        if let Some(l) = limit {
+            query_params.push(format!("limit={}", l));
+        }
+        if let Some(o) = offset {
+            query_params.push(format!("offset={}", o));
+        }
+
+        let query_string = if query_params.is_empty() {
+            String::new()
+        } else {
+            format!("?{}", query_params.join("&"))
+        };
+
+        let url = format!("{}{}{}", self.base_url, paths::USERS, query_string);
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Update user profile information
+    pub async fn update_user(
+        &self,
+        user_id: &str,
+        email: Option<&str>,
+        user_type: Option<&str>,
+        jurisdiction: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::user_path(user_id));
+        let mut request = serde_json::Map::new();
+
+        if let Some(e) = email {
+            request.insert(
+                "email".to_string(),
+                serde_json::Value::String(e.to_string()),
+            );
+        }
+        if let Some(ut) = user_type {
+            request.insert(
+                "user_type".to_string(),
+                serde_json::Value::String(ut.to_string()),
+            );
+        }
+        if let Some(j) = jurisdiction {
+            request.insert(
+                "jurisdiction".to_string(),
+                serde_json::Value::String(j.to_string()),
+            );
+        }
+
+        let response = self.client.put(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Delete user by ID
+    pub async fn delete_user(&self, user_id: &str) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::user_path(user_id));
+        let response = self.client.delete(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Submit KYC information for a user
+    pub async fn submit_kyc(
+        &self,
+        user_id: &str,
+        document_type: &str,
+        document_hash: &str,
+        jurisdiction: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::user_kyc_path(user_id));
+        let request = serde_json::json!({
+            "kyc_data": {
+                "document_type": document_type,
+                "document_hash": document_hash,
+                "jurisdiction": jurisdiction
+            }
+        });
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Update KYC status (admin only)
+    pub async fn update_kyc_status(
+        &self,
+        user_id: &str,
+        status: &str,
+        notes: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::user_kyc_status_path(user_id));
+        let request = serde_json::json!({
+            "status": status,
+            "notes": notes
+        });
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
     /// Generic response handler
     async fn handle_response<T: for<'de> Deserialize<'de>>(
         &self,
