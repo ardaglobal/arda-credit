@@ -3,10 +3,20 @@
 
 FROM rust:1.88.0 AS builder
 
+# Optional build argument for SP1 PAT (to avoid rate limits in CI)
+# Usage:
+#   Local build (no token): docker build .
+#   CI build (with token):  docker build --build-arg SP1_PAT=<token> .
+ARG SP1_PAT=""
+
 # Install SP1 toolchain (cached when Dockerfile doesn't change)
 RUN curl -L https://sp1.succinct.xyz | bash
 ENV PATH="/root/.sp1/bin:/usr/local/cargo/bin:$PATH"
-RUN sp1up
+RUN if [ -n "$SP1_PAT" ]; then \
+        sp1up --token "$SP1_PAT"; \
+    else \
+        sp1up; \
+    fi
 
 WORKDIR /app
 

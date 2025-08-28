@@ -98,3 +98,4 @@ jobs:
           # See: https://docs.aws.amazon.com/codebuild/latest/userguide/specify-caching-local.html
           build-args: |
             BUILDKIT_INLINE_CACHE=1
+            SP1_PAT=${{ secrets.SP1_PAT }}
