@@ -81,7 +81,7 @@ jobs:
       - name: Generate code coverage
         env:
           # Optimized connection pool settings for CodeBuild environment with longer timeouts
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres?pool_max_size=20&connection_timeout=60
+          DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/postgres?pool_max_size=20&connection_timeout=60
         run: |
           # Generate HTML report with limited concurrency to avoid database connection pool exhaustion
           cargo llvm-cov --workspace --all-features --html -- --test-threads=1

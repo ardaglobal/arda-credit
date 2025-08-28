@@ -77,7 +77,7 @@ jobs:
       - name: Run all tests
         env:
           # Optimized connection pool settings for CI environment with longer timeouts
-          DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres?pool_max_size=20&connection_timeout=60
+          DATABASE_URL: postgresql://postgres:password@127.0.0.1:5432/postgres?pool_max_size=20&connection_timeout=60
         run: |
           # Limited concurrency to avoid database connection pool exhaustion
           cargo test --verbose -- --test-threads=1 --nocapture
