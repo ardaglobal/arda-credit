@@ -78,30 +78,17 @@ jobs:
           ~/.sp1/bin/sp1up --token "${{ secrets.SP1_PAT }}"
           ~/.sp1/bin/cargo-prove prove --version
 
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-
-      # PostgreSQL readiness check commented out - GitHub Actions service health checks
-      # already guarantee the database is ready before job steps execute
-      # - name: Wait for PostgreSQL to be ready
-      #  run: |
-      #    echo "Waiting for PostgreSQL to be ready..."
-      #    timeout 60s bash -c 'until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done'
-      #    echo "PostgreSQL is ready!"
-
       - name: Generate code coverage
         env:
           # Optimized connection pool settings for CodeBuild environment with longer timeouts
           DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres?pool_max_size=20&connection_timeout=60
         run: |
           # Generate HTML report with limited concurrency to avoid database connection pool exhaustion
-          cargo llvm-cov --workspace --all-features --html -- --test-threads=5
+          cargo llvm-cov --workspace --all-features --html -- --test-threads=1
           # Generate JSON report for programmatic use
-          cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=5
+          cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=1
           # Generate text summary for display
-          cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=5 > target/llvm-cov/coverage-summary.txt
+          cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=1 > target/llvm-cov/coverage-summary.txt
 
       - name: Display coverage summary
         run: |

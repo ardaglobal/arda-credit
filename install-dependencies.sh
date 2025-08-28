@@ -8,7 +8,7 @@ OS=$(uname -s)
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 TMPDIR=${TMPDIR:-/tmp}
 ROOT="$DIR/"
-CARGO_CRATES="cargo-nextest sqlx-cli cargo-deny"
+CARGO_CRATES="cargo-nextest sqlx-cli cargo-deny cargo-llvm-cov"
 
 # ==========//=========//=========//=========//==========//==========//==========
 # general functions

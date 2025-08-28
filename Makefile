@@ -148,47 +148,21 @@ test:
 .PHONY: cover
 cover:
 	@echo "🔍 Generating code coverage report..."
-	@echo ""
-	@# Install cargo-llvm-cov if not present
-	@if ! command -v cargo-llvm-cov >/dev/null 2>&1; then \
-		echo "📦 Installing cargo-llvm-cov..."; \
-		cargo install cargo-llvm-cov; \
-	else \
-		echo "✅ cargo-llvm-cov already installed"; \
-	fi
-	@echo ""
-	@# Start database
+	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "❌ cargo-llvm-cov not found. Run 'make install' to install dependencies."; exit 1; }
 	@echo "🚀 Starting PostgreSQL database..."
 	@docker-compose up postgres -d
-	@echo ""
-	@# Wait for database to be ready
-	@echo "⏳ Waiting for PostgreSQL to be ready..."
-	@sleep 5
-	@echo ""
-	@# Run migrations
 	@echo "📦 Running database migrations..."
 	@sqlx migrate run --source db/migrations
-	@echo ""
-	@# Generate coverage reports
 	@echo "📊 Generating coverage reports..."
 	@mkdir -p target/llvm-cov
-	@# Generate HTML report
 	@echo "  📄 Generating HTML report..."
-	@DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?pool_max_size=20&connection_timeout=60" \
-		cargo llvm-cov --workspace --all-features --html -- --test-threads=5
-	@# Generate JSON report
+	cargo llvm-cov --workspace --all-features --html -- --test-threads=1
 	@echo "  📋 Generating JSON report..."
-	@DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?pool_max_size=20&connection_timeout=60" \
-		cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=5
-	@# Generate text summary
+	cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=1
 	@echo "  📝 Generating summary report..."
-	@DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?pool_max_size=20&connection_timeout=60" \
-		cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=5 > target/llvm-cov/coverage-summary.txt
-	@echo ""
-	@# Stop database
+	cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=1 > target/llvm-cov/coverage-summary.txt
 	@echo "🛑 Stopping PostgreSQL database..."
 	@docker-compose down -v
-	@echo ""
 	@echo "🎉 Coverage reports generated successfully!"
 	@echo ""
 	@echo "📂 Reports available at:"

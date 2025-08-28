@@ -16,10 +16,10 @@ concurrency:
 
 jobs:
   lint-compile-deploy:
-    runs-on: ubuntu-latest
-      # - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
-      # - image=ubuntu-7.0
-      # - instance-size=small
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=small
     env:
       SINDRI_API_KEY: ${{ secrets.SINDRI_API_KEY }}
     steps:
