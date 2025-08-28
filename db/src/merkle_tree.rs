@@ -2256,10 +2256,10 @@ impl IndexedMerkleTree {
         };
 
         let metrics = InsertionMetrics {
-            hash_operations: hash_operations.try_into().unwrap_or(u32::MAX),
-            range_checks: 2,    // Standard for IMT
-            database_rounds: 3, // Find low nullifier, insert, update tree
-            constraints_count: (hash_operations * 6).try_into().unwrap_or(u32::MAX), // Approximate constraint count
+            hash_operations,
+            range_checks: 2,                        // Standard for IMT
+            database_rounds: 3,                     // Find low nullifier, insert, update tree
+            constraints_count: hash_operations * 6, // Approximate constraint count
         };
 
         Ok(AlgorithmInsertionResult {
@@ -2380,7 +2380,7 @@ impl IndexedMerkleTree {
 
         // Step 4: Calculate hash operations for metrics
         let tree_height = 32; // Standard IMT height
-        let hash_operations = (tree_height as u64) + 2; // Tree height + low nullifier operations
+        let hash_operations = (tree_height as u32) + 2; // Tree height + low nullifier operations
 
         let old_root = self.get_root().await?;
         let new_root = self.get_root().await?;
@@ -2414,10 +2414,10 @@ impl IndexedMerkleTree {
         };
 
         let metrics = InsertionMetrics {
-            hash_operations: hash_operations.try_into().unwrap_or(u32::MAX),
-            range_checks: 2,    // Standard for IMT
-            database_rounds: 3, // Find low nullifier, insert, update tree
-            constraints_count: (hash_operations * 6).try_into().unwrap_or(u32::MAX), // Approximate constraint count
+            hash_operations,
+            range_checks: 2,                        // Standard for IMT
+            database_rounds: 3,                     // Find low nullifier, insert, update tree
+            constraints_count: hash_operations * 6, // Approximate constraint count
         };
 
         Ok(AlgorithmInsertionResult {
@@ -2849,7 +2849,7 @@ impl IndexedMerkleTree {
         let proof = lib::BalanceInclusionProof::new(
             balance_update,
             merkle_path,
-            merkle_root.clone().try_into().unwrap_or([0u8; 32]),
+            merkle_root,
             // Convert batch_id to bytes for batch_id field
             {
                 let mut batch_bytes = [0u8; 32];
@@ -2996,7 +2996,7 @@ impl IndexedMerkleTree {
         let current_root = self.get_root().await?;
 
         // Verify that the proof's merkle root matches what we expect
-        let root_bytes: [u8; 32] = current_root.try_into().unwrap_or([0u8; 32]);
+        let root_bytes: [u8; 32] = current_root;
 
         // Use the proof's own verification method
         Ok(proof.verify() && proof.merkle_root == root_bytes)
@@ -3086,7 +3086,7 @@ impl IndexedMerkleTree {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(&nullifier.to_le_bytes());
-        hasher.update(&(proof.leaf_index as i64).to_le_bytes());
+        hasher.update(&proof.leaf_index.to_le_bytes());
         let expected_leaf_hash_bytes = hasher.finalize();
         let mut expected_leaf_hash = [0u8; 32];
         expected_leaf_hash.copy_from_slice(&expected_leaf_hash_bytes);
@@ -3098,12 +3098,7 @@ impl IndexedMerkleTree {
 
         // Compute the root hash by traversing up the tree
         let mut current_hash = proof.leaf_hash;
-        for (_level, (&sibling_hash, &path_index)) in proof
-            .siblings
-            .iter()
-            .zip(proof.path_indices.iter())
-            .enumerate()
-        {
+        for (&sibling_hash, &path_index) in proof.siblings.iter().zip(proof.path_indices.iter()) {
             let mut level_hasher = Sha256::new();
             if !path_index {
                 // Current hash is left child

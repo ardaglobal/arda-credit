@@ -113,7 +113,7 @@ highlight = "all"
 skip = [
     # Skip duplicate base64 versions from SP1/AWS dependencies
     { name = "base64", version = "=0.21.7" },
-    # Skip duplicate bindgen versions from build dependencies  
+    # Skip duplicate bindgen versions from build dependencies
     { name = "bindgen", version = "=0.69.5" },
     # Skip additional duplicates from transitive dependencies
     { name = "core-foundation", version = "=0.9.4" },

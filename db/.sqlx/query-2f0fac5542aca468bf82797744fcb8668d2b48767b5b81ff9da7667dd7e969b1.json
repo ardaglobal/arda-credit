@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT\n                id as \"id!\", value as \"value!\", next_index, next_value as \"next_value!\", tree_index as \"tree_index!\", created_at as \"created_at!\", is_active as \"is_active!: bool\",\n                loan_operation_type, loan_id, user_id, operation_amount, operation_metadata, batch_id as \"batch_id: Option<i32>\"\n            FROM nullifiers\n            WHERE loan_operation_type IS NOT NULL\n                AND batch_id IS NULL\n                AND is_active = true\n            ORDER BY created_at ASC\n            LIMIT $1\n            ",
+  "query": "\n            SELECT id as \"id!\", value as \"value!\", next_index, next_value as \"next_value!\", tree_index as \"tree_index!\", created_at as \"created_at!\", is_active as \"is_active!: bool\",\n                   loan_operation_type, loan_id, user_id, operation_amount, operation_metadata, batch_id\n            FROM nullifiers\n            WHERE value = $1 AND is_active = true\n            ",
   "describe": {
     "columns": [
       {
@@ -65,7 +65,7 @@
       },
       {
         "ordinal": 12,
-        "name": "batch_id: Option<i32>",
+        "name": "batch_id",
         "type_info": "Int4"
       }
     ],
@@ -90,5 +90,5 @@
       true
     ]
   },
-  "hash": "c70a42b17df4a29643b8868dc379d032bc67b473e206884d079bec890fecf3b8"
+  "hash": "2f0fac5542aca468bf82797744fcb8668d2b48767b5b81ff9da7667dd7e969b1"
 }

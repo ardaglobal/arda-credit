@@ -54,7 +54,8 @@ impl Default for LoanTerms {
 
 impl LoanTerms {
     /// Create new loan terms with custom values
-    pub fn new(interest_rate: u32, term_months: u16) -> Self {
+    #[must_use]
+    pub const fn new(interest_rate: u32, term_months: u16) -> Self {
         Self {
             interest_rate,
             term_months,
@@ -62,7 +63,8 @@ impl LoanTerms {
     }
 
     /// Calculate maturity date based on origination time and term
-    pub fn calculate_maturity_date(&self, originated_at: u64) -> u64 {
+    #[must_use]
+    pub const fn calculate_maturity_date(&self, originated_at: u64) -> u64 {
         originated_at + (self.term_months as u64 * 30 * 24 * 60 * 60)
     }
 }
@@ -96,6 +98,7 @@ pub struct Loan {
 
 impl Loan {
     /// Check if loan can accept payments
+    #[must_use]
     pub const fn can_accept_payment(&self) -> bool {
         matches!(
             self.loan_status,
@@ -104,6 +107,7 @@ impl Loan {
     }
 
     /// Check if loan is fully paid off
+    #[must_use]
     pub const fn is_paid_off(&self) -> bool {
         self.outstanding_balance == 0
     }
@@ -141,6 +145,7 @@ pub struct LoanState {
 
 impl LoanState {
     /// Create a new empty loan state
+    #[must_use]
     pub fn new() -> Self {
         Self {
             loans: HashMap::new(),
@@ -148,6 +153,9 @@ impl LoanState {
     }
 
     /// Process loan origination transaction
+    ///
+    /// # Errors
+    /// Returns various `LoanError` variants for invalid transaction type, duplicate loans, invalid users, or KYC failures
     pub fn process_loan_origination(
         &mut self,
         transaction: &LoanTransaction,
@@ -159,7 +167,7 @@ impl LoanState {
         }
 
         let loan_id = transaction.loan_id;
-        let _initiator_id = transaction.user_id;
+        // Note: initiator_id not currently used in loan origination logic
 
         // Check for duplicate loan
         if self.loans.contains_key(&loan_id) {
@@ -212,6 +220,9 @@ impl LoanState {
     }
 
     /// Process loan payment transaction
+    ///
+    /// # Errors
+    /// Returns various `LoanError` variants for invalid transaction type, loan not found, or payment validation failures
     pub fn process_loan_payment(
         &mut self,
         transaction: &LoanTransaction,
@@ -273,6 +284,9 @@ impl LoanState {
     }
 
     /// Process loan closeout transaction
+    ///
+    /// # Errors
+    /// Returns various `LoanError` variants for invalid transaction type, loan not found, or closeout validation failures
     pub fn process_loan_closeout(
         &mut self,
         transaction: &LoanTransaction,
@@ -314,6 +328,7 @@ impl LoanState {
     }
 
     /// Get loan by ID (read-only)
+    #[must_use]
     pub fn get_loan(&self, loan_id: &[u8; 32]) -> Option<&Loan> {
         self.loans.get(loan_id)
     }

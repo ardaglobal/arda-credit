@@ -81,11 +81,13 @@ impl Default for GlobalLoanState {
 
 impl GlobalLoanState {
     /// Create a new empty loan state with default loan terms
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Create a new loan state with custom loan terms
+    #[must_use]
     pub fn with_loan_terms(loan_terms: LoanTerms) -> Self {
         Self {
             users: HashMap::new(),
@@ -98,11 +100,14 @@ impl GlobalLoanState {
     }
 
     /// Update loan terms configuration
-    pub fn set_loan_terms(&mut self, loan_terms: LoanTerms) {
+    pub const fn set_loan_terms(&mut self, loan_terms: LoanTerms) {
         self.loan_terms = loan_terms;
     }
 
     /// Process a single transaction and update state
+    ///
+    /// # Errors
+    /// Returns `ProcessingError` for validation failures or transaction processing errors
     pub fn process_transaction(
         &mut self,
         transaction: &LoanTransaction,
@@ -151,7 +156,7 @@ impl GlobalLoanState {
                     transaction.loan_id,
                     borrower_id,
                     lender_id,
-                    transaction.amount as u128,
+                    u128::from(transaction.amount),
                     transaction.created_at,
                 )?;
 
@@ -183,7 +188,7 @@ impl GlobalLoanState {
                     transaction.loan_id,
                     payer_id,
                     lender_id,
-                    transaction.amount as u128,
+                    u128::from(transaction.amount),
                     transaction.created_at,
                 )?;
 
@@ -209,6 +214,9 @@ impl GlobalLoanState {
     }
 
     /// Process a batch of transactions
+    ///
+    /// # Errors
+    /// Returns `ProcessingError` for batch validation failures or transaction processing errors
     pub fn process_batch(&mut self, batch: &LoanBatch) -> Result<(), ProcessingError> {
         // Validate batch timestamp bounds
         validate_timestamp_bounds(batch.created_at)?;
@@ -223,16 +231,19 @@ impl GlobalLoanState {
     }
 
     /// Get user by ID (read-only)
+    #[must_use]
     pub fn get_user(&self, user_id: &[u8; 32]) -> Option<&User> {
         self.users.get(user_id)
     }
 
     /// Get loan by ID (read-only)
+    #[must_use]
     pub fn get_loan(&self, loan_id: &[u8; 32]) -> Option<&Loan> {
         self.loans.get(loan_id)
     }
 
     /// Get current state hash (for Merkle tree)
+    #[must_use]
     pub fn compute_state_hash(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
 
@@ -244,6 +255,7 @@ impl GlobalLoanState {
 
     /// Compute total portfolio balance across all loans
     /// This aggregates all outstanding loan balances for portfolio visibility
+    #[must_use]
     pub fn compute_total_balance(&self) -> u128 {
         let mut total_balance = 0u128;
 
@@ -253,7 +265,7 @@ impl GlobalLoanState {
                 loan.loan_status,
                 crate::loan::LoanStatus::Active | crate::loan::LoanStatus::Originated
             ) {
-                total_balance = total_balance.saturating_add(loan.outstanding_balance as u128);
+                total_balance = total_balance.saturating_add(u128::from(loan.outstanding_balance));
             }
         }
 
@@ -292,7 +304,8 @@ impl GlobalLoanState {
 /// Process a complete loan batch and return the state transition
 ///
 /// # Errors
-/// Returns `ProcessingError` if batch processing fails due to validation or state transition errors.
+/// Returns `ProcessingError` if batch processing fails due to validation errors,
+/// temporal ordering issues, or transaction processing errors.
 pub fn process_loan_batch(
     initial_state: GlobalLoanState,
     batch: &LoanBatch,
@@ -313,7 +326,8 @@ pub fn process_loan_batch(
 /// Validate a loan transaction before processing
 ///
 /// # Errors
-/// Returns `ProcessingError` if transaction validation fails.
+/// Returns `ProcessingError` if the transaction is invalid due to incorrect
+/// amount, loan ID requirements, or timestamp bounds.
 pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), ProcessingError> {
     // Basic validation
     match transaction.transaction_type {
@@ -347,7 +361,8 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
 /// Validate a loan transaction with state context for temporal ordering
 ///
 /// # Errors
-/// Returns `ProcessingError` if transaction validation or temporal ordering fails.
+/// Returns `ProcessingError` if the transaction fails basic validation or
+/// if the transaction timestamp is older than the current state timestamp.
 pub fn validate_transaction_with_state(
     transaction: &LoanTransaction,
     current_state: &GlobalLoanState,
@@ -536,11 +551,9 @@ impl MerkleTree {
     /// Compute the Merkle root from all leaves
     fn compute_root(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
-
         if self.leaves.is_empty() {
             return [0u8; 32];
         }
-
         let mut current_level = self.leaves.clone();
 
         while current_level.len() > 1 {
@@ -572,11 +585,11 @@ pub fn process_loan_operations(
     previous_root: [u8; 32],
     batch_timestamp: u64,
 ) -> crate::LoanBatchPublicValues {
+    use sha2::{Digest, Sha256};
+
     let mut current_balance = previous_balance;
     let mut merkle_tree = MerkleTree::from_root(previous_root);
-
     // Compute transaction types hash
-    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     for operation in operations {
         hasher.update([operation.transaction_type()]);
@@ -598,7 +611,7 @@ pub fn process_loan_operations(
     crate::LoanBatchPublicValues {
         previous_state_root: previous_root.into(),
         new_state_root: new_root.into(),
-        transaction_count: u32::try_from(operations.len()).unwrap_or(u32::MAX),
+        transaction_count: u32::try_from(operations.len()).unwrap_or(0),
         batch_timestamp,
         transaction_types_hash: transaction_types_hash.into(),
         previousTotalBalance: previous_balance,

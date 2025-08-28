@@ -1242,11 +1242,9 @@ fn verify_proof_local(
                 decoded.currentTotalBalance as f64 / 100.0
             );
 
-            let delta_cents = if decoded.currentTotalBalance >= decoded.previousTotalBalance {
-                decoded.currentTotalBalance - decoded.previousTotalBalance
-            } else {
-                decoded.previousTotalBalance - decoded.currentTotalBalance
-            };
+            let delta_cents = decoded
+                .currentTotalBalance
+                .abs_diff(decoded.previousTotalBalance);
 
             println!(
                 "   Balance Change:   {}{:.2}",
@@ -1532,7 +1530,7 @@ async fn verify_loan_payment(
     };
 
     // Download or use provided proof
-    let proof_path = if let Some(path) = proof_file {
+    let _proof_path = if let Some(path) = proof_file {
         path
     } else {
         let default_path = format!("proof_batch_{}.json", batch_id);
@@ -1569,6 +1567,7 @@ async fn verify_loan_payment(
 }
 
 /// Verify loan origination inclusion in batch proof
+#[allow(clippy::too_many_arguments)]
 async fn verify_loan_origination(
     client: &BatchApiClient,
     batch_id: i32,
@@ -1601,7 +1600,7 @@ async fn verify_loan_origination(
     };
 
     // Download or use provided proof
-    let proof_path = if let Some(path) = proof_file {
+    let _proof_path = if let Some(path) = proof_file {
         path
     } else {
         let default_path = format!("proof_batch_{}.json", batch_id);
@@ -1636,7 +1635,7 @@ async fn verify_loan_operation(
     batch_id: i32,
     transaction_id: &str,
     transaction_type: &str,
-    proof_file: Option<String>,
+    _proof_file: Option<String>,
     verbose: bool,
 ) -> Result<()> {
     println!("🔍 Verifying loan operation inclusion...");
@@ -1655,7 +1654,7 @@ async fn verify_loan_operation(
     }
 
     // Get batch information
-    let batch_info = match client.get_batch(batch_id).await? {
+    let _batch_info = match client.get_batch(batch_id).await? {
         Some(info) => {
             if verbose {
                 println!("   ✅ Found batch: {} transactions", info.transaction_count);
@@ -1684,7 +1683,7 @@ async fn verify_loan_operation(
 
 /// Run performance tests demonstrating >60 TPS loan operations
 async fn test_loan_performance(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     operation_count: usize,
     target_tps: f64,
     operation_mix: &str,
@@ -1814,12 +1813,12 @@ async fn test_loan_performance(
 
 /// Query loan operation status from enhanced IMT
 async fn query_loan_status(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     loan_id: &str,
     history: bool,
     audit_trail: bool,
     limit: i32,
-    verbose: bool,
+    _verbose: bool,
 ) -> Result<()> {
     println!("🔍 Querying loan status...");
     println!("   Loan ID: {}", loan_id);
@@ -1854,11 +1853,11 @@ async fn query_loan_status(
 
 /// Query user loan operations from IMT
 async fn query_user_loans(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     user_id: &str,
     operation_type: Option<String>,
     limit: i32,
-    verbose: bool,
+    _verbose: bool,
 ) -> Result<()> {
     println!("🔍 Querying user loan operations...");
     println!("   User ID: {}", user_id);
@@ -1887,11 +1886,11 @@ async fn query_user_loans(
 
 /// Query loan operations by amount range
 async fn query_loans_by_amount(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     min_amount: &str,
     max_amount: &str,
     operation_type: Option<String>,
-    limit: i32,
+    _limit: i32,
     verbose: bool,
 ) -> Result<()> {
     println!("🔍 Querying loans by amount range...");
@@ -1921,7 +1920,7 @@ async fn query_loans_by_amount(
 
 /// Test high-volume batch processing with loan operations
 async fn test_batch_processing(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     batch_count: usize,
     operations_per_batch: usize,
     target_time: u64,
@@ -1968,15 +1967,13 @@ async fn test_batch_processing(
             } else {
                 print!("✓");
             }
+        } else if verbose {
+            println!(
+                "      ⚠️ Took {:?} (target: {}s)",
+                batch_duration, target_time
+            );
         } else {
-            if verbose {
-                println!(
-                    "      ⚠️ Took {:?} (target: {}s)",
-                    batch_duration, target_time
-                );
-            } else {
-                print!("!");
-            }
+            print!("!");
         }
     }
 
@@ -2016,7 +2013,7 @@ async fn test_batch_processing(
 
 /// Validate ZK proof generation performance (<10 minutes target)
 async fn validate_zk_performance(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     operation_count: usize,
     target_time: u64,
     include_loans: bool,
@@ -2114,13 +2111,13 @@ async fn validate_zk_performance(
 
 /// Get loan operation statistics and analytics
 async fn get_loan_stats(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     loan_id: Option<String>,
     user_id: Option<String>,
     batch_id: Option<i32>,
     system_wide: bool,
     include_audit: bool,
-    verbose: bool,
+    _verbose: bool,
 ) -> Result<()> {
     println!("📊 Retrieving loan statistics...");
 
@@ -2173,7 +2170,7 @@ async fn get_loan_stats(
 
 /// Generate loan operation test data for development and testing
 async fn generate_test_data(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     users: usize,
     loans: usize,
     payments_per_loan: usize,
@@ -2252,7 +2249,7 @@ async fn generate_test_data(
 
 /// Benchmark loan operation processing end-to-end
 async fn benchmark_loan_operations(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     duration: u64,
     target_ops_per_sec: f64,
     operation_types: &str,
@@ -2367,10 +2364,10 @@ async fn benchmark_loan_operations(
 
 /// Refresh loan statistics and optimize performance
 async fn refresh_loan_stats(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     force_recalc: bool,
     optimize_indexes: bool,
-    verbose: bool,
+    _verbose: bool,
 ) -> Result<()> {
     println!("🔄 Refreshing loan statistics...");
 

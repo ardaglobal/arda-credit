@@ -174,10 +174,7 @@ async fn create_test_identities(pool: &sqlx::PgPool) -> Result<Vec<Identity>, sq
         // Note: Balances are automatically created by database trigger
 
         identities.push(identity);
-        println!(
-            "  👤 Created {} ({}) with KYC: {}",
-            name, user_type, kyc_status
-        );
+        println!("  👤 Created {name} ({user_type}) with KYC: {kyc_status}");
     }
 
     Ok(identities)
@@ -250,7 +247,7 @@ async fn create_test_loans(
             lender.id,
             amount,
             outstanding_balance,
-            *interest_rate_bps as i32,
+            *interest_rate_bps,
             status,
             originated_at
         )
@@ -263,7 +260,7 @@ async fn create_test_loans(
             lender_id: lender.id,
             principal_amount: amount,
             outstanding_balance,
-            interest_rate_bps: *interest_rate_bps as i32,
+            interest_rate_bps: *interest_rate_bps,
             loan_status: status.to_string(),
             originated_at,
             maturity_date: Some(originated_at + chrono::Duration::days(365)), // 1 year term
@@ -357,7 +354,7 @@ async fn create_test_payments(
         println!(
             "  💳 Created {} payments for loan {} (${} each)",
             num_payments,
-            loan.id.to_string()[0..8].to_string(),
+            &loan.id.to_string()[0..8],
             payment_amount
         );
     }
@@ -381,11 +378,11 @@ async fn print_summary(identities: &[Identity], loans: &[Loan], payments: &[Paym
 
     println!("👥 Identities: {}", identities.len());
     for (user_type, count) in type_counts {
-        println!("   - {}: {}", user_type, count);
+        println!("   - {user_type}: {count}");
     }
     println!("🔐 KYC Status:");
     for (status, count) in kyc_counts {
-        println!("   - {}: {}", status, count);
+        println!("   - {status}: {count}");
     }
 
     // Loan summary
@@ -402,11 +399,11 @@ async fn print_summary(identities: &[Identity], loans: &[Loan], payments: &[Paym
     }
 
     println!("💰 Loans: {}", loans.len());
-    println!("   - Total Principal: ${}", total_principal);
-    println!("   - Total Outstanding: ${}", total_outstanding);
+    println!("   - Total Principal: ${total_principal}");
+    println!("   - Total Outstanding: ${total_outstanding}");
     println!("📈 Loan Status:");
     for (status, count) in loan_status_counts {
-        println!("   - {}: {}", status, count);
+        println!("   - {status}: {count}");
     }
 
     // Payment summary
@@ -421,10 +418,10 @@ async fn print_summary(identities: &[Identity], loans: &[Loan], payments: &[Paym
     }
 
     println!("💳 Payments: {}", payments.len());
-    println!("   - Total Payment Amount: ${}", total_payments);
+    println!("   - Total Payment Amount: ${total_payments}");
     println!("📊 Payment Types:");
     for (payment_type, count) in payment_type_counts {
-        println!("   - {}: {}", payment_type, count);
+        println!("   - {payment_type}: {count}");
     }
 
     println!("\n🌐 API Testing URLs:");

@@ -78,7 +78,8 @@ impl UserState {
     /// Process user registration transaction
     ///
     /// # Errors
-    /// Returns `UserError` if registration fails due to duplicate user or invalid data.
+    /// Returns `UserError` if transaction type is invalid, user already exists,
+    /// or metadata contains invalid user type.
     pub fn process_user_registration(
         &mut self,
         transaction: &LoanTransaction,
@@ -118,7 +119,7 @@ impl UserState {
     /// Process KYC submission transaction
     ///
     /// # Errors
-    /// Returns `UserError` if KYC submission fails due to user not found or invalid transaction.
+    /// Returns `UserError` if transaction type is invalid or user not found.
     pub fn process_kyc_submission(
         &mut self,
         transaction: &LoanTransaction,
@@ -144,7 +145,7 @@ impl UserState {
     /// Process KYC verification transaction (admin operation)
     ///
     /// # Errors
-    /// Returns `UserError` if KYC verification fails due to user not found or invalid transaction.
+    /// Returns `UserError` if transaction type is invalid or user not found.
     pub fn process_kyc_verification(
         &mut self,
         transaction: &LoanTransaction,
@@ -182,7 +183,7 @@ impl UserState {
     /// Check if user exists and is KYC approved
     ///
     /// # Errors
-    /// Returns `UserError` if user is not found.
+    /// Returns `UserError::UserNotFound` if user does not exist.
     pub fn is_user_kyc_approved(&self, user_id: &[u8; 32]) -> Result<bool, UserError> {
         let user = self
             .users

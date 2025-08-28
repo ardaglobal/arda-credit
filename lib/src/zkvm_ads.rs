@@ -14,7 +14,7 @@ pub mod transaction_prefixes {
     /// Loan origination transactions: 1,000,000,000 - 1,999,999,999
     pub const LOAN_ORIGINATION: i64 = 1_000_000_000;
 
-    /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999  
+    /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999
     pub const LOAN_CLOSEOUT: i64 = 2_000_000_000;
 
     /// Default/legacy transactions (for backward compatibility): 0 - 999,999,999
@@ -72,7 +72,7 @@ impl ZkVMAds {
     /// Process transactions and return state transition
     ///
     /// # Errors
-    /// Returns error string if nullifier insertion fails due to duplicates or invalid data.
+    /// Returns error string if nullifier insertion fails due to duplicates or other issues.
     pub fn process_transactions(
         &mut self,
         transactions: &[crate::LoanTransaction],
@@ -100,13 +100,15 @@ impl ZkVMAds {
     /// CRITICAL: This must match exactly the logic in `db/src/background_processor.rs`
     #[must_use]
     pub fn transaction_to_nullifier(&self, transaction: &crate::LoanTransaction) -> i64 {
-        self.transaction_to_nullifier_with_prefix(transaction, transaction_prefixes::LEGACY_DEFAULT)
+        Self::transaction_to_nullifier_with_prefix(
+            transaction,
+            transaction_prefixes::LEGACY_DEFAULT,
+        )
     }
 
     /// Convert transaction to nullifier with specific prefix
     /// CRITICAL: This must match exactly `db/src/background_processor.rs::transaction_to_nullifier_with_prefix`
     fn transaction_to_nullifier_with_prefix(
-        &self,
         transaction: &crate::LoanTransaction,
         prefix: i64,
     ) -> i64 {
@@ -149,7 +151,7 @@ impl ZkVMAds {
             hash_u64 % u64::try_from(transaction_prefixes::PREFIX_RANGE_SIZE).unwrap_or(u64::MAX),
         )
         .unwrap_or(i64::MAX)
-            + 1;
+        .wrapping_add(1);
 
         // Apply prefix for namespace isolation
         prefix + base_nullifier
@@ -232,13 +234,9 @@ impl ZkVMAds {
         }
 
         // Build Merkle tree from current nullifier set
-        let leaves: Vec<[u8; 32]> = self
-            .nullifiers
-            .iter()
-            .map(|n| Self::hash_nullifier(n))
-            .collect();
+        let leaves: Vec<[u8; 32]> = self.nullifiers.iter().map(Self::hash_nullifier).collect();
 
-        self.compute_merkle_root_from_leaves(&leaves)
+        Self::compute_merkle_root_from_leaves(&leaves)
     }
 
     /// Hash a nullifier for Merkle tree leaf
@@ -257,7 +255,7 @@ impl ZkVMAds {
     }
 
     /// Compute Merkle root from leaf hashes using standard binary tree construction
-    fn compute_merkle_root_from_leaves(&self, leaves: &[[u8; 32]]) -> [u8; 32] {
+    fn compute_merkle_root_from_leaves(leaves: &[[u8; 32]]) -> [u8; 32] {
         if leaves.is_empty() {
             return [0u8; 32];
         }

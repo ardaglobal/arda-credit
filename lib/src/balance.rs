@@ -42,7 +42,8 @@ pub enum BalanceUpdateType {
 
 impl BalanceUpdateType {
     /// Get string representation for logging/display
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::CreditFromPayment => "credit_from_payment",
             Self::DebitFromOrigination => "debit_from_origination",
@@ -53,7 +54,8 @@ impl BalanceUpdateType {
     }
 
     /// Check if this update type increases balance
-    pub fn is_credit(&self) -> bool {
+    #[must_use]
+    pub const fn is_credit(&self) -> bool {
         matches!(
             self,
             Self::CreditFromPayment | Self::CreditFromOrigination | Self::InterestAccrual
@@ -61,7 +63,8 @@ impl BalanceUpdateType {
     }
 
     /// Check if this update type decreases balance
-    pub fn is_debit(&self) -> bool {
+    #[must_use]
+    pub const fn is_debit(&self) -> bool {
         matches!(self, Self::DebitFromOrigination)
     }
 }
@@ -79,7 +82,7 @@ pub struct BalanceUpdate {
     pub triggering_transaction_id: Option<[u8; 32]>,
     /// Type of balance update
     pub update_type: BalanceUpdateType,
-    /// Amount of the balance change (always positive, sign determined by update_type)
+    /// Amount of the balance change (always positive, sign determined by `update_type`)
     pub amount: u128,
     /// User's balance before this update
     pub previous_balance: u128,
@@ -93,6 +96,10 @@ pub struct BalanceUpdate {
 
 impl BalanceUpdate {
     /// Create a new balance update
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         update_id: [u8; 32],
         user_id: [u8; 32],
@@ -138,44 +145,47 @@ impl BalanceUpdate {
     }
 
     /// Get the balance change as a signed integer (positive for credits, negative for debits)
-    pub fn signed_change(&self) -> i128 {
+    #[must_use]
+    #[allow(clippy::cast_possible_wrap)]
+    pub const fn signed_change(&self) -> i128 {
         let amount = self.amount as i128;
         match self.update_type {
             BalanceUpdateType::CreditFromPayment
             | BalanceUpdateType::CreditFromOrigination
-            | BalanceUpdateType::InterestAccrual => amount,
+            | BalanceUpdateType::InterestAccrual
+            | BalanceUpdateType::ManualAdjustment => amount, // Assume positive for manual
             BalanceUpdateType::DebitFromOrigination => -amount,
-            BalanceUpdateType::ManualAdjustment => amount, // Assume positive for manual
         }
     }
 
     /// Convert balance update to nullifier hash for IMT insertion
-    /// Uses the 4_000_000_000 prefix as specified
+    /// Uses the `4_000_000_000` prefix as specified
+    #[must_use]
     pub fn to_nullifier(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
 
         let mut hasher = Sha256::new();
 
         // Add the balance update prefix (4_000_000_000)
-        hasher.update(&4_000_000_000u64.to_le_bytes());
+        hasher.update(4_000_000_000u64.to_le_bytes());
 
         // Add core balance update data
-        hasher.update(&self.update_id);
-        hasher.update(&self.user_id);
-        hasher.update(&[self.update_type as u8]);
-        hasher.update(&self.amount.to_le_bytes());
-        hasher.update(&self.previous_balance.to_le_bytes());
-        hasher.update(&self.new_balance.to_le_bytes());
-        hasher.update(&self.created_at.to_le_bytes());
+        hasher.update(self.update_id);
+        hasher.update(self.user_id);
+        hasher.update([self.update_type as u8]);
+        hasher.update(self.amount.to_le_bytes());
+        hasher.update(self.previous_balance.to_le_bytes());
+        hasher.update(self.new_balance.to_le_bytes());
+        hasher.update(self.created_at.to_le_bytes());
 
         // Add loan ID if present
         if let Some(loan_id) = self.loan_id {
-            hasher.update(&loan_id);
+            hasher.update(loan_id);
         }
 
         // Add triggering transaction ID if present
         if let Some(tx_id) = self.triggering_transaction_id {
-            hasher.update(&tx_id);
+            hasher.update(tx_id);
         }
 
         hasher.finalize().into()
@@ -197,7 +207,8 @@ pub struct UserBalance {
 
 impl UserBalance {
     /// Create a new user balance
-    pub fn new(user_id: [u8; 32], initial_balance: u128, timestamp: u64) -> Self {
+    #[must_use]
+    pub const fn new(user_id: [u8; 32], initial_balance: u128, timestamp: u64) -> Self {
         Self {
             user_id,
             balance: initial_balance,
@@ -207,6 +218,9 @@ impl UserBalance {
     }
 
     /// Apply a balance update to this user's balance
+    ///
+    /// # Errors
+    /// Returns `BalanceError::OperationFailed` if user ID mismatch or balance underflow
     pub fn apply_update(&mut self, update: &BalanceUpdate) -> Result<(), BalanceError> {
         if update.user_id != self.user_id {
             return Err(BalanceError::OperationFailed {
@@ -232,9 +246,9 @@ impl UserBalance {
 }
 
 /// Global balance state for all users
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BalanceState {
-    /// User balances indexed by user_id
+    /// User balances indexed by `user_id`
     pub balances: HashMap<[u8; 32], UserBalance>,
     /// All balance updates (for history tracking)
     pub updates: Vec<BalanceUpdate>,
@@ -242,41 +256,36 @@ pub struct BalanceState {
     pub last_updated: u64,
 }
 
-impl Default for BalanceState {
-    fn default() -> Self {
-        Self {
-            balances: HashMap::new(),
-            updates: Vec::new(),
-            last_updated: 0,
-        }
-    }
-}
-
 impl BalanceState {
     /// Create a new empty balance state
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Get user's current balance
+    #[must_use]
     pub fn get_balance(&self, user_id: &[u8; 32]) -> u128 {
-        self.balances.get(user_id).map(|b| b.balance).unwrap_or(0)
+        self.balances.get(user_id).map_or(0, |b| b.balance)
     }
 
     /// Get user balance info
+    #[must_use]
     pub fn get_user_balance(&self, user_id: &[u8; 32]) -> Option<&UserBalance> {
         self.balances.get(user_id)
     }
 
     /// Initialize a user's balance if it doesn't exist
     pub fn ensure_user_balance(&mut self, user_id: [u8; 32], timestamp: u64) {
-        if !self.balances.contains_key(&user_id) {
-            self.balances
-                .insert(user_id, UserBalance::new(user_id, 0, timestamp));
-        }
+        self.balances
+            .entry(user_id)
+            .or_insert_with(|| UserBalance::new(user_id, 0, timestamp));
     }
 
     /// Apply a balance update to the state
+    ///
+    /// # Errors
+    /// Returns `BalanceError::UserNotFound` if user balance cannot be retrieved
     pub fn apply_update(&mut self, update: BalanceUpdate) -> Result<(), BalanceError> {
         // Ensure user balance exists
         self.ensure_user_balance(update.user_id, update.created_at);
@@ -308,6 +317,9 @@ impl BalanceState {
 
     /// Create balance updates from loan payment
     /// This is called automatically during loan payment processing
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
     pub fn create_payment_updates(
         &self,
         payment_transaction_id: [u8; 32],
@@ -341,6 +353,9 @@ impl BalanceState {
     }
 
     /// Create balance updates from loan origination
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
     pub fn create_origination_updates(
         &self,
         origination_transaction_id: [u8; 32],
@@ -391,6 +406,7 @@ impl BalanceState {
     }
 
     /// Get balance update history for a user
+    #[must_use]
     pub fn get_user_update_history(
         &self,
         user_id: &[u8; 32],
@@ -413,6 +429,7 @@ impl BalanceState {
     }
 
     /// Get balance updates for a specific loan
+    #[must_use]
     pub fn get_loan_balance_updates(&self, loan_id: &[u8; 32]) -> Vec<&BalanceUpdate> {
         self.updates
             .iter()
@@ -421,6 +438,7 @@ impl BalanceState {
     }
 
     /// Get total value of all balances
+    #[must_use]
     pub fn compute_total_balance(&self) -> u128 {
         self.balances.values().map(|b| b.balance).sum()
     }
@@ -431,9 +449,9 @@ impl BalanceState {
 
         let mut hasher = Sha256::new();
         hasher.update(b"balance_update");
-        hasher.update(&transaction_id);
-        hasher.update(&[sequence]);
-        hasher.update(&(self.updates.len() as u64).to_le_bytes());
+        hasher.update(transaction_id);
+        hasher.update([sequence]);
+        hasher.update((self.updates.len() as u64).to_le_bytes());
 
         hasher.finalize().into()
     }
@@ -456,7 +474,8 @@ pub struct BalanceInclusionProof {
 
 impl BalanceInclusionProof {
     /// Create a new balance inclusion proof
-    pub fn new(
+    #[must_use]
+    pub const fn new(
         balance_update: BalanceUpdate,
         merkle_path: Vec<[u8; 32]>,
         merkle_root: [u8; 32],
@@ -473,6 +492,7 @@ impl BalanceInclusionProof {
     }
 
     /// Verify that this balance update was included in the specified Merkle tree
+    #[must_use]
     pub fn verify(&self) -> bool {
         use sha2::{Digest, Sha256};
 
@@ -483,12 +503,12 @@ impl BalanceInclusionProof {
             let mut hasher = Sha256::new();
             if index % 2 == 0 {
                 // Current node is left child
-                hasher.update(&current_hash);
+                hasher.update(current_hash);
                 hasher.update(sibling);
             } else {
                 // Current node is right child
                 hasher.update(sibling);
-                hasher.update(&current_hash);
+                hasher.update(current_hash);
             }
             current_hash = hasher.finalize().into();
             index /= 2;
@@ -498,6 +518,7 @@ impl BalanceInclusionProof {
     }
 
     /// Get a human-readable description of this proof
+    #[must_use]
     pub fn description(&self) -> String {
         format!(
             "Balance update proof for user {:02x}{:02x}{:02x}{:02x} - {} {} in batch {:02x}{:02x}{:02x}{:02x}",
@@ -521,7 +542,7 @@ mod tests {
         let loan_id = [3u8; 32];
         let tx_id = [4u8; 32];
         let amount = 50000u128; // $500.00
-        let previous_balance = 100_000_u128; // $1000.00
+        let previous_balance = 100_000u128; // $1000.00
         let timestamp = 1_640_995_200;
 
         let update = BalanceUpdate::new(
@@ -549,7 +570,7 @@ mod tests {
         let update_id = [1u8; 32];
         let user_id = [2u8; 32];
         let amount = 30000u128; // $300.00
-        let previous_balance = 100_000_u128; // $1000.00
+        let previous_balance = 100_000u128; // $1000.00
 
         let update = BalanceUpdate::new(
             update_id,
@@ -565,7 +586,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(update.new_balance, previous_balance - amount);
-        assert_eq!(update.signed_change(), -i128::try_from(amount).unwrap());
+        #[allow(clippy::cast_possible_wrap)]
+        let expected_change = -(amount as i128);
+        assert_eq!(update.signed_change(), expected_change);
     }
 
     #[test]
@@ -576,8 +599,8 @@ mod tests {
             None,
             None,
             BalanceUpdateType::DebitFromOrigination,
-            150_000_u128, // More than available
-            100_000_u128, // Available balance
+            150_000u128, // More than available
+            100_000u128, // Available balance
             1_640_995_200,
             None,
         );
@@ -659,7 +682,7 @@ mod tests {
         let loan_id = [2u8; 32];
         let borrower_id = [3u8; 32];
         let lender_id = [4u8; 32];
-        let amount = 100_000_u128;
+        let amount = 100_000u128;
 
         // First, give the lender sufficient funds to originate the loan
         let initial_funding = BalanceUpdate::new(
@@ -718,7 +741,7 @@ mod tests {
             Some([4u8; 32]),
             BalanceUpdateType::CreditFromPayment,
             50000u128,
-            100_000_u128,
+            100_000u128,
             1_640_995_200,
             None,
         )
@@ -738,7 +761,7 @@ mod tests {
             Some([4u8; 32]),
             BalanceUpdateType::CreditFromPayment,
             50000u128,
-            100_000_u128,
+            100_000u128,
             1_640_995_200,
             None,
         )
@@ -756,19 +779,19 @@ mod tests {
             Some([4u8; 32]),
             BalanceUpdateType::CreditFromPayment,
             50000u128,
-            100_000_u128,
+            100_000u128,
             1_640_995_200,
             None,
         )
         .unwrap();
+
+        use sha2::{Digest, Sha256};
 
         // Create a simple merkle path for testing
         let merkle_path = vec![[5u8; 32], [6u8; 32]];
         let leaf_index = 0;
 
         // Calculate what the root should be with this path
-        use sha2::{Digest, Sha256};
-
         let mut current_hash = balance_update.to_nullifier();
         let mut index = leaf_index;
 

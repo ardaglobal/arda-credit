@@ -20,6 +20,19 @@ use arda_credit_lib::{
 };
 use sha2::{Digest, Sha256};
 
+/// Main SP1 zkVM program entry point for loan batch processing.
+///
+/// This function processes a batch of loan transactions while maintaining privacy
+/// and zero-knowledge properties. It validates transactions, computes state transitions,
+/// and outputs public commitments.
+///
+/// # Panics
+///
+/// Panics if:
+/// - Any transaction in the batch is invalid
+/// - Loan batch processing fails
+/// - ADS state transitions fail
+/// - State root computation fails
 pub fn main() {
     // Read the complete input structure with ADS state
     let input = sp1_zkvm::io::read::<ZkVMBatchInput>();
@@ -50,7 +63,7 @@ pub fn main() {
     // Create hash of transaction types for transparency (without revealing details)
     let mut types_hasher = Sha256::new();
     for transaction in &input.batch.transactions {
-        types_hasher.update(&[transaction.transaction_type as u8]);
+        types_hasher.update([transaction.transaction_type as u8]);
     }
     let transaction_types_hash: [u8; 32] = types_hasher.finalize().into();
 
@@ -58,7 +71,8 @@ pub fn main() {
     let public_values = LoanBatchPublicValues {
         previous_state_root: FixedBytes(previous_state_root),
         new_state_root: FixedBytes(new_state_root),
-        transaction_count: input.batch.transactions.len() as u32,
+        transaction_count: u32::try_from(input.batch.transactions.len())
+            .expect("Transaction count exceeds u32::MAX"),
         batch_timestamp: input.batch.created_at,
         transaction_types_hash: FixedBytes(transaction_types_hash),
         previousTotalBalance: previous_total,

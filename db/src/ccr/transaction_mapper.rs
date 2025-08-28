@@ -392,9 +392,7 @@ impl TransactionMapper {
     /// Generate deterministic payment ID from transaction ID
     fn generate_payment_id(&self, transaction_id: &[u8; 32]) -> Uuid {
         // Use a deterministic method to generate UUID from transaction hash
-        let uuid_bytes: [u8; 16] = transaction_id[16..]
-            .try_into()
-            .unwrap_or_else(|_| [0u8; 16]);
+        let uuid_bytes: [u8; 16] = transaction_id[16..].try_into().unwrap_or([0u8; 16]);
         Uuid::from_bytes(uuid_bytes)
     }
 
@@ -569,8 +567,8 @@ mod tests {
             id: Uuid::from_bytes([2u8; 16]),
             borrower_id: Uuid::from_bytes([1u8; 16]),
             lender_id: Uuid::from_bytes([3u8; 16]),
-            principal_amount: rust_decimal::Decimal::new(10000000, 2), // $100,000
-            outstanding_balance: rust_decimal::Decimal::new(10000000, 2),
+            principal_amount: rust_decimal::Decimal::new(10_000_000, 2), // $100,000
+            outstanding_balance: rust_decimal::Decimal::new(10_000_000, 2),
             interest_rate_bps: 750,
             loan_status: "active".to_string(),
             originated_at: Utc::now(),
@@ -605,8 +603,8 @@ mod tests {
                 .try_into()
                 .unwrap(),
             transaction_type: TransactionType::LoanOrigination,
-            amount: 100000,
-            created_at: 1640995200, // 2022-01-01
+            amount: 100_000,
+            created_at: 1_640_995_200, // 2022-01-01
             metadata: lib::transactions::MetadataArray::empty(),
         };
 
@@ -622,7 +620,7 @@ mod tests {
             } => {
                 assert_eq!(*loan_id, Uuid::from_bytes([2u8; 16]));
                 assert_eq!(*borrower_id, Uuid::from_bytes([1u8; 16]));
-                assert_eq!(*principal_amount, 100000);
+                assert_eq!(*principal_amount, 100_000);
             }
             _ => panic!("Expected LoanCreation operation"),
         }
@@ -651,7 +649,7 @@ mod tests {
                 .unwrap(),
             transaction_type: TransactionType::LoanPayment,
             amount: 5000,
-            created_at: 1640995200,
+            created_at: 1_640_995_200,
             metadata: lib::transactions::MetadataArray::empty(),
         };
 
@@ -700,8 +698,8 @@ mod tests {
                 .try_into()
                 .unwrap(),
             transaction_type: TransactionType::LoanOrigination,
-            amount: 100000,
-            created_at: 1640995200,
+            amount: 100_000,
+            created_at: 1_640_995_200,
             metadata: lib::transactions::MetadataArray::empty(),
         };
 
@@ -721,7 +719,7 @@ mod tests {
                 loan_id: Uuid::from_bytes([1u8; 16]),
                 borrower_id: Uuid::from_bytes([2u8; 16]),
                 lender_id: Uuid::from_bytes([3u8; 16]),
-                principal_amount: 100000,
+                principal_amount: 100_000,
                 created_at: Utc::now(),
             },
             CcrOperation::Payment {
