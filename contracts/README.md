@@ -29,6 +29,9 @@ forge test --match-contract StateManagementTest -vv
 forge test --match-contract StateConsumerTest
 forge test --match-contract StateUpdaterTest
 forge test --match-contract ProofReaderTest
+
+# Test against local testnet
+forge test --fork-url http://127.0.0.1:8545
 ```
 
 ## Usage
@@ -54,6 +57,42 @@ bytes memory storedProof = arithmetic.getStoredProof(proofId);
 See `examples/README.md` for detailed integration patterns and best practices.
 
 ## Deployment
+
+### Local Development with Anvil
+
+For local development and testing:
+
+```sh
+# Start local Ethereum testnet
+anvil                               # Runs on http://127.0.0.1:8545 (Chain ID: 31337)
+
+# In a new terminal, build and deploy contracts
+forge build                         # Compile all contracts
+
+# Deploy SP1MockVerifier (for testing)
+forge create lib/sp1-contracts/contracts/src/SP1MockVerifier.sol:SP1MockVerifier \
+  --rpc-url http://127.0.0.1:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  --broadcast
+
+# Deploy Loan contract (replace VERIFIER_ADDRESS with deployed address above)
+forge create src/Loan.sol:Loan \
+  --rpc-url http://127.0.0.1:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  --broadcast \
+  --constructor-args VERIFIER_ADDRESS 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+
+# Interact with deployed contracts
+cast call CONTRACT_ADDRESS "verifier()" --rpc-url http://127.0.0.1:8545
+cast call CONTRACT_ADDRESS "owner()" --rpc-url http://127.0.0.1:8545
+```
+
+**Anvil Test Accounts:**
+- Default account: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
+- Private key: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
+- All accounts have 10,000 ETH for testing
+
+### Production Deployment
 
 Included is an example `.env.example` file that you can use to deploy the contract to Sepolia.
 
