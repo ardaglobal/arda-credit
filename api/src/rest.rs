@@ -15,6 +15,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
 use crate::batch_processor::BatchProcessorHandle;
+use crate::paths;
 use arda_credit_db::{
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
     get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
@@ -174,6 +175,11 @@ pub struct HealthResponse {
     pub status: String,
     pub timestamp: DateTime<Utc>,
     pub database_connected: bool,
+    pub api_version: String,
+    pub git_tag: String,
+    pub git_sha: String,
+    pub git_sha_short: String,
+    pub git_dirty: bool,
 }
 
 /// Batch processor stats response
@@ -500,121 +506,88 @@ pub struct PendingTransactionInfo {
 /// Create the main API router with all batch processing and loan endpoints
 pub fn create_router(state: ApiState) -> Router {
     Router::new()
-        // Health and info endpoints (additional legacy paths)
-        .route("/health", get(health_check))
-        .route("/", get(api_info))
-        .route("/api/v2/health", get(health_check))
-        .route("/api/v2/info", get(api_info))
+        // Health and info endpoints
+        .route(paths::HEALTH, get(health_check))
+        .route(paths::ROOT, get(api_info))
+        .route(paths::API_HEALTH, get(health_check))
+        .route(paths::API_INFO, get(api_info))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
-        // Legacy transaction operations (keeping for backward compatibility)
-        .route("/api/v2/transactions", post(submit_transaction_endpoint))
+        // Transaction operations
+        .route(paths::STATE_TRANSACTIONS, post(submit_transaction_endpoint))
         .route(
-            "/api/v2/transactions/pending",
+            paths::STATE_TRANSACTIONS_PENDING,
             get(get_pending_transactions_endpoint),
         )
-        // Legacy batch operations (keeping for backward compatibility)
-        .route("/api/v2/batches", post(create_batch_endpoint))
-        .route("/api/v2/batches", get(get_batches_endpoint))
-        .route("/api/v2/batches/{batch_id}", get(get_batch_endpoint))
+        // Batch operations
+        .route(paths::STATE_BATCHES, post(create_batch_endpoint))
+        .route(paths::STATE_BATCHES, get(get_batches_endpoint))
+        .route(paths::STATE_BATCH_BY_ID, get(get_batch_endpoint))
+        .route(paths::STATE_BATCH_PROOF, post(update_batch_proof_endpoint))
+        .route(paths::STATE_BATCHES_TRIGGER, post(trigger_batch_endpoint))
         .route(
-            "/api/v2/batches/{batch_id}/proof",
-            post(update_batch_proof_endpoint),
-        )
-        .route("/api/v2/batches/trigger", post(trigger_batch_endpoint))
-        .route(
-            "/api/v2/batches/stats",
+            paths::STATE_BATCHES_STATS,
             get(get_batch_processor_stats_endpoint),
         )
-        // Legacy state operations (keeping for backward compatibility)
-        .route("/api/v2/state/current", get(get_current_state_endpoint))
-        .route(
-            "/api/v2/state/{batch_id}/contract",
-            get(get_contract_data_endpoint),
-        )
+        // State operations
+        .route(paths::STATE_CURRENT, get(get_current_state_endpoint))
+        .route(paths::STATE_CONTRACT, get(get_contract_data_endpoint))
         // ========================================================================
-        // LOAN PROCESSING ENDPOINTS (CCR - Credit Computation & Reporting)
+        // LOAN PROCESSING ENDPOINTS
         // ========================================================================
-        // Identity Management
-        .route("/api/v2/ccr/identities", post(register_user_endpoint))
-        .route("/api/v2/ccr/identities", get(list_identities_endpoint))
-        .route(
-            "/api/v2/ccr/identities/{user_id}",
-            get(get_user_details_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/identities/{user_id}/kyc",
-            post(submit_kyc_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/identities/{user_id}/kyc-status",
-            post(update_kyc_status_endpoint),
-        )
+        // User Management
+        .route(paths::USERS, post(register_user_endpoint))
+        .route(paths::USERS, get(list_identities_endpoint))
+        .route(paths::USER_BY_ID, get(get_user_details_endpoint))
+        .route(paths::USER_KYC, post(submit_kyc_endpoint))
+        .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
         // Loan Management
-        .route("/api/v2/ccr/loans", post(create_loan_endpoint))
-        .route("/api/v2/ccr/loans", get(list_loans_endpoint))
-        .route(
-            "/api/v2/ccr/loans/{loan_id}",
-            get(get_loan_details_endpoint),
-        )
-        .route("/api/v2/ccr/loans/stats", get(get_loan_stats_endpoint))
+        .route(paths::LOANS, post(create_loan_endpoint))
+        .route(paths::LOANS, get(list_loans_endpoint))
+        .route(paths::LOAN_BY_ID, get(get_loan_details_endpoint))
+        .route(paths::LOANS_STATS, get(get_loan_stats_endpoint))
         // Payment Processing
-        .route("/api/v2/ccr/payments", post(record_payment_endpoint))
+        .route(paths::STATE_PAYMENTS, post(record_payment_endpoint))
         .route(
-            "/api/v2/ccr/payments/{transaction_id}",
+            paths::STATE_PAYMENT_BY_ID,
             get(get_payment_details_endpoint),
         )
-        .route(
-            "/api/v2/ccr/loans/{loan_id}/payments",
-            get(get_loan_payment_history_endpoint),
-        )
+        .route(paths::LOAN_PAYMENTS, get(get_loan_payment_history_endpoint))
         // State Management & ZK Proofs
-        .route("/api/v2/ccr/state/current", get(get_state_summary_endpoint))
-        .route(
-            "/api/v2/ccr/state/proof/{transaction_type}/{transaction_id}",
-            get(get_transaction_proof_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/state/verify",
-            post(verify_transaction_endpoint),
-        )
-        .route("/api/v2/ccr/state/history", get(get_state_history_endpoint))
+        .route(paths::STATE_CURRENT, get(get_state_summary_endpoint))
+        .route(paths::STATE_PROOF, get(get_transaction_proof_endpoint))
+        .route(paths::STATE_VERIFY, post(verify_transaction_endpoint))
+        .route(paths::STATE_HISTORY, get(get_state_history_endpoint))
         // Batch Operations for Loans
-        .route("/api/v2/ccr/batch/create", post(create_loan_batch_endpoint))
-        .route("/api/v2/ccr/batch/{batch_id}", get(get_loan_batch_endpoint))
+        .route(paths::STATE_BATCH_CREATE, post(create_loan_batch_endpoint))
+        .route(paths::STATE_BATCH_BY_ID, get(get_loan_batch_endpoint))
         .route(
-            "/api/v2/ccr/batch/pending",
+            paths::STATE_BATCH_PENDING,
             get(get_pending_loan_transactions_endpoint),
         )
         // ========================================================================
         // LOAN OPERATION INCLUSION PROOF ENDPOINTS
         // ========================================================================
         .route(
-            "/api/v2/ccr/proofs/loan-operation",
+            paths::STATE_PROOFS_LOAN_OPERATION,
             post(generate_loan_operation_proof_endpoint),
         )
         .route(
-            "/api/v2/ccr/proofs/loan-payment/{user_id}/{loan_id}/{payment_id}/{batch_id}",
+            paths::STATE_PROOFS_LOAN_PAYMENT,
             get(generate_loan_payment_proof_endpoint),
         )
+        .route(paths::STATE_PROOFS_VERIFY, post(verify_loan_proof_endpoint))
         .route(
-            "/api/v2/ccr/proofs/verify",
-            post(verify_loan_proof_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/proofs/report",
+            paths::STATE_PROOFS_REPORT,
             post(generate_proof_report_endpoint),
         )
         .route(
-            "/api/v2/ccr/proofs/batch-verify",
+            paths::STATE_PROOFS_BATCH_VERIFY,
             post(batch_verify_proofs_endpoint),
         )
+        .route(paths::LOAN_AUDIT_TRAIL, get(get_loan_audit_trail_endpoint))
         .route(
-            "/api/v2/ccr/loans/{loan_id}/audit-trail",
-            get(get_loan_audit_trail_endpoint),
-        )
-        .route(
-            "/api/v2/ccr/loans/{loan_id}/lifecycle-summary",
+            paths::LOAN_LIFECYCLE_SUMMARY,
             get(get_loan_lifecycle_summary_endpoint),
         )
         .with_state(state)
@@ -627,7 +600,7 @@ pub fn create_router(state: ApiState) -> Router {
 /// Health check endpoint
 #[utoipa::path(
     get,
-    path = "/api/v2/health",
+    path = "/api/v1/health",
     responses(
         (status = 200, description = "Health check passed", body = HealthResponse),
         (status = 500, description = "Health check failed")
@@ -657,6 +630,11 @@ async fn health_check(
         },
         timestamp: Utc::now(),
         database_connected: db_connected,
+        api_version: state.config.version.clone(),
+        git_tag: env!("GIT_TAG").to_string(),
+        git_sha: env!("GIT_SHA").to_string(),
+        git_sha_short: env!("GIT_SHA_SHORT").to_string(),
+        git_dirty: env!("GIT_DIRTY").parse().unwrap_or(false),
     };
 
     if db_connected {
@@ -676,130 +654,7 @@ async fn health_check(
 async fn api_info(State(state): State<ApiState>) -> Json<ApiInfoResponse> {
     info!("📋 API: API info requested");
 
-    let endpoints = vec![
-        // Core endpoints
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/health".to_string(),
-            description: "Health check".to_string(),
-        },
-        // Legacy batch processing (maintained for backward compatibility)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/transactions".to_string(),
-            description: "Submit a new transaction".to_string(),
-        },
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/batches".to_string(),
-            description: "Create a new batch from pending transactions".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/state/current".to_string(),
-            description: "Get current counter state".to_string(),
-        },
-        // Identity Management (CCR)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/identities".to_string(),
-            description: "Register new user identity".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/identities".to_string(),
-            description: "List user identities with filters".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/identities/{user_id}".to_string(),
-            description: "Get user details by ID".to_string(),
-        },
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/identities/{user_id}/kyc".to_string(),
-            description: "Submit KYC information".to_string(),
-        },
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/identities/{user_id}/kyc-status".to_string(),
-            description: "Update KYC status (admin only)".to_string(),
-        },
-        // Loan Management (CCR)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/loans".to_string(),
-            description: "Create new loan".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/loans".to_string(),
-            description: "List loans with filters".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/loans/{loan_id}".to_string(),
-            description: "Get loan details by ID".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/loans/stats".to_string(),
-            description: "Get loan statistics".to_string(),
-        },
-        // Payment Processing (CCR)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/payments".to_string(),
-            description: "Record loan payment".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/payments/{transaction_id}".to_string(),
-            description: "Get payment details".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/loans/{loan_id}/payments".to_string(),
-            description: "Get loan payment history".to_string(),
-        },
-        // State Management & ZK Proofs (CCR)
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/state/current".to_string(),
-            description: "Get current state summary".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/state/proof/{transaction_type}/{transaction_id}".to_string(),
-            description: "Generate transaction inclusion proof".to_string(),
-        },
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/state/verify".to_string(),
-            description: "Verify transaction inclusion".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/state/history".to_string(),
-            description: "Get state transition history".to_string(),
-        },
-        // Batch Operations (CCR)
-        EndpointInfo {
-            method: "POST".to_string(),
-            path: "/api/v2/ccr/batch/create".to_string(),
-            description: "Create batch from pending loan transactions".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/batch/{batch_id}".to_string(),
-            description: "Get loan batch details".to_string(),
-        },
-        EndpointInfo {
-            method: "GET".to_string(),
-            path: "/api/v2/ccr/batch/pending".to_string(),
-            description: "Get pending loan transactions ready for batching".to_string(),
-        },
-    ];
+    let endpoints = paths::get_all_endpoints();
 
     let response = ApiInfoResponse {
         server_name: state.config.server_name.clone(),
@@ -815,7 +670,7 @@ async fn api_info(State(state): State<ApiState>) -> Json<ApiInfoResponse> {
 /// Submit a new transaction
 #[utoipa::path(
     post,
-    path = "/api/v2/transactions",
+    path = "/api/v1/state/transactions",
     request_body = SubmitTransactionRequest,
     responses(
         (status = 200, description = "Transaction submitted successfully", body = SubmitTransactionResponse),
@@ -855,7 +710,7 @@ async fn submit_transaction_endpoint(
 /// Get pending transactions
 #[utoipa::path(
     get,
-    path = "/api/v2/transactions/pending",
+    path = "/api/v1/state/transactions/pending",
     responses(
         (status = 200, description = "List of pending transactions", body = PendingTransactionsResponse),
         (status = 500, description = "Internal server error")
@@ -905,7 +760,7 @@ async fn get_pending_transactions_endpoint(
 /// Create a new batch using unified ADS-integrated workflow
 #[utoipa::path(
     post,
-    path = "/api/v2/batches",
+    path = "/api/v1/state/batches",
     request_body = CreateBatchRequest,
     responses(
         (status = 200, description = "Batch created successfully", body = CreateBatchResponse),
@@ -1001,7 +856,7 @@ async fn create_batch_endpoint(
 /// Get all batches (paginated)
 #[utoipa::path(
     get,
-    path = "/api/v2/batches",
+    path = "/api/v1/state/batches",
     params(
         ("limit" = Option<i32>, Query, description = "Limit the number of batches returned")
     ),
@@ -1056,7 +911,7 @@ async fn get_batches_endpoint(
 /// Get specific batch by ID
 #[utoipa::path(
     get,
-    path = "/api/v2/batches/{batch_id}",
+    path = "/api/v1/state/batch/{batch_id}",
     params(
         ("batch_id" = i32, Path, description = "Batch ID")
     ),
@@ -1406,7 +1261,7 @@ async fn register_user_endpoint(
     Json(request): Json<RegisterUserRequest>,
 ) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
     info!(
-        "👤 CCR: Registering new user: type={}, email={}",
+        "👤 API: Registering new user: type={}, email={}",
         request.user_type, request.email
     );
 
@@ -1436,11 +1291,11 @@ async fn register_user_endpoint(
                 created_at: now,
             };
 
-            info!("✅ CCR: User registered successfully: id={}", user_id);
+            info!("✅ API: User registered successfully: id={}", user_id);
             Ok(Json(response))
         }
         Err(e) => {
-            error!("❌ CCR: Failed to register user: {}", e);
+            error!("❌ API: Failed to register user: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to register user: {}", e),
@@ -1455,7 +1310,7 @@ async fn list_identities_endpoint(
     State(state): State<ApiState>,
     Query(params): Query<ListIdentitiesQuery>,
 ) -> Result<Json<ListIdentitiesResponse>, (StatusCode, String)> {
-    info!("📋 CCR: Listing identities with filters");
+    info!("📋 API: Listing identities with filters");
 
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
@@ -1496,11 +1351,11 @@ async fn list_identities_endpoint(
                 has_more: total_count >= limit as u64,
             };
 
-            info!("✅ CCR: Listed {} identities", response.total_count);
+            info!("✅ API: Listed {} identities", response.total_count);
             Ok(Json(response))
         }
         Err(e) => {
-            error!("❌ CCR: Failed to list identities: {}", e);
+            error!("❌ API: Failed to list identities: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to list identities: {}", e),
@@ -1515,7 +1370,7 @@ async fn get_user_details_endpoint(
     State(_state): State<ApiState>,
     Path(user_id): Path<String>,
 ) -> Result<Json<UserDetailsResponse>, (StatusCode, String)> {
-    info!("🔍 CCR: Getting user details: user_id={}", user_id);
+    info!("🔍 API: Getting user details: user_id={}", user_id);
 
     // TODO: Implement user lookup with database integration
     // For now, return mock user
@@ -1528,7 +1383,7 @@ async fn get_user_details_endpoint(
         created_at: Utc::now(),
     };
 
-    info!("✅ CCR: User details retrieved");
+    info!("✅ API: User details retrieved");
     Ok(Json(response))
 }
 
@@ -1540,7 +1395,7 @@ async fn submit_kyc_endpoint(
     Json(request): Json<SubmitKycRequest>,
 ) -> Result<Json<SubmitKycResponse>, (StatusCode, String)> {
     info!(
-        "📄 CCR: KYC submission: user_id={}, doc_type={}",
+        "📄 API: KYC submission: user_id={}, doc_type={}",
         user_id, request.kyc_data.document_type
     );
 
@@ -1551,7 +1406,7 @@ async fn submit_kyc_endpoint(
         submitted_at: Utc::now(),
     };
 
-    info!("✅ CCR: KYC submitted successfully");
+    info!("✅ API: KYC submitted successfully");
     Ok(Json(response))
 }
 
@@ -1563,7 +1418,7 @@ async fn update_kyc_status_endpoint(
     Json(request): Json<UpdateKycStatusRequest>,
 ) -> Result<Json<UserDetailsResponse>, (StatusCode, String)> {
     info!(
-        "⚖️ CCR: Updating KYC status: user_id={}, new_status={}",
+        "⚖️ API: Updating KYC status: user_id={}, new_status={}",
         user_id, request.status
     );
 
@@ -1577,7 +1432,7 @@ async fn update_kyc_status_endpoint(
         created_at: Utc::now(),
     };
 
-    info!("✅ CCR: KYC status updated successfully");
+    info!("✅ API: KYC status updated successfully");
     Ok(Json(response))
 }
 
@@ -1590,7 +1445,7 @@ async fn create_loan_endpoint(
     Json(request): Json<CreateLoanRequest>,
 ) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
     info!(
-        "💰 CCR: Creating loan: borrower={}, lender={}, amount={}",
+        "💰 API: Creating loan: borrower={}, lender={}, amount={}",
         request.borrower_id, request.lender_id, request.principal_amount
     );
 
@@ -1609,7 +1464,7 @@ async fn create_loan_endpoint(
         last_updated: None,
     };
 
-    info!("✅ CCR: Loan created successfully");
+    info!("✅ API: Loan created successfully");
     Ok(Json(response))
 }
 
@@ -1619,7 +1474,7 @@ async fn list_loans_endpoint(
     State(_state): State<ApiState>,
     Query(params): Query<ListLoansQuery>,
 ) -> Result<Json<ListLoansResponse>, (StatusCode, String)> {
-    info!("📋 CCR: Listing loans with filters");
+    info!("📋 API: Listing loans with filters");
 
     // TODO: Implement loan listing with database integration
     let response = ListLoansResponse {
@@ -1628,7 +1483,7 @@ async fn list_loans_endpoint(
         has_more: false,
     };
 
-    info!("✅ CCR: Listed {} loans", response.total_count);
+    info!("✅ API: Listed {} loans", response.total_count);
     Ok(Json(response))
 }
 
@@ -1638,7 +1493,7 @@ async fn get_loan_details_endpoint(
     State(_state): State<ApiState>,
     Path(loan_id): Path<String>,
 ) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
-    info!("🔍 CCR: Getting loan details: loan_id={}", loan_id);
+    info!("🔍 API: Getting loan details: loan_id={}", loan_id);
 
     // TODO: Implement loan lookup with database integration
     let response = LoanDetailsResponse {
@@ -1653,7 +1508,7 @@ async fn get_loan_details_endpoint(
         last_updated: Some(Utc::now()),
     };
 
-    info!("✅ CCR: Loan details retrieved");
+    info!("✅ API: Loan details retrieved");
     Ok(Json(response))
 }
 
@@ -1663,7 +1518,7 @@ async fn get_loan_stats_endpoint(
     State(_state): State<ApiState>,
     Query(params): Query<ListLoansQuery>, // Reuse query params for filtering
 ) -> Result<Json<LoanStatsResponse>, (StatusCode, String)> {
-    info!("📊 CCR: Getting loan statistics");
+    info!("📊 API: Getting loan statistics");
 
     // TODO: Implement loan statistics with database integration
     let mut status_breakdown = std::collections::HashMap::new();
@@ -1680,7 +1535,7 @@ async fn get_loan_stats_endpoint(
         status_breakdown,
     };
 
-    info!("✅ CCR: Loan statistics retrieved");
+    info!("✅ API: Loan statistics retrieved");
     Ok(Json(response))
 }
 
@@ -1693,7 +1548,7 @@ async fn record_payment_endpoint(
     Json(request): Json<RecordPaymentRequest>,
 ) -> Result<Json<PaymentResponse>, (StatusCode, String)> {
     info!(
-        "💳 CCR: Recording payment: loan_id={}, amount={}, type={}",
+        "💳 API: Recording payment: loan_id={}, amount={}, type={}",
         request.loan_id, request.amount, request.payment_type
     );
 
@@ -1709,7 +1564,7 @@ async fn record_payment_endpoint(
         created_at: Utc::now(),
     };
 
-    info!("✅ CCR: Payment recorded successfully");
+    info!("✅ API: Payment recorded successfully");
     Ok(Json(response))
 }
 
@@ -1720,7 +1575,7 @@ async fn get_payment_details_endpoint(
     Path(transaction_id): Path<String>,
 ) -> Result<Json<PaymentDetailsResponse>, (StatusCode, String)> {
     info!(
-        "🔍 CCR: Getting payment details: transaction_id={}",
+        "🔍 API: Getting payment details: transaction_id={}",
         transaction_id
     );
 
@@ -1736,7 +1591,7 @@ async fn get_payment_details_endpoint(
         processed_at: Some(Utc::now()),
     };
 
-    info!("✅ CCR: Payment details retrieved");
+    info!("✅ API: Payment details retrieved");
     Ok(Json(response))
 }
 
@@ -1747,7 +1602,7 @@ async fn get_loan_payment_history_endpoint(
     Path(loan_id): Path<String>,
     Query(params): Query<ListLoansQuery>, // Reuse query params for limit/offset
 ) -> Result<Json<LoanPaymentHistoryResponse>, (StatusCode, String)> {
-    info!("📜 CCR: Getting payment history: loan_id={}", loan_id);
+    info!("📜 API: Getting payment history: loan_id={}", loan_id);
 
     // TODO: Implement payment history lookup with database integration
     let response = LoanPaymentHistoryResponse {
@@ -1757,7 +1612,7 @@ async fn get_loan_payment_history_endpoint(
         total_amount_paid: "0".to_string(),
     };
 
-    info!("✅ CCR: Payment history retrieved");
+    info!("✅ API: Payment history retrieved");
     Ok(Json(response))
 }
 
@@ -1768,7 +1623,7 @@ async fn get_loan_payment_history_endpoint(
 async fn get_state_summary_endpoint(
     State(_state): State<ApiState>,
 ) -> Result<Json<StateSummaryResponse>, (StatusCode, String)> {
-    info!("🎯 CCR: Getting current state summary");
+    info!("🎯 API: Getting current state summary");
 
     // TODO: Implement state summary with database integration
     let response = StateSummaryResponse {
@@ -1787,7 +1642,7 @@ async fn get_state_summary_endpoint(
         },
     };
 
-    info!("✅ CCR: State summary retrieved");
+    info!("✅ API: State summary retrieved");
     Ok(Json(response))
 }
 
@@ -1798,7 +1653,7 @@ async fn get_transaction_proof_endpoint(
     Path((transaction_type, transaction_id)): Path<(String, String)>,
 ) -> Result<Json<TransactionProofResponse>, (StatusCode, String)> {
     info!(
-        "🔐 CCR: Generating inclusion proof: type={}, id={}",
+        "🔐 API: Generating inclusion proof: type={}, id={}",
         transaction_type, transaction_id
     );
 
@@ -1818,7 +1673,7 @@ async fn get_transaction_proof_endpoint(
         },
     };
 
-    info!("✅ CCR: Transaction proof generated");
+    info!("✅ API: Transaction proof generated");
     Ok(Json(response))
 }
 
@@ -1829,7 +1684,7 @@ async fn verify_transaction_endpoint(
     Json(request): Json<VerifyTransactionRequest>,
 ) -> Result<Json<TransactionVerificationResponse>, (StatusCode, String)> {
     info!(
-        "🔍 CCR: Verifying transaction inclusion: id={}",
+        "🔍 API: Verifying transaction inclusion: id={}",
         request.transaction_id
     );
 
@@ -1845,7 +1700,7 @@ async fn verify_transaction_endpoint(
         verified_at: Utc::now(),
     };
 
-    info!("✅ CCR: Transaction verified successfully");
+    info!("✅ API: Transaction verified successfully");
     Ok(Json(response))
 }
 
@@ -1855,7 +1710,7 @@ async fn get_state_history_endpoint(
     State(_state): State<ApiState>,
     Query(params): Query<BatchListQuery>, // Reuse query params for limit
 ) -> Result<Json<StateHistoryResponse>, (StatusCode, String)> {
-    info!("📜 CCR: Getting state transition history");
+    info!("📜 API: Getting state transition history");
 
     // TODO: Implement state history with database integration
     let response = StateHistoryResponse {
@@ -1863,7 +1718,7 @@ async fn get_state_history_endpoint(
         total_batches: 0,
     };
 
-    info!("✅ CCR: State history retrieved");
+    info!("✅ API: State history retrieved");
     Ok(Json(response))
 }
 
@@ -1876,7 +1731,7 @@ async fn create_loan_batch_endpoint(
     Json(request): Json<CreateLoanBatchRequest>,
 ) -> Result<Json<CreateLoanBatchResponse>, (StatusCode, String)> {
     info!(
-        "🔄 CCR: Creating loan batch: max_count={:?}, force={:?}",
+        "🔄 API: Creating loan batch: max_count={:?}, force={:?}",
         request.max_transaction_count, request.force_create
     );
 
@@ -1891,7 +1746,7 @@ async fn create_loan_batch_endpoint(
         created_at: Utc::now(),
     };
 
-    info!("✅ CCR: Loan batch created successfully");
+    info!("✅ API: Loan batch created successfully");
     Ok(Json(response))
 }
 
@@ -1901,7 +1756,7 @@ async fn get_loan_batch_endpoint(
     State(state): State<ApiState>,
     Path(batch_id): Path<String>,
 ) -> Result<Json<BatchInfo>, (StatusCode, String)> {
-    info!("🔍 CCR: Getting loan batch details: batch_id={}", batch_id);
+    info!("🔍 API: Getting loan batch details: batch_id={}", batch_id);
 
     // TODO: Implement loan batch lookup with database integration
     // For now, delegate to existing batch endpoint
@@ -1921,7 +1776,7 @@ async fn get_pending_loan_transactions_endpoint(
     State(_state): State<ApiState>,
     Query(params): Query<BatchListQuery>, // Reuse query params for limit
 ) -> Result<Json<PendingLoanTransactionsResponse>, (StatusCode, String)> {
-    info!("📋 CCR: Getting pending loan transactions");
+    info!("📋 API: Getting pending loan transactions");
 
     // TODO: Implement pending loan transactions lookup with database integration
     let response = PendingLoanTransactionsResponse {
@@ -1931,7 +1786,7 @@ async fn get_pending_loan_transactions_endpoint(
         oldest_pending: None,
     };
 
-    info!("✅ CCR: Pending loan transactions retrieved");
+    info!("✅ API: Pending loan transactions retrieved");
     Ok(Json(response))
 }
 
@@ -2287,7 +2142,7 @@ async fn get_loan_lifecycle_summary_endpoint(
     ),
     info(
         title = "Arda Credit API",
-        version = "2.0.0",
+        version = "1.0.0",
         description = "Zero-knowledge proof system for batched transaction processing and loan management",
         contact(
             name = "Arda Global",

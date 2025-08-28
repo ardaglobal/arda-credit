@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
 
+use crate::paths;
+
 /// Client for interacting with the batch processing API
 #[derive(Debug, Clone)]
 pub struct BatchApiClient {
@@ -144,6 +146,11 @@ pub struct HealthResponse {
     pub status: String,
     pub timestamp: String,
     pub database_connected: bool,
+    pub api_version: String,
+    pub git_tag: String,
+    pub git_sha: String,
+    pub git_sha_short: String,
+    pub git_dirty: bool,
 }
 
 /// API info response
@@ -185,7 +192,7 @@ impl BatchApiClient {
         &self,
         amount: i32,
     ) -> Result<SubmitTransactionResponse, ApiClientError> {
-        let url = format!("{}/api/v2/transactions", self.base_url);
+        let url = format!("{}{}", self.base_url, paths::STATE_TRANSACTIONS);
         let request = SubmitTransactionRequest { amount };
 
         let response = self.client.post(&url).json(&request).send().await?;
@@ -196,7 +203,7 @@ impl BatchApiClient {
     pub async fn get_pending_transactions(
         &self,
     ) -> Result<PendingTransactionsResponse, ApiClientError> {
-        let url = format!("{}/api/v2/transactions/pending", self.base_url);
+        let url = format!("{}{}", self.base_url, paths::STATE_TRANSACTIONS_PENDING);
         let response = self.client.get(&url).send().await?;
         self.handle_response(response).await
     }
@@ -206,7 +213,7 @@ impl BatchApiClient {
         &self,
         batch_size: Option<i32>,
     ) -> Result<CreateBatchResponse, ApiClientError> {
-        let url = format!("{}/api/v2/batches", self.base_url);
+        let url = format!("{}{}", self.base_url, paths::STATE_BATCHES);
         let request = CreateBatchRequest { batch_size };
 
         let response = self.client.post(&url).json(&request).send().await?;
@@ -218,7 +225,7 @@ impl BatchApiClient {
         &self,
         limit: Option<i32>,
     ) -> Result<BatchListResponse, ApiClientError> {
-        let mut url = format!("{}/api/v2/batches", self.base_url);
+        let mut url = format!("{}{}", self.base_url, paths::STATE_BATCHES);
         if let Some(limit) = limit {
             url = format!("{}?limit={}", url, limit);
         }
@@ -229,7 +236,7 @@ impl BatchApiClient {
 
     /// Get specific batch by ID
     pub async fn get_batch(&self, batch_id: i32) -> Result<Option<BatchInfo>, ApiClientError> {
-        let url = format!("{}/api/v2/batches/{}", self.base_url, batch_id);
+        let url = format!("{}{}", self.base_url, paths::batch_path(batch_id));
         let response = self.client.get(&url).send().await?;
 
         match response.status().as_u16() {
@@ -247,7 +254,7 @@ impl BatchApiClient {
         status: String,
         merkle_root: Option<String>,
     ) -> Result<BatchInfo, ApiClientError> {
-        let url = format!("{}/api/v2/batches/{}/proof", self.base_url, batch_id);
+        let url = format!("{}{}", self.base_url, paths::batch_proof_path(batch_id));
         let request = UpdateBatchProofRequest {
             sindri_proof_id,
             status,
@@ -260,7 +267,7 @@ impl BatchApiClient {
 
     /// Get current counter state
     pub async fn get_current_state(&self) -> Result<CurrentStateResponse, ApiClientError> {
-        let url = format!("{}/api/v2/state/current", self.base_url);
+        let url = format!("{}{}", self.base_url, paths::STATE_CURRENT);
         let response = self.client.get(&url).send().await?;
         self.handle_response(response).await
     }
@@ -270,7 +277,7 @@ impl BatchApiClient {
         &self,
         batch_id: i32,
     ) -> Result<Option<ContractSubmissionData>, ApiClientError> {
-        let url = format!("{}/api/v2/state/{}/contract", self.base_url, batch_id);
+        let url = format!("{}{}", self.base_url, paths::state_contract_path(batch_id));
         let response = self.client.get(&url).send().await?;
 
         match response.status().as_u16() {
@@ -282,14 +289,14 @@ impl BatchApiClient {
 
     /// Check API health
     pub async fn health_check(&self) -> Result<HealthResponse, ApiClientError> {
-        let url = format!("{}/api/v2/health", self.base_url);
+        let url = format!("{}{}", self.base_url, paths::API_HEALTH);
         let response = self.client.get(&url).send().await?;
         self.handle_response(response).await
     }
 
     /// Get API information
     pub async fn get_api_info(&self) -> Result<ApiInfoResponse, ApiClientError> {
-        let url = format!("{}/api/v2/info", self.base_url);
+        let url = format!("{}{}", self.base_url, paths::API_INFO);
         let response = self.client.get(&url).send().await?;
         self.handle_response(response).await
     }
