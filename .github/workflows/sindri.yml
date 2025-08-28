@@ -16,10 +16,10 @@ concurrency:
 
 jobs:
   lint-compile-deploy:
-    runs-on:
-      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
-      - image=ubuntu-7.0
-      - instance-size=small
+    runs-on: ubuntu-latest
+      # - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      # - image=ubuntu-7.0
+      # - instance-size=small
     env:
       SINDRI_API_KEY: ${{ secrets.SINDRI_API_KEY }}
     steps:
@@ -42,8 +42,6 @@ jobs:
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools, rustc-dev
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -69,7 +67,7 @@ jobs:
       - name: Build SP1 Program
         run: |
           cd program
-          cargo prove build --output-directory ../build
+          ~/.sp1/bin/cargo-prove prove build --output-directory ../build
 
       - name: Get Branch Name
         id: branch-name
@@ -90,6 +88,5 @@ jobs:
 
       - name: Test Circuit
         env:
-          SINDRI_API_KEY: ${{ secrets.SINDRI_API_KEY }}
           SINDRI_TAG: ${{ steps.branch-name.outputs.tag }}
         run: cargo run --release -- --sindri

@@ -5,6 +5,8 @@
 //! privacy guarantees.
 
 use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
+#[cfg(test)]
+use crate::balance::BalanceUpdateType;
 use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};

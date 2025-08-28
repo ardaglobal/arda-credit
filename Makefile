@@ -140,8 +140,68 @@ actionlint-fix:
 .PHONY: test
 test:
 	docker-compose up postgres -d
+	sqlx migrate run --source db/migrations
 	cargo test
 	docker-compose down -v
+
+## cover: Generate code coverage report
+.PHONY: cover
+cover:
+	@echo "🔍 Generating code coverage report..."
+	@echo ""
+	@# Install cargo-llvm-cov if not present
+	@if ! command -v cargo-llvm-cov >/dev/null 2>&1; then \
+		echo "📦 Installing cargo-llvm-cov..."; \
+		cargo install cargo-llvm-cov; \
+	else \
+		echo "✅ cargo-llvm-cov already installed"; \
+	fi
+	@echo ""
+	@# Start database
+	@echo "🚀 Starting PostgreSQL database..."
+	@docker-compose up postgres -d
+	@echo ""
+	@# Wait for database to be ready
+	@echo "⏳ Waiting for PostgreSQL to be ready..."
+	@sleep 5
+	@echo ""
+	@# Run migrations
+	@echo "📦 Running database migrations..."
+	@sqlx migrate run --source db/migrations
+	@echo ""
+	@# Generate coverage reports
+	@echo "📊 Generating coverage reports..."
+	@mkdir -p target/llvm-cov
+	@# Generate HTML report
+	@echo "  📄 Generating HTML report..."
+	@DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?pool_max_size=20&connection_timeout=60" \
+		cargo llvm-cov --workspace --all-features --html -- --test-threads=5
+	@# Generate JSON report
+	@echo "  📋 Generating JSON report..."
+	@DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?pool_max_size=20&connection_timeout=60" \
+		cargo llvm-cov --workspace --all-features --json --output-path target/llvm-cov/coverage.json -- --test-threads=5
+	@# Generate text summary
+	@echo "  📝 Generating summary report..."
+	@DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?pool_max_size=20&connection_timeout=60" \
+		cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=5 > target/llvm-cov/coverage-summary.txt
+	@echo ""
+	@# Stop database
+	@echo "🛑 Stopping PostgreSQL database..."
+	@docker-compose down -v
+	@echo ""
+	@echo "🎉 Coverage reports generated successfully!"
+	@echo ""
+	@echo "📂 Reports available at:"
+	@echo "  📄 HTML Report:    target/llvm-cov/html/index.html"
+	@echo "  📋 JSON Data:      target/llvm-cov/coverage.json"
+	@echo "  📝 Summary:        target/llvm-cov/coverage-summary.txt"
+	@echo ""
+	@echo "=== Coverage Summary ==="
+	@if [ -f "target/llvm-cov/coverage-summary.txt" ]; then \
+		cat target/llvm-cov/coverage-summary.txt; \
+	fi
+	@echo ""
+	@echo "💡 Open target/llvm-cov/html/index.html in your browser to view the detailed HTML report"
 
 ## run: Local SP1 unit testing (fast ~3.5s Core proofs)
 .PHONY: run
@@ -158,6 +218,7 @@ cli:
 server:
 	@echo "Starting PostgreSQL database..."
 	docker-compose up postgres -d
+	sqlx migrate run --source db/migrations
 	@echo "Starting API server locally (requires database)..."
 	@echo "💡 Tip: Run 'make up postgres' in another terminal first"
 	cargo run --bin server --release

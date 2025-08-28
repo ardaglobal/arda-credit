@@ -31,8 +31,6 @@ jobs:
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools, rustc-dev
 
       - name: Cache dependencies
         uses: actions/cache@v4
@@ -58,7 +56,7 @@ jobs:
       - name: Build SP1 Program
         run: |
           cd program
-          cargo prove build
+          ~/.sp1/bin/cargo-prove prove build
 
       - name: Execute SP1 program
         run: |

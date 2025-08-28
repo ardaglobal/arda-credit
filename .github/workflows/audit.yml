@@ -1,3 +1,4 @@
+# Developer note: This workflow does not pass locally with act, but does pass on GitHub Actions.
 name: Security audit
 permissions:
   checks: write
