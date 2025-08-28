@@ -19,9 +19,9 @@ env:
 
 jobs:
   build-and-push:
-    runs-on:
+    runs-on: ubuntu-latest
       # AWS Codebuild Trigger
-      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      # - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
     permissions:
       contents: read
       packages: write

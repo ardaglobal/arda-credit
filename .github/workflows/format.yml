@@ -18,7 +18,7 @@ jobs:
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
-      - instance-size=small
+      - instance-size=large
     steps:
       - name: checkout
         uses: actions/checkout@v5

@@ -13,9 +13,9 @@ ARG SP1_PAT=""
 RUN curl -L https://sp1.succinct.xyz | bash
 ENV PATH="/root/.sp1/bin:/usr/local/cargo/bin:$PATH"
 RUN if [ -n "$SP1_PAT" ]; then \
-        sp1up --token "$SP1_PAT"; \
+        ~/.sp1/bin/sp1up --token "$SP1_PAT"; \
     else \
-        sp1up; \
+        ~/.sp1/bin/sp1up; \
     fi
 
 WORKDIR /app

@@ -21,7 +21,8 @@ jobs:
     # Using github runners as there is a docker login issue with codebuild. See ARDGBL-177
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
-      - run-id=${{ github.run_id }}
+      - image=ubuntu-7.0
+      - instance-size=large
 
     services:
       postgres:
