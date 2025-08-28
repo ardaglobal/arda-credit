@@ -110,14 +110,48 @@ cd contracts && forge test --match-contract LoanManagementTest  # Specific tests
 ```
 
 ### Smart Contract Deployment
+
+#### Production Deployment
 ```bash
 # Deploy Arda Credit loan contract (set env vars first)
 make deploy-contract
 make deploy-contract-help           # Show required environment variables
+```
 
+#### Local Development with Anvil
+```bash
+# Start local Ethereum testnet
+cd contracts
+anvil                               # Runs on http://127.0.0.1:8545 (Chain ID: 31337)
+
+# In a new terminal, build and deploy contracts
+cd contracts
+forge build                         # Compile all contracts
+
+# Deploy SP1MockVerifier (for testing)
+forge create lib/sp1-contracts/contracts/src/SP1MockVerifier.sol:SP1MockVerifier \
+  --rpc-url http://127.0.0.1:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  --broadcast
+
+# Deploy Loan contract (replace VERIFIER_ADDRESS with deployed address above)
+forge create src/Loan.sol:Loan \
+  --rpc-url http://127.0.0.1:8545 \
+  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  --broadcast \
+  --constructor-args VERIFIER_ADDRESS 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+
+# Interact with deployed contracts
+cast call CONTRACT_ADDRESS "verifier()" --rpc-url http://127.0.0.1:8545
+cast call CONTRACT_ADDRESS "owner()" --rpc-url http://127.0.0.1:8545
+```
+
+#### Contract Testing
+```bash
 # Build and test contracts
 cd contracts && forge build
 cd contracts && forge test
+forge test --fork-url http://127.0.0.1:8545  # Test against local testnet
 ```
 
 ## High-Level Architecture
