@@ -4,9 +4,9 @@
 //! the SP1 zkVM. It processes batches of mixed transaction types while maintaining
 //! privacy guarantees.
 
-use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
 #[cfg(test)]
 use crate::balance::BalanceUpdateType;
+use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
 use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
