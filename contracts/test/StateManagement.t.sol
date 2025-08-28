@@ -6,12 +6,15 @@ import {Loan} from "../src/Loan.sol";
 import {IStateManager} from "../src/interfaces/IStateManager.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 import {stdJson} from "forge-std/StdJson.sol";
+import {ERC20Mock} from "openzeppelin-contracts/contracts/mocks/token/ERC20Mock.sol";
 
 contract StateManagementTest is Test {
     using stdJson for string;
 
     Loan public loan;
     address public verifier;
+    ERC20Mock public usdc;
+    address public ardaAdmin = address(0x456);
 
     // Test constants
     bytes32 public constant TEST_VKEY =
@@ -77,8 +80,9 @@ contract StateManagementTest is Test {
         reader = makeAddr("reader");
 
         // Deploy verifier and loan contract
+        usdc = new ERC20Mock();
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, groth16Fixture.vkey);
+        loan = new Loan(verifier, groth16Fixture.vkey, address(usdc), ardaAdmin);
 
         // Grant authorization to test poster
         loan.setAuthorization(authorizedPoster, true);
@@ -562,7 +566,7 @@ contract StateManagementTest is Test {
         vm.stopPrank();
 
         // Reset contract state for batch test
-        loan = new Loan(verifier, groth16Fixture.vkey);
+        loan = new Loan(verifier, groth16Fixture.vkey, address(usdc), ardaAdmin);
         loan.setAuthorization(authorizedPoster, true);
 
         // Test batch update

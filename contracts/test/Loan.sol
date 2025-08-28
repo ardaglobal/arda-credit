@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
+import {ERC20Mock} from "openzeppelin-contracts/contracts/mocks/token/ERC20Mock.sol";
 
 struct SP1ProofFixtureJson {
     int32 initial_balance;
@@ -18,6 +19,8 @@ contract LoanGroth16Test is Test {
     using stdJson for string;
 
     address verifier;
+    ERC20Mock public usdc;
+    address public ardaAdmin = address(0x456);
     Loan public loan;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
@@ -34,8 +37,9 @@ contract LoanGroth16Test is Test {
     function setUp() public {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
+        usdc = new ERC20Mock();
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, fixture.vkey);
+        loan = new Loan(verifier, fixture.vkey, address(usdc), ardaAdmin);
     }
 
     function test_ValidLoanProof() public {
@@ -72,6 +76,8 @@ contract LoanPlonkTest is Test {
     using stdJson for string;
 
     address verifier;
+    ERC20Mock public usdc;
+    address public ardaAdmin = address(0x456);
     Loan public loan;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
@@ -88,8 +94,9 @@ contract LoanPlonkTest is Test {
     function setUp() public {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
+        usdc = new ERC20Mock();
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, fixture.vkey);
+        loan = new Loan(verifier, fixture.vkey, address(usdc), ardaAdmin);
     }
 
     function test_ValidLoanProof() public {
@@ -124,14 +131,17 @@ contract LoanPlonkTest is Test {
 
 contract LoanVerificationKeyTest is Test {
     Loan public loan;
+    ERC20Mock public usdc;
+    address public ardaAdmin = address(0x456);
     bytes32 constant TEST_VKEY =
         0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b;
     bytes32 constant WRONG_VKEY =
         0x1234567890123456789012345678901234567890123456789012345678901234;
 
     function setUp() public {
+        usdc = new ERC20Mock();
         address verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, TEST_VKEY);
+        loan = new Loan(verifier, TEST_VKEY, address(usdc), ardaAdmin);
     }
 
     function test_GetProgramVerificationKey() public view {
@@ -183,6 +193,8 @@ contract LoanVerificationKeyTest is Test {
 contract StateRootTest is Test {
     Loan public loan;
     address public verifier;
+    ERC20Mock public usdc;
+    address public ardaAdmin = address(0x456);
 
     address public owner = address(0x123);
     address public authorizedUser = address(0x456);
@@ -200,9 +212,10 @@ contract StateRootTest is Test {
     function setUp() public {
         vm.startPrank(owner);
 
-        // Deploy SP1 verifier
+        // Deploy USDC and SP1 verifier
+        usdc = new ERC20Mock();
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, PROGRAM_VKEY);
+        loan = new Loan(verifier, PROGRAM_VKEY, address(usdc), ardaAdmin);
 
         // Authorize a user for testing
         loan.setAuthorization(authorizedUser, true);
@@ -383,6 +396,8 @@ contract StateRootTest is Test {
 contract LoanBatchPublicValuesTest is Test {
     Loan public loan;
     address public verifier;
+    ERC20Mock public usdc;
+    address public ardaAdmin = address(0x456);
 
     address public owner = address(0x123);
     address public authorizedUser = address(0x456);
@@ -403,8 +418,9 @@ contract LoanBatchPublicValuesTest is Test {
     function setUp() public {
         vm.startPrank(owner);
 
+        usdc = new ERC20Mock();
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, PROGRAM_VKEY);
+        loan = new Loan(verifier, PROGRAM_VKEY, address(usdc), ardaAdmin);
         loan.setAuthorization(authorizedUser, true);
 
         vm.stopPrank();

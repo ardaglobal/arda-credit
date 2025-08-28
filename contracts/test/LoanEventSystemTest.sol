@@ -4,18 +4,22 @@ pragma solidity ^0.8.20;
 import {Test, console} from "forge-std/Test.sol";
 import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
+import {ERC20Mock} from "openzeppelin-contracts/contracts/mocks/token/ERC20Mock.sol";
 
 contract LoanEventSystemTest is Test {
     Loan public loan;
     address public verifier;
+    ERC20Mock public usdc;
+    address public ardaAdmin = address(0x456);
     address public user1 = address(0x1);
     address public user2 = address(0x2);
     
     bytes32 public constant TEST_VKEY = 0x1234567890123456789012345678901234567890123456789012345678901234;
     
     function setUp() public {
+        usdc = new ERC20Mock();
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, TEST_VKEY);
+        loan = new Loan(verifier, TEST_VKEY, address(usdc), ardaAdmin);
         
         // Grant authorization to test users
         loan.setAuthorization(user1, true);

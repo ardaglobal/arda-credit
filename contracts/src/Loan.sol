@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
 import {EventHelpers} from "./EventHelpers.sol";
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 struct LoanBatchPublicValues {
     bytes32 previous_state_root;
@@ -18,7 +19,55 @@ struct LoanBatchPublicValues {
 /// @author Arda Global
 /// @notice This contract implements verification of batch processing proofs with continuous balance tracking.
 ///         Individual transactions remain private while only initial and final balances are public.
+///         Includes USDC integration, escrow functionality, simple KYC verification, and 2% fee collection.
 contract Loan is EventHelpers {
+    /// @notice USDC token contract
+    IERC20 public immutable USDC;
+    
+    /// @notice Arda admin address for fee collection
+    address public immutable ARDA_ADMIN_ADDRESS;
+    
+    /// @notice Fee rate in basis points (200 = 2%)
+    uint256 public constant LOAN_TRANSACTION_FEE_BPS = 200;
+    
+    /// @notice Escrow status enum
+    enum EscrowStatus { None, Pending, Active, Released, Completed }
+    
+    /// @notice Escrow record structure
+    struct EscrowRecord {
+        uint256 amount;
+        address investor;
+        bytes32 loanId;
+        EscrowStatus status;
+        uint256 createdAt;
+        uint256 timeoutBlock;
+    }
+    
+    /// @notice Admin fee tracking structure
+    struct AdminFeeTracking {
+        uint256 totalCollected;
+        uint256 totalWithdrawn;
+        uint256 availableForWithdrawal;
+    }
+    
+    /// @notice Simple KYC status tracking (no complex proofs needed)
+    mapping(address => bool) public kycVerified;
+    mapping(address => bool) public kycProviders;
+    
+    /// @notice Escrow state variables
+    mapping(bytes32 => EscrowRecord) public escrowRecords; // escrowId => record
+    mapping(address => mapping(bytes32 => uint256)) public escrowedForLoan; // user => loanId => amount
+    mapping(address => uint256) public totalEscrowed; // user => total escrowed
+    uint256 public totalTVL; // Total Value Locked
+    
+    /// @notice Fee collection tracking
+    AdminFeeTracking public ardaFees;
+    
+    /// @notice Withdrawal nullifier bitmap (prevent double spends)
+    mapping(bytes32 => bool) public withdrawalProcessed;
+    
+    /// @notice User balances in the contract
+    mapping(address => uint256) public userBalances;
     /// @notice The address of the SP1 verifier contract.
     /// @dev This can either be a specific SP1Verifier for a specific version, or the
     ///      SP1VerifierGateway which can be used to verify proofs for any version of SP1.
@@ -174,6 +223,20 @@ contract Loan is EventHelpers {
         uint128 currentBalance,
         bool increased
     );
+    
+    /// @notice KYC related events
+    event KYCStatusUpdated(address indexed user, bool verified);
+    event KYCProviderUpdated(address indexed provider, bool authorized);
+    
+    /// @notice Escrow related events
+    event EscrowCreated(bytes32 indexed escrowId, address indexed investor, bytes32 indexed loanId, uint256 amount);
+    event EscrowReleased(bytes32 indexed escrowId, address indexed investor, uint256 amount);
+    event DepositForLoan(address indexed user, bytes32 indexed loanId, uint256 amount, bool isEscrow);
+    
+    /// @notice Fee and withdrawal events
+    event FeeCollected(uint256 feeAmount, uint256 transactionAmount, uint256 timestamp);
+    event WithdrawalRequested(bytes32 indexed withdrawalId, address indexed user, uint256 amount, bytes32 atStateRoot);
+    event WithdrawalProcessed(bytes32 indexed withdrawalId, address indexed user, uint256 amount);
 
     /// @notice Legacy events for backwards compatibility.
     event AuthorizationChanged(address indexed account, bool authorized);
@@ -205,6 +268,14 @@ contract Loan is EventHelpers {
     error InvalidLimit();
     error InvalidIndex();
     error ProofAlreadyExists();
+    error InsufficientBalance();
+    error InvalidAmount();
+    error KYCRequired();
+    error NotAuthorizedKYCProvider();
+    error EscrowNotFound();
+    error EscrowCannotRelease();
+    error TimeoutNotReached();
+    error WithdrawalAlreadyProcessed();
 
     /// @notice Modifier to restrict access to owner only.
     modifier onlyOwner() {
@@ -218,13 +289,34 @@ contract Loan is EventHelpers {
             revert UnauthorizedAccess();
         _;
     }
+    
+    /// @notice Modifier to restrict access to KYC providers only.
+    modifier onlyKYCProvider() {
+        if (!kycProviders[msg.sender]) revert NotAuthorizedKYCProvider();
+        _;
+    }
+    
+    /// @notice Modifier to restrict access to KYC verified users only.
+    modifier onlyKYCVerified() {
+        if (!kycVerified[msg.sender]) revert KYCRequired();
+        _;
+    }
 
-    constructor(address _verifier, bytes32 _loanProgramVKey) {
+    constructor(
+        address _verifier,
+        bytes32 _loanProgramVKey,
+        address _usdcToken,
+        address _ardaAdminAddress
+    ) {
         verifier = _verifier;
         loanProgramVKey = _loanProgramVKey;
+        USDC = IERC20(_usdcToken);
+        ARDA_ADMIN_ADDRESS = _ardaAdminAddress;
         owner = msg.sender;
         authorizedPosters[msg.sender] = true;
+        kycProviders[msg.sender] = true;
         emit AuthorizationChanged(msg.sender, true);
+        emit KYCProviderUpdated(msg.sender, true);
     }
 
     /// @notice The entrypoint for verifying the proof of a batch processing operation.
@@ -1213,5 +1305,226 @@ contract Loan is EventHelpers {
         }
 
         return string(str);
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                            KYC MANAGEMENT
+    //////////////////////////////////////////////////////////////*/
+    
+    /// @notice KYC provider can set user KYC status
+    function setKYCStatus(address user, bool verified) external onlyKYCProvider {
+        kycVerified[user] = verified;
+        emit KYCStatusUpdated(user, verified);
+    }
+    
+    /// @notice Admin can authorize KYC providers
+    function setKYCProvider(address provider, bool authorized) external onlyOwner {
+        kycProviders[provider] = authorized;
+        emit KYCProviderUpdated(provider, authorized);
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                        FEE COLLECTION UTILITIES
+    //////////////////////////////////////////////////////////////*/
+    
+    /// @notice Internal function to collect transaction fees
+    function _collectTransactionFee(uint256 transactionAmount) internal returns (uint256 feeAmount) {
+        feeAmount = (transactionAmount * LOAN_TRANSACTION_FEE_BPS) / 10000;
+        ardaFees.totalCollected += feeAmount;
+        ardaFees.availableForWithdrawal += feeAmount;
+        
+        emit FeeCollected(feeAmount, transactionAmount, block.timestamp);
+    }
+    
+    /// @notice Arda admin can withdraw collected fees
+    function withdrawFees(uint256 amount) external {
+        require(msg.sender == ARDA_ADMIN_ADDRESS, "Only Arda admin can withdraw fees");
+        require(amount <= ardaFees.availableForWithdrawal, "Insufficient fees available");
+        
+        ardaFees.totalWithdrawn += amount;
+        ardaFees.availableForWithdrawal -= amount;
+        
+        USDC.transfer(ARDA_ADMIN_ADDRESS, amount);
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                        DEPOSIT FUNCTIONALITY
+    //////////////////////////////////////////////////////////////*/
+    
+    /// @notice Deposit USDC for loan operations (no KYC required for deposits)
+    function depositForLoan(
+        uint256 amount,
+        bytes32 loanId,        // 0x0 for general deposit
+        bool isEscrow,
+        uint256 timeoutBlocks
+    ) external {
+        if (amount == 0) revert InvalidAmount();
+        
+        USDC.transferFrom(msg.sender, address(this), amount);
+        
+        if (isEscrow && loanId != bytes32(0)) {
+            bytes32 escrowId = keccak256(abi.encode(msg.sender, loanId, block.timestamp));
+            
+            escrowRecords[escrowId] = EscrowRecord({
+                amount: amount,
+                investor: msg.sender,
+                loanId: loanId,
+                status: EscrowStatus.Pending,
+                createdAt: block.timestamp,
+                timeoutBlock: block.number + timeoutBlocks
+            });
+            
+            escrowedForLoan[msg.sender][loanId] += amount;
+            totalEscrowed[msg.sender] += amount;
+            
+            emit EscrowCreated(escrowId, msg.sender, loanId, amount);
+        } else {
+            userBalances[msg.sender] += amount;
+        }
+        
+        totalTVL += amount;
+        emit DepositForLoan(msg.sender, loanId, amount, isEscrow);
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                        WITHDRAWAL FUNCTIONALITY
+    //////////////////////////////////////////////////////////////*/
+    
+    /// @notice Submit withdrawal request (KYC required)
+    function submitWithdrawal(
+        uint256 amount,
+        bytes32 atStateRoot,
+        bytes32[] calldata balanceProof
+    ) external onlyKYCVerified {
+        if (amount == 0) revert InvalidAmount();
+        if (currentState[atStateRoot] == bytes32(0)) revert StateNotFound();
+        
+        // Verify user's balance at the specified state height
+        require(_verifyBalanceProof(msg.sender, atStateRoot, balanceProof, amount), "Insufficient balance");
+        
+        bytes32 withdrawalId = keccak256(abi.encode(msg.sender, amount, atStateRoot, block.timestamp));
+        if (withdrawalProcessed[withdrawalId]) revert WithdrawalAlreadyProcessed();
+        
+        withdrawalProcessed[withdrawalId] = true;
+        
+        // Collect 2% fee on withdrawal
+        uint256 feeAmount = _collectTransactionFee(amount);
+        uint256 netAmount = amount - feeAmount;
+        
+        // Process withdrawal
+        require(userBalances[msg.sender] >= amount, "Insufficient user balance");
+        userBalances[msg.sender] -= amount;
+        totalTVL -= amount;
+        
+        USDC.transfer(msg.sender, netAmount);
+        
+        emit WithdrawalRequested(withdrawalId, msg.sender, amount, atStateRoot);
+        emit WithdrawalProcessed(withdrawalId, msg.sender, netAmount);
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                        ESCROW MANAGEMENT
+    //////////////////////////////////////////////////////////////*/
+    
+    /// @notice Emergency escrow release (requires KYC)
+    function releaseEscrow(bytes32 escrowId) external onlyKYCVerified {
+        EscrowRecord storage escrow = escrowRecords[escrowId];
+        if (escrow.investor != msg.sender) revert EscrowNotFound();
+        if (escrow.status != EscrowStatus.Pending) revert EscrowCannotRelease();
+        if (block.number <= escrow.timeoutBlock) revert TimeoutNotReached();
+        
+        escrow.status = EscrowStatus.Released;
+        totalEscrowed[msg.sender] -= escrow.amount;
+        totalTVL -= escrow.amount;
+        
+        USDC.transfer(msg.sender, escrow.amount);
+        emit EscrowReleased(escrowId, msg.sender, escrow.amount);
+    }
+    
+    /// @notice Admin function to activate escrow for loan
+    function activateEscrow(bytes32 escrowId) external onlyAuthorized {
+        EscrowRecord storage escrow = escrowRecords[escrowId];
+        if (escrow.status != EscrowStatus.Pending) revert EscrowCannotRelease();
+        
+        escrow.status = EscrowStatus.Active;
+    }
+    
+    /// @notice Admin function to complete escrow (transfer to loan)
+    function completeEscrow(bytes32 escrowId) external onlyAuthorized {
+        EscrowRecord storage escrow = escrowRecords[escrowId];
+        if (escrow.status != EscrowStatus.Active) revert EscrowCannotRelease();
+        
+        escrow.status = EscrowStatus.Completed;
+        totalEscrowed[escrow.investor] -= escrow.amount;
+        
+        // Transfer to user balance for loan operations
+        userBalances[escrow.investor] += escrow.amount;
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                        BALANCE VERIFICATION
+    //////////////////////////////////////////////////////////////*/
+    
+    /// @notice Verify user balance proof at specific state
+    function _verifyBalanceProof(
+        address user,
+        bytes32 stateRoot,
+        bytes32[] calldata proof,
+        uint256 claimedBalance
+    ) internal pure returns (bool) {
+        // Simplified balance verification - in production this would verify
+        // Merkle proof of user balance at the given state root
+        bytes32 leaf = keccak256(abi.encode(user, claimedBalance));
+        bytes32 computedHash = leaf;
+        
+        for (uint256 i = 0; i < proof.length; i++) {
+            bytes32 proofElement = proof[i];
+            if (computedHash <= proofElement) {
+                computedHash = keccak256(abi.encode(computedHash, proofElement));
+            } else {
+                computedHash = keccak256(abi.encode(proofElement, computedHash));
+            }
+        }
+        
+        return computedHash == stateRoot;
+    }
+    
+    /*//////////////////////////////////////////////////////////////
+                        VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+    
+    /// @notice Get user's total balance in the contract
+    function getUserBalance(address user) external view returns (uint256) {
+        return userBalances[user];
+    }
+    
+    /// @notice Get user's total escrowed amount
+    function getUserEscrowedAmount(address user) external view returns (uint256) {
+        return totalEscrowed[user];
+    }
+    
+    /// @notice Get escrow details
+    function getEscrowRecord(bytes32 escrowId) external view returns (EscrowRecord memory) {
+        return escrowRecords[escrowId];
+    }
+    
+    /// @notice Get total TVL in the contract
+    function getTotalTVL() external view returns (uint256) {
+        return totalTVL;
+    }
+    
+    /// @notice Get fee tracking information
+    function getFeeInfo() external view returns (AdminFeeTracking memory) {
+        return ardaFees;
+    }
+    
+    /// @notice Check if user is KYC verified
+    function isKYCVerified(address user) external view returns (bool) {
+        return kycVerified[user];
+    }
+    
+    /// @notice Check if address is authorized KYC provider
+    function isKYCProvider(address provider) external view returns (bool) {
+        return kycProviders[provider];
     }
 }

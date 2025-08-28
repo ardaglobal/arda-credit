@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {StateInteraction} from "../src/libraries/StateInteraction.sol";
 import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
+import {ERC20Mock} from "openzeppelin-contracts/contracts/mocks/token/ERC20Mock.sol";
 
 // Test wrapper contract to expose internal library functions
 contract StateInteractionWrapper {
@@ -59,12 +60,15 @@ contract StateInteractionTest is Test {
     StateInteractionWrapper public wrapper;
     Loan public loan;
     address public verifier;
+    ERC20Mock public usdc;
+    address public ardaAdmin = address(0x456);
     bytes32 public constant TEST_VKEY = 0x1234567890123456789012345678901234567890123456789012345678901234;
     
     function setUp() public {
         wrapper = new StateInteractionWrapper();
+        usdc = new ERC20Mock();
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, TEST_VKEY);
+        loan = new Loan(verifier, TEST_VKEY, address(usdc), ardaAdmin);
     }
     
     function testPrepareStateUpdate() public {
