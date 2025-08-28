@@ -906,23 +906,25 @@ pub async fn list_identities(
     Ok(identities)
 }
 
-/// Update KYC status
-pub async fn update_kyc_status(
+/// Submit KYC data for identity
+pub async fn submit_kyc_data(
     pool: &PgPool,
     identity_id: uuid::Uuid,
-    status: &str,
+    _document_type: &str,
+    _document_hash: &str,
+    _jurisdiction: Option<&str>,
 ) -> Result<Identity, sqlx::Error> {
     let now = Utc::now();
 
     sqlx::query!(
         r#"
         UPDATE identities 
-        SET kyc_status = $2,
-            updated_at = $3
+        SET kyc_status = 'pending',
+            kyc_submitted_at = $2,
+            updated_at = $2
         WHERE id = $1
         "#,
         identity_id,
-        status,
         now
     )
     .execute(pool)
@@ -932,6 +934,123 @@ pub async fn update_kyc_status(
     get_identity_by_id(pool, identity_id)
         .await?
         .ok_or_else(|| sqlx::Error::RowNotFound)
+}
+
+/// Update KYC status (admin only)
+pub async fn update_kyc_status(
+    pool: &PgPool,
+    identity_id: uuid::Uuid,
+    status: &str,
+    _notes: Option<&str>,
+) -> Result<Identity, sqlx::Error> {
+    let now = Utc::now();
+
+    // If approving KYC, set verified timestamp
+    let verified_at = if status == "approved" {
+        Some(now)
+    } else {
+        None
+    };
+
+    sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET kyc_status = $2,
+            kyc_verified_at = $3,
+            updated_at = $4
+        WHERE id = $1
+        "#,
+        identity_id,
+        status,
+        verified_at,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    // Fetch the updated identity
+    get_identity_by_id(pool, identity_id)
+        .await?
+        .ok_or_else(|| sqlx::Error::RowNotFound)
+}
+
+/// Update identity profile information
+pub async fn update_identity_profile(
+    pool: &PgPool,
+    identity_id: uuid::Uuid,
+    email: Option<&str>,
+    user_type: Option<&str>,
+    _jurisdiction: Option<&str>,
+) -> Result<Identity, sqlx::Error> {
+    let now = Utc::now();
+
+    // Update fields individually for simplicity
+
+    // For now, use a simplified approach with individual queries
+    if let Some(e) = email {
+        sqlx::query!(
+            r#"
+            UPDATE identities 
+            SET email = $2,
+                updated_at = $3
+            WHERE id = $1
+            "#,
+            identity_id,
+            e,
+            now
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    if let Some(ut) = user_type {
+        sqlx::query!(
+            r#"
+            UPDATE identities 
+            SET user_type = $2,
+                updated_at = $3
+            WHERE id = $1
+            "#,
+            identity_id,
+            ut,
+            now
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    // Always update timestamp
+    sqlx::query!(
+        r#"
+        UPDATE identities 
+        SET updated_at = $2
+        WHERE id = $1
+        "#,
+        identity_id,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    // Fetch the updated identity
+    get_identity_by_id(pool, identity_id)
+        .await?
+        .ok_or_else(|| sqlx::Error::RowNotFound)
+}
+
+/// Delete identity by ID
+pub async fn delete_identity(pool: &PgPool, identity_id: uuid::Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        DELETE FROM identities
+        WHERE id = $1
+        "#,
+        identity_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
 }
 
 /// Create a new loan

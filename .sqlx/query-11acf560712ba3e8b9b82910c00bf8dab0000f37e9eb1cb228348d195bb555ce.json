@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE identities \n        SET kyc_status = $2,\n            kyc_verified_at = $3,\n            updated_at = $4\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "11acf560712ba3e8b9b82910c00bf8dab0000f37e9eb1cb228348d195bb555ce"
+}
