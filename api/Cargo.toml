@@ -19,12 +19,13 @@ default = [ "tikv-jemallocator" ]
 
 [dependencies]
 # Core dependencies
-chrono    = { version = "0.4", features = [ "serde" ] }
-serde     = { workspace = true }
-thiserror = "2.0"
-tokio     = { workspace = true }
-tracing   = { workspace = true }
-uuid      = { version = "1.0", features = [ "serde", "v4" ] }
+chrono       = { version = "0.4", features = [ "serde" ] }
+rust_decimal = "1.0"
+serde        = { workspace = true }
+thiserror    = "2.0"
+tokio        = { workspace = true }
+tracing      = { workspace = true }
+uuid         = { version = "1.0", features = [ "serde", "v4" ] }
 
 # Database and arithmetic dependencies
 alloy-primitives = { workspace = true }

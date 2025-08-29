@@ -304,12 +304,7 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
         crate::rest::EndpointInfo {
             method: "POST".to_string(),
             path: LOAN.to_string(),
-            description: "Create new loan (singular endpoint)".to_string(),
-        },
-        crate::rest::EndpointInfo {
-            method: "POST".to_string(),
-            path: LOANS.to_string(),
-            description: "Create new loan (plural endpoint)".to_string(),
+            description: "Create new loan".to_string(),
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),
