@@ -97,9 +97,9 @@ pub use db::{
     update_balance,
     update_batch_proof,
     update_identity_profile,
-
     update_kyc_status,
     update_last_login,
+    update_loan,
     update_user_password,
     use_invite_code,
     verify_email_with_token,

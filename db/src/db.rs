@@ -1185,23 +1185,159 @@ pub async fn create_loan(
     Ok(loan)
 }
 
-/// Get loan by ID - Simple implementation for now
-pub async fn get_loan_by_id(_pool: &PgPool, _id: uuid::Uuid) -> Result<Option<Loan>, sqlx::Error> {
-    // For now, return None - can be implemented later
-    Ok(None)
+/// Get loan by ID
+pub async fn get_loan_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Loan>, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"
+        SELECT 
+            id,
+            borrower_id,
+            lender_id,
+            principal_amount,
+            outstanding_balance,
+            interest_rate_bps,
+            loan_status,
+            originated_at,
+            maturity_date,
+            created_at,
+            updated_at
+        FROM loans 
+        WHERE id = $1
+        "#,
+        id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some(row) => Ok(Some(Loan {
+            id: row.id,
+            borrower_id: row.borrower_id,
+            lender_id: row.lender_id,
+            principal_amount: row.principal_amount,
+            outstanding_balance: row.outstanding_balance,
+            interest_rate_bps: row.interest_rate_bps,
+            loan_status: row.loan_status,
+            originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
+            maturity_date: row.maturity_date,
+            created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
+            updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
+        })),
+        None => Ok(None),
+    }
 }
 
-/// List loans - Simple implementation for now
+/// List loans with optional filtering
 pub async fn list_loans(
-    _pool: &PgPool,
-    _limit: Option<i64>,
-    _offset: Option<i64>,
-    _status: Option<&str>,
-    _borrower_id: Option<uuid::Uuid>,
-    _lender_id: Option<uuid::Uuid>,
+    pool: &PgPool,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    status: Option<&str>,
+    borrower_id: Option<uuid::Uuid>,
+    lender_id: Option<uuid::Uuid>,
 ) -> Result<Vec<Loan>, sqlx::Error> {
-    // For now, return empty - can be implemented later
-    Ok(vec![])
+    // Use a unified query with optional filtering
+    let rows = sqlx::query!(
+        r#"
+        SELECT 
+            id,
+            borrower_id,
+            lender_id,
+            principal_amount,
+            outstanding_balance,
+            interest_rate_bps,
+            loan_status,
+            originated_at,
+            maturity_date,
+            created_at,
+            updated_at
+        FROM loans
+        WHERE ($1::text IS NULL OR loan_status = $1)
+          AND ($2::uuid IS NULL OR borrower_id = $2)
+          AND ($3::uuid IS NULL OR lender_id = $3)
+        ORDER BY created_at DESC
+        LIMIT $4 OFFSET $5
+        "#,
+        status,
+        borrower_id,
+        lender_id,
+        limit.unwrap_or(100),
+        offset.unwrap_or(0)
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let result: Vec<Loan> = rows
+        .into_iter()
+        .map(|row| Loan {
+            id: row.id,
+            borrower_id: row.borrower_id,
+            lender_id: row.lender_id,
+            principal_amount: row.principal_amount,
+            outstanding_balance: row.outstanding_balance,
+            interest_rate_bps: row.interest_rate_bps,
+            loan_status: row.loan_status,
+            originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
+            maturity_date: row.maturity_date,
+            created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
+            updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
+        })
+        .collect();
+
+    Ok(result)
+}
+
+/// Update loan details
+pub async fn update_loan(
+    pool: &PgPool,
+    id: uuid::Uuid,
+    principal_amount: Option<rust_decimal::Decimal>,
+    outstanding_balance: Option<rust_decimal::Decimal>,
+    interest_rate_bps: Option<i32>,
+    loan_status: Option<&str>,
+    maturity_date: Option<Option<DateTime<Utc>>>, // Option<Option<T>> to handle setting to NULL
+) -> Result<Option<Loan>, sqlx::Error> {
+    let now = Utc::now();
+
+    // First check if the loan exists
+    let existing_loan = get_loan_by_id(pool, id).await?;
+    if existing_loan.is_none() {
+        return Ok(None);
+    }
+    let existing_loan = existing_loan.unwrap();
+
+    // Update only the provided fields
+    let new_principal = principal_amount.unwrap_or(existing_loan.principal_amount);
+    let new_outstanding = outstanding_balance.unwrap_or(existing_loan.outstanding_balance);
+    let new_rate = interest_rate_bps.unwrap_or(existing_loan.interest_rate_bps);
+    let new_status = loan_status.unwrap_or(&existing_loan.loan_status);
+    let new_maturity = maturity_date.unwrap_or(existing_loan.maturity_date);
+
+    sqlx::query!(
+        r#"
+        UPDATE loans 
+        SET 
+            principal_amount = $2,
+            outstanding_balance = $3,
+            interest_rate_bps = $4,
+            loan_status = $5,
+            maturity_date = $6,
+            updated_at = $7
+        WHERE id = $1
+        "#,
+        id,
+        new_principal,
+        new_outstanding,
+        new_rate,
+        new_status,
+        new_maturity,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    // Return the updated loan
+    get_loan_by_id(pool, id).await
 }
 
 /// Record a payment - Simple implementation for now

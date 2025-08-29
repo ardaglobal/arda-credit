@@ -71,8 +71,11 @@ pub const INVITE_CODE_CHECK: &str = api_path!("/invite-code/{code}");
 // LOAN MANAGEMENT PATHS
 // ============================================================================
 
-/// Loans collection (list loans, create loan)
+/// Loans collection (list loans)
 pub const LOANS: &str = api_path!("/loans");
+
+/// Loan creation (single loan)
+pub const LOAN: &str = api_path!("/loan");
 
 /// Individual loan operations
 pub const LOAN_BY_ID: &str = api_path!("/loan/{loan_id}");
@@ -327,13 +330,18 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
         },
         crate::rest::EndpointInfo {
             method: "POST".to_string(),
-            path: LOANS.to_string(),
+            path: LOAN.to_string(),
             description: "Create new loan".to_string(),
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),
             path: LOAN_BY_ID.to_string(),
             description: "Get loan details by ID".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "DELETE".to_string(),
+            path: LOAN_BY_ID.to_string(),
+            description: "Close loan by ID".to_string(),
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),

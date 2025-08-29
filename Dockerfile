@@ -1,12 +1,8 @@
 # Balanced Dockerfile: Optimized but maintainable
 # Single file that works for both development and production
 
-FROM rust:1.88.0 AS builder
-
-# Install SP1 toolchain (cached when Dockerfile doesn't change)
-RUN curl -L https://sp1.succinct.xyz | bash
-ENV PATH="/root/.sp1/bin:/usr/local/cargo/bin:$PATH"
-RUN sp1up
+# hadolint ignore=DL3007
+FROM ghcr.io/ardaglobal/base-containers/rust-sp1-base:latest AS builder
 
 WORKDIR /app
 
@@ -34,7 +30,7 @@ RUN cargo build --release --bin server
 # Runtime stage - simple and lightweight since verification is done locally
 FROM debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
     && rm -rf /var/lib/apt/lists/* \
