@@ -1724,7 +1724,7 @@ pub async fn generate_invite_code(
 /// Generate a secure random invite code
 fn generate_secure_invite_code() -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    const CODE_LENGTH: usize = 12;
+    const CODE_LENGTH: usize = 6;
 
     let mut rng = rand::rng();
     (0..CODE_LENGTH)
