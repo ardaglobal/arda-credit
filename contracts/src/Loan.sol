@@ -3,6 +3,8 @@ pragma solidity ^0.8.20;
 
 import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
 import {EventHelpers} from "./EventHelpers.sol";
+import {IERC20} from "lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
 struct LoanBatchPublicValues {
     bytes32 previous_state_root;
@@ -118,6 +120,25 @@ contract Loan is EventHelpers {
     bool public readEventTrackingEnabled = true;
 
     /*//////////////////////////////////////////////////////////////
+                        USDC DEPOSIT FUNCTIONALITY
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice USDC token contract address
+    IERC20 public immutable usdcToken;
+
+    /// @notice Track deposits by user address
+    mapping(address => uint256) public userDeposits;
+
+    /// @notice Track total deposits across all users
+    uint256 public totalDeposits;
+
+    /// @notice Array of all depositors for enumeration
+    address[] public depositors;
+
+    /// @notice Mapping to check if address has deposited (to avoid duplicates in depositors array)
+    mapping(address => bool) public hasDeposited;
+
+    /*//////////////////////////////////////////////////////////////
                         COMPREHENSIVE EVENT SYSTEM
     //////////////////////////////////////////////////////////////*/
 
@@ -175,6 +196,14 @@ contract Loan is EventHelpers {
         bool increased
     );
 
+    /// @notice Emitted when a user deposits USDC
+    event Deposit(
+        address indexed user,
+        uint256 indexed amount,
+        uint256 indexed timestamp,
+        bytes32 transactionHash
+    );
+
     /// @notice Legacy events for backwards compatibility.
     event AuthorizationChanged(address indexed account, bool authorized);
     event OwnershipTransferred(
@@ -219,9 +248,10 @@ contract Loan is EventHelpers {
         _;
     }
 
-    constructor(address _verifier, bytes32 _loanProgramVKey) {
+    constructor(address _verifier, bytes32 _loanProgramVKey, address _usdcToken) {
         verifier = _verifier;
         loanProgramVKey = _loanProgramVKey;
+        usdcToken = IERC20(_usdcToken);
         owner = msg.sender;
         authorizedPosters[msg.sender] = true;
         emit AuthorizationChanged(msg.sender, true);
@@ -1213,5 +1243,101 @@ contract Loan is EventHelpers {
         }
 
         return string(str);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        USDC DEPOSIT FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Deposit USDC tokens to the contract
+    /// @param amount The amount of USDC to deposit (in USDC's native decimals)
+    function deposit(uint256 amount) external {
+        require(amount > 0, "Deposit amount must be greater than zero");
+        
+        // Calculate transaction hash for the event
+        bytes32 transactionHash = keccak256(abi.encodePacked(
+            msg.sender,
+            amount,
+            block.timestamp,
+            block.number
+        ));
+
+        // Transfer USDC from user to this contract
+        SafeERC20.safeTransferFrom(usdcToken, msg.sender, address(this), amount);
+
+        // Update user deposit balance
+        userDeposits[msg.sender] += amount;
+        totalDeposits += amount;
+
+        // Add to depositors array if first time depositing
+        if (!hasDeposited[msg.sender]) {
+            depositors.push(msg.sender);
+            hasDeposited[msg.sender] = true;
+        }
+
+        // Emit deposit event
+        emit Deposit(msg.sender, amount, block.timestamp, transactionHash);
+    }
+
+    /// @notice Get the deposit balance for a specific user
+    /// @param user The user address to check
+    /// @return The amount of USDC deposited by the user
+    function getUserDeposit(address user) external view returns (uint256) {
+        return userDeposits[user];
+    }
+
+    /// @notice Get the total deposits across all users
+    /// @return The total amount of USDC deposited
+    function getTotalDeposits() external view returns (uint256) {
+        return totalDeposits;
+    }
+
+    /// @notice Get all depositors and their amounts
+    /// @return users Array of user addresses who have deposited
+    /// @return amounts Array of corresponding deposit amounts
+    function getAllDepositors() external view returns (address[] memory users, uint256[] memory amounts) {
+        uint256 length = depositors.length;
+        users = new address[](length);
+        amounts = new uint256[](length);
+        
+        for (uint256 i = 0; i < length; i++) {
+            users[i] = depositors[i];
+            amounts[i] = userDeposits[depositors[i]];
+        }
+    }
+
+    /// @notice Get the number of unique depositors
+    /// @return The total number of users who have deposited
+    function getDepositorCount() external view returns (uint256) {
+        return depositors.length;
+    }
+
+    /// @notice Get depositor by index
+    /// @param index The index in the depositors array
+    /// @return user The depositor address
+    /// @return amount The amount deposited by the user
+    function getDepositorByIndex(uint256 index) external view returns (address user, uint256 amount) {
+        require(index < depositors.length, "Index out of bounds");
+        user = depositors[index];
+        amount = userDeposits[user];
+    }
+
+    /// @notice Check if a user has made any deposits
+    /// @param user The user address to check
+    /// @return True if the user has deposited, false otherwise
+    function hasUserDeposited(address user) external view returns (bool) {
+        return hasDeposited[user];
+    }
+
+    /// @notice Get USDC token address
+    /// @return The address of the USDC token contract
+    function getUsdcTokenAddress() external view returns (address) {
+        return address(usdcToken);
+    }
+
+    /// @notice Get contract's USDC balance
+    /// @return The total USDC balance held by this contract
+    function getContractUsdcBalance() external view returns (uint256) {
+        return usdcToken.balanceOf(address(this));
     }
 }
