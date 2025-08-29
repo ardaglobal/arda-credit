@@ -66,9 +66,16 @@ arda-credit-lib = { path = "../lib", package = "lib" }
 # Sindri integration
 sindri = { workspace = true }
 
+# Additional dependencies for deposit monitoring
+rust_decimal = { workspace = true }
+
 [[bin]]
 name = "bridge"
 path = "src/bin/bridge.rs"
+
+[[bin]]
+name = "deposit_monitor"
+path = "src/bin/deposit_monitor.rs"
 
 [features]
 database = [ "chrono", "sqlx", "uuid" ]
