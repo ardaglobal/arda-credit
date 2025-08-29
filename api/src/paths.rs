@@ -58,11 +58,24 @@ pub const USER_KYC: &str = api_path!("/user/{user_id}/kyc");
 pub const USER_KYC_STATUS: &str = api_path!("/user/{user_id}/kyc-status");
 
 // ============================================================================
+// INVITE CODE MANAGEMENT PATHS
+// ============================================================================
+
+/// Generate new invite code
+pub const INVITE_CODE_GENERATE: &str = api_path!("/invite-code");
+
+/// Check and use invite code
+pub const INVITE_CODE_CHECK: &str = api_path!("/invite-code/{code}");
+
+// ============================================================================
 // LOAN MANAGEMENT PATHS
 // ============================================================================
 
-/// Loans collection (list loans, create loan)
+/// Loans collection (list loans)
 pub const LOANS: &str = api_path!("/loans");
+
+/// Loan creation (single loan)
+pub const LOAN: &str = api_path!("/loan");
 
 /// Individual loan operations
 pub const LOAN_BY_ID: &str = api_path!("/loan/{loan_id}");
@@ -182,6 +195,12 @@ pub fn user_kyc_status_path(user_id: &str) -> String {
     replace_param(USER_KYC_STATUS, "user_id", user_id)
 }
 
+// Invite Code Management Helper Functions
+/// Build invite code check path with code parameter
+pub fn invite_code_check_path(code: &str) -> String {
+    replace_param(INVITE_CODE_CHECK, "code", code)
+}
+
 // Loan Management Helper Functions
 /// Build loan path with loan_id parameter
 pub fn loan_path(loan_id: &str) -> String {
@@ -292,6 +311,17 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
             path: USER_KYC_STATUS.to_string(),
             description: "Update KYC status (admin only)".to_string(),
         },
+        // Invite Code Management
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: INVITE_CODE_GENERATE.to_string(),
+            description: "Generate new invite code".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: INVITE_CODE_CHECK.to_string(),
+            description: "Check and use invite code".to_string(),
+        },
         // Loan Management
         crate::rest::EndpointInfo {
             method: "GET".to_string(),
@@ -300,13 +330,18 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
         },
         crate::rest::EndpointInfo {
             method: "POST".to_string(),
-            path: LOANS.to_string(),
+            path: LOAN.to_string(),
             description: "Create new loan".to_string(),
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),
             path: LOAN_BY_ID.to_string(),
             description: "Get loan details by ID".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "DELETE".to_string(),
+            path: LOAN_BY_ID.to_string(),
+            description: "Close loan by ID".to_string(),
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),
