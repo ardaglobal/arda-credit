@@ -1,0 +1,27 @@
+apiVersion: v2
+name: arda-credit
+description: Arda Credit - Privacy-preserving loan vApp built on SP1 zero-knowledge proofs
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+keywords:
+  - blockchain
+  - zero-knowledge
+  - loans
+  - privacy
+  - sp1
+
+home: https://github.com/ardaglobal/arda-credit
+sources:
+  - https://github.com/ardaglobal/arda-credit
+
+maintainers:
+  - name: Arda Global
+    url: https://github.com/ardaglobal
+
+dependencies:
+  - name: postgresql
+    version: 15.5.38
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

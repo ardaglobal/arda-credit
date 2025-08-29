@@ -1,0 +1,20 @@
+{{- if and .Values.server.enabled .Values.server.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-server
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  {{- if .Values.server.podDisruptionBudget.minAvailable }}
+  minAvailable: {{ .Values.server.podDisruptionBudget.minAvailable }}
+  {{- end }}
+  {{- if .Values.server.podDisruptionBudget.maxUnavailable }}
+  maxUnavailable: {{ .Values.server.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "arda-credit.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+{{- end }}

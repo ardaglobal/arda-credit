@@ -1,0 +1,248 @@
+# Default values for arda-credit
+# This is a YAML-formatted file.
+
+global:
+  imageRegistry: "ghcr.io/ardaglobal"
+  imagePullSecrets:
+    - name: ghcr-secret
+
+# Namespace creation
+namespaceCreate: true
+
+# PostgreSQL configuration
+# Can use either bundled PostgreSQL (enabled: true) or external instance (enabled: false)
+postgresql:
+  # Enable bundled PostgreSQL
+  enabled: true
+  
+  # Configuration for bundled PostgreSQL
+  auth:
+    database: "arda_credit_db"
+    username: "postgres"
+    password: "change-me-in-production"
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  
+  # External PostgreSQL configuration (when enabled: false)
+  external:
+    host: "external-postgresql"
+    port: 5432
+    database: "arda_credit_db"
+    username: "postgres"
+    existingSecret: "external-postgres-secret"
+    secretPasswordKey: "password"
+
+# API Server configuration
+server:
+  enabled: true
+  
+  image:
+    repository: arda-credit
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  replicaCount: 2
+  
+  # Configuration for ConfigMap (non-sensitive)
+  config:
+    rustLog: "info"
+    serverPort: "8080"
+    sindriCircuitTag: "latest"
+  
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  readinessProbe:
+    httpGet:
+      path: /api/v2/health
+      port: 8080
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  
+  livenessProbe:
+    httpGet:
+      path: /api/v2/health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 15
+  
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+  
+  # Pod Disruption Budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 50%
+  
+  # Pod Anti-Affinity - spreads pods across nodes
+  podAntiAffinity:
+    enabled: true
+    type: "soft"  # "soft" or "hard"
+    topologyKey: "kubernetes.io/hostname"
+    weight: 100
+
+# Frontend App configuration
+app:
+  enabled: true
+  
+  image:
+    repository: arda-credit-app
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  replicaCount: 2
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+  
+  # Pod Disruption Budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 50%
+  
+  # Pod Anti-Affinity - spreads pods across nodes
+  podAntiAffinity:
+    enabled: true
+    type: "soft"  # "soft" or "hard"
+    topologyKey: "kubernetes.io/hostname"
+    weight: 100
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  
+  hosts:
+    - host: arda-credit.example.com
+      paths:
+        - path: /api
+          pathType: Prefix
+          service:
+            name: arda-credit-server
+            port: 8080
+        - path: /
+          pathType: Prefix
+          service:
+            name: arda-credit-app
+            port: 80
+  
+  tls:
+    - secretName: arda-credit-tls
+      hosts:
+        - arda-credit.example.com
+
+# Application secrets - these should be overridden in environment-specific values
+secrets:
+  app:
+    sindriApiKey: "your-sindri-api-key"
+    ethereumRpcUrl: "https://eth-mainnet.alchemyapi.io/v2/demo"
+    ethereumContractAddress: "0x..."
+    ethereumWalletPrivateKey: "0x..."
+    ethereumDeployerAddress: "0x..."
+
+# Security Context
+podSecurityContext:
+  fsGroup: 1001
+  runAsNonRoot: true
+  runAsUser: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1001
+
+# Service Account and RBAC
+serviceAccount:
+  # Annotations to add to the service account
+  annotations: {}
+  # Automatically mount a ServiceAccount's API credentials
+  automount: false
+
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+
+# Node affinity and tolerations
+nodeSelector: {}
+tolerations: []
+affinity: {}
