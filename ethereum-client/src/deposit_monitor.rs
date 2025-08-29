@@ -5,7 +5,7 @@ use crate::{
 };
 use alloy_primitives::{Address, FixedBytes, U256};
 use arda_credit_db::{
-    get_user_id_by_wallet_address, update_deposit_status, update_user_balance_from_deposit,
+    get_user_id_by_wallet_address, update_deposit_status_tx, update_user_balance_from_deposit_tx,
 };
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
@@ -433,23 +433,29 @@ impl DepositMonitor {
 
     /// Process confirmed deposit: update status and user balance atomically
     async fn process_confirmed_deposit(db_pool: &PgPool, deposit: &DepositRecord) -> Result<()> {
-        // 1. Update deposit status to confirmed
-        let _updated_deposit = update_deposit_status(
-            db_pool,
+        // Begin a database transaction for atomic operations
+        let mut tx = db_pool
+            .begin()
+            .await
+            .map_err(|e| EthereumError::Database(format!("Failed to begin transaction: {e}")))?;
+
+        // 1. Update deposit status to confirmed within transaction
+        let _updated_deposit = update_deposit_status_tx(
+            &mut tx,
             deposit.id,
             "confirmed",
             deposit.confirmation_count,
             Some(chrono::Utc::now()),
         )
         .await
-        .map_err(|e| EthereumError::Database(e.to_string()))?;
+        .map_err(|e| EthereumError::Database(format!("Failed to update deposit status: {e}")))?;
 
         // 2. Find user ID by wallet address
         if let Some(user_id) = get_user_id_by_wallet_address(db_pool, &deposit.user_address)
             .await
             .map_err(|e| EthereumError::Database(e.to_string()))?
         {
-            // 3. Update user balance (convert wei to USDC: divide by 1,000,000)
+            // 3. Update user balance atomically (convert wei to USDC: divide by 1,000,000)
             let deposit_amount_decimal = deposit
                 .amount
                 .parse::<rust_decimal::Decimal>()
@@ -457,9 +463,9 @@ impl DepositMonitor {
             let deposit_amount_usdc =
                 deposit_amount_decimal / rust_decimal::Decimal::new(1_000_000, 0);
 
-            update_user_balance_from_deposit(db_pool, user_id, deposit_amount_usdc)
+            update_user_balance_from_deposit_tx(&mut tx, user_id, deposit_amount_usdc)
                 .await
-                .map_err(|e| EthereumError::Database(e.to_string()))?;
+                .map_err(|e| EthereumError::Database(format!("Failed to update balance: {e}")))?;
 
             info!(
                 "Updated user balance: user_id={}, wallet={}, amount_usdc={}",
@@ -471,9 +477,14 @@ impl DepositMonitor {
                 deposit.user_address
             );
 
-            // Still update the status even if we can't update the balance
+            // Still commit the transaction even if we can't update the balance
             // The database trigger will handle the user_deposit_balances table
         }
+
+        // Commit the transaction - ensures both operations succeed or both fail
+        tx.commit()
+            .await
+            .map_err(|e| EthereumError::Database(format!("Failed to commit transaction: {e}")))?;
 
         Ok(())
     }

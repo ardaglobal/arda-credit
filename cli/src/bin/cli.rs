@@ -50,8 +50,23 @@ use std::time::Instant;
 use tracing::error;
 
 // Import new batch processing API types
+use alloy_primitives::Address;
 use arda_credit_api::BatchApiClient;
 use ethereum_client::{config::Config, EthereumClient};
+
+/// Validation error types
+#[derive(Debug, thiserror::Error)]
+pub enum ValidationError {
+    #[error("Invalid Ethereum address format")]
+    InvalidAddress,
+}
+
+/// Validate Ethereum address format using alloy
+fn validate_ethereum_address(address: &str) -> Result<Address, ValidationError> {
+    address
+        .parse::<Address>()
+        .map_err(|_| ValidationError::InvalidAddress)
+}
 
 #[derive(Parser)]
 #[command(name = "cli")]
@@ -3725,15 +3740,31 @@ async fn set_user_wallet(
     verbose: bool,
 ) -> Result<()> {
     println!("🔧 Setting wallet address for user: {}", user_id);
-    println!("   Wallet Address: {}", wallet_address);
 
-    match client.update_user_wallet(user_id, wallet_address).await {
+    // Validate Ethereum address format using alloy
+    let normalized_address = match validate_ethereum_address(wallet_address) {
+        Ok(addr) => format!("{:#x}", addr),
+        Err(_) => {
+            println!("❌ Invalid Ethereum address format: {}", wallet_address);
+            return Err(eyre::eyre!("Invalid Ethereum address format"));
+        }
+    };
+
+    println!(
+        "   Wallet Address: {} → {}",
+        wallet_address, normalized_address
+    );
+
+    match client
+        .update_user_wallet(user_id, &normalized_address)
+        .await
+    {
         Ok(response) => {
             println!("✅ User wallet updated successfully:");
             if let Some(user_id) = response.get("user_id").and_then(|v| v.as_str()) {
                 println!("   User ID: {}", user_id);
             }
-            println!("   Wallet Address: {}", wallet_address);
+            println!("   Wallet Address: {}", normalized_address);
 
             if verbose {
                 println!("   Full Response: {:#?}", response);
@@ -3763,18 +3794,29 @@ async fn link_user_wallet(
 ) -> Result<()> {
     println!("🔗 Linking wallet address to your account...");
 
-    // Basic validation of wallet address format
-    if !wallet_address.starts_with("0x") || wallet_address.len() != 42 {
-        println!("❌ Invalid wallet address format!");
-        println!("   Wallet addresses must:");
-        println!("   • Start with '0x'");
-        println!("   • Be exactly 42 characters long");
-        println!("   • Example: 0x742d35Cc6C4C98B3C4a2345678901234567890AB");
-        return Err(eyre::eyre!("Invalid wallet address format"));
-    }
+    // Validate Ethereum address format using alloy
+    let validated_address = match validate_ethereum_address(wallet_address) {
+        Ok(addr) => addr,
+        Err(_) => {
+            println!("❌ Invalid Ethereum address format!");
+            println!("   Valid addresses must:");
+            println!("   • Start with '0x'");
+            println!("   • Be exactly 42 characters long (40 hex characters + '0x')");
+            println!("   • Contain only valid hexadecimal characters");
+            println!("   • Have valid checksumming (if mixed case)");
+            println!("   • Example: 0x742d35Cc6C4C98B3C4a2345678901234567890AB");
+            return Err(eyre::eyre!("Invalid Ethereum address format"));
+        }
+    };
+
+    // Use the normalized address (proper checksumming)
+    let normalized_address = format!("{:#x}", validated_address);
 
     println!("   User ID: {}", user_id);
-    println!("   Wallet Address: {}", wallet_address);
+    println!(
+        "   Wallet Address: {} → {}",
+        wallet_address, normalized_address
+    );
     println!();
 
     println!("📋 What happens when you link your wallet:");
@@ -3784,18 +3826,24 @@ async fn link_user_wallet(
     println!("   ✓ Deposits require 12 block confirmations before being credited");
     println!();
 
-    match client.update_user_wallet(user_id, wallet_address).await {
+    match client
+        .update_user_wallet(user_id, &normalized_address)
+        .await
+    {
         Ok(response) => {
             println!("✅ Wallet successfully linked to your account!");
             if let Some(user_id) = response.get("user_id").and_then(|v| v.as_str()) {
                 println!("   User ID: {}", user_id);
             }
-            println!("   Wallet Address: {}", wallet_address);
+            println!("   Wallet Address: {}", normalized_address);
             println!();
 
             println!("🚀 Next steps:");
-            println!("   1. Send USDC to your wallet address: {}", wallet_address);
-            println!("   2. Check your balance: cargo run --bin cli -- get-user-balance-by-address --address {}", wallet_address);
+            println!(
+                "   1. Send USDC to your wallet address: {}",
+                normalized_address
+            );
+            println!("   2. Check your balance: cargo run --bin cli -- get-user-balance-by-address --address {}", normalized_address);
             println!("   3. View transactions: cargo run --bin cli -- get-user-transactions --user-id {}", user_id);
             println!("   4. Track specific deposits: cargo run --bin cli -- get-transaction-status --tx-hash <TRANSACTION_HASH>");
 

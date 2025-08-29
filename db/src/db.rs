@@ -2061,3 +2061,62 @@ pub async fn get_user_id_by_wallet_address(
 
     Ok(result.map(|row| row.id))
 }
+
+/// Transactional version: Update deposit status within a transaction
+pub async fn update_deposit_status_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    deposit_id: i32,
+    status: &str,
+    confirmation_count: i32,
+    block_timestamp: Option<DateTime<Utc>>,
+) -> Result<UsdcDeposit, sqlx::Error> {
+    let should_set_processed = status == "processed" || status == "confirmed";
+
+    let deposit = sqlx::query_as!(
+        UsdcDeposit,
+        r#"
+        UPDATE usdc_deposits 
+        SET status = $2, confirmation_count = $3, block_timestamp = $4,
+            processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING 
+            id, user_address, amount, deposit_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        "#,
+        deposit_id,
+        status,
+        confirmation_count,
+        block_timestamp,
+        should_set_processed
+    )
+    .fetch_one(&mut **tx)
+    .await?;
+
+    Ok(deposit)
+}
+
+/// Transactional version: Update user balance from deposit within a transaction  
+pub async fn update_user_balance_from_deposit_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: uuid::Uuid,
+    deposit_amount: rust_decimal::Decimal,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE user_balances 
+        SET available_balance = available_balance + $2,
+            lifetime_earnings = lifetime_earnings + $2,
+            last_updated_at = NOW()
+        WHERE user_id = $1 AND currency = 'USDC'
+        "#,
+        user_id,
+        deposit_amount
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
