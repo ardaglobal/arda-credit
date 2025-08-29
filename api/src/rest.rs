@@ -1908,6 +1908,49 @@ async fn check_and_use_invite_code_endpoint(
     }
 }
 
+fn extract_authenticated_user_id(
+    request: &axum::extract::Request<axum::body::Body>,
+) -> Result<uuid::Uuid, String> {
+    let user_id_header = request
+        .headers()
+        .get("x-user-id")
+        .ok_or_else(|| "No authenticated user ID found".to_string())?;
+
+    let user_id_str = user_id_header
+        .to_str()
+        .map_err(|_| "Invalid user ID header format".to_string())?;
+
+    parse_user_id(user_id_str)
+}
+
+fn extract_authenticated_user(
+    request: &axum::extract::Request<axum::body::Body>,
+) -> Result<AuthenticatedUser, String> {
+    let user_id = extract_authenticated_user_id(request)?;
+
+    let email = request
+        .headers()
+        .get("x-user-email")
+        .ok_or_else(|| "No authenticated user email found".to_string())?
+        .to_str()
+        .map_err(|_| "Invalid user email header format".to_string())?
+        .to_string();
+
+    let user_type = request
+        .headers()
+        .get("x-user-type")
+        .ok_or_else(|| "No authenticated user type found".to_string())?
+        .to_str()
+        .map_err(|_| "Invalid user type header format".to_string())?
+        .to_string();
+
+    Ok(AuthenticatedUser {
+        user_id,
+        email,
+        user_type,
+    })
+}
+
 /// Generate new invite code
 #[utoipa::path(
     get,
