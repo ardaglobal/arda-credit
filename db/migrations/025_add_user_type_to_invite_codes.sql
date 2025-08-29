@@ -142,3 +142,23 @@ WHERE code = 'BETA_ACCESS';
 INSERT INTO invite_codes (code, description, max_uses, expires_at, user_type) VALUES 
     ('ADMIN_INVITE_2024', 'Admin access invite code', 5, CURRENT_TIMESTAMP + INTERVAL '1 year', 'admin')
 ON CONFLICT (code) DO NOTHING;
+
+-- ============================================================================
+-- ADD PERMANENT ADMIN INVITE CODE
+-- ============================================================================
+
+-- Insert the ARDAADMIN25 admin invite code
+INSERT INTO invite_codes (
+    code, 
+    description, 
+    max_uses, 
+    expires_at, 
+    user_type
+) VALUES (
+    'ARDAADMIN25', 
+    'Admin access invite code - expires 12/31/2025', 
+    100, -- Allow multiple admin registrations
+    '2025-12-31 23:59:00'::TIMESTAMP WITH TIME ZONE,
+    'admin'
+)
+ON CONFLICT (code) DO NOTHING;
