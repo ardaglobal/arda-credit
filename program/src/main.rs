@@ -1,8 +1,8 @@
 //! Arda Credit Loan Processing Program with ADS Integration
 //!
-//! This SP1 zkVM program processes batches of loan transactions while maintaining privacy
+//! This SP1 zkVM program processes batches of mixed transaction types while maintaining privacy
 //! and generating cryptographically consistent state roots via Indexed Merkle Tree ADS.
-//! It handles the complete loan lifecycle: user registration, KYC, loan origination,
+//! It handles the complete loan lifecycle: user registration, KYC, user deposits, loan origination,
 //! payments, and closeouts. Individual transaction details remain private, while only
 //! ADS-generated state root transitions and transaction counts are made public.
 
@@ -56,9 +56,13 @@ pub fn main() {
     let previous_state_root = state_transition.old_root;
     let new_state_root = state_transition.new_root;
 
-    // Compute total portfolio balances from loan state (for transparency)
-    let previous_total = input.initial_loan_state.compute_total_balance();
-    let current_total = final_loan_state.compute_total_balance();
+    // Compute total system value (representing net external capital that has entered via deposits)
+    // This equals the sum of all user cash balances, since loans are internal transfers
+    // that don't change the total system value, only redistribute it between users.
+    // When users deposit from external wallets → smart contract, this total increases.
+    // When users originate loans or make payments, this total stays constant (internal transfers).
+    let previous_total = input.initial_loan_state.compute_total_user_balance();
+    let current_total = final_loan_state.compute_total_user_balance();
 
     // Create hash of transaction types for transparency (without revealing details)
     let mut types_hasher = Sha256::new();
