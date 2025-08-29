@@ -17,8 +17,9 @@ serde_json      = { workspace = true }
 sp1-sdk         = { workspace = true }
 
 # CLI functionality
-clap = { workspace = true, features = [ "derive", "env" ] }
-eyre = { workspace = true }
+clap      = { workspace = true, features = [ "derive", "env" ] }
+eyre      = { workspace = true }
+thiserror = { workspace = true }
 
 # Runtime and utilities
 tokio              = { workspace = true }

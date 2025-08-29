@@ -2271,6 +2271,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sp1-sdk",
+ "thiserror 2.0.16",
  "tokio",
  "tracing",
  "tracing-subscriber",

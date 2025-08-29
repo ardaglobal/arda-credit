@@ -57,6 +57,18 @@ pub const USER_KYC: &str = api_path!("/user/{user_id}/kyc");
 /// User KYC status update (admin)
 pub const USER_KYC_STATUS: &str = api_path!("/user/{user_id}/kyc-status");
 
+/// User balance by wallet address
+pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/user/{address}/balance");
+
+/// User balance by user ID
+pub const USER_BALANCE_BY_ID: &str = api_path!("/user/{user_id}/balance");
+
+/// User transactions by user ID
+pub const USER_TRANSACTIONS_BY_ID: &str = api_path!("/user/{user_id}/transactions");
+
+/// Transaction by hash
+pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
+
 // ============================================================================
 // INVITE CODE MANAGEMENT PATHS
 // ============================================================================
@@ -265,6 +277,26 @@ pub fn loan_payment_proof_path(
 pub fn transaction_proof_path(transaction_type: &str, transaction_id: &str) -> String {
     let path = replace_param(STATE_PROOF, "transaction_type", transaction_type);
     replace_param(&path, "transaction_id", transaction_id)
+}
+
+/// Generate user balance by address path
+pub fn user_balance_by_address_path(address: &str) -> String {
+    replace_param(USER_BALANCE_BY_ADDRESS, "address", address)
+}
+
+/// Generate user balance by ID path
+pub fn user_balance_by_id_path(user_id: &str) -> String {
+    replace_param(USER_BALANCE_BY_ID, "user_id", user_id)
+}
+
+/// Generate user transactions by ID path
+pub fn user_transactions_by_id_path(user_id: &str) -> String {
+    replace_param(USER_TRANSACTIONS_BY_ID, "user_id", user_id)
+}
+
+/// Generate transaction by hash path
+pub fn transaction_by_hash_path(tx_hash: &str) -> String {
+    replace_param(TRANSACTION_BY_HASH, "tx_hash", tx_hash)
 }
 
 // ============================================================================

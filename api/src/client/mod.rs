@@ -194,6 +194,44 @@ pub struct EndpointInfo {
     pub description: String,
 }
 
+/// User balance response
+#[derive(Debug, Deserialize)]
+pub struct UserBalanceResponse {
+    pub user_id: Option<String>,
+    pub wallet_address: String,
+    pub available_balance: String,
+    pub currency: String,
+}
+
+/// User transactions response
+#[derive(Debug, Deserialize)]
+pub struct UserTransactionsResponse {
+    pub transactions: Vec<DepositTransactionInfo>,
+    pub total_count: usize,
+}
+
+/// Deposit transaction info
+#[derive(Debug, Deserialize)]
+pub struct DepositTransactionInfo {
+    pub id: i32,
+    pub user_address: String,
+    pub deposit_amount_usdc: Option<String>,
+    pub status: String,
+    pub transaction_hash: String,
+    pub block_number: i64,
+    pub confirmation_count: i32,
+    pub required_confirmations: i32,
+    pub created_at: Option<String>,
+    pub processed_at: Option<String>,
+}
+
+/// Transaction status response
+#[derive(Debug, Deserialize)]
+pub struct TransactionStatusResponse {
+    pub found: bool,
+    pub transaction: Option<DepositTransactionInfo>,
+}
+
 // ============================================================================
 // CLIENT IMPLEMENTATION
 // ============================================================================
@@ -482,6 +520,77 @@ impl BatchApiClient {
             paths::invite_code_validate_path(code)
         );
         let response = self.client.post(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get user balance by wallet address
+    pub async fn get_user_balance_by_address(
+        &self,
+        address: &str,
+    ) -> Result<UserBalanceResponse, ApiClientError> {
+        let url = format!(
+            "{}{}",
+            self.base_url,
+            paths::user_balance_by_address_path(address)
+        );
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get user balance by user ID
+    pub async fn get_user_balance_by_id(
+        &self,
+        user_id: &str,
+    ) -> Result<UserBalanceResponse, ApiClientError> {
+        let url = format!(
+            "{}{}",
+            self.base_url,
+            paths::user_balance_by_id_path(user_id)
+        );
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get user transactions by user ID
+    pub async fn get_user_transactions(
+        &self,
+        user_id: &str,
+    ) -> Result<UserTransactionsResponse, ApiClientError> {
+        let url = format!(
+            "{}{}",
+            self.base_url,
+            paths::user_transactions_by_id_path(user_id)
+        );
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get transaction status by hash
+    pub async fn get_transaction_status(
+        &self,
+        tx_hash: &str,
+    ) -> Result<TransactionStatusResponse, ApiClientError> {
+        let url = format!(
+            "{}{}",
+            self.base_url,
+            paths::transaction_by_hash_path(tx_hash)
+        );
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Update user wallet address
+    pub async fn update_user_wallet(
+        &self,
+        user_id: &str,
+        wallet_address: &str,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::user_path(user_id));
+        let request = serde_json::json!({
+            "wallet_address": wallet_address
+        });
+
+        let response = self.client.put(&url).json(&request).send().await?;
         self.handle_response(response).await
     }
 
