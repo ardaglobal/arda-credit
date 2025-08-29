@@ -4,11 +4,9 @@ pragma solidity ^0.8.20;
 import {Test, console} from "forge-std/Test.sol";
 import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
-import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 contract LoanProofReadingTest is Test {
     Loan public loan;
-    MockUSDC public mockUSDC;
     address public verifier;
     address public user1 = address(0x1);
     address public user2 = address(0x2);
@@ -18,8 +16,7 @@ contract LoanProofReadingTest is Test {
 
     function setUp() public {
         verifier = address(new SP1VerifierGateway(address(1)));
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, TEST_VKEY, address(mockUSDC));
+        loan = new Loan(verifier, TEST_VKEY);
 
         // Grant authorization to test users
         loan.setAuthorization(user1, true);

@@ -6,13 +6,11 @@ import {Loan} from "../src/Loan.sol";
 import {IStateManager} from "../src/interfaces/IStateManager.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 contract StateManagementTest is Test {
     using stdJson for string;
 
     Loan public loan;
-    MockUSDC public mockUSDC;
     address public verifier;
 
     // Test constants
@@ -80,8 +78,7 @@ contract StateManagementTest is Test {
 
         // Deploy verifier and loan contract
         verifier = address(new SP1VerifierGateway(address(1)));
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, groth16Fixture.vkey, address(mockUSDC));
+        loan = new Loan(verifier, groth16Fixture.vkey);
 
         // Grant authorization to test poster
         loan.setAuthorization(authorizedPoster, true);
@@ -565,8 +562,7 @@ contract StateManagementTest is Test {
         vm.stopPrank();
 
         // Reset contract state for batch test
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, groth16Fixture.vkey, address(mockUSDC));
+        loan = new Loan(verifier, groth16Fixture.vkey);
         loan.setAuthorization(authorizedPoster, true);
 
         // Test batch update

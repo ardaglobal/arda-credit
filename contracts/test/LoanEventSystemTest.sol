@@ -17,8 +17,7 @@ contract LoanEventSystemTest is Test {
     
     function setUp() public {
         verifier = address(new SP1VerifierGateway(address(1)));
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, TEST_VKEY, address(mockUSDC));
+        loan = new Loan(verifier, TEST_VKEY);
         
         // Grant authorization to test users
         loan.setAuthorization(user1, true);

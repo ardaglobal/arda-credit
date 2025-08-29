@@ -123,8 +123,9 @@ contract Loan is EventHelpers {
                         USDC DEPOSIT FUNCTIONALITY
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice USDC token contract address
-    IERC20 public immutable usdcToken;
+    /// @notice USDC token contract address (mainnet USDC)
+    /// @dev Can be overridden for testing by setting this in constructor or via a setter for testing
+    IERC20 public usdcToken = IERC20(0xA0b86a33E6411cFd2BfB35B2bC5D2c60d7ED1BA6);
 
     /// @notice Track deposits by user address
     mapping(address => uint256) public userDeposits;
@@ -248,10 +249,9 @@ contract Loan is EventHelpers {
         _;
     }
 
-    constructor(address _verifier, bytes32 _loanProgramVKey, address _usdcToken) {
+    constructor(address _verifier, bytes32 _loanProgramVKey) {
         verifier = _verifier;
         loanProgramVKey = _loanProgramVKey;
-        usdcToken = IERC20(_usdcToken);
         owner = msg.sender;
         authorizedPosters[msg.sender] = true;
         emit AuthorizationChanged(msg.sender, true);
@@ -1339,5 +1339,11 @@ contract Loan is EventHelpers {
     /// @return The total USDC balance held by this contract
     function getContractUsdcBalance() external view returns (uint256) {
         return usdcToken.balanceOf(address(this));
+    }
+
+    /// @notice Set USDC token address (only for testing)
+    /// @param _usdcToken The USDC token contract address
+    function setUsdcTokenForTesting(address _usdcToken) external onlyOwner {
+        usdcToken = IERC20(_usdcToken);
     }
 }

@@ -37,8 +37,7 @@ contract LoanGroth16Test is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, fixture.vkey, address(mockUSDC));
+        loan = new Loan(verifier, fixture.vkey);
     }
 
     function test_ValidLoanProof() public {
@@ -93,8 +92,7 @@ contract LoanPlonkTest is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, fixture.vkey, address(mockUSDC));
+        loan = new Loan(verifier, fixture.vkey);
     }
 
     function test_ValidLoanProof() public {
@@ -137,8 +135,7 @@ contract LoanVerificationKeyTest is Test {
 
     function setUp() public {
         address verifier = address(new SP1VerifierGateway(address(1)));
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, TEST_VKEY, address(mockUSDC));
+        loan = new Loan(verifier, TEST_VKEY);
     }
 
     function test_GetProgramVerificationKey() public view {
@@ -210,8 +207,7 @@ contract StateRootTest is Test {
 
         // Deploy SP1 verifier
         verifier = address(new SP1VerifierGateway(address(1)));
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, PROGRAM_VKEY, address(mockUSDC));
+        loan = new Loan(verifier, PROGRAM_VKEY);
 
         // Authorize a user for testing
         loan.setAuthorization(authorizedUser, true);
@@ -414,8 +410,7 @@ contract LoanBatchPublicValuesTest is Test {
         vm.startPrank(owner);
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        mockUSDC = new MockUSDC();
-        loan = new Loan(verifier, PROGRAM_VKEY, address(mockUSDC));
+        loan = new Loan(verifier, PROGRAM_VKEY);
         loan.setAuthorization(authorizedUser, true);
 
         vm.stopPrank();

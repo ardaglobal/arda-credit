@@ -32,8 +32,11 @@ contract UsdcDepositTest is Test {
         // Deploy mock USDC
         usdc = new MockUSDC();
         
-        // Deploy Loan contract with USDC address
-        loan = new Loan(verifier, TEST_VKEY, address(usdc));
+        // Deploy Loan contract
+        loan = new Loan(verifier, TEST_VKEY);
+        
+        // Set the mock USDC token for testing
+        loan.setUsdcTokenForTesting(address(usdc));
         
         // Mint USDC to test users
         usdc.mint(user1, 1000 * 10**6); // 1000 USDC
