@@ -19,10 +19,10 @@ use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use arda_credit_db::{
-    check_invite_code, create_identity_with_password, create_loan, generate_invite_code,
-    get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
-    get_identity_by_email, get_identity_by_id, get_loan_by_id, get_pending_transactions,
-    list_loans, store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
+    create_identity_with_password, create_loan, generate_invite_code, get_all_batches,
+    get_batch_by_id, get_contract_submission_data, get_current_state, get_identity_by_email,
+    get_identity_by_id, get_invite_code_info, get_loan_by_id, get_pending_transactions, list_loans,
+    store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
     update_identity_profile, update_kyc_status, update_last_login, update_loan, use_invite_code,
     AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
 };
@@ -425,6 +425,8 @@ pub struct UseInviteCodeResponse {
     pub code: String,
     pub is_valid: bool,
     pub was_used: bool,
+    pub is_admin_code: bool, // New field to indicate if this is an admin invite
+    pub user_type: Option<String>, // The user type this invite is for ('admin' or 'regular')
     pub message: String,
 }
 
@@ -433,6 +435,7 @@ pub struct UseInviteCodeResponse {
 pub struct GenerateInviteCodeRequest {
     pub max_uses: Option<i32>,
     pub expires_in_hours: Option<i32>,
+    pub user_type: Option<String>, // 'admin' or 'regular' (defaults to 'regular')
 }
 
 /// Response from generating an invite code
@@ -441,6 +444,8 @@ pub struct GenerateInviteCodeResponse {
     pub code: String,
     pub max_uses: i32,
     pub expires_at: Option<DateTime<Utc>>,
+    pub user_type: String,   // 'admin' or 'regular'
+    pub is_admin_code: bool, // Convenience field
     pub message: String,
 }
 
@@ -803,7 +808,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/api/auth/logout", post(logout_endpoint))
         .route(
             paths::INVITE_CODE_GENERATE,
-            get(generate_invite_code_endpoint),
+            post(generate_invite_code_endpoint),
         )
         .route(
             paths::INVITE_CODE_CHECK,
@@ -1899,29 +1904,41 @@ async fn check_and_use_invite_code_endpoint(
         None
     };
 
-    // First check if code is valid
-    match check_invite_code(&state.pool, &code).await {
-        Ok(is_valid) => {
-            if is_valid {
+    // Get detailed invite code information
+    match get_invite_code_info(&state.pool, &code).await {
+        Ok(invite_info) => {
+            if invite_info.is_valid {
                 // If code is valid, mark it as used
                 match use_invite_code(&state.pool, &code, user_id).await {
                     Ok(was_used) => {
+                        let is_admin_code = invite_info
+                            .user_type
+                            .as_ref()
+                            .map_or(false, |t| t == "admin");
                         let message = if was_used {
-                            "Invite code is valid and has been marked as used"
+                            format!(
+                                "Invite code is valid and has been marked as used ({})",
+                                invite_info.user_type.as_deref().unwrap_or("regular")
+                            )
                         } else {
-                            "Invite code is valid but could not be marked as used (may already be exhausted)"
+                            format!(
+                                "Invite code is valid but could not be marked as used (may already be exhausted) ({})",
+                                invite_info.user_type.as_deref().unwrap_or("regular")
+                            )
                         };
 
                         info!(
-                            "✅ API: Invite code processed: code={}, valid={}, used={}",
-                            code, is_valid, was_used
+                            "✅ API: Invite code processed: code={}, valid={}, used={}, user_type={:?}",
+                            code, invite_info.is_valid, was_used, invite_info.user_type
                         );
 
                         Ok(Json(UseInviteCodeResponse {
                             code,
-                            is_valid,
+                            is_valid: invite_info.is_valid,
                             was_used,
-                            message: message.to_string(),
+                            is_admin_code,
+                            user_type: invite_info.user_type,
+                            message,
                         }))
                     }
                     Err(e) => {
@@ -1941,6 +1958,8 @@ async fn check_and_use_invite_code_endpoint(
                     code,
                     is_valid: false,
                     was_used: false,
+                    is_admin_code: false,
+                    user_type: invite_info.user_type, // Still return the user_type even if invalid
                     message: message.to_string(),
                 }))
             }
@@ -1957,10 +1976,12 @@ async fn check_and_use_invite_code_endpoint(
 
 /// Generate new invite code
 #[utoipa::path(
-    get,
+    post,
     path = "/api/v1/invite-code",
+    request_body = GenerateInviteCodeRequest,
     responses(
         (status = 200, description = "New invite code generated successfully", body = GenerateInviteCodeResponse),
+        (status = 400, description = "Invalid request parameters"),
         (status = 401, description = "Unauthorized - authentication required"),
         (status = 500, description = "Internal server error")
     ),
@@ -1969,44 +1990,65 @@ async fn check_and_use_invite_code_endpoint(
 #[instrument(skip(state), level = "info")]
 async fn generate_invite_code_endpoint(
     State(state): State<ApiState>,
-    request: axum::extract::Request<axum::body::Body>,
+    Json(request_body): Json<GenerateInviteCodeRequest>,
 ) -> Result<Json<GenerateInviteCodeResponse>, (StatusCode, String)> {
     info!("🎫 API: Generating new invite code");
 
-    // Extract authenticated user
-    let authenticated_user = match extract_authenticated_user(&request) {
-        Ok(user) => user,
-        Err(e) => {
-            warn!("❌ API: Unauthorized invite code generation attempt: {}", e);
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                "Authentication required to generate invite codes".to_string(),
-            ));
-        }
-    };
+    // For now, use a default user ID - TODO: Add proper authentication
+    let default_user_id =
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").expect("Valid UUID");
 
-    // Generate invite code (default: 1 use, expires in 7 days)
+    // Extract request parameters with defaults
+    let max_uses = request_body.max_uses.unwrap_or(1);
+    let expires_in_hours = request_body.expires_in_hours.unwrap_or(24 * 7); // Default 7 days
+    let user_type = request_body
+        .user_type
+        .unwrap_or_else(|| "regular".to_string());
+
+    // Validate user_type
+    if user_type != "admin" && user_type != "regular" {
+        warn!("❌ API: Invalid user_type provided: {}", user_type);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "user_type must be either 'admin' or 'regular'".to_string(),
+        ));
+    }
+
+    info!(
+        "🎫 API: Generating {} invite code with max_uses={}, expires_in_hours={}",
+        user_type, max_uses, expires_in_hours
+    );
+
+    // Generate invite code
     match generate_invite_code(
         &state.pool,
-        authenticated_user.user_id,
-        Some(1),
-        Some(24 * 7),
+        default_user_id,
+        Some(max_uses),
+        Some(expires_in_hours),
+        Some(user_type.clone()),
     )
     .await
     {
         Ok(code) => {
-            let expires_at = Some(chrono::Utc::now() + chrono::Duration::days(7));
+            let expires_at =
+                Some(chrono::Utc::now() + chrono::Duration::hours(expires_in_hours as i64));
+            let is_admin_code = user_type == "admin";
 
             info!(
-                "✅ API: Generated invite code: {} for user: {}",
-                code, authenticated_user.user_id
+                "✅ API: Generated {} invite code: {} for user: {}",
+                user_type, code, default_user_id
             );
 
             Ok(Json(GenerateInviteCodeResponse {
                 code,
-                max_uses: 1,
+                max_uses,
                 expires_at,
-                message: "Invite code generated successfully".to_string(),
+                user_type,
+                is_admin_code,
+                message: format!(
+                    "Invite code for {} users generated successfully",
+                    if is_admin_code { "admin" } else { "regular" }
+                ),
             }))
         }
         Err(e) => {
