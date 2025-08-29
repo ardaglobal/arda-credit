@@ -1697,6 +1697,15 @@ pub async fn get_identity_by_reset_token(
 ///
 /// # Errors
 /// Returns error if database operation fails
+/// Invite code information structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteCodeInfo {
+    pub is_valid: bool,
+    pub user_type: Option<String>, // 'admin' or 'regular'
+    pub expires_at: Option<DateTime<Utc>>,
+    pub description: Option<String>,
+}
+
 pub async fn check_invite_code(pool: &PgPool, code: &str) -> Result<bool, sqlx::Error> {
     debug!("Checking invite code validity: code={}", code);
 
@@ -1707,6 +1716,31 @@ pub async fn check_invite_code(pool: &PgPool, code: &str) -> Result<bool, sqlx::
 
     debug!("Invite code {} is valid: {}", code, is_valid);
     Ok(is_valid)
+}
+
+/// Get detailed invite code information including user_type
+pub async fn get_invite_code_info(
+    pool: &PgPool,
+    code: &str,
+) -> Result<InviteCodeInfo, sqlx::Error> {
+    debug!("Getting invite code info: code={}", code);
+
+    let result = sqlx::query!(
+        "SELECT is_valid, user_type, expires_at, description FROM get_invite_code_info($1)",
+        code
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let invite_info = InviteCodeInfo {
+        is_valid: result.is_valid.unwrap_or(false),
+        user_type: result.user_type,
+        expires_at: result.expires_at,
+        description: result.description,
+    };
+
+    debug!("Invite code {} info: {:?}", code, invite_info);
+    Ok(invite_info)
 }
 
 /// Use an invite code (marks it as used and decrements available uses)
@@ -1735,8 +1769,21 @@ pub async fn generate_invite_code(
     created_by: uuid::Uuid,
     max_uses: Option<i32>,
     expires_in_hours: Option<i32>,
+    user_type: Option<String>, // 'admin' or 'regular'
 ) -> Result<String, sqlx::Error> {
-    debug!("Generating new invite code for user: {}", created_by);
+    let user_type = user_type.unwrap_or_else(|| "regular".to_string());
+    debug!(
+        "Generating new invite code for user: {} (user_type: {})",
+        created_by, user_type
+    );
+
+    // Validate user_type
+    if user_type != "admin" && user_type != "regular" {
+        return Err(sqlx::Error::Protocol(format!(
+            "Invalid user_type '{}'. Must be 'admin' or 'regular'",
+            user_type
+        )));
+    }
 
     // Generate a secure random code
     let code = generate_secure_invite_code();
@@ -1750,18 +1797,22 @@ pub async fn generate_invite_code(
 
     sqlx::query!(
         r#"
-        INSERT INTO invite_codes (code, created_by, max_uses, expires_at, is_active) 
-        VALUES ($1, $2, $3, $4, true)
+        INSERT INTO invite_codes (code, created_by, max_uses, expires_at, is_active, user_type) 
+        VALUES ($1, $2, $3, $4, true, $5)
         "#,
         code,
         created_by,
         max_uses,
-        expires_at
+        expires_at,
+        user_type
     )
     .execute(pool)
     .await?;
 
-    debug!("Generated invite code: {} for user: {}", code, created_by);
+    debug!(
+        "Generated invite code: {} for user: {} ({})",
+        code, created_by, user_type
+    );
     Ok(code)
 }
 

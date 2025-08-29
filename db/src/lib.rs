@@ -74,6 +74,7 @@ pub use db::{
     get_identity_by_email,
     get_identity_by_id,
     get_identity_by_reset_token,
+    get_invite_code_info,
     get_loan_by_id,
     get_payments_by_loan,
     get_pending_transactions,
@@ -123,6 +124,7 @@ pub use db::{
     // CCR Domain types
     Identity,
     IncomingTransaction,
+    InviteCodeInfo,
     Loan,
     LoanTransactionDb,
     Payment,

@@ -345,7 +345,7 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
         },
         // Invite Code Management
         crate::rest::EndpointInfo {
-            method: "GET".to_string(),
+            method: "POST".to_string(),
             path: INVITE_CODE_GENERATE.to_string(),
             description: "Generate new invite code".to_string(),
         },

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, \n               created_at as \"created_at!\", updated_at as \"updated_at!\", \n               password_hash, last_login_at, email_verified, email_verification_token, \n               password_reset_token, password_reset_expires_at\n        FROM identities\n        ORDER BY created_at DESC\n        LIMIT $1 OFFSET $2\n        ",
+  "query": "\n        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, \n               created_at as \"created_at!\", updated_at as \"updated_at!\", \n               password_hash, last_login_at, email_verified, email_verification_token, \n               password_reset_token, password_reset_expires_at, wallet_address\n        FROM identities\n        ORDER BY created_at DESC\n        LIMIT $1 OFFSET $2\n        ",
   "describe": {
     "columns": [
       {
@@ -72,6 +72,11 @@
         "ordinal": 13,
         "name": "password_reset_expires_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "wallet_address",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
@@ -94,8 +99,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "7b4b68f6113dabf764f31538756e8d1565edf1e9d09960b6845594d5a8d06aab"
+  "hash": "aaea250acb6742f190b606e4f302a09a2ea26af6aff28da36115309b62e1d549"
 }
