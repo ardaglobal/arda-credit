@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT is_invite_code_valid($1)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "is_invite_code_valid",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "a67ed437f2c79bcbd00835483a49904a6fe60f8fb5fe3ed2f03d58d84fb229af"
+}

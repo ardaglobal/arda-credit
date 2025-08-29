@@ -276,6 +276,48 @@ enum Commands {
     },
 
     // ============================================================================
+    // INVITE CODE MANAGEMENT COMMANDS
+    // ============================================================================
+    /// Generate a new invite code for user registration
+    GenerateInviteCode {
+        /// Number of times this code can be used
+        #[arg(long, default_value = "1")]
+        max_uses: Option<i32>,
+        /// Hours until the code expires (default: 168 hours = 7 days)
+        #[arg(long, default_value = "168")]
+        expires_in_hours: Option<i32>,
+        /// Description for the invite code
+        #[arg(long)]
+        description: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Check if an invite code is valid
+    CheckInviteCode {
+        /// The invite code to check
+        #[arg(long)]
+        code: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Use an invite code (for testing - marks it as used)
+    UseInviteCode {
+        /// The invite code to use
+        #[arg(long)]
+        code: String,
+        /// User ID to associate with the code usage (optional)
+        #[arg(long)]
+        user_id: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    // ============================================================================
     // ENHANCED LOAN OPERATION TESTING COMMANDS
     // ============================================================================
     /// Test prefixed nullifier generation for loan operations
@@ -675,6 +717,34 @@ async fn main() -> Result<()> {
         } => {
             delete_user(&client, &user_id, force, verbose).await?;
         }
+
+        // Invite Code Management Commands
+        Commands::GenerateInviteCode {
+            max_uses,
+            expires_in_hours,
+            description,
+            verbose,
+        } => {
+            generate_invite_code(
+                &client,
+                max_uses,
+                expires_in_hours,
+                description.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+        Commands::CheckInviteCode { code, verbose } => {
+            check_invite_code(&client, &code, verbose).await?;
+        }
+        Commands::UseInviteCode {
+            code,
+            user_id,
+            verbose,
+        } => {
+            use_invite_code(&client, &code, user_id.as_deref(), verbose).await?;
+        }
+
         Commands::SubmitKyc {
             user_id,
             document_type,
@@ -3199,6 +3269,161 @@ async fn test_user_operations(
             created_users.len()
         );
         println!("      Run with --cleanup to remove them automatically");
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// INVITE CODE MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Generate a new invite code
+async fn generate_invite_code(
+    client: &BatchApiClient,
+    max_uses: Option<i32>,
+    expires_in_hours: Option<i32>,
+    description: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("🎫 Generating new invite code...");
+        if let Some(uses) = max_uses {
+            println!("   Max uses: {}", uses);
+        }
+        if let Some(hours) = expires_in_hours {
+            println!("   Expires in: {} hours", hours);
+        }
+        if let Some(desc) = description {
+            println!("   Description: {}", desc);
+        }
+    }
+
+    match client.generate_invite_code().await {
+        Ok(result) => {
+            println!("✅ Invite code generated successfully:");
+            println!("   Code: {}", result["code"].as_str().unwrap_or("N/A"));
+            println!("   Max uses: {}", result["max_uses"].as_i64().unwrap_or(0));
+            if let Some(expires) = result["expires_at"].as_str() {
+                println!("   Expires: {}", expires);
+            }
+            if let Some(created) = result["created_at"].as_str() {
+                println!("   Created: {}", created);
+            }
+
+            if verbose {
+                println!(
+                    "   Created by: {}",
+                    result["created_by"].as_str().unwrap_or("N/A")
+                );
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("401") || error_msg.contains("403") {
+                println!("❌ Authentication required. You need to be logged in to generate invite codes.");
+                println!("   Note: This API endpoint requires user authentication.");
+            } else {
+                return Err(eyre::eyre!("Failed to generate invite code: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Check if an invite code is valid
+async fn check_invite_code(client: &BatchApiClient, code: &str, verbose: bool) -> Result<()> {
+    if verbose {
+        println!("🔍 Checking invite code: {}", code);
+    }
+
+    match client.check_invite_code(code).await {
+        Ok(result) => {
+            let is_valid = result["is_valid"].as_bool().unwrap_or(false);
+
+            if is_valid {
+                println!("✅ Invite code is valid: {}", code);
+                if verbose {
+                    if let Some(current_uses) = result["current_uses"].as_i64() {
+                        if let Some(max_uses) = result["max_uses"].as_i64() {
+                            println!("   Usage: {}/{}", current_uses, max_uses);
+                        }
+                    }
+                    if let Some(expires) = result["expires_at"].as_str() {
+                        println!("   Expires: {}", expires);
+                    }
+                    if let Some(created) = result["created_at"].as_str() {
+                        println!("   Created: {}", created);
+                    }
+                }
+            } else {
+                println!("❌ Invite code is not valid: {}", code);
+                if let Some(message) = result["message"].as_str() {
+                    println!("   Reason: {}", message);
+                }
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ Invite code not found: {}", code);
+            } else {
+                return Err(eyre::eyre!("Failed to check invite code: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Use an invite code (for testing purposes)
+async fn use_invite_code(
+    client: &BatchApiClient,
+    code: &str,
+    user_id: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("🎯 Using invite code: {}", code);
+        if let Some(uid) = user_id {
+            println!("   User ID: {}", uid);
+        }
+    }
+
+    match client.use_invite_code(code, user_id).await {
+        Ok(result) => {
+            let was_used = result["was_used"].as_bool().unwrap_or(false);
+            let is_valid = result["is_valid"].as_bool().unwrap_or(false);
+
+            if is_valid && was_used {
+                println!("✅ Invite code used successfully: {}", code);
+            } else if is_valid && !was_used {
+                println!(
+                    "⚠️  Invite code is valid but couldn't be used (may be exhausted): {}",
+                    code
+                );
+            } else {
+                println!("❌ Invite code could not be used: {}", code);
+            }
+
+            if let Some(message) = result["message"].as_str() {
+                println!("   {}", message);
+            }
+
+            if verbose {
+                println!("   Valid: {}", is_valid);
+                println!("   Used: {}", was_used);
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ Invite code not found: {}", code);
+            } else {
+                return Err(eyre::eyre!("Failed to use invite code: {}", e));
+            }
+        }
     }
 
     Ok(())

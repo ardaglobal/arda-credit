@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::env;
@@ -1642,4 +1643,94 @@ pub async fn get_identity_by_reset_token(
     });
 
     Ok(identity)
+}
+
+// ============================================================================
+// INVITE CODE FUNCTIONS
+// ============================================================================
+
+/// Check if an invite code is valid and available for use
+///
+/// # Errors
+/// Returns error if database operation fails
+pub async fn check_invite_code(pool: &PgPool, code: &str) -> Result<bool, sqlx::Error> {
+    debug!("Checking invite code validity: code={}", code);
+
+    let is_valid: bool = sqlx::query_scalar!("SELECT is_invite_code_valid($1)", code)
+        .fetch_one(pool)
+        .await?
+        .unwrap_or(false);
+
+    debug!("Invite code {} is valid: {}", code, is_valid);
+    Ok(is_valid)
+}
+
+/// Use an invite code (marks it as used and decrements available uses)
+pub async fn use_invite_code(
+    pool: &PgPool,
+    code: &str,
+    user_id: Option<uuid::Uuid>,
+) -> Result<bool, sqlx::Error> {
+    debug!("Using invite code: code={}, user_id={:?}", code, user_id);
+
+    let result = sqlx::query!("SELECT * FROM use_invite_code($1, $2)", code, user_id)
+        .fetch_optional(pool)
+        .await?;
+
+    let used_successfully = result.is_some();
+    debug!(
+        "Invite code {} used successfully: {}",
+        code, used_successfully
+    );
+    Ok(used_successfully)
+}
+
+/// Generate a new invite code
+pub async fn generate_invite_code(
+    pool: &PgPool,
+    created_by: uuid::Uuid,
+    max_uses: Option<i32>,
+    expires_in_hours: Option<i32>,
+) -> Result<String, sqlx::Error> {
+    debug!("Generating new invite code for user: {}", created_by);
+
+    // Generate a secure random code
+    let code = generate_secure_invite_code();
+    let max_uses = max_uses.unwrap_or(1);
+    let expires_at = if let Some(hours) = expires_in_hours {
+        Some(chrono::Utc::now() + chrono::Duration::hours(hours as i64))
+    } else {
+        // Default to 7 days
+        Some(chrono::Utc::now() + chrono::Duration::days(7))
+    };
+
+    sqlx::query!(
+        r#"
+        INSERT INTO invite_codes (code, created_by, max_uses, expires_at, is_active) 
+        VALUES ($1, $2, $3, $4, true)
+        "#,
+        code,
+        created_by,
+        max_uses,
+        expires_at
+    )
+    .execute(pool)
+    .await?;
+
+    debug!("Generated invite code: {} for user: {}", code, created_by);
+    Ok(code)
+}
+
+/// Generate a secure random invite code
+fn generate_secure_invite_code() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const CODE_LENGTH: usize = 6;
+
+    let mut rng = rand::rng();
+    (0..CODE_LENGTH)
+        .map(|_| {
+            let idx = rng.random_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect()
 }

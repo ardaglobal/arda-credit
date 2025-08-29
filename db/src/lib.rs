@@ -46,6 +46,8 @@ pub mod error;
 
 // Re-export batch processing types and functions
 pub use db::{
+    // Invite code functions
+    check_invite_code,
     // Batch functions
     create_batch,
     // CCR Domain functions
@@ -56,6 +58,7 @@ pub use db::{
     create_state_snapshot,
     delete_identity,
 
+    generate_invite_code,
     get_all_batches,
     get_balance,
     get_batch_by_id,
@@ -98,6 +101,7 @@ pub use db::{
     update_last_login,
     update_loan,
     update_user_password,
+    use_invite_code,
     verify_email_with_token,
     // Types
     AdsStateCommit,

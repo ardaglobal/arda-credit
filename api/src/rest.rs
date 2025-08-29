@@ -19,12 +19,12 @@ use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use arda_credit_db::{
-    create_identity_with_password, create_loan, get_all_batches, get_batch_by_id,
-    get_contract_submission_data, get_current_state, get_identity_by_email, get_identity_by_id,
-    get_loan_by_id, get_pending_transactions, list_loans, store_ads_state_commit, submit_kyc_data,
-    submit_transaction, update_batch_proof, update_identity_profile, update_kyc_status,
-    update_last_login, update_loan, AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof,
-    LoanLifecycleSummary,
+    check_invite_code, create_identity_with_password, create_loan, generate_invite_code,
+    get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
+    get_identity_by_email, get_identity_by_id, get_loan_by_id, get_pending_transactions,
+    list_loans, store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
+    update_identity_profile, update_kyc_status, update_last_login, update_loan, use_invite_code,
+    AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -405,6 +405,45 @@ pub struct LogoutResponse {
     pub message: String,
 }
 
+/// Invite code validation response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct InviteCodeResponse {
+    pub code: String,
+    pub is_valid: bool,
+    pub message: String,
+}
+
+/// Request to check and use an invite code
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CheckInviteCodeRequest {
+    pub user_id: Option<String>, // Optional user ID to associate with code usage
+}
+
+/// Response from using an invite code
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UseInviteCodeResponse {
+    pub code: String,
+    pub is_valid: bool,
+    pub was_used: bool,
+    pub message: String,
+}
+
+/// Request to generate a new invite code
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct GenerateInviteCodeRequest {
+    pub max_uses: Option<i32>,
+    pub expires_in_hours: Option<i32>,
+}
+
+/// Response from generating an invite code
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct GenerateInviteCodeResponse {
+    pub code: String,
+    pub max_uses: i32,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub message: String,
+}
+
 /// Response from user registration
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserResponse {
@@ -762,6 +801,14 @@ pub fn create_router(state: ApiState) -> Router {
         // Authentication endpoints
         .route("/api/auth/login", post(login_endpoint))
         .route("/api/auth/logout", post(logout_endpoint))
+        .route(
+            paths::INVITE_CODE_GENERATE,
+            get(generate_invite_code_endpoint),
+        )
+        .route(
+            paths::INVITE_CODE_CHECK,
+            post(check_and_use_invite_code_endpoint),
+        )
         // Transaction operations
         .route(paths::STATE_TRANSACTIONS, post(submit_transaction_endpoint))
         .route(
@@ -1799,6 +1846,174 @@ async fn logout_endpoint(
     Ok(Json(LogoutResponse {
         message: "Logout successful. Please remove the token from client storage.".to_string(),
     }))
+}
+
+/// Check and use invite code
+#[utoipa::path(
+    post,
+    path = "/api/v1/invite-code/{code}",
+    request_body = CheckInviteCodeRequest,
+    responses(
+        (status = 200, description = "Invite code validation and usage result", body = UseInviteCodeResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("code" = String, Path, description = "Invite code to check and use")
+    ),
+    tag = "Authentication"
+)]
+#[instrument(skip(state), level = "info")]
+async fn check_and_use_invite_code_endpoint(
+    State(state): State<ApiState>,
+    Path(code): Path<String>,
+    Json(request): Json<CheckInviteCodeRequest>,
+) -> Result<Json<UseInviteCodeResponse>, (StatusCode, String)> {
+    info!("🎫 API: Checking and using invite code: code={}", code);
+
+    // Validate input
+    if code.trim().is_empty() {
+        warn!("❌ API: Empty invite code provided");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invite code cannot be empty".to_string(),
+        ));
+    }
+
+    // Convert user_id string to UUID if provided
+    let user_id = if let Some(user_id_str) = &request.user_id {
+        match uuid::Uuid::parse_str(user_id_str) {
+            Ok(uuid) => Some(uuid),
+            Err(_) => {
+                warn!("❌ API: Invalid user ID format: {}", user_id_str);
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "Invalid user ID format".to_string(),
+                ));
+            }
+        }
+    } else {
+        None
+    };
+
+    // First check if code is valid
+    match check_invite_code(&state.pool, &code).await {
+        Ok(is_valid) => {
+            if is_valid {
+                // If code is valid, mark it as used
+                match use_invite_code(&state.pool, &code, user_id).await {
+                    Ok(was_used) => {
+                        let message = if was_used {
+                            "Invite code is valid and has been marked as used"
+                        } else {
+                            "Invite code is valid but could not be marked as used (may already be exhausted)"
+                        };
+
+                        info!(
+                            "✅ API: Invite code processed: code={}, valid={}, used={}",
+                            code, is_valid, was_used
+                        );
+
+                        Ok(Json(UseInviteCodeResponse {
+                            code,
+                            is_valid,
+                            was_used,
+                            message: message.to_string(),
+                        }))
+                    }
+                    Err(e) => {
+                        error!("❌ API: Failed to mark invite code as used: {}", e);
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to mark invite code as used".to_string(),
+                        ))
+                    }
+                }
+            } else {
+                // Code is not valid, don't try to use it
+                let message = "Invite code is invalid or expired";
+                info!("❌ API: Invalid invite code: code={}", code);
+
+                Ok(Json(UseInviteCodeResponse {
+                    code,
+                    is_valid: false,
+                    was_used: false,
+                    message: message.to_string(),
+                }))
+            }
+        }
+        Err(e) => {
+            error!("❌ API: Failed to check invite code: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to validate invite code".to_string(),
+            ))
+        }
+    }
+}
+
+/// Generate new invite code
+#[utoipa::path(
+    get,
+    path = "/api/v1/invite-code",
+    responses(
+        (status = 200, description = "New invite code generated successfully", body = GenerateInviteCodeResponse),
+        (status = 401, description = "Unauthorized - authentication required"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Authentication"
+)]
+#[instrument(skip(state), level = "info")]
+async fn generate_invite_code_endpoint(
+    State(state): State<ApiState>,
+    request: axum::extract::Request<axum::body::Body>,
+) -> Result<Json<GenerateInviteCodeResponse>, (StatusCode, String)> {
+    info!("🎫 API: Generating new invite code");
+
+    // Extract authenticated user
+    let authenticated_user = match extract_authenticated_user(&request) {
+        Ok(user) => user,
+        Err(e) => {
+            warn!("❌ API: Unauthorized invite code generation attempt: {}", e);
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                "Authentication required to generate invite codes".to_string(),
+            ));
+        }
+    };
+
+    // Generate invite code (default: 1 use, expires in 7 days)
+    match generate_invite_code(
+        &state.pool,
+        authenticated_user.user_id,
+        Some(1),
+        Some(24 * 7),
+    )
+    .await
+    {
+        Ok(code) => {
+            let expires_at = Some(chrono::Utc::now() + chrono::Duration::days(7));
+
+            info!(
+                "✅ API: Generated invite code: {} for user: {}",
+                code, authenticated_user.user_id
+            );
+
+            Ok(Json(GenerateInviteCodeResponse {
+                code,
+                max_uses: 1,
+                expires_at,
+                message: "Invite code generated successfully".to_string(),
+            }))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to generate invite code: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to generate invite code".to_string(),
+            ))
+        }
+    }
 }
 
 /// List user identities
@@ -3197,6 +3412,8 @@ async fn get_loan_lifecycle_summary_endpoint(
         // Authentication endpoints
         login_endpoint,
         logout_endpoint,
+        check_and_use_invite_code_endpoint,
+        generate_invite_code_endpoint,
 
         // User Management endpoints
         register_user_endpoint,
@@ -3248,6 +3465,11 @@ async fn get_loan_lifecycle_summary_endpoint(
             UserSummary,
             LogoutRequest,
             LogoutResponse,
+            InviteCodeResponse,
+            CheckInviteCodeRequest,
+            UseInviteCodeResponse,
+            GenerateInviteCodeRequest,
+            GenerateInviteCodeResponse,
 
             // User Management
             RegisterUserRequest,

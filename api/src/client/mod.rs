@@ -153,6 +153,31 @@ pub struct HealthResponse {
     pub git_dirty: bool,
 }
 
+/// Generate invite code response
+#[derive(Debug, Deserialize)]
+pub struct GenerateInviteCodeResponse {
+    pub code: String,
+    pub max_uses: i32,
+    pub expires_at: Option<String>,
+    pub created_at: String,
+    pub created_by: String,
+}
+
+/// Check invite code request
+#[derive(Debug, Serialize)]
+pub struct UseInviteCodeRequest {
+    pub user_id: Option<String>,
+}
+
+/// Use invite code response  
+#[derive(Debug, Deserialize)]
+pub struct UseInviteCodeResponse {
+    pub code: String,
+    pub is_valid: bool,
+    pub was_used: bool,
+    pub message: String,
+}
+
 /// API info response
 #[derive(Debug, Deserialize)]
 pub struct ApiInfoResponse {
@@ -433,6 +458,39 @@ impl BatchApiClient {
             "status": status,
             "notes": notes
         });
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Generate a new invite code
+    pub async fn generate_invite_code(&self) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::INVITE_CODE_GENERATE);
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Check if an invite code is valid (doesn't use it)
+    pub async fn check_invite_code(&self, code: &str) -> Result<serde_json::Value, ApiClientError> {
+        // For checking only, we'll make a request to the same endpoint but parse the response differently
+        // The API currently combines check and use, so we'll work with what we have
+        let url = format!("{}{}", self.base_url, paths::invite_code_check_path(code));
+        let request = UseInviteCodeRequest { user_id: None };
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Use an invite code
+    pub async fn use_invite_code(
+        &self,
+        code: &str,
+        user_id: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::invite_code_check_path(code));
+        let request = UseInviteCodeRequest {
+            user_id: user_id.map(|s| s.to_string()),
+        };
 
         let response = self.client.post(&url).json(&request).send().await?;
         self.handle_response(response).await
