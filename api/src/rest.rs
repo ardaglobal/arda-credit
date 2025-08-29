@@ -1767,6 +1767,8 @@ async fn login_endpoint(
     }
 
     // Check if email is verified (optional - can be disabled for development)
+    // DISABLED FOR DEMO/TESTING - uncomment when email sending is implemented
+    /*
     if user.email_verified == Some(false) {
         warn!(
             "❌ API: Login failed - email not verified: {}",
@@ -1777,6 +1779,7 @@ async fn login_endpoint(
             "Please verify your email address before logging in".to_string(),
         ));
     }
+    */
 
     // Generate JWT token
     let token = match state
