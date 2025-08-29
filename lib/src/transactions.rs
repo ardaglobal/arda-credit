@@ -51,6 +51,7 @@ pub enum TransactionType {
     LoanOrigination = 4,
     LoanPayment = 5,
     LoanCloseout = 6,
+    UserDeposit = 7,
 }
 
 impl TransactionType {
@@ -66,7 +67,10 @@ impl TransactionType {
     /// Check if transaction type is monetary
     #[must_use]
     pub const fn is_monetary(&self) -> bool {
-        matches!(self, Self::LoanOrigination | Self::LoanPayment)
+        matches!(
+            self,
+            Self::LoanOrigination | Self::LoanPayment | Self::UserDeposit
+        )
     }
 }
 
