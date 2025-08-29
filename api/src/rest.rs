@@ -1632,22 +1632,26 @@ async fn register_user_endpoint(
                     ));
                 }
 
-                // Check if invite code type matches requested user type
+                // Check invite code restrictions: only admin codes require admin users
                 if let Some(ref code_user_type) = invite_info.user_type {
                     let requested_type = request.user_type.to_string();
-                    if code_user_type != &requested_type {
+
+                    // Only restrict admin codes to admin users
+                    if code_user_type == "admin" && requested_type != "admin" {
                         warn!(
-                            "❌ API: Invite code user type mismatch: code={}, requested={}",
+                            "❌ API: Admin invite code used for non-admin registration: code={}, requested={}",
                             code_user_type, requested_type
                         );
                         return Err((
                             StatusCode::BAD_REQUEST,
-                            format!(
-                                "This invite code is for {} users, but you're registering as {}",
-                                code_user_type, requested_type
-                            ),
+                            "This is an admin invite code and can only be used for admin user registration".to_string(),
                         ));
                     }
+
+                    info!(
+                        "✅ API: Invite code type check passed: code_type={}, user_type={}",
+                        code_user_type, requested_type
+                    );
                 }
 
                 info!(
