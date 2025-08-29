@@ -99,6 +99,9 @@ pub enum EthereumError {
 
     #[error("Proof invalid: The provided proof is invalid or verification failed")]
     ProofInvalid,
+
+    #[error("Task join error: {0}")]
+    TaskJoin(#[from] tokio::task::JoinError),
 }
 
 impl EthereumError {

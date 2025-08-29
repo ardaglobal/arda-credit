@@ -3040,6 +3040,7 @@ dependencies = [
  "lib",
  "once_cell",
  "reqwest",
+ "rust_decimal",
  "serde",
  "serde_json",
  "sindri",

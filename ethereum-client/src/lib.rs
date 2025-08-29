@@ -9,12 +9,14 @@
 pub mod client;
 pub mod config;
 pub mod contracts;
+pub mod deposit_monitor;
 pub mod error;
 pub mod event_manager;
 pub mod types;
 
 pub use client::{EthereumClient, EventCallback, EventFilter, LoanEvent, SubscriptionId};
 pub use config::{Config, NetworkConfig};
+pub use deposit_monitor::{DepositMonitor, DepositMonitorConfig, DepositRecord, DepositStatus};
 pub use error::{EthereumError, Result};
 pub use event_manager::{EventFilterBuilder, EventHandler, EventManager, VAppEventHandler};
 pub use types::*;
