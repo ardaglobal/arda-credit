@@ -470,29 +470,18 @@ impl BatchApiClient {
         self.handle_response(response).await
     }
 
-    /// Check if an invite code is valid (doesn't use it)
-    pub async fn check_invite_code(&self, code: &str) -> Result<serde_json::Value, ApiClientError> {
-        // For checking only, we'll make a request to the same endpoint but parse the response differently
-        // The API currently combines check and use, so we'll work with what we have
-        let url = format!("{}{}", self.base_url, paths::invite_code_check_path(code));
-        let request = UseInviteCodeRequest { user_id: None };
-
-        let response = self.client.post(&url).json(&request).send().await?;
-        self.handle_response(response).await
-    }
-
-    /// Use an invite code
-    pub async fn use_invite_code(
+    /// Validate if an invite code is valid (doesn't mark as used)
+    /// Use this before showing the registration form to the user
+    pub async fn validate_invite_code(
         &self,
         code: &str,
-        user_id: Option<&str>,
     ) -> Result<serde_json::Value, ApiClientError> {
-        let url = format!("{}{}", self.base_url, paths::invite_code_check_path(code));
-        let request = UseInviteCodeRequest {
-            user_id: user_id.map(|s| s.to_string()),
-        };
-
-        let response = self.client.post(&url).json(&request).send().await?;
+        let url = format!(
+            "{}{}",
+            self.base_url,
+            paths::invite_code_validate_path(code)
+        );
+        let response = self.client.post(&url).send().await?;
         self.handle_response(response).await
     }
 
