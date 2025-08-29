@@ -19,14 +19,13 @@ use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use arda_credit_db::{
-    check_invite_code, create_identity_with_password, create_loan, generate_invite_code,
-    get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
-    get_deposit_by_tx_hash, get_deposits_by_user_address, get_identity_by_email,
-    get_identity_by_id, get_loan_by_id, get_pending_transactions, get_user_balance_by_address,
-    get_user_balance_by_id, list_loans, store_ads_state_commit, submit_kyc_data,
-    submit_transaction, update_batch_proof, update_identity_profile, update_kyc_status,
-    update_last_login, update_loan, use_invite_code, AuditEvent, Identity, IndexedMerkleTreeADS,
-    LoanInclusionProof, LoanLifecycleSummary,
+    create_identity_with_password, create_loan, generate_invite_code, get_all_batches,
+    get_batch_by_id, get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
+    get_deposits_by_user_address, get_identity_by_email, get_identity_by_id, get_invite_code_info,
+    get_loan_by_id, get_pending_transactions, get_user_balance_by_address, get_user_balance_by_id,
+    list_loans, store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
+    update_identity_profile, update_kyc_status, update_last_login, update_loan, use_invite_code,
+    AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
