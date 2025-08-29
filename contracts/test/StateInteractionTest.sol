@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {StateInteraction} from "../src/libraries/StateInteraction.sol";
 import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
+import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 // Test wrapper contract to expose internal library functions
 contract StateInteractionWrapper {
@@ -58,13 +59,15 @@ contract StateInteractionTest is Test {
     
     StateInteractionWrapper public wrapper;
     Loan public loan;
+    MockUSDC public mockUSDC;
     address public verifier;
     bytes32 public constant TEST_VKEY = 0x1234567890123456789012345678901234567890123456789012345678901234;
     
     function setUp() public {
         wrapper = new StateInteractionWrapper();
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, TEST_VKEY);
+        mockUSDC = new MockUSDC();
+        loan = new Loan(verifier, TEST_VKEY, address(mockUSDC));
     }
     
     function testPrepareStateUpdate() public {

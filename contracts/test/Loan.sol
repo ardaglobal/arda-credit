@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 import {Loan} from "../src/Loan.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
+import {MockUSDC} from "./mocks/MockUSDC.sol";
 
 struct SP1ProofFixtureJson {
     int32 initial_balance;
@@ -19,6 +20,7 @@ contract LoanGroth16Test is Test {
 
     address verifier;
     Loan public loan;
+    MockUSDC public mockUSDC;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
         string memory root = vm.projectRoot();
@@ -35,7 +37,8 @@ contract LoanGroth16Test is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, fixture.vkey);
+        mockUSDC = new MockUSDC();
+        loan = new Loan(verifier, fixture.vkey, address(mockUSDC));
     }
 
     function test_ValidLoanProof() public {
@@ -73,6 +76,7 @@ contract LoanPlonkTest is Test {
 
     address verifier;
     Loan public loan;
+    MockUSDC public mockUSDC;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
         string memory root = vm.projectRoot();
@@ -89,7 +93,8 @@ contract LoanPlonkTest is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, fixture.vkey);
+        mockUSDC = new MockUSDC();
+        loan = new Loan(verifier, fixture.vkey, address(mockUSDC));
     }
 
     function test_ValidLoanProof() public {
@@ -124,6 +129,7 @@ contract LoanPlonkTest is Test {
 
 contract LoanVerificationKeyTest is Test {
     Loan public loan;
+    MockUSDC public mockUSDC;
     bytes32 constant TEST_VKEY =
         0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b;
     bytes32 constant WRONG_VKEY =
@@ -131,7 +137,8 @@ contract LoanVerificationKeyTest is Test {
 
     function setUp() public {
         address verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, TEST_VKEY);
+        mockUSDC = new MockUSDC();
+        loan = new Loan(verifier, TEST_VKEY, address(mockUSDC));
     }
 
     function test_GetProgramVerificationKey() public view {
@@ -182,6 +189,7 @@ contract LoanVerificationKeyTest is Test {
 
 contract StateRootTest is Test {
     Loan public loan;
+    MockUSDC public mockUSDC;
     address public verifier;
 
     address public owner = address(0x123);
@@ -202,7 +210,8 @@ contract StateRootTest is Test {
 
         // Deploy SP1 verifier
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, PROGRAM_VKEY);
+        mockUSDC = new MockUSDC();
+        loan = new Loan(verifier, PROGRAM_VKEY, address(mockUSDC));
 
         // Authorize a user for testing
         loan.setAuthorization(authorizedUser, true);
@@ -382,6 +391,7 @@ contract StateRootTest is Test {
 
 contract LoanBatchPublicValuesTest is Test {
     Loan public loan;
+    MockUSDC public mockUSDC;
     address public verifier;
 
     address public owner = address(0x123);
@@ -404,7 +414,8 @@ contract LoanBatchPublicValuesTest is Test {
         vm.startPrank(owner);
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, PROGRAM_VKEY);
+        mockUSDC = new MockUSDC();
+        loan = new Loan(verifier, PROGRAM_VKEY, address(mockUSDC));
         loan.setAuthorization(authorizedUser, true);
 
         vm.stopPrank();
