@@ -56,6 +56,8 @@ pub use db::{
     create_loan,
     create_payment,
     create_state_snapshot,
+    // USDC Deposit functions
+    create_usdc_deposit,
     delete_identity,
 
     generate_invite_code,
@@ -66,6 +68,8 @@ pub use db::{
     // State functions
     get_current_counter_value,
     get_current_state,
+    get_deposit_by_tx_hash,
+    get_deposits_by_user_address,
 
     get_identity_by_email,
     get_identity_by_id,
@@ -76,6 +80,10 @@ pub use db::{
 
     get_potential_stuck_batches,
     get_proven_unposted_batches,
+    get_user_balance_by_address,
+    get_user_balance_by_id,
+    get_user_deposit_balance,
+    get_user_id_by_wallet_address,
     // Database connection
     init_db,
     init_db_with_url,
@@ -96,10 +104,12 @@ pub use db::{
     submit_transaction,
     update_balance,
     update_batch_proof,
+    update_deposit_status,
     update_identity_profile,
     update_kyc_status,
     update_last_login,
     update_loan,
+    update_user_balance_from_deposit,
     update_user_password,
     use_invite_code,
     verify_email_with_token,
@@ -119,6 +129,8 @@ pub use db::{
     ProofBatch,
 
     StateSnapshot,
+    UsdcDeposit,
+    UserDepositBalance,
 };
 
 // Re-export essential error types

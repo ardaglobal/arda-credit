@@ -99,6 +99,8 @@ pub struct Identity {
     pub email_verification_token: Option<String>,
     pub password_reset_token: Option<String>,
     pub password_reset_expires_at: Option<DateTime<Utc>>,
+    // Wallet integration
+    pub wallet_address: Option<String>,
 }
 
 /// Loan record with borrower/lender relationship
@@ -172,6 +174,42 @@ pub struct StateSnapshot {
     pub active_users_count: i32,
     pub kyc_approved_count: i32,
     pub created_at: DateTime<Utc>,
+}
+
+/// USDC deposit tracking from smart contract events
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UsdcDeposit {
+    pub id: i32,
+    pub user_address: String,
+    pub amount: rust_decimal::Decimal,
+    pub deposit_amount_usdc: Option<rust_decimal::Decimal>,
+    pub transaction_hash: String,
+    pub event_transaction_hash: String,
+    pub block_number: i64,
+    pub event_timestamp: i64,
+    pub block_timestamp: Option<DateTime<Utc>>,
+    pub log_index: i64,
+    pub event_signature: String,
+    pub status: String, // pending, confirmed, processed, failed
+    pub confirmation_count: i32,
+    pub required_confirmations: i32,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub processed_at: Option<DateTime<Utc>>,
+}
+
+/// User deposit balance aggregation
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserDepositBalance {
+    pub id: i32,
+    pub user_address: String,
+    pub total_deposited: rust_decimal::Decimal,
+    pub total_deposited_usdc: Option<rust_decimal::Decimal>,
+    pub deposit_count: i32,
+    pub first_deposit_at: Option<DateTime<Utc>>,
+    pub last_deposit_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 // ============================================================================
@@ -818,6 +856,7 @@ pub async fn create_identity(
         email_verification_token: None,
         password_reset_token: None,
         password_reset_expires_at: None,
+        wallet_address: None,
     };
 
     Ok(identity)
@@ -863,6 +902,7 @@ pub async fn create_identity_with_password(
         email_verification_token: None,
         password_reset_token: None,
         password_reset_expires_at: None,
+        wallet_address: None,
     };
 
     Ok(identity)
@@ -878,7 +918,7 @@ pub async fn get_identity_by_id(
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
                created_at as "created_at!", updated_at as "updated_at!", 
                password_hash, last_login_at, email_verified, email_verification_token, 
-               password_reset_token, password_reset_expires_at
+               password_reset_token, password_reset_expires_at, wallet_address
         FROM identities
         WHERE id = $1
         "#,
@@ -902,6 +942,7 @@ pub async fn get_identity_by_id(
         email_verification_token: row.email_verification_token,
         password_reset_token: row.password_reset_token,
         password_reset_expires_at: row.password_reset_expires_at,
+        wallet_address: row.wallet_address,
     });
 
     Ok(identity)
@@ -917,7 +958,7 @@ pub async fn get_identity_by_email(
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
                created_at as "created_at!", updated_at as "updated_at!", 
                password_hash, last_login_at, email_verified, email_verification_token, 
-               password_reset_token, password_reset_expires_at
+               password_reset_token, password_reset_expires_at, wallet_address
         FROM identities
         WHERE email = $1
         "#,
@@ -941,6 +982,7 @@ pub async fn get_identity_by_email(
         email_verification_token: row.email_verification_token,
         password_reset_token: row.password_reset_token,
         password_reset_expires_at: row.password_reset_expires_at,
+        wallet_address: row.wallet_address,
     });
 
     Ok(identity)
@@ -959,7 +1001,7 @@ pub async fn list_identities(
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
                created_at as "created_at!", updated_at as "updated_at!", 
                password_hash, last_login_at, email_verified, email_verification_token, 
-               password_reset_token, password_reset_expires_at
+               password_reset_token, password_reset_expires_at, wallet_address
         FROM identities
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -987,6 +1029,7 @@ pub async fn list_identities(
             email_verification_token: row.email_verification_token,
             password_reset_token: row.password_reset_token,
             password_reset_expires_at: row.password_reset_expires_at,
+            wallet_address: row.wallet_address,
         })
         .collect();
 
@@ -1614,7 +1657,7 @@ pub async fn get_identity_by_reset_token(
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
                created_at as "created_at!", updated_at as "updated_at!", 
                password_hash, last_login_at, email_verified, email_verification_token, 
-               password_reset_token, password_reset_expires_at
+               password_reset_token, password_reset_expires_at, wallet_address
         FROM identities
         WHERE password_reset_token = $1
           AND password_reset_expires_at > $2
@@ -1640,6 +1683,7 @@ pub async fn get_identity_by_reset_token(
         email_verification_token: row.email_verification_token,
         password_reset_token: row.password_reset_token,
         password_reset_expires_at: row.password_reset_expires_at,
+        wallet_address: row.wallet_address,
     });
 
     Ok(identity)
@@ -1733,4 +1777,236 @@ fn generate_secure_invite_code() -> String {
             CHARSET[idx] as char
         })
         .collect()
+}
+
+// ============================================================================
+// USDC DEPOSIT MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Create a new USDC deposit record
+pub async fn create_usdc_deposit(
+    pool: &PgPool,
+    user_address: &str,
+    amount: rust_decimal::Decimal,
+    transaction_hash: &str,
+    event_transaction_hash: &str,
+    block_number: i64,
+    event_timestamp: i64,
+    log_index: i64,
+) -> Result<UsdcDeposit, sqlx::Error> {
+    let deposit = sqlx::query_as!(
+        UsdcDeposit,
+        r#"
+        INSERT INTO usdc_deposits (
+            user_address, amount, transaction_hash, event_transaction_hash,
+            block_number, event_timestamp, log_index, event_signature
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING 
+            id, user_address, amount, deposit_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        "#,
+        user_address,
+        amount,
+        transaction_hash,
+        event_transaction_hash,
+        block_number,
+        event_timestamp,
+        log_index,
+        "0x..." // Default event signature
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(deposit)
+}
+
+/// Update deposit status and confirmation count
+pub async fn update_deposit_status(
+    pool: &PgPool,
+    deposit_id: i32,
+    status: &str,
+    confirmation_count: i32,
+    block_timestamp: Option<DateTime<Utc>>,
+) -> Result<UsdcDeposit, sqlx::Error> {
+    let should_set_processed = status == "processed" || status == "confirmed";
+
+    let deposit = sqlx::query_as!(
+        UsdcDeposit,
+        r#"
+        UPDATE usdc_deposits 
+        SET status = $2, confirmation_count = $3, block_timestamp = $4,
+            processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING 
+            id, user_address, amount, deposit_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        "#,
+        deposit_id,
+        status,
+        confirmation_count,
+        block_timestamp,
+        should_set_processed
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(deposit)
+}
+
+/// Get deposits by user address
+pub async fn get_deposits_by_user_address(
+    pool: &PgPool,
+    user_address: &str,
+) -> Result<Vec<UsdcDeposit>, sqlx::Error> {
+    let deposits = sqlx::query_as!(
+        UsdcDeposit,
+        r#"
+        SELECT 
+            id, user_address, amount, deposit_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        FROM usdc_deposits
+        WHERE user_address = $1
+        ORDER BY created_at DESC
+        "#,
+        user_address
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(deposits)
+}
+
+/// Get deposit by transaction hash
+pub async fn get_deposit_by_tx_hash(
+    pool: &PgPool,
+    tx_hash: &str,
+) -> Result<Option<UsdcDeposit>, sqlx::Error> {
+    let deposit = sqlx::query_as!(
+        UsdcDeposit,
+        r#"
+        SELECT 
+            id, user_address, amount, deposit_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        FROM usdc_deposits
+        WHERE transaction_hash = $1 OR event_transaction_hash = $1
+        "#,
+        tx_hash
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(deposit)
+}
+
+/// Get user deposit balance by wallet address
+pub async fn get_user_deposit_balance(
+    pool: &PgPool,
+    user_address: &str,
+) -> Result<Option<UserDepositBalance>, sqlx::Error> {
+    let balance = sqlx::query_as!(
+        UserDepositBalance,
+        r#"
+        SELECT 
+            id, user_address, total_deposited, total_deposited_usdc,
+            deposit_count, first_deposit_at, last_deposit_at, created_at, updated_at
+        FROM user_deposit_balances
+        WHERE user_address = $1
+        "#,
+        user_address
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(balance)
+}
+
+/// Get user balance from user_balances table by user_id
+pub async fn get_user_balance_by_id(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+) -> Result<Option<rust_decimal::Decimal>, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        SELECT available_balance
+        FROM user_balances
+        WHERE user_id = $1 AND currency = 'USDC'
+        "#,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.map(|row| row.available_balance))
+}
+
+/// Get user balance from user_balances table by wallet address
+pub async fn get_user_balance_by_address(
+    pool: &PgPool,
+    wallet_address: &str,
+) -> Result<Option<rust_decimal::Decimal>, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        SELECT ub.available_balance
+        FROM user_balances ub
+        JOIN identities i ON ub.user_id = i.id
+        WHERE i.wallet_address = $1 AND ub.currency = 'USDC'
+        "#,
+        wallet_address
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.map(|row| row.available_balance))
+}
+
+/// Update user balance after confirmed deposit
+pub async fn update_user_balance_from_deposit(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    deposit_amount: rust_decimal::Decimal,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE user_balances 
+        SET available_balance = available_balance + $2,
+            lifetime_earnings = lifetime_earnings + $2,
+            last_updated_at = NOW()
+        WHERE user_id = $1 AND currency = 'USDC'
+        "#,
+        user_id,
+        deposit_amount
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Get user ID by wallet address
+pub async fn get_user_id_by_wallet_address(
+    pool: &PgPool,
+    wallet_address: &str,
+) -> Result<Option<uuid::Uuid>, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        SELECT id
+        FROM identities
+        WHERE wallet_address = $1
+        "#,
+        wallet_address
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(result.map(|row| row.id))
 }

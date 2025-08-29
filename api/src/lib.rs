@@ -60,11 +60,15 @@ pub use client::{
     CreateBatchRequest,
     CreateBatchResponse,
     CurrentStateResponse,
+    DepositTransactionInfo,
     HealthResponse,
     PendingTransactionsResponse,
     SubmitTransactionRequest,
     SubmitTransactionResponse,
     TransactionInfo,
+    TransactionStatusResponse,
+    UserBalanceResponse,
+    UserTransactionsResponse,
 };
 
 pub use rest::{

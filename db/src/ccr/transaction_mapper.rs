@@ -566,6 +566,7 @@ mod tests {
             email_verification_token: None,
             password_reset_token: None,
             password_reset_expires_at: None,
+            wallet_address: None,
         };
         context.add_user(user);
 

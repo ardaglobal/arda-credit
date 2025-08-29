@@ -21,10 +21,12 @@ use crate::paths;
 use arda_credit_db::{
     check_invite_code, create_identity_with_password, create_loan, generate_invite_code,
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
-    get_identity_by_email, get_identity_by_id, get_loan_by_id, get_pending_transactions,
-    list_loans, store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
-    update_identity_profile, update_kyc_status, update_last_login, update_loan, use_invite_code,
-    AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
+    get_deposit_by_tx_hash, get_deposits_by_user_address, get_identity_by_email,
+    get_identity_by_id, get_loan_by_id, get_pending_transactions, get_user_balance_by_address,
+    get_user_balance_by_id, list_loans, store_ads_state_commit, submit_kyc_data,
+    submit_transaction, update_batch_proof, update_identity_profile, update_kyc_status,
+    update_last_login, update_loan, use_invite_code, AuditEvent, Identity, IndexedMerkleTreeADS,
+    LoanInclusionProof, LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -741,6 +743,49 @@ pub struct PendingTransactionInfo {
 }
 
 // ============================================================================
+// DEPOSIT TRANSACTION TYPES
+// ============================================================================
+
+/// Response for user balance query
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserBalanceResponse {
+    pub user_id: Option<String>,
+    pub wallet_address: String,
+    pub available_balance: String,
+    pub currency: String,
+}
+
+/// Response for user transaction history
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserTransactionsResponse {
+    pub transactions: Vec<DepositTransactionInfo>,
+    pub total_count: usize,
+}
+
+/// Deposit transaction information
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DepositTransactionInfo {
+    pub id: i32,
+    pub user_address: String,
+    pub amount: String,
+    pub deposit_amount_usdc: Option<String>,
+    pub transaction_hash: String,
+    pub status: String, // pending, confirmed, processed, failed
+    pub confirmation_count: i32,
+    pub required_confirmations: i32,
+    pub block_number: i64,
+    pub created_at: Option<DateTime<Utc>>,
+    pub processed_at: Option<DateTime<Utc>>,
+}
+
+/// Response for transaction by hash query
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct TransactionStatusResponse {
+    pub found: bool,
+    pub transaction: Option<DepositTransactionInfo>,
+}
+
+// ============================================================================
 // ROUTER SETUP
 // ============================================================================
 
@@ -795,6 +840,23 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::USER_BY_ID, delete(delete_user_endpoint))
         .route(paths::USER_KYC, post(submit_kyc_endpoint))
         .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
+        // User Balance & Transaction endpoints
+        .route(
+            paths::USER_BALANCE_BY_ADDRESS,
+            get(get_user_balance_by_address_endpoint),
+        )
+        .route(
+            paths::USER_BALANCE_BY_ID,
+            get(get_user_balance_by_id_endpoint),
+        )
+        .route(
+            paths::USER_TRANSACTIONS_BY_ID,
+            get(get_user_transactions_endpoint),
+        )
+        .route(
+            paths::TRANSACTION_BY_HASH,
+            get(get_transaction_by_hash_endpoint),
+        )
         // Loan Management
         .route(paths::LOAN, post(create_loan_endpoint))
         .route(paths::LOANS, get(list_loans_endpoint))
@@ -2412,6 +2474,278 @@ async fn delete_user_endpoint(
 
     info!("✅ API: User deleted successfully");
     Ok(Json(response))
+}
+
+// ---- DEPOSIT & BALANCE ENDPOINTS ----
+
+/// Get user balance by wallet address
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{address}/balance",
+    responses(
+        (status = 200, description = "User balance retrieved successfully", body = UserBalanceResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("address" = String, Path, description = "User's wallet address")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_balance_by_address_endpoint(
+    Path(address): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user balance by address: {}", address);
+
+    match get_user_balance_by_address(&state.pool, &address).await {
+        Ok(Some(balance)) => {
+            let response = UserBalanceResponse {
+                user_id: None, // We don't have user_id when querying by address directly
+                wallet_address: address,
+                available_balance: balance.to_string(),
+                currency: "USDC".to_string(),
+            };
+            info!("✅ API: User balance retrieved successfully");
+            Ok(Json(response))
+        }
+        Ok(None) => {
+            warn!("⚠️ API: User not found for address: {}", address);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user balance: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user balance".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get user balance by user ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{user_id}/balance",
+    responses(
+        (status = 200, description = "User balance retrieved successfully", body = UserBalanceResponse),
+        (status =404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID (UUID)")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_balance_by_id_endpoint(
+    Path(user_id): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user balance by ID: {}", user_id);
+
+    let user_uuid = match parse_user_id(&user_id) {
+        Ok(id) => id,
+        Err(err) => {
+            warn!("⚠️ API: Invalid user ID format: {}", err);
+            return Err((StatusCode::BAD_REQUEST, err));
+        }
+    };
+
+    // First get user details to get wallet address
+    match get_identity_by_id(&state.pool, user_uuid).await {
+        Ok(Some(identity)) => match get_user_balance_by_id(&state.pool, user_uuid).await {
+            Ok(Some(balance)) => {
+                let response = UserBalanceResponse {
+                    user_id: Some(user_id),
+                    wallet_address: identity
+                        .wallet_address
+                        .unwrap_or_else(|| "Not set".to_string()),
+                    available_balance: balance.to_string(),
+                    currency: "USDC".to_string(),
+                };
+                info!("✅ API: User balance retrieved successfully");
+                Ok(Json(response))
+            }
+            Ok(None) => {
+                warn!("⚠️ API: Balance not found for user ID: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "Balance not found".to_string()))
+            }
+            Err(e) => {
+                error!("❌ API: Failed to get user balance: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to retrieve user balance".to_string(),
+                ))
+            }
+        },
+        Ok(None) => {
+            warn!("⚠️ API: User not found: {}", user_id);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user identity: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get user transactions by user ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{user_id}/transactions",
+    responses(
+        (status = 200, description = "User transactions retrieved successfully", body = UserTransactionsResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID (UUID)")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_transactions_endpoint(
+    Path(user_id): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserTransactionsResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user transactions by ID: {}", user_id);
+
+    let user_uuid = match parse_user_id(&user_id) {
+        Ok(id) => id,
+        Err(err) => {
+            warn!("⚠️ API: Invalid user ID format: {}", err);
+            return Err((StatusCode::BAD_REQUEST, err));
+        }
+    };
+
+    // First get user details to get wallet address
+    match get_identity_by_id(&state.pool, user_uuid).await {
+        Ok(Some(identity)) => {
+            if let Some(wallet_address) = &identity.wallet_address {
+                match get_deposits_by_user_address(&state.pool, wallet_address).await {
+                    Ok(deposits) => {
+                        let transaction_infos: Vec<DepositTransactionInfo> = deposits
+                            .into_iter()
+                            .map(|deposit| DepositTransactionInfo {
+                                id: deposit.id,
+                                user_address: deposit.user_address,
+                                amount: deposit.amount.to_string(),
+                                deposit_amount_usdc: deposit
+                                    .deposit_amount_usdc
+                                    .map(|d| d.to_string()),
+                                transaction_hash: deposit.transaction_hash,
+                                status: deposit.status,
+                                confirmation_count: deposit.confirmation_count,
+                                required_confirmations: deposit.required_confirmations,
+                                block_number: deposit.block_number,
+                                created_at: deposit.created_at,
+                                processed_at: deposit.processed_at,
+                            })
+                            .collect();
+
+                        let response = UserTransactionsResponse {
+                            total_count: transaction_infos.len(),
+                            transactions: transaction_infos,
+                        };
+
+                        info!("✅ API: User transactions retrieved successfully");
+                        Ok(Json(response))
+                    }
+                    Err(e) => {
+                        error!("❌ API: Failed to get user transactions: {}", e);
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to retrieve user transactions".to_string(),
+                        ))
+                    }
+                }
+            } else {
+                warn!("⚠️ API: User has no wallet address set: {}", user_id);
+                Err((
+                    StatusCode::BAD_REQUEST,
+                    "User has no wallet address set".to_string(),
+                ))
+            }
+        }
+        Ok(None) => {
+            warn!("⚠️ API: User not found: {}", user_id);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user identity: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get transaction by hash
+#[utoipa::path(
+    get,
+    path = "/api/v1/transactions/{tx_hash}",
+    responses(
+        (status = 200, description = "Transaction retrieved successfully", body = TransactionStatusResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("tx_hash" = String, Path, description = "Transaction hash")
+    ),
+    tag = "Transactions"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_transaction_by_hash_endpoint(
+    Path(tx_hash): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<TransactionStatusResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting transaction by hash: {}", tx_hash);
+
+    match get_deposit_by_tx_hash(&state.pool, &tx_hash).await {
+        Ok(Some(deposit)) => {
+            let transaction_info = DepositTransactionInfo {
+                id: deposit.id,
+                user_address: deposit.user_address,
+                amount: deposit.amount.to_string(),
+                deposit_amount_usdc: deposit.deposit_amount_usdc.map(|d| d.to_string()),
+                transaction_hash: deposit.transaction_hash,
+                status: deposit.status,
+                confirmation_count: deposit.confirmation_count,
+                required_confirmations: deposit.required_confirmations,
+                block_number: deposit.block_number,
+                created_at: deposit.created_at,
+                processed_at: deposit.processed_at,
+            };
+
+            let response = TransactionStatusResponse {
+                found: true,
+                transaction: Some(transaction_info),
+            };
+
+            info!("✅ API: Transaction retrieved successfully");
+            Ok(Json(response))
+        }
+        Ok(None) => {
+            info!("ℹ️ API: Transaction not found: {}", tx_hash);
+            let response = TransactionStatusResponse {
+                found: false,
+                transaction: None,
+            };
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get transaction: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve transaction".to_string(),
+            ))
+        }
+    }
 }
 
 // ---- LOAN MANAGEMENT ENDPOINTS ----

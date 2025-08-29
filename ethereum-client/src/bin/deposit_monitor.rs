@@ -146,13 +146,13 @@ async fn create_database_pool(database_url: &str) -> Result<PgPool> {
 
     let pool = PgPool::connect(database_url)
         .await
-        .map_err(|e| EthereumError::Database(format!("Failed to connect to database: {}", e)))?;
+        .map_err(|e| EthereumError::Database(format!("Failed to connect to database: {e}")))?;
 
     // Test the connection
     sqlx::query("SELECT 1")
         .fetch_one(&pool)
         .await
-        .map_err(|e| EthereumError::Database(format!("Database health check failed: {}", e)))?;
+        .map_err(|e| EthereumError::Database(format!("Database health check failed: {e}")))?;
 
     info!("Database connection established");
     Ok(pool)
@@ -171,14 +171,14 @@ async fn create_ethereum_client(
             chain_id: 1,
             rpc_url: rpc_url
                 .parse()
-                .map_err(|e| EthereumError::Config(format!("Invalid RPC URL: {}", e)))?,
+                .map_err(|e| EthereumError::Config(format!("Invalid RPC URL: {e}")))?,
             ws_url: None,
             explorer_url: None,
             is_testnet: false,
         },
         contract: ethereum_client::config::ContractConfig {
             arda_credit_contract: contract_address.parse().map_err(|e| {
-                EthereumError::InvalidAddress(format!("Invalid contract address: {}", e))
+                EthereumError::InvalidAddress(format!("Invalid contract address: {e}"))
             })?,
             verifier_contract: "0x0000000000000000000000000000000000000000"
                 .parse()

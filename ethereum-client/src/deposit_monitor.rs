@@ -4,6 +4,9 @@ use crate::{
     event_manager::{EventHandler, EventManager},
 };
 use alloy_primitives::{Address, FixedBytes, U256};
+use arda_credit_db::{
+    get_user_id_by_wallet_address, update_deposit_status, update_user_balance_from_deposit,
+};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -20,13 +23,13 @@ pub enum DepositStatus {
     Failed,
 }
 
-impl ToString for DepositStatus {
-    fn to_string(&self) -> String {
+impl std::fmt::Display for DepositStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            DepositStatus::Pending => "pending".to_string(),
-            DepositStatus::Confirmed => "confirmed".to_string(),
-            DepositStatus::Processed => "processed".to_string(),
-            DepositStatus::Failed => "failed".to_string(),
+            DepositStatus::Pending => write!(f, "pending"),
+            DepositStatus::Confirmed => write!(f, "confirmed"),
+            DepositStatus::Processed => write!(f, "processed"),
+            DepositStatus::Failed => write!(f, "failed"),
         }
     }
 }
@@ -324,33 +327,42 @@ impl DepositMonitor {
             .await
             .map_err(|e| EthereumError::Database(e.to_string()))?;
 
-            // If sufficient confirmations, mark as confirmed
+            // If sufficient confirmations, mark as confirmed and update user balance
             if confirmations >= required_confirmations {
-                sqlx::query(
-                    "UPDATE usdc_deposits SET status = 'confirmed', processed_at = NOW(), updated_at = NOW() WHERE id = $1"
-                )
-                .bind(deposit.id)
-                .execute(db_pool)
-                .await
-                .map_err(|e| EthereumError::Database(e.to_string()))?;
+                // Use our integrated balance update service
+                match Self::process_confirmed_deposit(db_pool, &deposit).await {
+                    Ok(_) => {
+                        // Log the confirmation
+                        Self::log_deposit_processing(
+                            db_pool,
+                            deposit.id,
+                            "confirmation_check",
+                            "success",
+                            Some(&format!(
+                                "Deposit confirmed and balance updated with {confirmations} confirmations"
+                            )),
+                        )
+                        .await?;
 
-                // Log the confirmation
-                Self::log_deposit_processing(
-                    db_pool,
-                    deposit.id,
-                    "confirmation_check",
-                    "success",
-                    Some(&format!(
-                        "Deposit confirmed with {} confirmations",
-                        confirmations
-                    )),
-                )
-                .await?;
+                        info!(
+                            "Deposit {} confirmed and processed: user={}, amount={}, confirmations={}",
+                            deposit.id, deposit.user_address, deposit.amount, confirmations
+                        );
+                    }
+                    Err(e) => {
+                        error!("Failed to process confirmed deposit {}: {}", deposit.id, e);
 
-                info!(
-                    "Deposit {} confirmed: user={}, amount={}, confirmations={}",
-                    deposit.id, deposit.user_address, deposit.amount, confirmations
-                );
+                        // Log the error
+                        Self::log_deposit_processing(
+                            db_pool,
+                            deposit.id,
+                            "balance_update",
+                            "error",
+                            Some(&format!("Failed to update balance: {e}")),
+                        )
+                        .await?;
+                    }
+                }
             }
         }
 
@@ -419,11 +431,107 @@ impl DepositMonitor {
         Ok(())
     }
 
+    /// Process confirmed deposit: update status and user balance atomically
+    async fn process_confirmed_deposit(db_pool: &PgPool, deposit: &DepositRecord) -> Result<()> {
+        // 1. Update deposit status to confirmed
+        let _updated_deposit = update_deposit_status(
+            db_pool,
+            deposit.id,
+            "confirmed",
+            deposit.confirmation_count,
+            Some(chrono::Utc::now()),
+        )
+        .await
+        .map_err(|e| EthereumError::Database(e.to_string()))?;
+
+        // 2. Find user ID by wallet address
+        if let Some(user_id) = get_user_id_by_wallet_address(db_pool, &deposit.user_address)
+            .await
+            .map_err(|e| EthereumError::Database(e.to_string()))?
+        {
+            // 3. Update user balance (convert wei to USDC: divide by 1,000,000)
+            let deposit_amount_decimal = deposit
+                .amount
+                .parse::<rust_decimal::Decimal>()
+                .map_err(|e| EthereumError::Database(format!("Invalid deposit amount: {e}")))?;
+            let deposit_amount_usdc =
+                deposit_amount_decimal / rust_decimal::Decimal::new(1_000_000, 0);
+
+            update_user_balance_from_deposit(db_pool, user_id, deposit_amount_usdc)
+                .await
+                .map_err(|e| EthereumError::Database(e.to_string()))?;
+
+            info!(
+                "Updated user balance: user_id={}, wallet={}, amount_usdc={}",
+                user_id, deposit.user_address, deposit_amount_usdc
+            );
+        } else {
+            warn!(
+                "No user found for wallet address: {}. Deposit confirmed but balance not updated.",
+                deposit.user_address
+            );
+
+            // Still update the status even if we can't update the balance
+            // The database trigger will handle the user_deposit_balances table
+        }
+
+        Ok(())
+    }
+
     /// Reprocess a failed deposit
-    async fn reprocess_deposit(_db_pool: &PgPool, deposit_id: i32) -> Result<()> {
-        // Implement reprocessing logic here
-        // This could involve re-validating the transaction, checking balances, etc.
-        debug!("Reprocessing deposit {}", deposit_id);
+    async fn reprocess_deposit(db_pool: &PgPool, deposit_id: i32) -> Result<()> {
+        // Get deposit record
+        let row = sqlx::query(
+            r#"
+            SELECT
+                id,
+                user_address,
+                amount::TEXT as amount,
+                transaction_hash,
+                event_transaction_hash,
+                block_number,
+                event_timestamp,
+                log_index,
+                status,
+                confirmation_count,
+                required_confirmations
+            FROM usdc_deposits
+            WHERE id = $1
+            "#,
+        )
+        .bind(deposit_id)
+        .fetch_optional(db_pool)
+        .await
+        .map_err(|e| EthereumError::Database(e.to_string()))?;
+
+        if let Some(row) = row {
+            let deposit = DepositRecord {
+                id: row.get("id"),
+                user_address: row.get("user_address"),
+                amount: row.get("amount"),
+                transaction_hash: row.get("transaction_hash"),
+                event_transaction_hash: row.get("event_transaction_hash"),
+                block_number: row.get("block_number"),
+                event_timestamp: row.get("event_timestamp"),
+                log_index: row.get("log_index"),
+                status: match row.get::<String, _>("status").as_str() {
+                    "pending" => DepositStatus::Pending,
+                    "confirmed" => DepositStatus::Confirmed,
+                    "processed" => DepositStatus::Processed,
+                    "failed" => DepositStatus::Failed,
+                    _ => DepositStatus::Pending,
+                },
+                confirmation_count: row.get("confirmation_count"),
+                required_confirmations: row.get("required_confirmations"),
+            };
+
+            // Reprocess the deposit if it's confirmed but not processed
+            if deposit.status == DepositStatus::Confirmed {
+                Self::process_confirmed_deposit(db_pool, &deposit).await?;
+            }
+        }
+
+        debug!("Reprocessed deposit {}", deposit_id);
         Ok(())
     }
 
@@ -569,6 +677,7 @@ impl DepositEventHandler {
     }
 
     /// Store deposit event in database
+    #[allow(clippy::too_many_arguments)]
     async fn store_deposit_event(
         &self,
         user: Address,
@@ -579,7 +688,7 @@ impl DepositEventHandler {
         tx_hash: FixedBytes<32>,
         log_index: u64,
     ) -> Result<i32> {
-        let user_address = format!("{:?}", user);
+        let user_address = format!("{user:?}");
         let amount_str = amount.to_string();
         let tx_hash_str = format!("0x{}", hex::encode(transaction_hash.as_slice()));
         let event_tx_hash_str = format!("0x{}", hex::encode(tx_hash.as_slice()));
