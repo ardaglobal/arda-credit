@@ -338,7 +338,7 @@ initDB:
 	@echo ""
 	@# Stop PostgreSQL database
 	@echo "🛑 Stopping PostgreSQL database..."
-	@docker-compose down postgres
+	@docker-compose down postgres -v
 	@echo ""
 	@echo "✅ Database initialization complete!"
 	@echo ""

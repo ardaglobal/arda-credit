@@ -76,8 +76,8 @@ pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
 /// Generate new invite code
 pub const INVITE_CODE_GENERATE: &str = api_path!("/invite-code");
 
-/// Check and use invite code
-pub const INVITE_CODE_CHECK: &str = api_path!("/invite-code/{code}");
+/// Validate invite code (doesn't mark as used)
+pub const INVITE_CODE_VALIDATE: &str = api_path!("/invite-code/{code}/validate");
 
 // ============================================================================
 // LOAN MANAGEMENT PATHS
@@ -208,9 +208,9 @@ pub fn user_kyc_status_path(user_id: &str) -> String {
 }
 
 // Invite Code Management Helper Functions
-/// Build invite code check path with code parameter
-pub fn invite_code_check_path(code: &str) -> String {
-    replace_param(INVITE_CODE_CHECK, "code", code)
+/// Build invite code validate path with code parameter
+pub fn invite_code_validate_path(code: &str) -> String {
+    replace_param(INVITE_CODE_VALIDATE, "code", code)
 }
 
 // Loan Management Helper Functions
@@ -351,8 +351,8 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
         },
         crate::rest::EndpointInfo {
             method: "POST".to_string(),
-            path: INVITE_CODE_CHECK.to_string(),
-            description: "Check and use invite code".to_string(),
+            path: INVITE_CODE_VALIDATE.to_string(),
+            description: "Validate invite code (doesn't mark as used)".to_string(),
         },
         // Loan Management
         crate::rest::EndpointInfo {

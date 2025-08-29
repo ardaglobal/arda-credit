@@ -319,6 +319,8 @@ pub struct RegisterUserRequest {
     #[schema(example = "SecureP@ssw0rd123")]
     pub password: String,
     pub jurisdiction: Option<String>, // Optional, defaults to "US"
+    #[schema(example = "ABC123DEF456")]
+    pub invite_code: Option<String>, // Optional invite code for registration
 }
 
 /// Request to login with email and password
@@ -370,20 +372,14 @@ pub struct InviteCodeResponse {
     pub message: String,
 }
 
-/// Request to check and use an invite code
+/// Response from validating an invite code (doesn't mark as used)
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct CheckInviteCodeRequest {
-    pub user_id: Option<String>, // Optional user ID to associate with code usage
-}
-
-/// Response from using an invite code
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UseInviteCodeResponse {
+pub struct ValidateInviteCodeResponse {
     pub code: String,
     pub is_valid: bool,
-    pub was_used: bool,
     pub is_admin_code: bool, // New field to indicate if this is an admin invite
     pub user_type: Option<String>, // The user type this invite is for ('admin' or 'regular')
+    pub expires_at: Option<DateTime<Utc>>,
     pub message: String,
 }
 
@@ -811,8 +807,8 @@ pub fn create_router(state: ApiState) -> Router {
             post(generate_invite_code_endpoint),
         )
         .route(
-            paths::INVITE_CODE_CHECK,
-            post(check_and_use_invite_code_endpoint),
+            paths::INVITE_CODE_VALIDATE,
+            post(validate_invite_code_endpoint),
         )
         // Transaction operations
         .route(paths::STATE_TRANSACTIONS, post(submit_transaction_endpoint))
@@ -1673,9 +1669,69 @@ async fn register_user_endpoint(
     Json(request): Json<RegisterUserRequest>,
 ) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
     info!(
-        "👤 API: Registering new user: type={}, email={}",
-        request.user_type, request.email
+        "👤 API: Registering new user: type={}, email={}, invite_code={:?}",
+        request.user_type, request.email, request.invite_code
     );
+
+    // If invite code is provided, validate it first
+    if let Some(ref invite_code) = request.invite_code {
+        info!(
+            "🎫 API: Validating invite code during registration: {}",
+            invite_code
+        );
+
+        match get_invite_code_info(&state.pool, invite_code).await {
+            Ok(invite_info) => {
+                if !invite_info.is_valid {
+                    warn!(
+                        "❌ API: Invalid invite code provided during registration: {}",
+                        invite_code
+                    );
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "Invalid or expired invite code".to_string(),
+                    ));
+                }
+
+                // Check invite code restrictions: only admin codes require admin users
+                if let Some(ref code_user_type) = invite_info.user_type {
+                    let requested_type = request.user_type.to_string();
+
+                    // Only restrict admin codes to admin users
+                    if code_user_type == "admin" && requested_type != "admin" {
+                        warn!(
+                            "❌ API: Admin invite code used for non-admin registration: code={}, requested={}",
+                            code_user_type, requested_type
+                        );
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            "This is an admin invite code and can only be used for admin user registration".to_string(),
+                        ));
+                    }
+
+                    info!(
+                        "✅ API: Invite code type check passed: code_type={}, user_type={}",
+                        code_user_type, requested_type
+                    );
+                }
+
+                info!(
+                    "✅ API: Invite code validated successfully: {}",
+                    invite_code
+                );
+            }
+            Err(e) => {
+                error!(
+                    "❌ API: Failed to validate invite code during registration: {}",
+                    e
+                );
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to validate invite code".to_string(),
+                ));
+            }
+        }
+    }
 
     // Validate email and password using AuthService
     if let Err(e) = state.auth_service.validate_email(&request.email) {
@@ -1711,6 +1767,28 @@ async fn register_user_endpoint(
     {
         Ok(identity) => {
             info!("✅ API: User registered successfully: id={}", identity.id);
+
+            // If invite code was provided, mark it as used now that user is created
+            if let Some(ref invite_code) = request.invite_code {
+                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
+                    Ok(was_used) => {
+                        if was_used {
+                            info!(
+                                "✅ API: Invite code marked as used: code={}, user_id={}",
+                                invite_code, identity.id
+                            );
+                        } else {
+                            warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
+                        }
+                    }
+                    Err(e) => {
+                        error!("❌ API: Failed to mark invite code as used: {}", e);
+                        // Note: We don't fail the registration here since the user was already created
+                        // This is logged for monitoring but shouldn't block the successful registration
+                    }
+                }
+            }
+
             Ok(Json(identity_to_register_response(identity)))
         }
         Err(e) => {
@@ -1873,28 +1951,26 @@ async fn logout_endpoint(
     }))
 }
 
-/// Check and use invite code
+/// Validate invite code (doesn't mark as used)
 #[utoipa::path(
     post,
-    path = "/api/v1/invite-code/{code}",
-    request_body = CheckInviteCodeRequest,
+    path = "/api/v1/invite-code/{code}/validate",
     responses(
-        (status = 200, description = "Invite code validation and usage result", body = UseInviteCodeResponse),
+        (status = 200, description = "Invite code validation result", body = ValidateInviteCodeResponse),
         (status = 400, description = "Invalid request parameters"),
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("code" = String, Path, description = "Invite code to check and use")
+        ("code" = String, Path, description = "Invite code to validate")
     ),
     tag = "Authentication"
 )]
 #[instrument(skip(state), level = "info")]
-async fn check_and_use_invite_code_endpoint(
+async fn validate_invite_code_endpoint(
     State(state): State<ApiState>,
     Path(code): Path<String>,
-    Json(request): Json<CheckInviteCodeRequest>,
-) -> Result<Json<UseInviteCodeResponse>, (StatusCode, String)> {
-    info!("🎫 API: Checking and using invite code: code={}", code);
+) -> Result<Json<ValidateInviteCodeResponse>, (StatusCode, String)> {
+    info!("🎫 API: Validating invite code: code={}", code);
 
     // Validate input
     if code.trim().is_empty() {
@@ -1905,84 +1981,39 @@ async fn check_and_use_invite_code_endpoint(
         ));
     }
 
-    // Convert user_id string to UUID if provided
-    let user_id = if let Some(user_id_str) = &request.user_id {
-        match uuid::Uuid::parse_str(user_id_str) {
-            Ok(uuid) => Some(uuid),
-            Err(_) => {
-                warn!("❌ API: Invalid user ID format: {}", user_id_str);
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "Invalid user ID format".to_string(),
-                ));
-            }
-        }
-    } else {
-        None
-    };
-
     // Get detailed invite code information
     match get_invite_code_info(&state.pool, &code).await {
         Ok(invite_info) => {
-            if invite_info.is_valid {
-                // If code is valid, mark it as used
-                match use_invite_code(&state.pool, &code, user_id).await {
-                    Ok(was_used) => {
-                        let is_admin_code = invite_info
-                            .user_type
-                            .as_ref()
-                            .map_or(false, |t| t == "admin");
-                        let message = if was_used {
-                            format!(
-                                "Invite code is valid and has been marked as used ({})",
-                                invite_info.user_type.as_deref().unwrap_or("regular")
-                            )
-                        } else {
-                            format!(
-                                "Invite code is valid but could not be marked as used (may already be exhausted) ({})",
-                                invite_info.user_type.as_deref().unwrap_or("regular")
-                            )
-                        };
+            let is_admin_code = invite_info
+                .user_type
+                .as_ref()
+                .map_or(false, |t| t == "admin");
 
-                        info!(
-                            "✅ API: Invite code processed: code={}, valid={}, used={}, user_type={:?}",
-                            code, invite_info.is_valid, was_used, invite_info.user_type
-                        );
-
-                        Ok(Json(UseInviteCodeResponse {
-                            code,
-                            is_valid: invite_info.is_valid,
-                            was_used,
-                            is_admin_code,
-                            user_type: invite_info.user_type,
-                            message,
-                        }))
-                    }
-                    Err(e) => {
-                        error!("❌ API: Failed to mark invite code as used: {}", e);
-                        Err((
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "Failed to mark invite code as used".to_string(),
-                        ))
-                    }
-                }
+            let message = if invite_info.is_valid {
+                format!(
+                    "Invite code is valid for {} user registration",
+                    invite_info.user_type.as_deref().unwrap_or("regular")
+                )
             } else {
-                // Code is not valid, don't try to use it
-                let message = "Invite code is invalid or expired";
-                info!("❌ API: Invalid invite code: code={}", code);
+                "Invite code is invalid or expired".to_string()
+            };
 
-                Ok(Json(UseInviteCodeResponse {
-                    code,
-                    is_valid: false,
-                    was_used: false,
-                    is_admin_code: false,
-                    user_type: invite_info.user_type, // Still return the user_type even if invalid
-                    message: message.to_string(),
-                }))
-            }
+            info!(
+                "✅ API: Invite code validated: code={}, valid={}, user_type={:?}",
+                code, invite_info.is_valid, invite_info.user_type
+            );
+
+            Ok(Json(ValidateInviteCodeResponse {
+                code,
+                is_valid: invite_info.is_valid,
+                is_admin_code,
+                user_type: invite_info.user_type,
+                expires_at: invite_info.expires_at,
+                message,
+            }))
         }
         Err(e) => {
-            error!("❌ API: Failed to check invite code: {}", e);
+            error!("❌ API: Failed to validate invite code: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to validate invite code".to_string(),
@@ -3789,7 +3820,7 @@ async fn get_loan_lifecycle_summary_endpoint(
         // Authentication endpoints
         login_endpoint,
         logout_endpoint,
-        check_and_use_invite_code_endpoint,
+        validate_invite_code_endpoint,
         generate_invite_code_endpoint,
 
         // User Management endpoints
@@ -3843,8 +3874,7 @@ async fn get_loan_lifecycle_summary_endpoint(
             LogoutRequest,
             LogoutResponse,
             InviteCodeResponse,
-            CheckInviteCodeRequest,
-            UseInviteCodeResponse,
+            ValidateInviteCodeResponse,
             GenerateInviteCodeRequest,
             GenerateInviteCodeResponse,
 

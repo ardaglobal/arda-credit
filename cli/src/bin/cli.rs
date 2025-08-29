@@ -820,14 +820,16 @@ async fn main() -> Result<()> {
             .await?;
         }
         Commands::CheckInviteCode { code, verbose } => {
-            check_invite_code(&client, &code, verbose).await?;
+            validate_invite_code(&client, &code, verbose).await?;
         }
         Commands::UseInviteCode {
             code,
             user_id,
             verbose,
         } => {
-            use_invite_code(&client, &code, user_id.as_deref(), verbose).await?;
+            println!("❌ The use-invite-code command has been removed.");
+            println!("💡 Invite codes are now automatically used during user registration.");
+            println!("   Use 'register-user' command with the invite_code field instead.");
         }
 
         // Deposit & Balance Commands
@@ -3445,13 +3447,13 @@ async fn generate_invite_code(
     Ok(())
 }
 
-/// Check if an invite code is valid
-async fn check_invite_code(client: &BatchApiClient, code: &str, verbose: bool) -> Result<()> {
+/// Validate if an invite code is valid (doesn't mark as used)
+async fn validate_invite_code(client: &BatchApiClient, code: &str, verbose: bool) -> Result<()> {
     if verbose {
-        println!("🔍 Checking invite code: {}", code);
+        println!("🔍 Validating invite code: {}", code);
     }
 
-    match client.check_invite_code(code).await {
+    match client.validate_invite_code(code).await {
         Ok(result) => {
             let is_valid = result["is_valid"].as_bool().unwrap_or(false);
 
@@ -3490,55 +3492,20 @@ async fn check_invite_code(client: &BatchApiClient, code: &str, verbose: bool) -
     Ok(())
 }
 
-/// Use an invite code (for testing purposes)
+/// This function is no longer used - invite codes are now handled during user registration
+#[allow(dead_code)]
 async fn use_invite_code(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     code: &str,
-    user_id: Option<&str>,
-    verbose: bool,
+    _user_id: Option<&str>,
+    _verbose: bool,
 ) -> Result<()> {
-    if verbose {
-        println!("🎯 Using invite code: {}", code);
-        if let Some(uid) = user_id {
-            println!("   User ID: {}", uid);
-        }
-    }
-
-    match client.use_invite_code(code, user_id).await {
-        Ok(result) => {
-            let was_used = result["was_used"].as_bool().unwrap_or(false);
-            let is_valid = result["is_valid"].as_bool().unwrap_or(false);
-
-            if is_valid && was_used {
-                println!("✅ Invite code used successfully: {}", code);
-            } else if is_valid && !was_used {
-                println!(
-                    "⚠️  Invite code is valid but couldn't be used (may be exhausted): {}",
-                    code
-                );
-            } else {
-                println!("❌ Invite code could not be used: {}", code);
-            }
-
-            if let Some(message) = result["message"].as_str() {
-                println!("   {}", message);
-            }
-
-            if verbose {
-                println!("   Valid: {}", is_valid);
-                println!("   Used: {}", was_used);
-            }
-        }
-        Err(e) => {
-            let error_msg = e.to_string();
-            if error_msg.contains("404") {
-                println!("❌ Invite code not found: {}", code);
-            } else {
-                return Err(eyre::eyre!("Failed to use invite code: {}", e));
-            }
-        }
-    }
-
+    println!("❌ Direct invite code usage is no longer supported.");
+    println!(
+        "💡 Invite code '{}' should be used during user registration.",
+        code
+    );
+    println!("   The registration endpoint will automatically validate and mark the code as used.");
     Ok(())
 }
 
