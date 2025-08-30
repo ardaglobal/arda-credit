@@ -1,0 +1,26 @@
+# Kind cluster configuration for testing Arda Credit Helm chart
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: arda-credit-test
+nodes:
+  # Control plane node
+  - role: control-plane
+    kubeadmConfigPatches:
+    - |
+      kind: InitConfiguration
+      nodeRegistration:
+        kubeletExtraArgs:
+          node-labels: "ingress-ready=true"
+    extraPortMappings:
+    # HTTP ingress
+    - containerPort: 80
+      hostPort: 8080
+      protocol: TCP
+    # HTTPS ingress  
+    - containerPort: 443
+      hostPort: 8443
+      protocol: TCP
+  # Worker nodes for testing anti-affinity (pod distribution)
+  - role: worker
+  - role: worker
+  - role: worker

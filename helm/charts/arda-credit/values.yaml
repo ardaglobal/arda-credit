@@ -2,7 +2,6 @@
 # This is a YAML-formatted file.
 
 global:
-  imageRegistry: "ghcr.io/ardaglobal"
   imagePullSecrets:
     - name: ghcr-secret
 
@@ -14,6 +13,15 @@ namespaceCreate: true
 postgresql:
   # Enable bundled PostgreSQL
   enabled: true
+  
+  # Override global registry for PostgreSQL to use public Bitnami registry
+  global:
+    imageRegistry: ""
+    imagePullSecrets: []
+  
+  image:
+    registry: docker.io
+    repository: bitnami/postgresql
   
   # Configuration for bundled PostgreSQL
   auth:
@@ -34,6 +42,7 @@ postgresql:
         cpu: 250m
         memory: 256Mi
   
+
   # External PostgreSQL configuration (when enabled: false)
   external:
     host: "external-postgresql"
@@ -48,11 +57,12 @@ server:
   enabled: true
   
   image:
+    registry: ghcr.io/ardaglobal
     repository: arda-credit
     tag: "latest"
     pullPolicy: IfNotPresent
   
-  replicaCount: 2
+  replicaCount: 1
   
   # Configuration for ConfigMap (non-sensitive)
   config:
@@ -126,11 +136,12 @@ app:
   enabled: true
   
   image:
+    registry: ghcr.io/ardaglobal
     repository: arda-credit-app
     tag: "latest"
     pullPolicy: IfNotPresent
   
-  replicaCount: 2
+  replicaCount: 1
   
   service:
     type: ClusterIP
@@ -230,6 +241,11 @@ securityContext:
   readOnlyRootFilesystem: false
   runAsNonRoot: true
   runAsUser: 1001
+
+# App-specific security contexts (permissive for nginx)
+appPodSecurityContext: {}
+
+appSecurityContext: {}
 
 # Service Account and RBAC
 serviceAccount:
