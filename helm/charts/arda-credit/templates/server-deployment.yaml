@@ -93,7 +93,8 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
-      {{- with .Values.nodeSelector }}
+      {{- $nodeSelector := coalesce .Values.server.nodeSelector .Values.global.nodeSelector }}
+      {{- with $nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -118,10 +119,12 @@ spec:
                 topologyKey: {{ .Values.server.podAntiAffinity.topologyKey }}
           {{- end }}
         {{- end }}
-        {{- with .Values.affinity }}
+        {{- $affinity := coalesce .Values.server.affinity .Values.global.affinity }}
+        {{- with $affinity }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.tolerations }}
+      {{- $tolerations := coalesce .Values.server.tolerations .Values.global.tolerations }}
+      {{- with $tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}

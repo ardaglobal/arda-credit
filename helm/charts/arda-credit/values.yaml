@@ -4,6 +4,10 @@
 global:
   imagePullSecrets:
     - name: ghcr-secret
+  # Global node selectors applied to all components by default
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # Namespace creation
 namespaceCreate: true
@@ -41,7 +45,11 @@ postgresql:
       requests:
         cpu: 250m
         memory: 256Mi
-  
+    
+    # Node placement configuration for PostgreSQL primary
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
 
   # External PostgreSQL configuration (when enabled: false)
   external:
@@ -130,6 +138,11 @@ server:
     type: "soft"  # "soft" or "hard"
     topologyKey: "kubernetes.io/hostname"
     weight: 100
+  
+  # Node placement configuration
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # Frontend App configuration
 app:
@@ -189,6 +202,11 @@ app:
     type: "soft"  # "soft" or "hard"
     topologyKey: "kubernetes.io/hostname"
     weight: 100
+  
+  # Node placement configuration
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 # Ingress configuration
 ingress:
@@ -258,7 +276,5 @@ rbac:
   # Specifies whether RBAC resources should be created
   create: true
 
-# Node affinity and tolerations
-nodeSelector: {}
-tolerations: []
-affinity: {}
+# Component-specific node selectors are defined within each component section above
+

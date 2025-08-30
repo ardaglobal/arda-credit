@@ -41,7 +41,8 @@ spec:
                 name: {{ include "arda-credit.fullname" . }}-config
           resources:
             {{- toYaml .Values.app.resources | nindent 12 }}
-      {{- with .Values.nodeSelector }}
+      {{- $nodeSelector := coalesce .Values.app.nodeSelector .Values.global.nodeSelector }}
+      {{- with $nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
@@ -66,10 +67,12 @@ spec:
                 topologyKey: {{ .Values.app.podAntiAffinity.topologyKey }}
           {{- end }}
         {{- end }}
-        {{- with .Values.affinity }}
+        {{- $affinity := coalesce .Values.app.affinity .Values.global.affinity }}
+        {{- with $affinity }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.tolerations }}
+      {{- $tolerations := coalesce .Values.app.tolerations .Values.global.tolerations }}
+      {{- with $tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
