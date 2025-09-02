@@ -13,6 +13,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **KYC Status** - used in transaction flows for compliance
 - **Account Registration** - user registration with KYC verification
 
+**USDC Deposit System:**
+- **Smart Contract Integration** - Direct USDC deposits to vApp contract
+- **Automatic Balance Tracking** - Database triggers update user balances
+- **Deposit History** - Complete audit trail of all deposits and confirmations
+- **Multi-table Architecture** - Separate deposit tracking and user balance systems
+
 **Loan Operations:**
 - **Loan Origination** - create new loans between parties
 - **Loan Payments** - make payments toward outstanding loans  
@@ -75,6 +81,11 @@ cargo run --bin cli -- health-check
 cargo run --bin cli -- register-user --user-type investor --email user@example.com
 cargo run --bin cli -- submit-kyc --user-id 123
 cargo run --bin cli -- get-user --user-id 123
+
+# USDC Balance Management
+cargo run --bin cli -- get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+cargo run --bin cli -- get-user-balance-by-id --user-id 123
+cargo run --bin cli -- link-wallet --user-id 123 --wallet-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
 
 # Loan Operations
 cargo run --bin cli -- originate-loan --borrower-id 123 --lender-id 456 --amount 10000
@@ -266,6 +277,28 @@ struct LoanTransaction {
     amount: Decimal,
     created_at: DateTime<Utc>,
 }
+
+// USDC deposit from smart contract
+struct UsdcDeposit {
+    id: i32,
+    user_address: String,  // Ethereum wallet address
+    amount: Decimal,       // Amount in wei (6 decimals for USDC)
+    transaction_hash: String,
+    status: String,        // pending | confirmed | processed | failed
+    confirmation_count: i32,
+    block_number: i64,
+    created_at: DateTime<Utc>,
+}
+
+// User deposit balance aggregation
+struct UserDepositBalance {
+    user_address: String,
+    total_deposited: Decimal,    // Cumulative deposits in wei
+    total_deposited_usdc: Decimal, // Human-readable USDC amount  
+    deposit_count: i32,
+    first_deposit_at: Option<DateTime<Utc>>,
+    last_deposit_at: Option<DateTime<Utc>>,
+}
 ```
 
 ## Common Development Patterns
@@ -303,7 +336,21 @@ struct LoanTransaction {
 
 ## Loan Workflow Examples
 
-### Complete Loan Lifecycle
+### USDC Deposit Flow
+```bash
+# 1. User deposits USDC to smart contract (triggers database update)
+# 2. Check deposit balance
+cargo run --bin cli -- get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+
+# 3. Link wallet to user account
+cargo run --bin cli -- link-wallet --user-id user-uuid --wallet-address 0x742E...
+
+# 4. View deposit history (database queries)
+psql $DATABASE_URL -c "SELECT * FROM usdc_deposits WHERE user_address = '0x742E...';"
+psql $DATABASE_URL -c "SELECT * FROM user_deposit_balances WHERE user_address = '0x742E...';"
+```
+
+### Complete Loan Lifecycle  
 ```bash
 # 1. Register users
 cargo run --bin cli -- register-user --user-type lender --email lender@example.com
