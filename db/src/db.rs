@@ -99,6 +99,10 @@ pub struct Identity {
     pub email_verification_token: Option<String>,
     pub password_reset_token: Option<String>,
     pub password_reset_expires_at: Option<DateTime<Utc>>,
+    // User profile fields
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub jurisdiction: Option<String>,
     // Wallet integration
     pub wallet_address: Option<String>,
 }
@@ -130,6 +134,16 @@ pub struct Payment {
     pub transaction_hash: Option<String>,
     pub processed_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
+}
+
+/// KYC statistics for admin dashboard
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KycStatistics {
+    pub total_users: u64,
+    pub approved_count: u64,
+    pub pending_count: u64,
+    pub rejected_count: u64,
+    pub not_submitted_count: u64,
 }
 
 /// Account balance tracking
@@ -856,6 +870,9 @@ pub async fn create_identity(
         email_verification_token: None,
         password_reset_token: None,
         password_reset_expires_at: None,
+        first_name: None,
+        last_name: None,
+        jurisdiction: None,
         wallet_address: None,
     };
 
@@ -902,6 +919,9 @@ pub async fn create_identity_with_password(
         email_verification_token: None,
         password_reset_token: None,
         password_reset_expires_at: None,
+        first_name: None,
+        last_name: None,
+        jurisdiction: None,
         wallet_address: None,
     };
 
@@ -915,10 +935,11 @@ pub async fn get_identity_by_id(
 ) -> Result<Option<Identity>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
-               created_at as "created_at!", updated_at as "updated_at!", 
-               password_hash, last_login_at, email_verified, email_verification_token, 
-               password_reset_token, password_reset_expires_at, wallet_address
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+               created_at as "created_at!", updated_at as "updated_at!",
+               password_hash, last_login_at, email_verified, email_verification_token,
+               password_reset_token, password_reset_expires_at, wallet_address,
+               first_name, last_name, jurisdiction
         FROM identities
         WHERE id = $1
         "#,
@@ -942,6 +963,9 @@ pub async fn get_identity_by_id(
         email_verification_token: row.email_verification_token,
         password_reset_token: row.password_reset_token,
         password_reset_expires_at: row.password_reset_expires_at,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        jurisdiction: row.jurisdiction,
         wallet_address: row.wallet_address,
     });
 
@@ -955,10 +979,11 @@ pub async fn get_identity_by_email(
 ) -> Result<Option<Identity>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
-               created_at as "created_at!", updated_at as "updated_at!", 
-               password_hash, last_login_at, email_verified, email_verification_token, 
-               password_reset_token, password_reset_expires_at, wallet_address
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+               created_at as "created_at!", updated_at as "updated_at!",
+               password_hash, last_login_at, email_verified, email_verification_token,
+               password_reset_token, password_reset_expires_at, wallet_address,
+               first_name, last_name, jurisdiction
         FROM identities
         WHERE email = $1
         "#,
@@ -982,6 +1007,9 @@ pub async fn get_identity_by_email(
         email_verification_token: row.email_verification_token,
         password_reset_token: row.password_reset_token,
         password_reset_expires_at: row.password_reset_expires_at,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        jurisdiction: row.jurisdiction,
         wallet_address: row.wallet_address,
     });
 
@@ -998,10 +1026,11 @@ pub async fn list_identities(
     // Simplified version - can add filtering later
     let rows = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
-               created_at as "created_at!", updated_at as "updated_at!", 
-               password_hash, last_login_at, email_verified, email_verification_token, 
-               password_reset_token, password_reset_expires_at, wallet_address
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+               created_at as "created_at!", updated_at as "updated_at!",
+               password_hash, last_login_at, email_verified, email_verification_token,
+               password_reset_token, password_reset_expires_at, wallet_address,
+               first_name, last_name, jurisdiction
         FROM identities
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -1029,6 +1058,9 @@ pub async fn list_identities(
             email_verification_token: row.email_verification_token,
             password_reset_token: row.password_reset_token,
             password_reset_expires_at: row.password_reset_expires_at,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            jurisdiction: row.jurisdiction,
             wallet_address: row.wallet_address,
         })
         .collect();
@@ -1046,11 +1078,20 @@ pub async fn submit_kyc_data(
 ) -> Result<Identity, sqlx::Error> {
     let now = Utc::now();
 
+    // TODO: Replace this automatic approval with proper KYC validation service
+    // This should integrate with:
+    // - Government ID verification services (e.g., Jumio, Onfido)
+    // - AML/KYC compliance checks
+    // - Regulatory compliance workflows
+    // - Manual review processes for high-value accounts
+    //
+    // For now, we automatically approve all submissions for demo purposes
     sqlx::query!(
         r#"
-        UPDATE identities 
-        SET kyc_status = 'pending',
+        UPDATE identities
+        SET kyc_status = 'approved',
             kyc_submitted_at = $2,
+            kyc_verified_at = $2,
             updated_at = $2
         WHERE id = $1
         "#,
@@ -1064,6 +1105,82 @@ pub async fn submit_kyc_data(
     get_identity_by_id(pool, identity_id)
         .await?
         .ok_or_else(|| sqlx::Error::RowNotFound)
+}
+
+/// List identities with pending KYC status for admin review
+pub async fn list_pending_kyc_applications(
+    pool: &PgPool,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<Identity>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+               created_at as "created_at!", updated_at as "updated_at!",
+               password_hash, last_login_at, email_verified, email_verification_token,
+               password_reset_token, password_reset_expires_at, wallet_address,
+               first_name, last_name, jurisdiction
+        FROM identities
+        WHERE kyc_status = 'pending'
+        ORDER BY kyc_submitted_at ASC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit.unwrap_or(50),
+        offset.unwrap_or(0)
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let identities = rows
+        .into_iter()
+        .map(|row| Identity {
+            id: row.id,
+            user_type: row.user_type,
+            email: row.email,
+            kyc_status: row.kyc_status,
+            kyc_submitted_at: row.kyc_submitted_at,
+            kyc_verified_at: row.kyc_verified_at,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            password_hash: row.password_hash,
+            last_login_at: row.last_login_at,
+            email_verified: row.email_verified,
+            email_verification_token: row.email_verification_token,
+            password_reset_token: row.password_reset_token,
+            password_reset_expires_at: row.password_reset_expires_at,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            jurisdiction: row.jurisdiction,
+            wallet_address: row.wallet_address,
+        })
+        .collect();
+
+    Ok(identities)
+}
+
+/// Get KYC statistics for admin dashboard
+pub async fn get_kyc_statistics(pool: &PgPool) -> Result<KycStatistics, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"
+        SELECT
+            COUNT(*) as total_users,
+            COUNT(CASE WHEN kyc_status = 'approved' THEN 1 END) as approved_count,
+            COUNT(CASE WHEN kyc_status = 'pending' THEN 1 END) as pending_count,
+            COUNT(CASE WHEN kyc_status = 'rejected' THEN 1 END) as rejected_count,
+            COUNT(CASE WHEN kyc_status = 'not_submitted' THEN 1 END) as not_submitted_count
+        FROM identities
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(KycStatistics {
+        total_users: row.total_users.unwrap_or(0) as u64,
+        approved_count: row.approved_count.unwrap_or(0) as u64,
+        pending_count: row.pending_count.unwrap_or(0) as u64,
+        rejected_count: row.rejected_count.unwrap_or(0) as u64,
+        not_submitted_count: row.not_submitted_count.unwrap_or(0) as u64,
+    })
 }
 
 /// Update KYC status (admin only)
@@ -1084,7 +1201,7 @@ pub async fn update_kyc_status(
 
     sqlx::query!(
         r#"
-        UPDATE identities 
+        UPDATE identities
         SET kyc_status = $2,
             kyc_verified_at = $3,
             updated_at = $4
@@ -1110,7 +1227,10 @@ pub async fn update_identity_profile(
     identity_id: uuid::Uuid,
     email: Option<&str>,
     user_type: Option<&str>,
-    _jurisdiction: Option<&str>,
+    jurisdiction: Option<&str>,
+    first_name: Option<&str>,
+    last_name: Option<&str>,
+    wallet_address: Option<&str>,
 ) -> Result<Identity, sqlx::Error> {
     let now = Utc::now();
 
@@ -1136,13 +1256,76 @@ pub async fn update_identity_profile(
     if let Some(ut) = user_type {
         sqlx::query!(
             r#"
-            UPDATE identities 
+            UPDATE identities
             SET user_type = $2,
                 updated_at = $3
             WHERE id = $1
             "#,
             identity_id,
             ut,
+            now
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    // Always update jurisdiction since we want to allow clearing it
+    sqlx::query!(
+        r#"
+        UPDATE identities
+        SET jurisdiction = $2,
+            updated_at = $3
+        WHERE id = $1
+        "#,
+        identity_id,
+        jurisdiction,
+        now
+    )
+    .execute(pool)
+    .await?;
+
+    if let Some(first_name_val) = first_name {
+        sqlx::query!(
+            r#"
+            UPDATE identities
+            SET first_name = $2,
+                updated_at = $3
+            WHERE id = $1
+            "#,
+            identity_id,
+            first_name_val,
+            now
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    if let Some(last_name_val) = last_name {
+        sqlx::query!(
+            r#"
+            UPDATE identities
+            SET last_name = $2,
+                updated_at = $3
+            WHERE id = $1
+            "#,
+            identity_id,
+            last_name_val,
+            now
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    if let Some(wa) = wallet_address {
+        sqlx::query!(
+            r#"
+            UPDATE identities
+            SET wallet_address = $2,
+                updated_at = $3
+            WHERE id = $1
+            "#,
+            identity_id,
+            wa,
             now
         )
         .execute(pool)
@@ -1654,10 +1837,11 @@ pub async fn get_identity_by_reset_token(
 
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
-               created_at as "created_at!", updated_at as "updated_at!", 
-               password_hash, last_login_at, email_verified, email_verification_token, 
-               password_reset_token, password_reset_expires_at, wallet_address
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+               created_at as "created_at!", updated_at as "updated_at!",
+               password_hash, last_login_at, email_verified, email_verification_token,
+               password_reset_token, password_reset_expires_at, wallet_address,
+               first_name, last_name, jurisdiction
         FROM identities
         WHERE password_reset_token = $1
           AND password_reset_expires_at > $2
@@ -1683,6 +1867,9 @@ pub async fn get_identity_by_reset_token(
         email_verification_token: row.email_verification_token,
         password_reset_token: row.password_reset_token,
         password_reset_expires_at: row.password_reset_expires_at,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        jurisdiction: row.jurisdiction,
         wallet_address: row.wallet_address,
     });
 

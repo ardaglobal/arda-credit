@@ -57,8 +57,17 @@ pub const USER_KYC: &str = api_path!("/user/{user_id}/kyc");
 /// User KYC status update (admin)
 pub const USER_KYC_STATUS: &str = api_path!("/user/{user_id}/kyc-status");
 
+/// List pending KYC applications (admin)
+pub const ADMIN_KYC_PENDING: &str = api_path!("/admin/kyc/pending");
+
+/// KYC statistics (admin)
+pub const ADMIN_KYC_STATS: &str = api_path!("/admin/kyc/stats");
+
+/// Bulk KYC approval (admin)
+pub const ADMIN_KYC_BULK_APPROVE: &str = api_path!("/admin/kyc/bulk-approve");
+
 /// User balance by wallet address
-pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/user/{address}/balance");
+pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/user/{user_id}/{address}/balance");
 
 /// User balance by user ID
 pub const USER_BALANCE_BY_ID: &str = api_path!("/user/{user_id}/balance");
@@ -207,6 +216,21 @@ pub fn user_kyc_status_path(user_id: &str) -> String {
     replace_param(USER_KYC_STATUS, "user_id", user_id)
 }
 
+/// Build admin KYC pending path
+pub fn admin_kyc_pending_path() -> String {
+    ADMIN_KYC_PENDING.to_string()
+}
+
+/// Build admin KYC stats path
+pub fn admin_kyc_stats_path() -> String {
+    ADMIN_KYC_STATS.to_string()
+}
+
+/// Build admin bulk KYC approval path
+pub fn admin_kyc_bulk_approve_path() -> String {
+    ADMIN_KYC_BULK_APPROVE.to_string()
+}
+
 // Invite Code Management Helper Functions
 /// Build invite code validate path with code parameter
 pub fn invite_code_validate_path(code: &str) -> String {
@@ -342,6 +366,22 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
             method: "POST".to_string(),
             path: USER_KYC_STATUS.to_string(),
             description: "Update KYC status (admin only)".to_string(),
+        },
+        // Admin KYC Management
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: ADMIN_KYC_PENDING.to_string(),
+            description: "List pending KYC applications (admin only)".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: ADMIN_KYC_STATS.to_string(),
+            description: "Get KYC statistics (admin only)".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: ADMIN_KYC_BULK_APPROVE.to_string(),
+            description: "Bulk approve KYC applications (admin only)".to_string(),
         },
         // Invite Code Management
         crate::rest::EndpointInfo {
