@@ -35,3 +35,6 @@ proof_*.json
 
 # act secrets
 .act_secrets
+
+# Helm chart dependencies (downloaded chart archives)
+helm/charts/*/charts/

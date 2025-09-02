@@ -1,0 +1,131 @@
+{{- if .Values.server.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-server
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.server.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "arda-credit.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "arda-credit.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "arda-credit.fullname" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: server
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.server.image.registry }}/{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            # Load non-sensitive config from ConfigMap
+            - configMapRef:
+                name: {{ include "arda-credit.fullname" . }}-config
+          env:
+            # Database URL constructed with secret password
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.postgresql.enabled }}
+                  name: {{ include "arda-credit.fullname" . }}-postgresql
+                  key: postgres-password
+                  {{- else }}
+                  name: {{ .Values.postgresql.external.existingSecret }}
+                  key: {{ .Values.postgresql.external.secretPasswordKey }}
+                  {{- end }}
+            - name: DATABASE_URL
+              {{- if .Values.postgresql.enabled }}
+              value: "postgresql://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "arda-credit.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+              {{- else }}
+              value: "postgresql://{{ .Values.postgresql.external.username }}:$(POSTGRES_PASSWORD)@{{ .Values.postgresql.external.host }}:{{ .Values.postgresql.external.port }}/{{ .Values.postgresql.external.database }}"
+              {{- end }}
+            # Sensitive config from secrets
+            - name: SINDRI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: sindri-api-key
+            - name: ETHEREUM_RPC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: ethereum-rpc-url
+            - name: ETHEREUM_CONTRACT_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: ethereum-contract-address
+            - name: ETHEREUM_WALLET_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: ethereum-wallet-private-key
+            - name: ETHEREUM_DEPLOYER_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: ethereum-deployer-address
+          {{- if .Values.server.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.server.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.server.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.server.readinessProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+      {{- $nodeSelector := coalesce .Values.server.nodeSelector .Values.global.nodeSelector }}
+      {{- with $nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.server.podAntiAffinity.enabled }}
+        podAntiAffinity:
+          {{- if eq .Values.server.podAntiAffinity.type "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "arda-credit.selectorLabels" . | nindent 18 }}
+                  app.kubernetes.io/component: server
+              topologyKey: {{ .Values.server.podAntiAffinity.topologyKey }}
+          {{- else if eq .Values.server.podAntiAffinity.type "soft" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: {{ .Values.server.podAntiAffinity.weight | default 100 }}
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "arda-credit.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: server
+                topologyKey: {{ .Values.server.podAntiAffinity.topologyKey }}
+          {{- end }}
+        {{- end }}
+        {{- $affinity := coalesce .Values.server.affinity .Values.global.affinity }}
+        {{- with $affinity }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- $tolerations := coalesce .Values.server.tolerations .Values.global.tolerations }}
+      {{- with $tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
