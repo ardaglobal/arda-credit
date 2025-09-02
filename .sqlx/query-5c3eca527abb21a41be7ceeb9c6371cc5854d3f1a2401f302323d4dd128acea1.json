@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            COUNT(*) as total_users,\n            COUNT(CASE WHEN kyc_status = 'approved' THEN 1 END) as approved_count,\n            COUNT(CASE WHEN kyc_status = 'pending' THEN 1 END) as pending_count,\n            COUNT(CASE WHEN kyc_status = 'rejected' THEN 1 END) as rejected_count,\n            COUNT(CASE WHEN kyc_status = 'not_submitted' THEN 1 END) as not_submitted_count\n        FROM identities\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_users",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "approved_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "pending_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "rejected_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "not_submitted_count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "5c3eca527abb21a41be7ceeb9c6371cc5854d3f1a2401f302323d4dd128acea1"
+}

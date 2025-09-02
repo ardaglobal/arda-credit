@@ -22,10 +22,11 @@ use arda_credit_db::{
     create_identity_with_password, create_loan, generate_invite_code, get_all_batches,
     get_batch_by_id, get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
     get_deposits_by_user_address, get_identity_by_email, get_identity_by_id, get_invite_code_info,
-    get_loan_by_id, get_pending_transactions, get_user_balance_by_address, get_user_balance_by_id,
-    list_loans, store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
-    update_identity_profile, update_kyc_status, update_last_login, update_loan, use_invite_code,
-    AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
+    get_kyc_statistics, get_loan_by_id, get_pending_transactions, get_user_balance_by_address,
+    get_user_balance_by_id, list_loans, list_pending_kyc_applications, store_ads_state_commit,
+    submit_kyc_data, submit_transaction, update_batch_proof, update_identity_profile,
+    update_kyc_status, update_last_login, update_loan, use_invite_code, AuditEvent, Identity,
+    IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -58,6 +59,10 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
         kyc_verified_at: identity.kyc_verified_at,
         created_at: identity.created_at,
         updated_at: Some(identity.updated_at),
+        first_name: identity.first_name,
+        last_name: identity.last_name,
+        jurisdiction: identity.jurisdiction,
+        wallet_address: identity.wallet_address,
     }
 }
 
@@ -422,6 +427,14 @@ pub struct UserDetailsResponse {
     pub kyc_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
+    #[schema(example = "John")]
+    pub first_name: Option<String>,
+    #[schema(example = "Doe")]
+    pub last_name: Option<String>,
+    #[schema(example = "US")]
+    pub jurisdiction: Option<String>,
+    #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
+    pub wallet_address: Option<String>,
 }
 
 /// KYC submission request
@@ -452,12 +465,60 @@ pub struct UpdateKycStatusRequest {
     pub notes: Option<String>,
 }
 
+/// Query parameters for listing pending KYC applications
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListPendingKycQuery {
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
+/// Response for listing pending KYC applications
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ListPendingKycResponse {
+    pub applications: Vec<UserDetailsResponse>,
+    pub total_count: usize,
+    pub has_more: bool,
+}
+
+/// Response for KYC statistics
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct KycStatisticsResponse {
+    pub total_users: u64,
+    pub approved_count: u64,
+    pub pending_count: u64,
+    pub rejected_count: u64,
+    pub not_submitted_count: u64,
+    pub approval_rate: f64, // percentage of users with approved KYC
+}
+
+/// Request for bulk KYC approval
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BulkKycApprovalRequest {
+    pub user_ids: Vec<String>, // Array of user IDs to approve
+    pub notes: Option<String>,
+}
+
+/// Response for bulk KYC approval
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BulkKycApprovalResponse {
+    pub approved_count: usize,
+    pub failed_count: usize,
+    pub failed_user_ids: Vec<String>,
+    pub message: String,
+}
+
 /// Update user profile request
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UpdateUserRequest {
     pub email: Option<String>,
     pub user_type: Option<UserType>,
     pub jurisdiction: Option<String>,
+    #[schema(example = "John")]
+    pub first_name: Option<String>,
+    #[schema(example = "Doe")]
+    pub last_name: Option<String>,
+    #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
+    pub wallet_address: Option<String>,
 }
 
 /// Update user response
@@ -802,6 +863,13 @@ pub fn create_router(state: ApiState) -> Router {
         // Authentication endpoints
         .route("/api/auth/login", post(login_endpoint))
         .route("/api/auth/logout", post(logout_endpoint))
+        // Admin KYC endpoints
+        .route(paths::ADMIN_KYC_PENDING, get(list_pending_kyc_endpoint))
+        .route(paths::ADMIN_KYC_STATS, get(get_kyc_statistics_endpoint))
+        .route(
+            paths::ADMIN_KYC_BULK_APPROVE,
+            post(bulk_kyc_approval_endpoint),
+        )
         .route(
             paths::INVITE_CODE_GENERATE,
             post(generate_invite_code_endpoint),
@@ -2178,7 +2246,7 @@ async fn list_identities_endpoint(
     // Basic identity listing using direct SQL
     let identities_result = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
         FROM identities
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -2202,6 +2270,10 @@ async fn list_identities_endpoint(
                     kyc_verified_at: row.kyc_verified_at,
                     created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
                     updated_at: Some(row.updated_at.unwrap_or_else(chrono::Utc::now)),
+                    first_name: row.first_name,
+                    last_name: row.last_name,
+                    jurisdiction: row.jurisdiction,
+                    wallet_address: row.wallet_address,
                 })
                 .collect::<Vec<_>>();
 
@@ -2407,6 +2479,194 @@ async fn update_kyc_status_endpoint(
     }
 }
 
+/// List pending KYC applications (admin only)
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/kyc/pending",
+    params(ListPendingKycQuery),
+    responses(
+        (status = 200, description = "List of pending KYC applications", body = ListPendingKycResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Admin"
+)]
+#[instrument(skip(state), level = "info")]
+async fn list_pending_kyc_endpoint(
+    State(state): State<ApiState>,
+    Query(params): Query<ListPendingKycQuery>,
+) -> Result<Json<ListPendingKycResponse>, (StatusCode, String)> {
+    info!("🔍 API: Listing pending KYC applications");
+
+    let limit = params.limit.unwrap_or(50);
+    let offset = params.offset.unwrap_or(0);
+
+    match list_pending_kyc_applications(&state.pool, Some(limit as i64), Some(offset as i64)).await
+    {
+        Ok(applications) => {
+            let total_count = applications.len();
+            let has_more = total_count >= limit as usize;
+
+            let application_responses: Vec<UserDetailsResponse> = applications
+                .into_iter()
+                .map(identity_to_user_details)
+                .collect();
+
+            let response = ListPendingKycResponse {
+                applications: application_responses,
+                total_count,
+                has_more,
+            };
+
+            info!(
+                "✅ API: Found {} pending KYC applications",
+                response.total_count
+            );
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to list pending KYC applications: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve pending KYC applications".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get KYC statistics (admin only)
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/kyc/stats",
+    responses(
+        (status = 200, description = "KYC statistics", body = KycStatisticsResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Admin"
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_kyc_statistics_endpoint(
+    State(state): State<ApiState>,
+) -> Result<Json<KycStatisticsResponse>, (StatusCode, String)> {
+    info!("📊 API: Getting KYC statistics");
+
+    match get_kyc_statistics(&state.pool).await {
+        Ok(stats) => {
+            let total_processed = stats.approved_count + stats.rejected_count;
+            let approval_rate = if total_processed > 0 {
+                (stats.approved_count as f64 / total_processed as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            let response = KycStatisticsResponse {
+                total_users: stats.total_users,
+                approved_count: stats.approved_count,
+                pending_count: stats.pending_count,
+                rejected_count: stats.rejected_count,
+                not_submitted_count: stats.not_submitted_count,
+                approval_rate,
+            };
+
+            info!(
+                "✅ API: KYC stats - Total: {}, Approved: {}, Pending: {}, Rejected: {}, Not Submitted: {}, Approval Rate: {:.1}%",
+                response.total_users,
+                response.approved_count,
+                response.pending_count,
+                response.rejected_count,
+                response.not_submitted_count,
+                response.approval_rate
+            );
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get KYC statistics: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve KYC statistics".to_string(),
+            ))
+        }
+    }
+}
+
+/// Bulk approve KYC applications (admin only)
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/kyc/bulk-approve",
+    request_body = BulkKycApprovalRequest,
+    responses(
+        (status = 200, description = "Bulk KYC approval completed", body = BulkKycApprovalResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Admin"
+)]
+#[instrument(skip(state), level = "info")]
+async fn bulk_kyc_approval_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<BulkKycApprovalRequest>,
+) -> Result<Json<BulkKycApprovalResponse>, (StatusCode, String)> {
+    info!(
+        "🔄 API: Bulk approving {} KYC applications",
+        request.user_ids.len()
+    );
+
+    if request.user_ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "At least one user ID must be provided".to_string(),
+        ));
+    }
+
+    let mut approved_count = 0;
+    let mut failed_user_ids = Vec::new();
+
+    for user_id_str in &request.user_ids {
+        match parse_user_id(user_id_str) {
+            Ok(user_id) => {
+                match update_kyc_status(&state.pool, user_id, "approved", request.notes.as_deref())
+                    .await
+                {
+                    Ok(_) => {
+                        approved_count += 1;
+                        info!("✅ Approved KYC for user: {}", user_id);
+                    }
+                    Err(e) => {
+                        error!("❌ Failed to approve KYC for user {}: {}", user_id, e);
+                        failed_user_ids.push(user_id_str.clone());
+                    }
+                }
+            }
+            Err(_) => {
+                warn!("⚠️ Invalid user ID format: {}", user_id_str);
+                failed_user_ids.push(user_id_str.clone());
+            }
+        }
+    }
+
+    let failed_count = failed_user_ids.len();
+    let message = if failed_count == 0 {
+        format!("Successfully approved {} KYC applications", approved_count)
+    } else {
+        format!(
+            "Approved {} KYC applications, {} failed",
+            approved_count, failed_count
+        )
+    };
+
+    let response = BulkKycApprovalResponse {
+        approved_count,
+        failed_count,
+        failed_user_ids,
+        message,
+    };
+
+    info!(
+        "✅ API: Bulk KYC approval completed - Approved: {}, Failed: {}",
+        approved_count, failed_count
+    );
+    Ok(Json(response))
+}
+
 /// Update user profile
 #[utoipa::path(
     put,
@@ -2450,6 +2710,15 @@ async fn update_user_endpoint(
     if request.jurisdiction.is_some() {
         updated_fields.push("jurisdiction".to_string());
     }
+    if request.first_name.is_some() {
+        updated_fields.push("first_name".to_string());
+    }
+    if request.last_name.is_some() {
+        updated_fields.push("last_name".to_string());
+    }
+    if request.wallet_address.is_some() {
+        updated_fields.push("wallet_address".to_string());
+    }
 
     match update_identity_profile(
         &state.pool,
@@ -2461,6 +2730,9 @@ async fn update_user_endpoint(
             .map(std::string::ToString::to_string)
             .as_deref(),
         request.jurisdiction.as_deref(),
+        request.first_name.as_deref(),
+        request.last_name.as_deref(),
+        request.wallet_address.as_deref(),
     )
     .await
     {
@@ -3831,6 +4103,9 @@ async fn get_loan_lifecycle_summary_endpoint(
         delete_user_endpoint,
         submit_kyc_endpoint,
         update_kyc_status_endpoint,
+        list_pending_kyc_endpoint,
+        get_kyc_statistics_endpoint,
+        bulk_kyc_approval_endpoint,
 
         // Loan Management endpoints
         create_loan_endpoint,
@@ -3886,6 +4161,11 @@ async fn get_loan_lifecycle_summary_endpoint(
             KycData,
             SubmitKycResponse,
             UpdateKycStatusRequest,
+            ListPendingKycQuery,
+            ListPendingKycResponse,
+            KycStatisticsResponse,
+            BulkKycApprovalRequest,
+            BulkKycApprovalResponse,
             UpdateUserRequest,
             UpdateUserResponse,
             DeleteUserResponse,

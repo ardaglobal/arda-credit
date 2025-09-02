@@ -75,6 +75,7 @@ pub use db::{
     get_identity_by_id,
     get_identity_by_reset_token,
     get_invite_code_info,
+    get_kyc_statistics,
     get_loan_by_id,
     get_payments_by_loan,
     get_pending_transactions,
@@ -91,6 +92,7 @@ pub use db::{
 
     list_identities,
     list_loans,
+    list_pending_kyc_applications,
     mark_batch_posted_to_contract,
     mark_batch_posted_to_contract_with_tx_hash,
 
@@ -127,6 +129,7 @@ pub use db::{
     Identity,
     IncomingTransaction,
     InviteCodeInfo,
+    KycStatistics,
     Loan,
     LoanTransactionDb,
     Payment,
