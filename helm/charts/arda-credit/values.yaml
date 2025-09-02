@@ -37,6 +37,7 @@ postgresql:
     persistence:
       enabled: true
       size: 8Gi
+      # storageClass: ""  # Leave empty for default, or specify for cloud providers (e.g., "gp2", "gp3" for EKS)
     
     resources:
       limits:
@@ -211,30 +212,37 @@ app:
 # Ingress configuration
 ingress:
   enabled: true
-  className: "nginx"
+  className: "nginx"  # Options: "nginx", "alb"
   
   annotations:
+    # nginx ingress annotations (used when className: "nginx")
     nginx.ingress.kubernetes.io/rewrite-target: /
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # ALB ingress annotations (used when className: "alb")  
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    # alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # alb.ingress.kubernetes.io/certificate-arn: ""  # ACM certificate ARN
+    # alb.ingress.kubernetes.io/load-balancer-name: ""
+    
+    # External DNS (works with both nginx and ALB)
+    # external-dns.alpha.kubernetes.io/hostname: ""
   
   hosts:
-    - host: arda-credit.example.com
+    - host: app.stag.aws.arda.xyz
       paths:
-        - path: /api
-          pathType: Prefix
-          service:
-            name: arda-credit-server
-            port: 8080
         - path: /
           pathType: Prefix
           service:
-            name: arda-credit-app
+            name: app
             port: 80
   
   tls:
     - secretName: arda-credit-tls
       hosts:
-        - arda-credit.example.com
+        - app.stag.aws.arda.xyz
 
 # Application secrets - these should be overridden in environment-specific values
 secrets:

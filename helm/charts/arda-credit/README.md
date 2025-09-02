@@ -107,6 +107,43 @@ Key configuration options in `values.yaml`:
 | `ingress.enabled` | Enable ingress | `true` |
 | `ingress.hosts[0].host` | Ingress hostname | `arda-credit.example.com` |
 
+## EKS Deployment
+
+For AWS EKS deployments with ALB and ACM:
+
+```bash
+# 1. Install AWS Load Balancer Controller (required for ALB)
+helm repo add eks https://aws.github.io/eks-charts
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+  -n kube-system \
+  --set clusterName=your-cluster-name \
+  --set serviceAccount.create=false \
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --set region=us-east-1 \
+  --set vpcId=vpc-xxxxxxxx
+
+# 2. Deploy with ALB configuration  
+helm install arda-credit ./helm/charts/arda-credit \
+  --set namespaceCreate=false \
+  --set ingress.className=alb \
+  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/scheme=internet-facing' \
+  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/target-type=ip' \
+  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/listen-ports=\[{\"HTTP\": 80}, {\"HTTPS\": 443}\]' \
+  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/ssl-redirect=443' \
+  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/certificate-arn=arn:aws:acm:region:account:certificate/cert-id' \
+  --set-string 'ingress.annotations.external-dns\.alpha\.kubernetes\.io/hostname=app.yourdomain.com' \
+  --set ingress.hosts[0].host=app.yourdomain.com \
+  --set postgresql.primary.persistence.storageClass=gp3 \
+  --namespace arda-credit \
+  --create-namespace
+```
+
+**EKS Prerequisites:**
+- AWS Load Balancer Controller installed with proper IAM role (IRSA)  
+- Subnets tagged for ALB controller: `kubernetes.io/role/elb=1` (public subnets)
+- External-DNS (optional, for automatic Route53 management)
+- ACM certificate for your domain
+
 ## Production Deployment
 
 For production environments, enable additional features:

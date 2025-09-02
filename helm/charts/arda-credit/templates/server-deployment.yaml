@@ -53,7 +53,7 @@ spec:
                   {{- end }}
             - name: DATABASE_URL
               {{- if .Values.postgresql.enabled }}
-              value: "postgresql://{{ .Values.postgresql.auth.username }}:test-password@{{ include "arda-credit.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+              value: "postgresql://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "arda-credit.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
               {{- else }}
               value: "postgresql://{{ .Values.postgresql.external.username }}:$(POSTGRES_PASSWORD)@{{ .Values.postgresql.external.host }}:{{ .Values.postgresql.external.port }}/{{ .Values.postgresql.external.database }}"
               {{- end }}
