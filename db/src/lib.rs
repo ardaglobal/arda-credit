@@ -58,6 +58,8 @@ pub use db::{
     create_state_snapshot,
     // USDC Deposit functions
     create_usdc_deposit,
+    // Withdrawal functions
+    create_withdrawal,
     delete_identity,
 
     generate_invite_code,
@@ -86,6 +88,9 @@ pub use db::{
     get_user_balance_by_id,
     get_user_deposit_balance,
     get_user_id_by_wallet_address,
+    get_user_withdrawal_balance,
+    get_withdrawal_by_tx_hash,
+    get_withdrawals_by_user_address,
     // Database connection
     init_db,
     init_db_with_url,
@@ -116,7 +121,11 @@ pub use db::{
     update_loan,
     update_user_balance_from_deposit,
     update_user_balance_from_deposit_tx,
+    update_user_balance_from_withdrawal,
+    update_user_balance_from_withdrawal_tx,
     update_user_password,
+    update_withdrawal_status,
+    update_withdrawal_status_tx,
     use_invite_code,
     verify_email_with_token,
     // Types
@@ -139,7 +148,9 @@ pub use db::{
     RegisterResult,
     StateSnapshot,
     UsdcDeposit,
+    UsdcWithdrawal,
     UserDepositBalance,
+    UserWithdrawalBalance,
 };
 
 // Re-export essential error types

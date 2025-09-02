@@ -130,6 +130,7 @@ pub enum LoanEvent {
     },
     Withdrawal {
         user: Address,
+        to: Address,
         amount: U256,
         timestamp: u64,
         block_number: u64,
@@ -1333,6 +1334,7 @@ impl EthereumClient {
             },
             LoanEvent::Withdrawal {
                 user: _,
+                to: _,
                 amount: _,
                 timestamp,
                 block_number,

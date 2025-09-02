@@ -839,5 +839,13 @@ impl EventHandler for DepositEventHandler {
         _block_number: u64,
     ) {
     }
-    fn handle_withdrawal(&self, _user: Address, _amount: U256, _block_number: u64) {}
+    fn handle_withdrawal(
+        &self,
+        _user: Address,
+        _to: Address,
+        _amount: U256,
+        _timestamp: u64,
+        _block_number: u64,
+    ) {
+    }
 }

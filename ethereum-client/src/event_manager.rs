@@ -75,7 +75,14 @@ pub trait EventHandler: Send + Sync {
         block_number: u64,
     );
 
-    fn handle_withdrawal(&self, user: Address, amount: alloy_primitives::U256, block_number: u64);
+    fn handle_withdrawal(
+        &self,
+        user: Address,
+        to: Address,
+        amount: alloy_primitives::U256,
+        timestamp: u64,
+        block_number: u64,
+    );
 }
 
 /// Event manager for vApp server integration
@@ -371,11 +378,13 @@ impl EventManager {
             }
             LoanEvent::Withdrawal {
                 user,
+                to,
                 amount,
+                timestamp,
                 block_number,
                 ..
             } => {
-                handler.handle_withdrawal(user, amount, block_number);
+                handler.handle_withdrawal(user, to, amount, timestamp, block_number);
             }
         }
     }
@@ -598,10 +607,17 @@ impl EventHandler for VAppEventHandler {
         );
     }
 
-    fn handle_withdrawal(&self, user: Address, amount: alloy_primitives::U256, block_number: u64) {
+    fn handle_withdrawal(
+        &self,
+        user: Address,
+        to: Address,
+        amount: alloy_primitives::U256,
+        timestamp: u64,
+        block_number: u64,
+    ) {
         info!(
-            "[{}] Withdrawal: user={}, amount={}, block={}",
-            self.server_name, user, amount, block_number
+            "[{}] Withdrawal: user={}, to={}, amount={}, timestamp={}, block={}",
+            self.server_name, user, to, amount, timestamp, block_number
         );
     }
 }
