@@ -285,7 +285,7 @@ async fn test_kyc_auto_approval() {
     assert_eq!(user.kyc_status, "not_submitted");
 
     // Submit KYC - should automatically be approved
-    let kyc_result = submit_kyc_data(&pool, user.id, "passport", "hash123", Some("US"))
+    let kyc_result = submit_kyc_data(&pool, user.id, "passport", "hash123", Some("US"), "AI")
         .await
         .expect("Failed to submit KYC");
 

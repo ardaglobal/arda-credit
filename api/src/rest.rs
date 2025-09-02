@@ -56,6 +56,7 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
         email: identity.email,
         user_type: identity.user_type.parse().unwrap_or(UserType::User),
         kyc_status: identity.kyc_status,
+        kyc_investor_type: identity.kyc_investor_type,
         kyc_submitted_at: identity.kyc_submitted_at,
         kyc_verified_at: identity.kyc_verified_at,
         created_at: identity.created_at,
@@ -424,6 +425,8 @@ pub struct UserDetailsResponse {
     pub email: String,
     pub user_type: UserType,
     pub kyc_status: String,
+    #[schema(example = "AI")]
+    pub kyc_investor_type: Option<String>, // QIB, QP, or AI
     pub kyc_submitted_at: Option<DateTime<Utc>>,
     pub kyc_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -449,6 +452,8 @@ pub struct KycData {
     pub document_type: String,
     pub document_hash: String,
     pub jurisdiction: Option<String>,
+    #[schema(example = "AI")]
+    pub kyc_investor_type: String, // QIB, QP, or AI
 }
 
 /// KYC submission response
@@ -456,6 +461,8 @@ pub struct KycData {
 pub struct SubmitKycResponse {
     pub user_id: String,
     pub kyc_status: String,
+    #[schema(example = "AI")]
+    pub kyc_investor_type: Option<String>, // QIB, QP, or AI
     pub submitted_at: DateTime<Utc>,
 }
 
@@ -2290,7 +2297,7 @@ async fn list_identities_endpoint(
     // Basic identity listing using direct SQL (excludes soft deleted users)
     let identities_result = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
+        SELECT id, user_type, email, kyc_status, kyc_investor_type, kyc_submitted_at, kyc_verified_at, created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
         FROM identities
         WHERE deleted_at IS NULL
         ORDER BY created_at DESC
@@ -2311,6 +2318,7 @@ async fn list_identities_endpoint(
                     email: row.email,
                     user_type: row.user_type.parse().unwrap_or(UserType::User),
                     kyc_status: row.kyc_status,
+                    kyc_investor_type: row.kyc_investor_type,
                     kyc_submitted_at: row.kyc_submitted_at,
                     kyc_verified_at: row.kyc_verified_at,
                     created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
@@ -2426,12 +2434,25 @@ async fn submit_kyc_endpoint(
         }
     };
 
+    // Validate KYC investor type
+    if !["QIB", "QP", "AI"].contains(&request.kyc_data.kyc_investor_type.as_str()) {
+        warn!(
+            "❌ API: Invalid KYC investor type: {}",
+            request.kyc_data.kyc_investor_type
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invalid KYC investor type. Must be QIB, QP, or AI".to_string(),
+        ));
+    }
+
     match submit_kyc_data(
         &state.pool,
         uuid,
         &request.kyc_data.document_type,
         &request.kyc_data.document_hash,
         request.kyc_data.jurisdiction.as_deref(),
+        &request.kyc_data.kyc_investor_type,
     )
     .await
     {
@@ -2443,6 +2464,7 @@ async fn submit_kyc_endpoint(
             let response = SubmitKycResponse {
                 user_id: identity.id.to_string(),
                 kyc_status: identity.kyc_status,
+                kyc_investor_type: identity.kyc_investor_type,
                 submitted_at: identity.kyc_submitted_at.unwrap_or_else(Utc::now),
             };
             Ok(Json(response))

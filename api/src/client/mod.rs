@@ -470,13 +470,15 @@ impl BatchApiClient {
         document_type: &str,
         document_hash: &str,
         jurisdiction: Option<&str>,
+        kyc_investor_type: &str,
     ) -> Result<serde_json::Value, ApiClientError> {
         let url = format!("{}{}", self.base_url, paths::user_kyc_path(user_id));
         let request = serde_json::json!({
             "kyc_data": {
                 "document_type": document_type,
                 "document_hash": document_hash,
-                "jurisdiction": jurisdiction
+                "jurisdiction": jurisdiction,
+                "kyc_investor_type": kyc_investor_type
             }
         });
 

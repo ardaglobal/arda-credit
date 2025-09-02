@@ -250,6 +250,9 @@ enum Commands {
         /// Jurisdiction (optional)
         #[arg(long)]
         jurisdiction: Option<String>,
+        /// KYC investor type (QIB, QP, or AI)
+        #[arg(long)]
+        kyc_investor_type: String,
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -865,6 +868,7 @@ async fn main() -> Result<()> {
             document_type,
             document_hash,
             jurisdiction,
+            kyc_investor_type,
             verbose,
         } => {
             submit_kyc(
@@ -873,6 +877,7 @@ async fn main() -> Result<()> {
                 &document_type,
                 &document_hash,
                 jurisdiction.as_deref(),
+                &kyc_investor_type,
                 verbose,
             )
             .await?;
@@ -3131,6 +3136,7 @@ async fn submit_kyc(
     document_type: &str,
     document_hash: &str,
     jurisdiction: Option<&str>,
+    kyc_investor_type: &str,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -3140,7 +3146,7 @@ async fn submit_kyc(
     }
 
     match client
-        .submit_kyc(user_id, document_type, document_hash, jurisdiction)
+        .submit_kyc(user_id, document_type, document_hash, jurisdiction, kyc_investor_type)
         .await
     {
         Ok(result) => {
@@ -3294,6 +3300,7 @@ async fn test_user_operations(
                 "passport",
                 &document_hash,
                 Some("US"),
+                "AI", // Default to Accredited Investor for test
                 false,
             )
             .await

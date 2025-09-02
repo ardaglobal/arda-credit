@@ -26,12 +26,22 @@ pub enum KycStatus {
     Rejected = 3,
 }
 
+/// KYC investor type for compliance classification
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum KycInvestorType {
+    QIB = 1, // Qualified Institutional Buyer
+    QP = 2,  // Qualified Purchaser
+    AI = 3,  // Accredited Investor
+}
+
 /// User account (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct User {
     pub user_id: [u8; 32], // Hashed UUID for privacy
     pub user_type: UserType,
     pub kyc_status: KycStatus,
+    pub kyc_investor_type: Option<KycInvestorType>, // Optional until KYC submission
     pub kyc_submitted_at: u64, // Unix timestamp, 0 if not submitted
     pub kyc_verified_at: u64,  // Unix timestamp, 0 if not verified
     pub created_at: u64,       // Unix timestamp
@@ -107,6 +117,7 @@ impl UserState {
             user_id,
             user_type,
             kyc_status: KycStatus::NotSubmitted,
+            kyc_investor_type: None, // Will be set when KYC is submitted
             kyc_submitted_at: 0,
             kyc_verified_at: 0,
             created_at: transaction.created_at,

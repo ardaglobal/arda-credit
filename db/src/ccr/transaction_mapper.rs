@@ -555,6 +555,7 @@ mod tests {
             user_type: "investor".to_string(),
             email: "test@example.com".to_string(),
             kyc_status: "approved".to_string(),
+            kyc_investor_type: Some("AI".to_string()),
             kyc_submitted_at: Some(Utc::now()),
             kyc_verified_at: Some(Utc::now()),
             created_at: Utc::now(),
