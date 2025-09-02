@@ -205,6 +205,14 @@ contract Loan is EventHelpers {
         bytes32 transactionHash
     );
 
+    /// @notice Emitted when a user withdraws USDC
+    event Withdrawal(
+        address indexed user,
+        address indexed to,
+        uint256 indexed amount,
+        uint256 timestamp
+    );
+
     /// @notice Legacy events for backwards compatibility.
     event AuthorizationChanged(address indexed account, bool authorized);
     event OwnershipTransferred(
@@ -1345,5 +1353,40 @@ contract Loan is EventHelpers {
     /// @param _usdcToken The USDC token contract address
     function setUsdcTokenForTesting(address _usdcToken) external onlyOwner {
         usdcToken = IERC20(_usdcToken);
+    }
+
+    /// @notice Withdraw USDC tokens from the contract
+    /// @param amount The amount of USDC to withdraw (in USDC's native decimals)
+    /// @param to The address to withdraw USDC to
+    function withdraw(uint256 amount, address to) external {
+        require(amount > 0, "Withdrawal amount must be greater than zero");
+        require(to != address(0), "Cannot withdraw to zero address");
+        require(userDeposits[msg.sender] >= amount, "Insufficient balance");
+        
+        // Update user deposit balance
+        userDeposits[msg.sender] -= amount;
+        totalDeposits -= amount;
+        
+        // Transfer USDC from contract to the specified address
+        SafeERC20.safeTransfer(usdcToken, to, amount);
+        
+        // Emit withdrawal event
+        emit Withdrawal(msg.sender, to, amount, block.timestamp);
+    }
+
+    /// @notice Withdraw all USDC tokens for the caller to their own address
+    function withdrawAll() external {
+        uint256 balance = userDeposits[msg.sender];
+        require(balance > 0, "No balance to withdraw");
+        
+        // Update user deposit balance
+        userDeposits[msg.sender] = 0;
+        totalDeposits -= balance;
+        
+        // Transfer USDC from contract to the caller's address
+        SafeERC20.safeTransfer(usdcToken, msg.sender, balance);
+        
+        // Emit withdrawal event
+        emit Withdrawal(msg.sender, msg.sender, balance, block.timestamp);
     }
 }
