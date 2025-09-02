@@ -57,12 +57,46 @@ pub const USER_KYC: &str = api_path!("/user/{user_id}/kyc");
 /// User KYC status update (admin)
 pub const USER_KYC_STATUS: &str = api_path!("/user/{user_id}/kyc-status");
 
+/// List pending KYC applications (admin)
+pub const ADMIN_KYC_PENDING: &str = api_path!("/admin/kyc/pending");
+
+/// KYC statistics (admin)
+pub const ADMIN_KYC_STATS: &str = api_path!("/admin/kyc/stats");
+
+/// Bulk KYC approval (admin)
+pub const ADMIN_KYC_BULK_APPROVE: &str = api_path!("/admin/kyc/bulk-approve");
+
+/// User balance by wallet address
+pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/user/{user_id}/{address}/balance");
+
+/// User balance by user ID
+pub const USER_BALANCE_BY_ID: &str = api_path!("/user/{user_id}/balance");
+
+/// User transactions by user ID
+pub const USER_TRANSACTIONS_BY_ID: &str = api_path!("/user/{user_id}/transactions");
+
+/// Transaction by hash
+pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
+
+// ============================================================================
+// INVITE CODE MANAGEMENT PATHS
+// ============================================================================
+
+/// Generate new invite code
+pub const INVITE_CODE_GENERATE: &str = api_path!("/invite-code");
+
+/// Validate invite code (doesn't mark as used)
+pub const INVITE_CODE_VALIDATE: &str = api_path!("/invite-code/{code}/validate");
+
 // ============================================================================
 // LOAN MANAGEMENT PATHS
 // ============================================================================
 
-/// Loans collection (list loans, create loan)
+/// Loans collection (list loans)
 pub const LOANS: &str = api_path!("/loans");
+
+/// Loan creation (single loan)
+pub const LOAN: &str = api_path!("/loan");
 
 /// Individual loan operations
 pub const LOAN_BY_ID: &str = api_path!("/loan/{loan_id}");
@@ -182,6 +216,27 @@ pub fn user_kyc_status_path(user_id: &str) -> String {
     replace_param(USER_KYC_STATUS, "user_id", user_id)
 }
 
+/// Build admin KYC pending path
+pub fn admin_kyc_pending_path() -> String {
+    ADMIN_KYC_PENDING.to_string()
+}
+
+/// Build admin KYC stats path
+pub fn admin_kyc_stats_path() -> String {
+    ADMIN_KYC_STATS.to_string()
+}
+
+/// Build admin bulk KYC approval path
+pub fn admin_kyc_bulk_approve_path() -> String {
+    ADMIN_KYC_BULK_APPROVE.to_string()
+}
+
+// Invite Code Management Helper Functions
+/// Build invite code validate path with code parameter
+pub fn invite_code_validate_path(code: &str) -> String {
+    replace_param(INVITE_CODE_VALIDATE, "code", code)
+}
+
 // Loan Management Helper Functions
 /// Build loan path with loan_id parameter
 pub fn loan_path(loan_id: &str) -> String {
@@ -248,6 +303,26 @@ pub fn transaction_proof_path(transaction_type: &str, transaction_id: &str) -> S
     replace_param(&path, "transaction_id", transaction_id)
 }
 
+/// Generate user balance by address path
+pub fn user_balance_by_address_path(address: &str) -> String {
+    replace_param(USER_BALANCE_BY_ADDRESS, "address", address)
+}
+
+/// Generate user balance by ID path
+pub fn user_balance_by_id_path(user_id: &str) -> String {
+    replace_param(USER_BALANCE_BY_ID, "user_id", user_id)
+}
+
+/// Generate user transactions by ID path
+pub fn user_transactions_by_id_path(user_id: &str) -> String {
+    replace_param(USER_TRANSACTIONS_BY_ID, "user_id", user_id)
+}
+
+/// Generate transaction by hash path
+pub fn transaction_by_hash_path(tx_hash: &str) -> String {
+    replace_param(TRANSACTION_BY_HASH, "tx_hash", tx_hash)
+}
+
 // ============================================================================
 // PATH LISTS FOR DOCUMENTATION
 // ============================================================================
@@ -292,6 +367,33 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
             path: USER_KYC_STATUS.to_string(),
             description: "Update KYC status (admin only)".to_string(),
         },
+        // Admin KYC Management
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: ADMIN_KYC_PENDING.to_string(),
+            description: "List pending KYC applications (admin only)".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: ADMIN_KYC_STATS.to_string(),
+            description: "Get KYC statistics (admin only)".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: ADMIN_KYC_BULK_APPROVE.to_string(),
+            description: "Bulk approve KYC applications (admin only)".to_string(),
+        },
+        // Invite Code Management
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: INVITE_CODE_GENERATE.to_string(),
+            description: "Generate new invite code".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: INVITE_CODE_VALIDATE.to_string(),
+            description: "Validate invite code (doesn't mark as used)".to_string(),
+        },
         // Loan Management
         crate::rest::EndpointInfo {
             method: "GET".to_string(),
@@ -300,13 +402,18 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
         },
         crate::rest::EndpointInfo {
             method: "POST".to_string(),
-            path: LOANS.to_string(),
+            path: LOAN.to_string(),
             description: "Create new loan".to_string(),
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),
             path: LOAN_BY_ID.to_string(),
             description: "Get loan details by ID".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "DELETE".to_string(),
+            path: LOAN_BY_ID.to_string(),
+            description: "Close loan by ID".to_string(),
         },
         crate::rest::EndpointInfo {
             method: "GET".to_string(),

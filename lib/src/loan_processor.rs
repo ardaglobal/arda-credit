@@ -204,6 +204,24 @@ impl GlobalLoanState {
                 loan_state.process_loan_closeout(transaction, &self.users)?;
                 self.loans = loan_state.loans;
             }
+            TransactionType::UserDeposit => {
+                // Process user deposit by creating a balance update
+                // For deposits, metadata contains: [wallet_address(32)] + [remaining_32_bytes_unused]
+                let metadata = transaction.metadata.as_bytes();
+                let mut wallet_address = [0u8; 32];
+                wallet_address.copy_from_slice(&metadata[0..32]);
+
+                let balance_update = self.balance_state.create_deposit_update(
+                    transaction.transaction_id,
+                    transaction.user_id,
+                    wallet_address,
+                    u128::from(transaction.amount),
+                    transaction.created_at,
+                )?;
+
+                // Apply balance update to state
+                self.balance_state.apply_update(balance_update)?;
+            }
         }
 
         // Update global state
@@ -331,7 +349,9 @@ pub fn process_loan_batch(
 pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), ProcessingError> {
     // Basic validation
     match transaction.transaction_type {
-        TransactionType::LoanOrigination | TransactionType::LoanPayment => {
+        TransactionType::LoanOrigination
+        | TransactionType::LoanPayment
+        | TransactionType::UserDeposit => {
             if transaction.amount == 0 {
                 return Err(ProcessingError::InvalidTransactionType);
             }
@@ -344,7 +364,8 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
     match transaction.transaction_type {
         TransactionType::UserRegistration
         | TransactionType::KycSubmission
-        | TransactionType::KycVerification => {
+        | TransactionType::KycVerification
+        | TransactionType::UserDeposit => {
             if transaction.loan_id != zero_loan_id {
                 return Err(ProcessingError::InvalidTransactionType);
             }
@@ -1217,6 +1238,308 @@ mod tests {
 
         // Root should change again
         assert_ne!(new_root, final_root);
+    }
+
+    #[test]
+    fn test_user_deposit_processing() {
+        let mut state = GlobalLoanState::new();
+        let user_id = [1u8; 32];
+        let wallet_address = [2u8; 32];
+
+        // Register user first
+        let user_registration = create_test_user_registration(user_id, 1);
+        state.process_transaction(&user_registration).unwrap();
+
+        // Create deposit transaction
+        let mut deposit_metadata = vec![0u8; 64];
+        deposit_metadata[0..32].copy_from_slice(&wallet_address); // First 32 bytes = wallet address
+
+        let deposit_tx = LoanTransaction {
+            transaction_id: [10u8; 32],
+            user_id,
+            loan_id: [0u8; 32], // Zero for non-loan transactions
+            transaction_type: TransactionType::UserDeposit,
+            amount: 50000, // $500 deposit
+            created_at: 1_640_995_400,
+            metadata: MetadataArray::from_bytes(&deposit_metadata),
+        };
+
+        // Process deposit transaction
+        state.process_transaction(&deposit_tx).unwrap();
+
+        // Verify user balance was updated
+        assert_eq!(state.get_user_balance(&user_id), 50000);
+
+        // Verify balance update was created
+        let balance_history = state.get_user_balance_history(&user_id, None);
+        assert_eq!(balance_history.len(), 1);
+
+        let balance_update = balance_history[0];
+        assert_eq!(
+            balance_update.update_type,
+            BalanceUpdateType::CreditFromDeposit
+        );
+        assert_eq!(balance_update.amount, 50000);
+        assert_eq!(balance_update.previous_balance, 0);
+        assert_eq!(balance_update.new_balance, 50000);
+
+        // Verify transaction counter was incremented
+        assert_eq!(state.transaction_count, 2); // 1 registration + 1 deposit
+    }
+
+    #[test]
+    fn test_deposit_validation() {
+        // Test that deposit with zero amount fails
+        let deposit_with_zero_amount = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserDeposit,
+            amount: 0, // Should fail validation
+            created_at: 1_640_995_200,
+            metadata: MetadataArray::empty(),
+        };
+
+        assert!(validate_transaction(&deposit_with_zero_amount).is_err());
+
+        // Test that deposit with non-zero loan_id fails
+        let deposit_with_loan_id = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [1u8; 32], // Should be zero for deposits
+            transaction_type: TransactionType::UserDeposit,
+            amount: 50000,
+            created_at: 1_640_995_200,
+            metadata: MetadataArray::empty(),
+        };
+
+        assert!(validate_transaction(&deposit_with_loan_id).is_err());
+
+        // Test valid deposit
+        let valid_deposit = LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [0u8; 32], // Zero for deposits
+            transaction_type: TransactionType::UserDeposit,
+            amount: 50000,
+            created_at: 1_640_995_200,
+            metadata: MetadataArray::empty(),
+        };
+
+        assert!(validate_transaction(&valid_deposit).is_ok());
+    }
+
+    #[test]
+    fn test_mixed_batch_with_deposits() {
+        let mut state = GlobalLoanState::new();
+
+        let depositor_id = [1u8; 32];
+        let borrower_id = [2u8; 32];
+        let lender_id = [3u8; 32];
+        let loan_id = [10u8; 32];
+
+        // Create a batch with mixed transaction types including deposits
+        let base_timestamp = 1_640_995_200;
+
+        let batch = LoanBatch {
+            batch_id: [100u8; 32],
+            transactions: vec![
+                // Register users (use proper sequencing)
+                {
+                    let mut metadata = MetadataArray::empty();
+                    metadata.as_mut_bytes()[0] = 1; // UserType::Investor
+                    LoanTransaction {
+                        transaction_id: [1u8; 32],
+                        user_id: depositor_id,
+                        loan_id: [0u8; 32],
+                        transaction_type: TransactionType::UserRegistration,
+                        amount: 0,
+                        created_at: base_timestamp + 1000,
+                        metadata,
+                    }
+                },
+                {
+                    let mut metadata = MetadataArray::empty();
+                    metadata.as_mut_bytes()[0] = 1; // UserType::Investor
+                    LoanTransaction {
+                        transaction_id: [2u8; 32],
+                        user_id: borrower_id,
+                        loan_id: [0u8; 32],
+                        transaction_type: TransactionType::UserRegistration,
+                        amount: 0,
+                        created_at: base_timestamp + 1100,
+                        metadata,
+                    }
+                },
+                {
+                    let mut metadata = MetadataArray::empty();
+                    metadata.as_mut_bytes()[0] = 2; // UserType::Lender
+                    LoanTransaction {
+                        transaction_id: [3u8; 32],
+                        user_id: lender_id,
+                        loan_id: [0u8; 32],
+                        transaction_type: TransactionType::UserRegistration,
+                        amount: 0,
+                        created_at: base_timestamp + 1200,
+                        metadata,
+                    }
+                },
+                // KYC verification
+                {
+                    let mut metadata = MetadataArray::empty();
+                    metadata.as_mut_bytes()[0] = 1; // approved
+                    LoanTransaction {
+                        transaction_id: [4u8; 32],
+                        user_id: depositor_id,
+                        loan_id: [0u8; 32],
+                        transaction_type: TransactionType::KycVerification,
+                        amount: 0,
+                        created_at: base_timestamp + 2000,
+                        metadata,
+                    }
+                },
+                {
+                    let mut metadata = MetadataArray::empty();
+                    metadata.as_mut_bytes()[0] = 1; // approved
+                    LoanTransaction {
+                        transaction_id: [5u8; 32],
+                        user_id: borrower_id,
+                        loan_id: [0u8; 32],
+                        transaction_type: TransactionType::KycVerification,
+                        amount: 0,
+                        created_at: base_timestamp + 2100,
+                        metadata,
+                    }
+                },
+                {
+                    let mut metadata = MetadataArray::empty();
+                    metadata.as_mut_bytes()[0] = 1; // approved
+                    LoanTransaction {
+                        transaction_id: [6u8; 32],
+                        user_id: lender_id,
+                        loan_id: [0u8; 32],
+                        transaction_type: TransactionType::KycVerification,
+                        amount: 0,
+                        created_at: base_timestamp + 2200,
+                        metadata,
+                    }
+                },
+                // User deposits
+                {
+                    let mut deposit_metadata = vec![0u8; 64];
+                    let wallet_address = [99u8; 32];
+                    deposit_metadata[0..32].copy_from_slice(&wallet_address);
+
+                    LoanTransaction {
+                        transaction_id: [20u8; 32],
+                        user_id: depositor_id,
+                        loan_id: [0u8; 32],
+                        transaction_type: TransactionType::UserDeposit,
+                        amount: 100000, // $1000 deposit
+                        created_at: base_timestamp + 3000,
+                        metadata: MetadataArray::from_bytes(&deposit_metadata),
+                    }
+                },
+                // Another deposit by lender
+                {
+                    let mut deposit_metadata = vec![0u8; 64];
+                    let wallet_address = [88u8; 32];
+                    deposit_metadata[0..32].copy_from_slice(&wallet_address);
+
+                    LoanTransaction {
+                        transaction_id: [21u8; 32],
+                        user_id: lender_id,
+                        loan_id: [0u8; 32],
+                        transaction_type: TransactionType::UserDeposit,
+                        amount: 150000, // $1500 deposit
+                        created_at: base_timestamp + 4000,
+                        metadata: MetadataArray::from_bytes(&deposit_metadata),
+                    }
+                },
+                // Loan origination
+                {
+                    let mut loan_metadata = vec![0u8; 64];
+                    loan_metadata[0..32].copy_from_slice(&borrower_id);
+                    loan_metadata[32..64].copy_from_slice(&lender_id);
+
+                    LoanTransaction {
+                        transaction_id: [22u8; 32],
+                        user_id: lender_id,
+                        loan_id,
+                        transaction_type: TransactionType::LoanOrigination,
+                        amount: 50000,
+                        created_at: base_timestamp + 5000,
+                        metadata: MetadataArray::from_bytes(&loan_metadata),
+                    }
+                },
+            ],
+            previous_state_root: [0u8; 32],
+            created_at: base_timestamp,
+        };
+
+        // Process the batch
+        let result = state.process_batch(&batch);
+        if let Err(e) = &result {
+            println!("Batch processing failed: {:?}", e);
+        }
+        assert!(result.is_ok());
+
+        // Verify all users exist and are KYC approved
+        assert_eq!(state.users.len(), 3);
+        assert!(state.get_user(&depositor_id).unwrap().is_kyc_approved());
+        assert!(state.get_user(&borrower_id).unwrap().is_kyc_approved());
+        assert!(state.get_user(&lender_id).unwrap().is_kyc_approved());
+
+        // Verify user balances from deposits
+        assert_eq!(state.get_user_balance(&depositor_id), 100000); // $1000
+                                                                   // Lender should have 150000 - 50000 (loan origination) = 100000
+        assert_eq!(state.get_user_balance(&lender_id), 100000); // $1000 after loan
+                                                                // Borrower should have 50000 from loan origination
+        assert_eq!(state.get_user_balance(&borrower_id), 50000); // $500
+
+        // Verify loan exists
+        let loan = state.get_loan(&loan_id).unwrap();
+        assert_eq!(loan.principal_amount, 50000);
+
+        // Verify correct number of balance updates
+        // Depositor: 1 deposit
+        // Lender: 1 deposit + 1 debit from origination
+        // Borrower: 1 credit from origination
+        let depositor_history = state.get_user_balance_history(&depositor_id, None);
+        let lender_history = state.get_user_balance_history(&lender_id, None);
+        let borrower_history = state.get_user_balance_history(&borrower_id, None);
+
+        assert_eq!(depositor_history.len(), 1); // 1 deposit
+        assert_eq!(lender_history.len(), 2); // 1 deposit + 1 origination debit
+        assert_eq!(borrower_history.len(), 1); // 1 origination credit
+
+        // Verify deposit updates have correct type
+        assert_eq!(
+            depositor_history[0].update_type,
+            BalanceUpdateType::CreditFromDeposit
+        );
+        assert_eq!(
+            lender_history[1].update_type,
+            BalanceUpdateType::CreditFromDeposit
+        ); // Second is the deposit (sorted by timestamp desc)
+
+        // Total transaction count should be 9 (3 registrations + 3 KYC verifications + 2 deposits + 1 loan origination)
+        assert_eq!(state.transaction_count, 9);
+
+        // Verify total system value calculation (what ZK program will use)
+        let total_system_value = state.compute_total_user_balance();
+        // Should equal total deposits: $1000 (depositor) + $1500 (lender) = $2500
+        assert_eq!(total_system_value, 250000); // $2500 in cents
+
+        // Verify this equals sum of individual balances
+        let sum_of_balances = state.get_user_balance(&depositor_id)
+            + state.get_user_balance(&lender_id)
+            + state.get_user_balance(&borrower_id);
+        assert_eq!(total_system_value, sum_of_balances);
+
+        // Outstanding loan balance is separate and should be $500
+        let loan_balance_total = state.compute_total_balance();
+        assert_eq!(loan_balance_total, 50000); // $500 in cents
     }
 
     #[test]

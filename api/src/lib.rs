@@ -60,11 +60,15 @@ pub use client::{
     CreateBatchRequest,
     CreateBatchResponse,
     CurrentStateResponse,
+    DepositTransactionInfo,
     HealthResponse,
     PendingTransactionsResponse,
     SubmitTransactionRequest,
     SubmitTransactionResponse,
     TransactionInfo,
+    TransactionStatusResponse,
+    UserBalanceResponse,
+    UserTransactionsResponse,
 };
 
 pub use rest::{
@@ -86,16 +90,20 @@ pub use auth::{AuthError, AuthService, Claims};
 // Re-export database types that the API uses
 pub use arda_credit_db::{
     create_batch,
+    create_loan,
     get_all_batches,
     get_batch_by_id,
     get_contract_submission_data,
     get_current_state,
+    get_loan_by_id,
     get_pending_transactions,
     // Database functions
     init_db,
+    list_loans,
     store_ads_state_commit,
     submit_transaction,
     update_batch_proof,
+    update_loan,
 
     AdsStateCommit,
     ContractPrivateData,

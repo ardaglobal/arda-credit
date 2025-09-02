@@ -48,6 +48,6 @@ url         = "2.5"
 
 [dev-dependencies]
 tempfile           = "3.21"
-tracing-subscriber = "0.3"
+tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
 uuid               = { version = "1.0", features = [ "v4" ] }

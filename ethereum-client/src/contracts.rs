@@ -165,6 +165,15 @@ sol! {
             uint256 timestamp
         );
 
+        // USDC Deposit Events
+        #[derive(Debug, PartialEq, Eq)]
+        event Deposit(
+            address indexed user,
+            uint256 indexed amount,
+            uint256 indexed timestamp,
+            bytes32 transactionHash
+        );
+
         // Verification key utilities
         function getProgramVerificationKey() external view returns (bytes32 vKey);
 

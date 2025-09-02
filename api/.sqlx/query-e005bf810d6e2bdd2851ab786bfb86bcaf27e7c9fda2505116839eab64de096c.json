@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                COUNT(*) as total_balance_updates,\n                COUNT(DISTINCT user_id) as unique_users_with_balances,\n                SUM(operation_amount) as total_balance_amount,\n                COUNT(*) FILTER (WHERE operation_metadata->>'update_type' IN ('credit_from_payment', 'credit_from_origination', 'interest_accrual')) as total_credits,\n                COUNT(*) FILTER (WHERE operation_metadata->>'update_type' = 'debit_from_origination') as total_debits,\n                MAX(created_at) as balance_stats_updated_at\n            FROM nullifiers\n            WHERE loan_operation_type = 'balance_update'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_balance_updates",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "unique_users_with_balances",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_balance_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_credits",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "total_debits",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "balance_stats_updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "e005bf810d6e2bdd2851ab786bfb86bcaf27e7c9fda2505116839eab64de096c"
+}

@@ -45,7 +45,7 @@ deploy:
 ## up: Start services (uses pre-built image)
 .PHONY: up
 up:
-	docker-compose up -d
+	docker compose up -d
 	@echo "✅ Services started using pre-built image"
 	@echo "🌐 Server: http://localhost:8080"
 	@echo "🗄️  Database: localhost:5432"
@@ -53,7 +53,7 @@ up:
 ## up-dev: Start services (builds locally)
 .PHONY: up-dev
 up-dev:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build -d
+	docker compose -f docker compose.yml -f docker compose.dev.yml up --build -d
 	@echo "✅ Services started with local build"
 	@echo "🌐 Server: http://localhost:8080"
 	@echo "🗄️  Database: localhost:5432"
@@ -61,7 +61,7 @@ up-dev:
 ## down: Stop all services
 .PHONY: down
 down:
-	docker-compose down -v
+	docker compose down -v
 
 ## docker-build: Build image locally
 .PHONY: docker-build
@@ -139,11 +139,11 @@ actionlint-fix:
 ## test: Run all tests
 .PHONY: test
 test:
-	docker-compose up postgres -d
+	docker compose up postgres -d
 	@sleep 2
 	sqlx migrate run --source db/migrations
 	cargo test
-	docker-compose down -v
+	docker compose down -v
 
 ## cover: Generate code coverage report
 .PHONY: cover
@@ -151,7 +151,7 @@ cover:
 	@echo "🔍 Generating code coverage report..."
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "❌ cargo-llvm-cov not found. Run 'make install' to install dependencies."; exit 1; }
 	@echo "🚀 Starting PostgreSQL database..."
-	@docker-compose up postgres -d
+	@docker compose up postgres -d
 	@sleep 2
 	@echo "📦 Running database migrations..."
 	@sqlx migrate run --source db/migrations
@@ -164,7 +164,7 @@ cover:
 	@echo "  📝 Generating summary report..."
 	cargo llvm-cov --workspace --all-features --summary-only -- --test-threads=1 > target/llvm-cov/coverage-summary.txt
 	@echo "🛑 Stopping PostgreSQL database..."
-	@docker-compose down -v
+	@docker compose down -v
 	@echo "🎉 Coverage reports generated successfully!"
 	@echo ""
 	@echo "📂 Reports available at:"
@@ -193,7 +193,7 @@ cli:
 .PHONY: server
 server:
 	@echo "Starting PostgreSQL database..."
-	docker-compose up postgres -d
+	docker compose up postgres -d
 	@sleep 2
 	sqlx migrate run --source db/migrations
 	@echo "Starting API server locally (requires database)..."
@@ -279,7 +279,7 @@ deploy-contract-help:
 ## clean-docker: Clean up Docker resources
 .PHONY: clean-docker
 clean-docker:
-	docker-compose down -v
+	docker compose down -v
 	docker system prune -f -a
 	@echo "✅ Docker resources cleaned up"
 
@@ -316,7 +316,7 @@ initDB:
 	@echo ""
 	@# Start PostgreSQL database
 	@echo "🚀 Starting PostgreSQL database..."
-	@docker-compose up postgres -d
+	@docker compose up postgres -d
 	@echo ""
 	@# Wait for PostgreSQL to be ready
 	@echo "⏳ Waiting for PostgreSQL to be ready..."
@@ -338,7 +338,7 @@ initDB:
 	@echo ""
 	@# Stop PostgreSQL database
 	@echo "🛑 Stopping PostgreSQL database..."
-	@docker-compose down postgres
+	@docker compose down postgres -v
 	@echo ""
 	@echo "✅ Database initialization complete!"
 	@echo ""

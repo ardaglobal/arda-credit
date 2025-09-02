@@ -50,8 +50,23 @@ use std::time::Instant;
 use tracing::error;
 
 // Import new batch processing API types
+use alloy_primitives::Address;
 use arda_credit_api::BatchApiClient;
 use ethereum_client::{config::Config, EthereumClient};
+
+/// Validation error types
+#[derive(Debug, thiserror::Error)]
+pub enum ValidationError {
+    #[error("Invalid Ethereum address format")]
+    InvalidAddress,
+}
+
+/// Validate Ethereum address format using alloy
+fn validate_ethereum_address(address: &str) -> Result<Address, ValidationError> {
+    address
+        .parse::<Address>()
+        .map_err(|_| ValidationError::InvalidAddress)
+}
 
 #[derive(Parser)]
 #[command(name = "cli")]
@@ -273,6 +288,118 @@ enum Commands {
         /// Clean up created users after test
         #[arg(long)]
         cleanup: bool,
+    },
+
+    // ============================================================================
+    // INVITE CODE MANAGEMENT COMMANDS
+    // ============================================================================
+    /// Generate a new invite code for user registration
+    GenerateInviteCode {
+        /// Number of times this code can be used
+        #[arg(long, default_value = "1")]
+        max_uses: Option<i32>,
+        /// Hours until the code expires (default: 168 hours = 7 days)
+        #[arg(long, default_value = "168")]
+        expires_in_hours: Option<i32>,
+        /// Description for the invite code
+        #[arg(long)]
+        description: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Check if an invite code is valid
+    CheckInviteCode {
+        /// The invite code to check
+        #[arg(long)]
+        code: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Use an invite code (for testing - marks it as used)
+    UseInviteCode {
+        /// The invite code to use
+        #[arg(long)]
+        code: String,
+        /// User ID to associate with the code usage (optional)
+        #[arg(long)]
+        user_id: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    // ============================================================================
+    // DEPOSIT & BALANCE MANAGEMENT COMMANDS
+    // ============================================================================
+    /// Get user balance by wallet address
+    GetUserBalanceByAddress {
+        /// Wallet address to query balance for
+        #[arg(long)]
+        address: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get user balance by user ID
+    GetUserBalanceById {
+        /// User ID to query balance for
+        #[arg(long)]
+        user_id: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get user transaction history by user ID
+    GetUserTransactions {
+        /// User ID to query transactions for
+        #[arg(long)]
+        user_id: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get transaction status by transaction hash
+    GetTransactionStatus {
+        /// Transaction hash to query
+        #[arg(long)]
+        tx_hash: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Set wallet address for a user
+    SetUserWallet {
+        /// User ID to set wallet address for
+        #[arg(long)]
+        user_id: String,
+        /// Wallet address (Ethereum address format)
+        #[arg(long)]
+        wallet_address: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Link/associate your Ethereum wallet with your user account
+    /// This allows the system to track deposits sent to your wallet address
+    LinkWallet {
+        /// Your user ID (get this from register-user or get-user command)
+        #[arg(long)]
+        user_id: String,
+        /// Your Ethereum wallet address (must be a valid Ethereum address starting with 0x)
+        #[arg(long)]
+        wallet_address: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
     },
 
     // ============================================================================
@@ -675,6 +802,64 @@ async fn main() -> Result<()> {
         } => {
             delete_user(&client, &user_id, force, verbose).await?;
         }
+
+        // Invite Code Management Commands
+        Commands::GenerateInviteCode {
+            max_uses,
+            expires_in_hours,
+            description,
+            verbose,
+        } => {
+            generate_invite_code(
+                &client,
+                max_uses,
+                expires_in_hours,
+                description.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+        Commands::CheckInviteCode { code, verbose } => {
+            validate_invite_code(&client, &code, verbose).await?;
+        }
+        Commands::UseInviteCode {
+            code,
+            user_id,
+            verbose,
+        } => {
+            println!("❌ The use-invite-code command has been removed.");
+            println!("💡 Invite codes are now automatically used during user registration.");
+            println!("   Use 'register-user' command with the invite_code field instead.");
+        }
+
+        // Deposit & Balance Commands
+        Commands::GetUserBalanceByAddress { address, verbose } => {
+            get_user_balance_by_address(&client, &address, verbose).await?;
+        }
+        Commands::GetUserBalanceById { user_id, verbose } => {
+            get_user_balance_by_id(&client, &user_id, verbose).await?;
+        }
+        Commands::GetUserTransactions { user_id, verbose } => {
+            get_user_transactions(&client, &user_id, verbose).await?;
+        }
+        Commands::GetTransactionStatus { tx_hash, verbose } => {
+            get_transaction_status(&client, &tx_hash, verbose).await?;
+        }
+        Commands::SetUserWallet {
+            user_id,
+            wallet_address,
+            verbose,
+        } => {
+            set_user_wallet(&client, &user_id, &wallet_address, verbose).await?;
+        }
+        Commands::LinkWallet {
+            user_id,
+            wallet_address,
+            verbose,
+        } => {
+            link_user_wallet(&client, &user_id, &wallet_address, verbose).await?;
+        }
+
         Commands::SubmitKyc {
             user_id,
             document_type,
@@ -3199,6 +3384,453 @@ async fn test_user_operations(
             created_users.len()
         );
         println!("      Run with --cleanup to remove them automatically");
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// INVITE CODE MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Generate a new invite code
+async fn generate_invite_code(
+    client: &BatchApiClient,
+    max_uses: Option<i32>,
+    expires_in_hours: Option<i32>,
+    description: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("🎫 Generating new invite code...");
+        if let Some(uses) = max_uses {
+            println!("   Max uses: {}", uses);
+        }
+        if let Some(hours) = expires_in_hours {
+            println!("   Expires in: {} hours", hours);
+        }
+        if let Some(desc) = description {
+            println!("   Description: {}", desc);
+        }
+    }
+
+    match client.generate_invite_code().await {
+        Ok(result) => {
+            println!("✅ Invite code generated successfully:");
+            println!("   Code: {}", result["code"].as_str().unwrap_or("N/A"));
+            println!("   Max uses: {}", result["max_uses"].as_i64().unwrap_or(0));
+            if let Some(expires) = result["expires_at"].as_str() {
+                println!("   Expires: {}", expires);
+            }
+            if let Some(created) = result["created_at"].as_str() {
+                println!("   Created: {}", created);
+            }
+
+            if verbose {
+                println!(
+                    "   Created by: {}",
+                    result["created_by"].as_str().unwrap_or("N/A")
+                );
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("401") || error_msg.contains("403") {
+                println!("❌ Authentication required. You need to be logged in to generate invite codes.");
+                println!("   Note: This API endpoint requires user authentication.");
+            } else {
+                return Err(eyre::eyre!("Failed to generate invite code: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate if an invite code is valid (doesn't mark as used)
+async fn validate_invite_code(client: &BatchApiClient, code: &str, verbose: bool) -> Result<()> {
+    if verbose {
+        println!("🔍 Validating invite code: {}", code);
+    }
+
+    match client.validate_invite_code(code).await {
+        Ok(result) => {
+            let is_valid = result["is_valid"].as_bool().unwrap_or(false);
+
+            if is_valid {
+                println!("✅ Invite code is valid: {}", code);
+                if verbose {
+                    if let Some(current_uses) = result["current_uses"].as_i64() {
+                        if let Some(max_uses) = result["max_uses"].as_i64() {
+                            println!("   Usage: {}/{}", current_uses, max_uses);
+                        }
+                    }
+                    if let Some(expires) = result["expires_at"].as_str() {
+                        println!("   Expires: {}", expires);
+                    }
+                    if let Some(created) = result["created_at"].as_str() {
+                        println!("   Created: {}", created);
+                    }
+                }
+            } else {
+                println!("❌ Invite code is not valid: {}", code);
+                if let Some(message) = result["message"].as_str() {
+                    println!("   Reason: {}", message);
+                }
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ Invite code not found: {}", code);
+            } else {
+                return Err(eyre::eyre!("Failed to check invite code: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// This function is no longer used - invite codes are now handled during user registration
+#[allow(dead_code)]
+async fn use_invite_code(
+    _client: &BatchApiClient,
+    code: &str,
+    _user_id: Option<&str>,
+    _verbose: bool,
+) -> Result<()> {
+    println!("❌ Direct invite code usage is no longer supported.");
+    println!(
+        "💡 Invite code '{}' should be used during user registration.",
+        code
+    );
+    println!("   The registration endpoint will automatically validate and mark the code as used.");
+    Ok(())
+}
+
+// ============================================================================
+// DEPOSIT & BALANCE MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Get user balance by wallet address
+async fn get_user_balance_by_address(
+    client: &BatchApiClient,
+    address: &str,
+    verbose: bool,
+) -> Result<()> {
+    println!("🔍 Getting user balance for address: {}", address);
+
+    match client.get_user_balance_by_address(address).await {
+        Ok(response) => {
+            println!("✅ User Balance Retrieved:");
+            println!("   Wallet Address: {}", response.wallet_address);
+            if let Some(user_id) = &response.user_id {
+                println!("   User ID: {}", user_id);
+            }
+            println!(
+                "   Available Balance: {} {}",
+                response.available_balance, response.currency
+            );
+
+            if verbose {
+                println!("   Response: {:#?}", response);
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found for wallet address: {}", address);
+            } else {
+                return Err(eyre::eyre!("Failed to get user balance: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Get user balance by user ID
+async fn get_user_balance_by_id(
+    client: &BatchApiClient,
+    user_id: &str,
+    verbose: bool,
+) -> Result<()> {
+    println!("🔍 Getting user balance for user ID: {}", user_id);
+
+    match client.get_user_balance_by_id(user_id).await {
+        Ok(response) => {
+            println!("✅ User Balance Retrieved:");
+            println!(
+                "   User ID: {}",
+                response.user_id.as_deref().unwrap_or("N/A")
+            );
+            println!("   Wallet Address: {}", response.wallet_address);
+            println!(
+                "   Available Balance: {} {}",
+                response.available_balance, response.currency
+            );
+
+            if verbose {
+                println!("   Response: {:#?}", response);
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else {
+                return Err(eyre::eyre!("Failed to get user balance: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Get user transaction history
+async fn get_user_transactions(
+    client: &BatchApiClient,
+    user_id: &str,
+    verbose: bool,
+) -> Result<()> {
+    println!("🔍 Getting transaction history for user ID: {}", user_id);
+
+    match client.get_user_transactions(user_id).await {
+        Ok(response) => {
+            println!("✅ User Transactions Retrieved:");
+            println!("   Total Count: {}", response.total_count);
+
+            if response.transactions.is_empty() {
+                println!("   No transactions found");
+            } else {
+                for (i, tx) in response.transactions.iter().enumerate() {
+                    println!("   Transaction {}:", i + 1);
+                    println!("     ID: {}", tx.id);
+                    println!("     Address: {}", tx.user_address);
+                    println!(
+                        "     Amount: {} USDC",
+                        tx.deposit_amount_usdc.as_deref().unwrap_or("N/A")
+                    );
+                    println!("     Status: {}", tx.status);
+                    println!("     TX Hash: {}", tx.transaction_hash);
+                    println!(
+                        "     Confirmations: {}/{}",
+                        tx.confirmation_count, tx.required_confirmations
+                    );
+                    if let Some(created_at) = &tx.created_at {
+                        println!("     Created: {}", created_at);
+                    }
+                    if let Some(processed_at) = &tx.processed_at {
+                        println!("     Processed: {}", processed_at);
+                    }
+                }
+            }
+
+            if verbose {
+                println!("   Full Response: {:#?}", response);
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else {
+                return Err(eyre::eyre!("Failed to get user transactions: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Get transaction status by hash
+async fn get_transaction_status(
+    client: &BatchApiClient,
+    tx_hash: &str,
+    verbose: bool,
+) -> Result<()> {
+    println!("🔍 Getting transaction status for hash: {}", tx_hash);
+
+    match client.get_transaction_status(tx_hash).await {
+        Ok(response) => {
+            if response.found {
+                if let Some(tx) = &response.transaction {
+                    println!("✅ Transaction Found:");
+                    println!("   ID: {}", tx.id);
+                    println!("   Address: {}", tx.user_address);
+                    println!(
+                        "   Amount: {} USDC",
+                        tx.deposit_amount_usdc.as_deref().unwrap_or("N/A")
+                    );
+                    println!("   Status: {}", tx.status);
+                    println!("   TX Hash: {}", tx.transaction_hash);
+                    println!("   Block Number: {}", tx.block_number);
+                    println!(
+                        "   Confirmations: {}/{}",
+                        tx.confirmation_count, tx.required_confirmations
+                    );
+                    if let Some(created_at) = &tx.created_at {
+                        println!("   Created: {}", created_at);
+                    }
+                    if let Some(processed_at) = &tx.processed_at {
+                        println!("     Processed: {}", processed_at);
+                    }
+
+                    if verbose {
+                        println!("   Full Transaction: {:#?}", tx);
+                    }
+                } else {
+                    println!("❓ Transaction marked as found but no data returned");
+                }
+            } else {
+                println!("❌ Transaction not found: {}", tx_hash);
+            }
+
+            if verbose {
+                println!("   Full Response: {:#?}", response);
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to get transaction status: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Set wallet address for a user
+async fn set_user_wallet(
+    client: &BatchApiClient,
+    user_id: &str,
+    wallet_address: &str,
+    verbose: bool,
+) -> Result<()> {
+    println!("🔧 Setting wallet address for user: {}", user_id);
+
+    // Validate Ethereum address format using alloy
+    let normalized_address = match validate_ethereum_address(wallet_address) {
+        Ok(addr) => format!("{:#x}", addr),
+        Err(_) => {
+            println!("❌ Invalid Ethereum address format: {}", wallet_address);
+            return Err(eyre::eyre!("Invalid Ethereum address format"));
+        }
+    };
+
+    println!(
+        "   Wallet Address: {} → {}",
+        wallet_address, normalized_address
+    );
+
+    match client
+        .update_user_wallet(user_id, &normalized_address)
+        .await
+    {
+        Ok(response) => {
+            println!("✅ User wallet updated successfully:");
+            if let Some(user_id) = response.get("user_id").and_then(|v| v.as_str()) {
+                println!("   User ID: {}", user_id);
+            }
+            println!("   Wallet Address: {}", normalized_address);
+
+            if verbose {
+                println!("   Full Response: {:#?}", response);
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else if error_msg.contains("400") {
+                println!("❌ Invalid wallet address format: {}", wallet_address);
+            } else {
+                return Err(eyre::eyre!("Failed to update user wallet: {}", e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Link/associate wallet address with a user account
+async fn link_user_wallet(
+    client: &BatchApiClient,
+    user_id: &str,
+    wallet_address: &str,
+    verbose: bool,
+) -> Result<()> {
+    println!("🔗 Linking wallet address to your account...");
+
+    // Validate Ethereum address format using alloy
+    let validated_address = match validate_ethereum_address(wallet_address) {
+        Ok(addr) => addr,
+        Err(_) => {
+            println!("❌ Invalid Ethereum address format!");
+            println!("   Valid addresses must:");
+            println!("   • Start with '0x'");
+            println!("   • Be exactly 42 characters long (40 hex characters + '0x')");
+            println!("   • Contain only valid hexadecimal characters");
+            println!("   • Have valid checksumming (if mixed case)");
+            println!("   • Example: 0x742d35Cc6C4C98B3C4a2345678901234567890AB");
+            return Err(eyre::eyre!("Invalid Ethereum address format"));
+        }
+    };
+
+    // Use the normalized address (proper checksumming)
+    let normalized_address = format!("{:#x}", validated_address);
+
+    println!("   User ID: {}", user_id);
+    println!(
+        "   Wallet Address: {} → {}",
+        wallet_address, normalized_address
+    );
+    println!();
+
+    println!("📋 What happens when you link your wallet:");
+    println!("   ✓ System will monitor deposits sent to this address");
+    println!("   ✓ USDC deposits will be automatically credited to your balance");
+    println!("   ✓ You can check your balance and transaction history");
+    println!("   ✓ Deposits require 12 block confirmations before being credited");
+    println!();
+
+    match client
+        .update_user_wallet(user_id, &normalized_address)
+        .await
+    {
+        Ok(response) => {
+            println!("✅ Wallet successfully linked to your account!");
+            if let Some(user_id) = response.get("user_id").and_then(|v| v.as_str()) {
+                println!("   User ID: {}", user_id);
+            }
+            println!("   Wallet Address: {}", normalized_address);
+            println!();
+
+            println!("🚀 Next steps:");
+            println!(
+                "   1. Send USDC to your wallet address: {}",
+                normalized_address
+            );
+            println!("   2. Check your balance: cargo run --bin cli -- get-user-balance-by-address --address {}", normalized_address);
+            println!("   3. View transactions: cargo run --bin cli -- get-user-transactions --user-id {}", user_id);
+            println!("   4. Track specific deposits: cargo run --bin cli -- get-transaction-status --tx-hash <TRANSACTION_HASH>");
+
+            if verbose {
+                println!();
+                println!("   Full Response: {:#?}", response);
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+                println!("   💡 Tip: Register first using: cargo run --bin cli -- register-user --user-type <TYPE> --email <EMAIL>");
+            } else if error_msg.contains("400") {
+                println!("❌ Invalid wallet address: {}", wallet_address);
+                println!("   💡 Make sure the address is a valid Ethereum address format");
+            } else {
+                return Err(eyre::eyre!("Failed to link wallet: {}", e));
+            }
+        }
     }
 
     Ok(())

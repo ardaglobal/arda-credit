@@ -25,7 +25,7 @@ jobs:
       - instance-size=large
     permissions:
       contents: read
-      packages: write
+      packages: write  # Includes read access for pulling private base containers
       id-token: write
       attestations: write
 

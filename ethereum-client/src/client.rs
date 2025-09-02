@@ -101,11 +101,11 @@ pub enum LoanEvent {
         tx_hash: FixedBytes<32>,
         log_index: u64,
     },
-    // Loan-specific events
+    // USDC Deposit events
     Deposit {
         user: Address,
         amount: U256,
-        loan_id: FixedBytes<32>,
+        transaction_hash: FixedBytes<32>,
         timestamp: u64,
         block_number: u64,
         tx_hash: FixedBytes<32>,
@@ -836,6 +836,14 @@ impl EthereumClient {
         self.event_broadcaster.subscribe()
     }
 
+    /// Get the latest block number from the Ethereum network
+    pub async fn get_latest_block_number(&self) -> Result<u64> {
+        self.http_provider
+            .get_block_number()
+            .await
+            .map_err(EthereumError::Provider)
+    }
+
     /// Start comprehensive event monitoring with enhanced capabilities
     #[allow(clippy::cognitive_complexity)]
     pub async fn start_event_monitoring(&self) -> Result<()> {
@@ -1017,6 +1025,19 @@ impl EthereumClient {
             });
         }
 
+        // Decode USDC Deposit event
+        if let Ok(event) = ILoan::Deposit::decode_log(&primitive_log) {
+            return Some(LoanEvent::Deposit {
+                user: event.user,
+                amount: event.amount,
+                transaction_hash: event.transactionHash,
+                timestamp: event.timestamp.try_into().unwrap_or(0),
+                block_number,
+                tx_hash,
+                log_index,
+            });
+        }
+
         debug!("Unknown event type in log: {:?}", log);
         None
     }
@@ -1075,9 +1096,10 @@ impl EthereumClient {
                 LoanEvent::StateUpdated { state_id, .. }
                 | LoanEvent::ProofStored { state_id, .. }
                 | LoanEvent::StateReadRequested { state_id, .. } => Some(*state_id),
-                LoanEvent::Deposit { loan_id, .. }
-                | LoanEvent::LoanPayment { loan_id, .. }
-                | LoanEvent::LoanClosed { loan_id, .. } => Some(*loan_id), // Use loan_id as state_id for filtering
+                LoanEvent::LoanPayment { loan_id, .. } | LoanEvent::LoanClosed { loan_id, .. } => {
+                    Some(*loan_id)
+                } // Use loan_id as state_id for filtering
+                LoanEvent::Deposit { .. } => None, // USDC deposits don't have state_id
                 _ => None,
             };
             if let Some(state_id) = event_state_id {
@@ -1262,14 +1284,14 @@ impl EthereumClient {
             LoanEvent::Deposit {
                 user: _,
                 amount: _,
-                loan_id,
+                transaction_hash: _,
                 timestamp,
                 block_number,
                 tx_hash,
                 log_index,
             } => ContractEvent {
                 event_type: "Deposit".to_string(),
-                state_id: Some(*loan_id), // Use loan_id as state_id for loan events
+                state_id: None, // USDC deposits don't have state_id
                 proof_id: None,
                 block_number: *block_number,
                 transaction_hash: *tx_hash,

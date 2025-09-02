@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE identities \n        SET kyc_status = 'pending',\n            kyc_submitted_at = $2,\n            updated_at = $2\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0064b821dad67f946e4a6d75db9addb95743d6752260f8f3087d6ab3b412d25e"
+}

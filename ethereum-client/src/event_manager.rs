@@ -50,12 +50,13 @@ pub trait EventHandler: Send + Sync {
         block_number: u64,
     );
 
-    // Loan-specific event handlers
+    // USDC Deposit event handlers
     fn handle_deposit(
         &self,
         user: Address,
         amount: alloy_primitives::U256,
-        loan_id: FixedBytes<32>,
+        transaction_hash: FixedBytes<32>,
+        timestamp: u64,
         block_number: u64,
     );
 
@@ -344,11 +345,12 @@ impl EventManager {
             LoanEvent::Deposit {
                 user,
                 amount,
-                loan_id,
+                transaction_hash,
+                timestamp,
                 block_number,
                 ..
             } => {
-                handler.handle_deposit(user, amount, loan_id, block_number);
+                handler.handle_deposit(user, amount, transaction_hash, timestamp, block_number);
             }
             LoanEvent::LoanPayment {
                 loan_id,
@@ -549,15 +551,17 @@ impl EventHandler for VAppEventHandler {
         &self,
         user: Address,
         amount: alloy_primitives::U256,
-        loan_id: FixedBytes<32>,
+        transaction_hash: FixedBytes<32>,
+        timestamp: u64,
         block_number: u64,
     ) {
         info!(
-            "[{}] Deposit: user={}, amount={}, loan_id={}, block={}",
+            "[{}] USDC Deposit: user={}, amount={}, tx_hash={}, timestamp={}, block={}",
             self.server_name,
             user,
             amount,
-            hex::encode(loan_id.as_slice()),
+            hex::encode(transaction_hash.as_slice()),
+            timestamp,
             block_number
         );
     }

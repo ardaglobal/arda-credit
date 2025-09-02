@@ -19,12 +19,13 @@ default = [ "tikv-jemallocator" ]
 
 [dependencies]
 # Core dependencies
-chrono    = { version = "0.4", features = [ "serde" ] }
-serde     = { workspace = true }
-thiserror = "2.0"
-tokio     = { workspace = true }
-tracing   = { workspace = true }
-uuid      = { version = "1.0", features = [ "serde", "v4" ] }
+chrono       = { version = "0.4", features = [ "serde" ] }
+rust_decimal = "1.0"
+serde        = { workspace = true }
+thiserror    = "2.0"
+tokio        = { workspace = true }
+tracing      = { workspace = true }
+uuid         = { version = "1.0", features = [ "serde", "v4" ] }
 
 # Database and arithmetic dependencies
 alloy-primitives = { workspace = true }
@@ -60,7 +61,7 @@ tower-http = { version = "0.6", features = [
 clap               = { version = "4.0", features = [ "derive" ] }
 dotenv             = "0.15"
 tokio-util         = "0.7"
-tracing-subscriber = { version = "0.3", features = [ "env-filter" ] }
+tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 
 # HTTP client dependencies
 reqwest = { version = "0.12", features = [ "json" ] }
@@ -85,8 +86,9 @@ utoipa            = { version = "5.4", features = [ "axum_extras", "chrono", "uu
 utoipa-swagger-ui = { version = "9.0", features = [ "axum" ] }
 
 [dev-dependencies]
+
 axum-test          = "18.0.0"
 tempfile           = "3.21"
-tracing-subscriber = "0.3"
+tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
 uuid               = { version = "1.0", features = [ "v4" ] }

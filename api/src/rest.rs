@@ -19,10 +19,13 @@ use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use arda_credit_db::{
-    create_identity_with_password, get_all_batches, get_batch_by_id, get_contract_submission_data,
-    get_current_state, get_identity_by_email, get_identity_by_id, get_pending_transactions,
-    store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
-    update_identity_profile, update_kyc_status, update_last_login, AuditEvent, Identity,
+    create_identity_with_password, create_loan, generate_invite_code, get_all_batches,
+    get_batch_by_id, get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
+    get_deposits_by_user_address, get_identity_by_email, get_identity_by_id, get_invite_code_info,
+    get_kyc_statistics, get_loan_by_id, get_pending_transactions, get_user_balance_by_address,
+    get_user_balance_by_id, list_loans, list_pending_kyc_applications, store_ads_state_commit,
+    submit_kyc_data, submit_transaction, update_batch_proof, update_identity_profile,
+    update_kyc_status, update_last_login, update_loan, use_invite_code, AuditEvent, Identity,
     IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
 };
 use std::sync::Arc;
@@ -37,56 +40,12 @@ fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
     uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
 }
 
-/// Extract authenticated user ID from request headers (set by auth middleware)
-fn extract_authenticated_user_id(
-    request: &axum::extract::Request<axum::body::Body>,
-) -> Result<uuid::Uuid, String> {
-    let user_id_header = request
-        .headers()
-        .get("x-user-id")
-        .ok_or_else(|| "No authenticated user ID found".to_string())?;
-
-    let user_id_str = user_id_header
-        .to_str()
-        .map_err(|_| "Invalid user ID header format".to_string())?;
-
-    parse_user_id(user_id_str)
-}
-
 /// Extract authenticated user info from request headers (set by auth middleware)
 #[derive(Debug)]
 pub struct AuthenticatedUser {
     pub user_id: uuid::Uuid,
     pub email: String,
     pub user_type: String,
-}
-
-fn extract_authenticated_user(
-    request: &axum::extract::Request<axum::body::Body>,
-) -> Result<AuthenticatedUser, String> {
-    let user_id = extract_authenticated_user_id(request)?;
-
-    let email = request
-        .headers()
-        .get("x-user-email")
-        .ok_or_else(|| "No authenticated user email found".to_string())?
-        .to_str()
-        .map_err(|_| "Invalid user email header format".to_string())?
-        .to_string();
-
-    let user_type = request
-        .headers()
-        .get("x-user-type")
-        .ok_or_else(|| "No authenticated user type found".to_string())?
-        .to_str()
-        .map_err(|_| "Invalid user type header format".to_string())?
-        .to_string();
-
-    Ok(AuthenticatedUser {
-        user_id,
-        email,
-        user_type,
-    })
 }
 
 /// Convert database Identity to API UserDetailsResponse
@@ -100,6 +59,10 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
         kyc_verified_at: identity.kyc_verified_at,
         created_at: identity.created_at,
         updated_at: Some(identity.updated_at),
+        first_name: identity.first_name,
+        last_name: identity.last_name,
+        jurisdiction: identity.jurisdiction,
+        wallet_address: identity.wallet_address,
     }
 }
 
@@ -361,6 +324,8 @@ pub struct RegisterUserRequest {
     #[schema(example = "SecureP@ssw0rd123")]
     pub password: String,
     pub jurisdiction: Option<String>, // Optional, defaults to "US"
+    #[schema(example = "ABC123DEF456")]
+    pub invite_code: Option<String>, // Optional invite code for registration
 }
 
 /// Request to login with email and password
@@ -404,6 +369,44 @@ pub struct LogoutResponse {
     pub message: String,
 }
 
+/// Invite code validation response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct InviteCodeResponse {
+    pub code: String,
+    pub is_valid: bool,
+    pub message: String,
+}
+
+/// Response from validating an invite code (doesn't mark as used)
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ValidateInviteCodeResponse {
+    pub code: String,
+    pub is_valid: bool,
+    pub is_admin_code: bool, // New field to indicate if this is an admin invite
+    pub user_type: Option<String>, // The user type this invite is for ('admin' or 'regular')
+    pub expires_at: Option<DateTime<Utc>>,
+    pub message: String,
+}
+
+/// Request to generate a new invite code
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct GenerateInviteCodeRequest {
+    pub max_uses: Option<i32>,
+    pub expires_in_hours: Option<i32>,
+    pub user_type: Option<String>, // 'admin' or 'regular' (defaults to 'regular')
+}
+
+/// Response from generating an invite code
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct GenerateInviteCodeResponse {
+    pub code: String,
+    pub max_uses: i32,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub user_type: String,   // 'admin' or 'regular'
+    pub is_admin_code: bool, // Convenience field
+    pub message: String,
+}
+
 /// Response from user registration
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserResponse {
@@ -424,6 +427,14 @@ pub struct UserDetailsResponse {
     pub kyc_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
+    #[schema(example = "John")]
+    pub first_name: Option<String>,
+    #[schema(example = "Doe")]
+    pub last_name: Option<String>,
+    #[schema(example = "US")]
+    pub jurisdiction: Option<String>,
+    #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
+    pub wallet_address: Option<String>,
 }
 
 /// KYC submission request
@@ -454,12 +465,60 @@ pub struct UpdateKycStatusRequest {
     pub notes: Option<String>,
 }
 
+/// Query parameters for listing pending KYC applications
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListPendingKycQuery {
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
+/// Response for listing pending KYC applications
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ListPendingKycResponse {
+    pub applications: Vec<UserDetailsResponse>,
+    pub total_count: usize,
+    pub has_more: bool,
+}
+
+/// Response for KYC statistics
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct KycStatisticsResponse {
+    pub total_users: u64,
+    pub approved_count: u64,
+    pub pending_count: u64,
+    pub rejected_count: u64,
+    pub not_submitted_count: u64,
+    pub approval_rate: f64, // percentage of users with approved KYC
+}
+
+/// Request for bulk KYC approval
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BulkKycApprovalRequest {
+    pub user_ids: Vec<String>, // Array of user IDs to approve
+    pub notes: Option<String>,
+}
+
+/// Response for bulk KYC approval
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BulkKycApprovalResponse {
+    pub approved_count: usize,
+    pub failed_count: usize,
+    pub failed_user_ids: Vec<String>,
+    pub message: String,
+}
+
 /// Update user profile request
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UpdateUserRequest {
     pub email: Option<String>,
     pub user_type: Option<UserType>,
     pub jurisdiction: Option<String>,
+    #[schema(example = "John")]
+    pub first_name: Option<String>,
+    #[schema(example = "Doe")]
+    pub last_name: Option<String>,
+    #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
+    pub wallet_address: Option<String>,
 }
 
 /// Update user response
@@ -476,6 +535,15 @@ pub struct DeleteUserResponse {
     pub user_id: String,
     pub deleted: bool,
     pub deleted_at: DateTime<Utc>,
+}
+
+/// Delete loan response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DeleteLoanResponse {
+    pub loan_id: String,
+    pub deleted: bool,
+    pub deleted_at: DateTime<Utc>,
+    pub final_status: String,
 }
 
 /// List identities query parameters
@@ -521,7 +589,7 @@ pub struct LoanDetailsResponse {
 }
 
 /// List loans query parameters
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListLoansQuery {
     pub status: Option<String>,
     pub borrower_id: Option<String>,
@@ -546,6 +614,25 @@ pub struct LoanStatsResponse {
     pub total_outstanding: String, // Total outstanding balance as string
     pub average_interest_rate_bps: u32,
     pub status_breakdown: std::collections::HashMap<String, u64>,
+}
+
+/// Update loan request
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateLoanRequest {
+    pub principal_amount: Option<String>, // Amount in cents as string
+    pub outstanding_balance: Option<String>, // Outstanding balance in cents as string
+    pub interest_rate_bps: Option<u16>,   // Interest rate in basis points
+    pub loan_status: Option<String>, // "originated", "active", "paid_off", "closed", "defaulted"
+    pub maturity_date: Option<Option<String>>, // Optional maturity date (ISO 8601), Option<Option<T>> to handle NULL
+}
+
+/// Update loan response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UpdateLoanResponse {
+    pub loan_id: String,
+    pub updated_fields: Vec<String>,
+    pub updated_at: DateTime<Utc>,
+    pub loan_details: LoanDetailsResponse,
 }
 
 /// Record loan payment request
@@ -717,6 +804,49 @@ pub struct PendingTransactionInfo {
 }
 
 // ============================================================================
+// DEPOSIT TRANSACTION TYPES
+// ============================================================================
+
+/// Response for user balance query
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserBalanceResponse {
+    pub user_id: Option<String>,
+    pub wallet_address: String,
+    pub available_balance: String,
+    pub currency: String,
+}
+
+/// Response for user transaction history
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserTransactionsResponse {
+    pub transactions: Vec<DepositTransactionInfo>,
+    pub total_count: usize,
+}
+
+/// Deposit transaction information
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DepositTransactionInfo {
+    pub id: i32,
+    pub user_address: String,
+    pub amount: String,
+    pub deposit_amount_usdc: Option<String>,
+    pub transaction_hash: String,
+    pub status: String, // pending, confirmed, processed, failed
+    pub confirmation_count: i32,
+    pub required_confirmations: i32,
+    pub block_number: i64,
+    pub created_at: Option<DateTime<Utc>>,
+    pub processed_at: Option<DateTime<Utc>>,
+}
+
+/// Response for transaction by hash query
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct TransactionStatusResponse {
+    pub found: bool,
+    pub transaction: Option<DepositTransactionInfo>,
+}
+
+// ============================================================================
 // ROUTER SETUP
 // ============================================================================
 
@@ -733,6 +863,21 @@ pub fn create_router(state: ApiState) -> Router {
         // Authentication endpoints
         .route("/api/auth/login", post(login_endpoint))
         .route("/api/auth/logout", post(logout_endpoint))
+        // Admin KYC endpoints
+        .route(paths::ADMIN_KYC_PENDING, get(list_pending_kyc_endpoint))
+        .route(paths::ADMIN_KYC_STATS, get(get_kyc_statistics_endpoint))
+        .route(
+            paths::ADMIN_KYC_BULK_APPROVE,
+            post(bulk_kyc_approval_endpoint),
+        )
+        .route(
+            paths::INVITE_CODE_GENERATE,
+            post(generate_invite_code_endpoint),
+        )
+        .route(
+            paths::INVITE_CODE_VALIDATE,
+            post(validate_invite_code_endpoint),
+        )
         // Transaction operations
         .route(paths::STATE_TRANSACTIONS, post(submit_transaction_endpoint))
         .route(
@@ -763,10 +908,29 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::USER_BY_ID, delete(delete_user_endpoint))
         .route(paths::USER_KYC, post(submit_kyc_endpoint))
         .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
+        // User Balance & Transaction endpoints
+        .route(
+            paths::USER_BALANCE_BY_ADDRESS,
+            get(get_user_balance_by_address_endpoint),
+        )
+        .route(
+            paths::USER_BALANCE_BY_ID,
+            get(get_user_balance_by_id_endpoint),
+        )
+        .route(
+            paths::USER_TRANSACTIONS_BY_ID,
+            get(get_user_transactions_endpoint),
+        )
+        .route(
+            paths::TRANSACTION_BY_HASH,
+            get(get_transaction_by_hash_endpoint),
+        )
         // Loan Management
-        .route(paths::LOANS, post(create_loan_endpoint))
+        .route(paths::LOAN, post(create_loan_endpoint))
         .route(paths::LOANS, get(list_loans_endpoint))
         .route(paths::LOAN_BY_ID, get(get_loan_details_endpoint))
+        .route(paths::LOAN_BY_ID, put(update_loan_endpoint))
+        .route(paths::LOAN_BY_ID, delete(delete_loan_endpoint))
         .route(paths::LOANS_STATS, get(get_loan_stats_endpoint))
         // Payment Processing
         .route(paths::STATE_PAYMENTS, post(record_payment_endpoint))
@@ -1573,9 +1737,69 @@ async fn register_user_endpoint(
     Json(request): Json<RegisterUserRequest>,
 ) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
     info!(
-        "👤 API: Registering new user: type={}, email={}",
-        request.user_type, request.email
+        "👤 API: Registering new user: type={}, email={}, invite_code={:?}",
+        request.user_type, request.email, request.invite_code
     );
+
+    // If invite code is provided, validate it first
+    if let Some(ref invite_code) = request.invite_code {
+        info!(
+            "🎫 API: Validating invite code during registration: {}",
+            invite_code
+        );
+
+        match get_invite_code_info(&state.pool, invite_code).await {
+            Ok(invite_info) => {
+                if !invite_info.is_valid {
+                    warn!(
+                        "❌ API: Invalid invite code provided during registration: {}",
+                        invite_code
+                    );
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "Invalid or expired invite code".to_string(),
+                    ));
+                }
+
+                // Check invite code restrictions: only admin codes require admin users
+                if let Some(ref code_user_type) = invite_info.user_type {
+                    let requested_type = request.user_type.to_string();
+
+                    // Only restrict admin codes to admin users
+                    if code_user_type == "admin" && requested_type != "admin" {
+                        warn!(
+                            "❌ API: Admin invite code used for non-admin registration: code={}, requested={}",
+                            code_user_type, requested_type
+                        );
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            "This is an admin invite code and can only be used for admin user registration".to_string(),
+                        ));
+                    }
+
+                    info!(
+                        "✅ API: Invite code type check passed: code_type={}, user_type={}",
+                        code_user_type, requested_type
+                    );
+                }
+
+                info!(
+                    "✅ API: Invite code validated successfully: {}",
+                    invite_code
+                );
+            }
+            Err(e) => {
+                error!(
+                    "❌ API: Failed to validate invite code during registration: {}",
+                    e
+                );
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to validate invite code".to_string(),
+                ));
+            }
+        }
+    }
 
     // Validate email and password using AuthService
     if let Err(e) = state.auth_service.validate_email(&request.email) {
@@ -1611,6 +1835,28 @@ async fn register_user_endpoint(
     {
         Ok(identity) => {
             info!("✅ API: User registered successfully: id={}", identity.id);
+
+            // If invite code was provided, mark it as used now that user is created
+            if let Some(ref invite_code) = request.invite_code {
+                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
+                    Ok(was_used) => {
+                        if was_used {
+                            info!(
+                                "✅ API: Invite code marked as used: code={}, user_id={}",
+                                invite_code, identity.id
+                            );
+                        } else {
+                            warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
+                        }
+                    }
+                    Err(e) => {
+                        error!("❌ API: Failed to mark invite code as used: {}", e);
+                        // Note: We don't fail the registration here since the user was already created
+                        // This is logged for monitoring but shouldn't block the successful registration
+                    }
+                }
+            }
+
             Ok(Json(identity_to_register_response(identity)))
         }
         Err(e) => {
@@ -1689,6 +1935,8 @@ async fn login_endpoint(
     }
 
     // Check if email is verified (optional - can be disabled for development)
+    // DISABLED FOR DEMO/TESTING - uncomment when email sending is implemented
+    /*
     if user.email_verified == Some(false) {
         warn!(
             "❌ API: Login failed - email not verified: {}",
@@ -1699,6 +1947,7 @@ async fn login_endpoint(
             "Please verify your email address before logging in".to_string(),
         ));
     }
+    */
 
     // Generate JWT token
     let token = match state
@@ -1770,6 +2019,207 @@ async fn logout_endpoint(
     }))
 }
 
+/// Validate invite code (doesn't mark as used)
+#[utoipa::path(
+    post,
+    path = "/api/v1/invite-code/{code}/validate",
+    responses(
+        (status = 200, description = "Invite code validation result", body = ValidateInviteCodeResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("code" = String, Path, description = "Invite code to validate")
+    ),
+    tag = "Authentication"
+)]
+#[instrument(skip(state), level = "info")]
+async fn validate_invite_code_endpoint(
+    State(state): State<ApiState>,
+    Path(code): Path<String>,
+) -> Result<Json<ValidateInviteCodeResponse>, (StatusCode, String)> {
+    info!("🎫 API: Validating invite code: code={}", code);
+
+    // Validate input
+    if code.trim().is_empty() {
+        warn!("❌ API: Empty invite code provided");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invite code cannot be empty".to_string(),
+        ));
+    }
+
+    // Get detailed invite code information
+    match get_invite_code_info(&state.pool, &code).await {
+        Ok(invite_info) => {
+            let is_admin_code = invite_info
+                .user_type
+                .as_ref()
+                .map_or(false, |t| t == "admin");
+
+            let message = if invite_info.is_valid {
+                format!(
+                    "Invite code is valid for {} user registration",
+                    invite_info.user_type.as_deref().unwrap_or("regular")
+                )
+            } else {
+                "Invite code is invalid or expired".to_string()
+            };
+
+            info!(
+                "✅ API: Invite code validated: code={}, valid={}, user_type={:?}",
+                code, invite_info.is_valid, invite_info.user_type
+            );
+
+            Ok(Json(ValidateInviteCodeResponse {
+                code,
+                is_valid: invite_info.is_valid,
+                is_admin_code,
+                user_type: invite_info.user_type,
+                expires_at: invite_info.expires_at,
+                message,
+            }))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to validate invite code: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to validate invite code".to_string(),
+            ))
+        }
+    }
+}
+
+fn extract_authenticated_user_id(
+    request: &axum::extract::Request<axum::body::Body>,
+) -> Result<uuid::Uuid, String> {
+    let user_id_header = request
+        .headers()
+        .get("x-user-id")
+        .ok_or_else(|| "No authenticated user ID found".to_string())?;
+
+    let user_id_str = user_id_header
+        .to_str()
+        .map_err(|_| "Invalid user ID header format".to_string())?;
+
+    parse_user_id(user_id_str)
+}
+
+fn extract_authenticated_user(
+    request: &axum::extract::Request<axum::body::Body>,
+) -> Result<AuthenticatedUser, String> {
+    let user_id = extract_authenticated_user_id(request)?;
+
+    let email = request
+        .headers()
+        .get("x-user-email")
+        .ok_or_else(|| "No authenticated user email found".to_string())?
+        .to_str()
+        .map_err(|_| "Invalid user email header format".to_string())?
+        .to_string();
+
+    let user_type = request
+        .headers()
+        .get("x-user-type")
+        .ok_or_else(|| "No authenticated user type found".to_string())?
+        .to_str()
+        .map_err(|_| "Invalid user type header format".to_string())?
+        .to_string();
+
+    Ok(AuthenticatedUser {
+        user_id,
+        email,
+        user_type,
+    })
+}
+
+/// Generate new invite code
+#[utoipa::path(
+    post,
+    path = "/api/v1/invite-code",
+    request_body = GenerateInviteCodeRequest,
+    responses(
+        (status = 200, description = "New invite code generated successfully", body = GenerateInviteCodeResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 401, description = "Unauthorized - authentication required"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Authentication"
+)]
+#[instrument(skip(state), level = "info")]
+async fn generate_invite_code_endpoint(
+    State(state): State<ApiState>,
+    Json(request_body): Json<GenerateInviteCodeRequest>,
+) -> Result<Json<GenerateInviteCodeResponse>, (StatusCode, String)> {
+    info!("🎫 API: Generating new invite code");
+
+    // For now, use a default user ID - TODO: Add proper authentication
+    let default_user_id =
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").expect("Valid UUID");
+
+    // Extract request parameters with defaults
+    let max_uses = request_body.max_uses.unwrap_or(1);
+    let expires_in_hours = request_body.expires_in_hours.unwrap_or(24 * 7); // Default 7 days
+    let user_type = request_body
+        .user_type
+        .unwrap_or_else(|| "regular".to_string());
+
+    // Validate user_type
+    if user_type != "admin" && user_type != "regular" {
+        warn!("❌ API: Invalid user_type provided: {}", user_type);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "user_type must be either 'admin' or 'regular'".to_string(),
+        ));
+    }
+
+    info!(
+        "🎫 API: Generating {} invite code with max_uses={}, expires_in_hours={}",
+        user_type, max_uses, expires_in_hours
+    );
+
+    // Generate invite code
+    match generate_invite_code(
+        &state.pool,
+        default_user_id,
+        Some(max_uses),
+        Some(expires_in_hours),
+        Some(user_type.clone()),
+    )
+    .await
+    {
+        Ok(code) => {
+            let expires_at =
+                Some(chrono::Utc::now() + chrono::Duration::hours(expires_in_hours as i64));
+            let is_admin_code = user_type == "admin";
+
+            info!(
+                "✅ API: Generated {} invite code: {} for user: {}",
+                user_type, code, default_user_id
+            );
+
+            Ok(Json(GenerateInviteCodeResponse {
+                code,
+                max_uses,
+                expires_at,
+                user_type,
+                is_admin_code,
+                message: format!(
+                    "Invite code for {} users generated successfully",
+                    if is_admin_code { "admin" } else { "regular" }
+                ),
+            }))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to generate invite code: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to generate invite code".to_string(),
+            ))
+        }
+    }
+}
+
 /// List user identities
 #[utoipa::path(
     get,
@@ -1796,7 +2246,7 @@ async fn list_identities_endpoint(
     // Basic identity listing using direct SQL
     let identities_result = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
         FROM identities
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -1820,6 +2270,10 @@ async fn list_identities_endpoint(
                     kyc_verified_at: row.kyc_verified_at,
                     created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
                     updated_at: Some(row.updated_at.unwrap_or_else(chrono::Utc::now)),
+                    first_name: row.first_name,
+                    last_name: row.last_name,
+                    jurisdiction: row.jurisdiction,
+                    wallet_address: row.wallet_address,
                 })
                 .collect::<Vec<_>>();
 
@@ -2025,6 +2479,194 @@ async fn update_kyc_status_endpoint(
     }
 }
 
+/// List pending KYC applications (admin only)
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/kyc/pending",
+    params(ListPendingKycQuery),
+    responses(
+        (status = 200, description = "List of pending KYC applications", body = ListPendingKycResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Admin"
+)]
+#[instrument(skip(state), level = "info")]
+async fn list_pending_kyc_endpoint(
+    State(state): State<ApiState>,
+    Query(params): Query<ListPendingKycQuery>,
+) -> Result<Json<ListPendingKycResponse>, (StatusCode, String)> {
+    info!("🔍 API: Listing pending KYC applications");
+
+    let limit = params.limit.unwrap_or(50);
+    let offset = params.offset.unwrap_or(0);
+
+    match list_pending_kyc_applications(&state.pool, Some(limit as i64), Some(offset as i64)).await
+    {
+        Ok(applications) => {
+            let total_count = applications.len();
+            let has_more = total_count >= limit as usize;
+
+            let application_responses: Vec<UserDetailsResponse> = applications
+                .into_iter()
+                .map(identity_to_user_details)
+                .collect();
+
+            let response = ListPendingKycResponse {
+                applications: application_responses,
+                total_count,
+                has_more,
+            };
+
+            info!(
+                "✅ API: Found {} pending KYC applications",
+                response.total_count
+            );
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to list pending KYC applications: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve pending KYC applications".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get KYC statistics (admin only)
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/kyc/stats",
+    responses(
+        (status = 200, description = "KYC statistics", body = KycStatisticsResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Admin"
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_kyc_statistics_endpoint(
+    State(state): State<ApiState>,
+) -> Result<Json<KycStatisticsResponse>, (StatusCode, String)> {
+    info!("📊 API: Getting KYC statistics");
+
+    match get_kyc_statistics(&state.pool).await {
+        Ok(stats) => {
+            let total_processed = stats.approved_count + stats.rejected_count;
+            let approval_rate = if total_processed > 0 {
+                (stats.approved_count as f64 / total_processed as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            let response = KycStatisticsResponse {
+                total_users: stats.total_users,
+                approved_count: stats.approved_count,
+                pending_count: stats.pending_count,
+                rejected_count: stats.rejected_count,
+                not_submitted_count: stats.not_submitted_count,
+                approval_rate,
+            };
+
+            info!(
+                "✅ API: KYC stats - Total: {}, Approved: {}, Pending: {}, Rejected: {}, Not Submitted: {}, Approval Rate: {:.1}%",
+                response.total_users,
+                response.approved_count,
+                response.pending_count,
+                response.rejected_count,
+                response.not_submitted_count,
+                response.approval_rate
+            );
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get KYC statistics: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve KYC statistics".to_string(),
+            ))
+        }
+    }
+}
+
+/// Bulk approve KYC applications (admin only)
+#[utoipa::path(
+    post,
+    path = "/api/v1/admin/kyc/bulk-approve",
+    request_body = BulkKycApprovalRequest,
+    responses(
+        (status = 200, description = "Bulk KYC approval completed", body = BulkKycApprovalResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Admin"
+)]
+#[instrument(skip(state), level = "info")]
+async fn bulk_kyc_approval_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<BulkKycApprovalRequest>,
+) -> Result<Json<BulkKycApprovalResponse>, (StatusCode, String)> {
+    info!(
+        "🔄 API: Bulk approving {} KYC applications",
+        request.user_ids.len()
+    );
+
+    if request.user_ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "At least one user ID must be provided".to_string(),
+        ));
+    }
+
+    let mut approved_count = 0;
+    let mut failed_user_ids = Vec::new();
+
+    for user_id_str in &request.user_ids {
+        match parse_user_id(user_id_str) {
+            Ok(user_id) => {
+                match update_kyc_status(&state.pool, user_id, "approved", request.notes.as_deref())
+                    .await
+                {
+                    Ok(_) => {
+                        approved_count += 1;
+                        info!("✅ Approved KYC for user: {}", user_id);
+                    }
+                    Err(e) => {
+                        error!("❌ Failed to approve KYC for user {}: {}", user_id, e);
+                        failed_user_ids.push(user_id_str.clone());
+                    }
+                }
+            }
+            Err(_) => {
+                warn!("⚠️ Invalid user ID format: {}", user_id_str);
+                failed_user_ids.push(user_id_str.clone());
+            }
+        }
+    }
+
+    let failed_count = failed_user_ids.len();
+    let message = if failed_count == 0 {
+        format!("Successfully approved {} KYC applications", approved_count)
+    } else {
+        format!(
+            "Approved {} KYC applications, {} failed",
+            approved_count, failed_count
+        )
+    };
+
+    let response = BulkKycApprovalResponse {
+        approved_count,
+        failed_count,
+        failed_user_ids,
+        message,
+    };
+
+    info!(
+        "✅ API: Bulk KYC approval completed - Approved: {}, Failed: {}",
+        approved_count, failed_count
+    );
+    Ok(Json(response))
+}
+
 /// Update user profile
 #[utoipa::path(
     put,
@@ -2068,6 +2710,15 @@ async fn update_user_endpoint(
     if request.jurisdiction.is_some() {
         updated_fields.push("jurisdiction".to_string());
     }
+    if request.first_name.is_some() {
+        updated_fields.push("first_name".to_string());
+    }
+    if request.last_name.is_some() {
+        updated_fields.push("last_name".to_string());
+    }
+    if request.wallet_address.is_some() {
+        updated_fields.push("wallet_address".to_string());
+    }
 
     match update_identity_profile(
         &state.pool,
@@ -2079,6 +2730,9 @@ async fn update_user_endpoint(
             .map(std::string::ToString::to_string)
             .as_deref(),
         request.jurisdiction.as_deref(),
+        request.first_name.as_deref(),
+        request.last_name.as_deref(),
+        request.wallet_address.as_deref(),
     )
     .await
     {
@@ -2166,12 +2820,284 @@ async fn delete_user_endpoint(
     Ok(Json(response))
 }
 
+// ---- DEPOSIT & BALANCE ENDPOINTS ----
+
+/// Get user balance by wallet address
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{address}/balance",
+    responses(
+        (status = 200, description = "User balance retrieved successfully", body = UserBalanceResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("address" = String, Path, description = "User's wallet address")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_balance_by_address_endpoint(
+    Path(address): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user balance by address: {}", address);
+
+    match get_user_balance_by_address(&state.pool, &address).await {
+        Ok(Some(balance)) => {
+            let response = UserBalanceResponse {
+                user_id: None, // We don't have user_id when querying by address directly
+                wallet_address: address,
+                available_balance: balance.to_string(),
+                currency: "USDC".to_string(),
+            };
+            info!("✅ API: User balance retrieved successfully");
+            Ok(Json(response))
+        }
+        Ok(None) => {
+            warn!("⚠️ API: User not found for address: {}", address);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user balance: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user balance".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get user balance by user ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{user_id}/balance",
+    responses(
+        (status = 200, description = "User balance retrieved successfully", body = UserBalanceResponse),
+        (status =404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID (UUID)")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_balance_by_id_endpoint(
+    Path(user_id): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user balance by ID: {}", user_id);
+
+    let user_uuid = match parse_user_id(&user_id) {
+        Ok(id) => id,
+        Err(err) => {
+            warn!("⚠️ API: Invalid user ID format: {}", err);
+            return Err((StatusCode::BAD_REQUEST, err));
+        }
+    };
+
+    // First get user details to get wallet address
+    match get_identity_by_id(&state.pool, user_uuid).await {
+        Ok(Some(identity)) => match get_user_balance_by_id(&state.pool, user_uuid).await {
+            Ok(Some(balance)) => {
+                let response = UserBalanceResponse {
+                    user_id: Some(user_id),
+                    wallet_address: identity
+                        .wallet_address
+                        .unwrap_or_else(|| "Not set".to_string()),
+                    available_balance: balance.to_string(),
+                    currency: "USDC".to_string(),
+                };
+                info!("✅ API: User balance retrieved successfully");
+                Ok(Json(response))
+            }
+            Ok(None) => {
+                warn!("⚠️ API: Balance not found for user ID: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "Balance not found".to_string()))
+            }
+            Err(e) => {
+                error!("❌ API: Failed to get user balance: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to retrieve user balance".to_string(),
+                ))
+            }
+        },
+        Ok(None) => {
+            warn!("⚠️ API: User not found: {}", user_id);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user identity: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get user transactions by user ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{user_id}/transactions",
+    responses(
+        (status = 200, description = "User transactions retrieved successfully", body = UserTransactionsResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID (UUID)")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_transactions_endpoint(
+    Path(user_id): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserTransactionsResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user transactions by ID: {}", user_id);
+
+    let user_uuid = match parse_user_id(&user_id) {
+        Ok(id) => id,
+        Err(err) => {
+            warn!("⚠️ API: Invalid user ID format: {}", err);
+            return Err((StatusCode::BAD_REQUEST, err));
+        }
+    };
+
+    // First get user details to get wallet address
+    match get_identity_by_id(&state.pool, user_uuid).await {
+        Ok(Some(identity)) => {
+            if let Some(wallet_address) = &identity.wallet_address {
+                match get_deposits_by_user_address(&state.pool, wallet_address).await {
+                    Ok(deposits) => {
+                        let transaction_infos: Vec<DepositTransactionInfo> = deposits
+                            .into_iter()
+                            .map(|deposit| DepositTransactionInfo {
+                                id: deposit.id,
+                                user_address: deposit.user_address,
+                                amount: deposit.amount.to_string(),
+                                deposit_amount_usdc: deposit
+                                    .deposit_amount_usdc
+                                    .map(|d| d.to_string()),
+                                transaction_hash: deposit.transaction_hash,
+                                status: deposit.status,
+                                confirmation_count: deposit.confirmation_count,
+                                required_confirmations: deposit.required_confirmations,
+                                block_number: deposit.block_number,
+                                created_at: deposit.created_at,
+                                processed_at: deposit.processed_at,
+                            })
+                            .collect();
+
+                        let response = UserTransactionsResponse {
+                            total_count: transaction_infos.len(),
+                            transactions: transaction_infos,
+                        };
+
+                        info!("✅ API: User transactions retrieved successfully");
+                        Ok(Json(response))
+                    }
+                    Err(e) => {
+                        error!("❌ API: Failed to get user transactions: {}", e);
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to retrieve user transactions".to_string(),
+                        ))
+                    }
+                }
+            } else {
+                warn!("⚠️ API: User has no wallet address set: {}", user_id);
+                Err((
+                    StatusCode::BAD_REQUEST,
+                    "User has no wallet address set".to_string(),
+                ))
+            }
+        }
+        Ok(None) => {
+            warn!("⚠️ API: User not found: {}", user_id);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user identity: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get transaction by hash
+#[utoipa::path(
+    get,
+    path = "/api/v1/transactions/{tx_hash}",
+    responses(
+        (status = 200, description = "Transaction retrieved successfully", body = TransactionStatusResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("tx_hash" = String, Path, description = "Transaction hash")
+    ),
+    tag = "Transactions"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_transaction_by_hash_endpoint(
+    Path(tx_hash): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<TransactionStatusResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting transaction by hash: {}", tx_hash);
+
+    match get_deposit_by_tx_hash(&state.pool, &tx_hash).await {
+        Ok(Some(deposit)) => {
+            let transaction_info = DepositTransactionInfo {
+                id: deposit.id,
+                user_address: deposit.user_address,
+                amount: deposit.amount.to_string(),
+                deposit_amount_usdc: deposit.deposit_amount_usdc.map(|d| d.to_string()),
+                transaction_hash: deposit.transaction_hash,
+                status: deposit.status,
+                confirmation_count: deposit.confirmation_count,
+                required_confirmations: deposit.required_confirmations,
+                block_number: deposit.block_number,
+                created_at: deposit.created_at,
+                processed_at: deposit.processed_at,
+            };
+
+            let response = TransactionStatusResponse {
+                found: true,
+                transaction: Some(transaction_info),
+            };
+
+            info!("✅ API: Transaction retrieved successfully");
+            Ok(Json(response))
+        }
+        Ok(None) => {
+            info!("ℹ️ API: Transaction not found: {}", tx_hash);
+            let response = TransactionStatusResponse {
+                found: false,
+                transaction: None,
+            };
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get transaction: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve transaction".to_string(),
+            ))
+        }
+    }
+}
+
 // ---- LOAN MANAGEMENT ENDPOINTS ----
 
 /// Create a new loan
 #[utoipa::path(
     post,
-    path = "/api/v1/loans",
+    path = "/api/v1/loan",
     request_body = CreateLoanRequest,
     responses(
         (status = 200, description = "Loan created successfully", body = LoanDetailsResponse),
@@ -2180,9 +3106,9 @@ async fn delete_user_endpoint(
     ),
     tag = "Loans"
 )]
-#[instrument(skip(_state), level = "info")]
+#[instrument(skip(state), level = "info")]
 async fn create_loan_endpoint(
-    State(_state): State<ApiState>,
+    State(state): State<ApiState>,
     Json(request): Json<CreateLoanRequest>,
 ) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
     info!(
@@ -2190,38 +3116,155 @@ async fn create_loan_endpoint(
         request.borrower_id, request.lender_id, request.principal_amount
     );
 
-    // TODO: Implement loan creation with database integration
-    let loan_id = uuid::Uuid::new_v4().to_string();
+    // Parse UUIDs
+    let borrower_id = uuid::Uuid::parse_str(&request.borrower_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid borrower ID format".to_string(),
+        )
+    })?;
+    let lender_id = uuid::Uuid::parse_str(&request.lender_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid lender ID format".to_string(),
+        )
+    })?;
 
-    let response = LoanDetailsResponse {
-        loan_id,
-        borrower_id: request.borrower_id,
-        lender_id: request.lender_id,
-        principal_amount: request.principal_amount.clone(),
-        outstanding_balance: request.principal_amount,
-        interest_rate_bps: request.interest_rate_bps,
-        loan_status: "Originated".to_string(),
-        originated_at: Utc::now(),
-        last_updated: None,
+    // Parse principal amount
+    let principal_amount = request
+        .principal_amount
+        .parse::<rust_decimal::Decimal>()
+        .map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid principal amount".to_string(),
+            )
+        })?;
+
+    // Parse optional maturity date
+    let maturity_date = if let Some(term_days) = request.term_days {
+        Some(chrono::Utc::now() + chrono::Duration::days(term_days as i64))
+    } else {
+        None
     };
 
-    info!("✅ API: Loan created successfully");
+    // Create loan in database
+    let loan = create_loan(
+        &state.pool,
+        borrower_id,
+        lender_id,
+        principal_amount,
+        request.interest_rate_bps as i32,
+        maturity_date,
+    )
+    .await
+    .map_err(|e| {
+        error!("❌ Failed to create loan: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to create loan".to_string(),
+        )
+    })?;
+
+    let response = LoanDetailsResponse {
+        loan_id: loan.id.to_string(),
+        borrower_id: loan.borrower_id.to_string(),
+        lender_id: loan.lender_id.to_string(),
+        principal_amount: loan.principal_amount.to_string(),
+        outstanding_balance: loan.outstanding_balance.to_string(),
+        interest_rate_bps: loan.interest_rate_bps as u16,
+        loan_status: loan.loan_status,
+        originated_at: loan.originated_at,
+        last_updated: Some(loan.updated_at),
+    };
+
+    info!("✅ API: Loan created successfully: {}", response.loan_id);
     Ok(Json(response))
 }
 
 /// List loans
-#[instrument(skip(_state), level = "info")]
+#[utoipa::path(
+    get,
+    path = "/api/v1/loans",
+    responses(
+        (status = 200, description = "Loans listed successfully", body = ListLoansResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    params(ListLoansQuery),
+    tag = "Loans"
+)]
+#[instrument(skip(state), level = "info")]
 async fn list_loans_endpoint(
-    State(_state): State<ApiState>,
+    State(state): State<ApiState>,
     Query(params): Query<ListLoansQuery>,
 ) -> Result<Json<ListLoansResponse>, (StatusCode, String)> {
     info!("📋 API: Listing loans with filters");
 
-    // TODO: Implement loan listing with database integration
+    // Parse optional UUIDs
+    let borrower_id = if let Some(id_str) = &params.borrower_id {
+        Some(uuid::Uuid::parse_str(id_str).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid borrower ID format".to_string(),
+            )
+        })?)
+    } else {
+        None
+    };
+
+    let lender_id = if let Some(id_str) = &params.lender_id {
+        Some(uuid::Uuid::parse_str(id_str).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid lender ID format".to_string(),
+            )
+        })?)
+    } else {
+        None
+    };
+
+    // Get loans from database
+    let loans = list_loans(
+        &state.pool,
+        params.limit.map(|l| l as i64),
+        params.offset.map(|o| o as i64),
+        params.status.as_deref(),
+        borrower_id,
+        lender_id,
+    )
+    .await
+    .map_err(|e| {
+        error!("❌ Failed to list loans: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to list loans".to_string(),
+        )
+    })?;
+
+    // Convert to response format
+    let loan_responses: Vec<LoanDetailsResponse> = loans
+        .into_iter()
+        .map(|loan| LoanDetailsResponse {
+            loan_id: loan.id.to_string(),
+            borrower_id: loan.borrower_id.to_string(),
+            lender_id: loan.lender_id.to_string(),
+            principal_amount: loan.principal_amount.to_string(),
+            outstanding_balance: loan.outstanding_balance.to_string(),
+            interest_rate_bps: loan.interest_rate_bps as u16,
+            loan_status: loan.loan_status,
+            originated_at: loan.originated_at,
+            last_updated: Some(loan.updated_at),
+        })
+        .collect();
+
+    let total_count = loan_responses.len();
+    let limit = params.limit.unwrap_or(100) as usize;
+    let has_more = total_count >= limit;
+
     let response = ListLoansResponse {
-        loans: vec![],
-        total_count: 0,
-        has_more: false,
+        loans: loan_responses,
+        total_count,
+        has_more,
     };
 
     info!("✅ API: Listed {} loans", response.total_count);
@@ -2229,31 +3272,78 @@ async fn list_loans_endpoint(
 }
 
 /// Get loan details by ID
-#[instrument(skip(_state), level = "info")]
+#[utoipa::path(
+    get,
+    path = "/api/v1/loan/{loan_id}",
+    responses(
+        (status = 200, description = "Loan details retrieved successfully", body = LoanDetailsResponse),
+        (status = 404, description = "Loan not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("loan_id" = String, Path, description = "Loan ID")
+    ),
+    tag = "Loans"
+)]
+#[instrument(skip(state), level = "info")]
 async fn get_loan_details_endpoint(
-    State(_state): State<ApiState>,
+    State(state): State<ApiState>,
     Path(loan_id): Path<String>,
 ) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
     info!("🔍 API: Getting loan details: loan_id={}", loan_id);
 
-    // TODO: Implement loan lookup with database integration
-    let response = LoanDetailsResponse {
-        loan_id,
-        borrower_id: uuid::Uuid::new_v4().to_string(),
-        lender_id: uuid::Uuid::new_v4().to_string(),
-        principal_amount: "100000".to_string(),
-        outstanding_balance: "75000".to_string(),
-        interest_rate_bps: 500,
-        loan_status: "Active".to_string(),
-        originated_at: Utc::now(),
-        last_updated: Some(Utc::now()),
-    };
+    // Parse loan ID
+    let loan_uuid = uuid::Uuid::parse_str(&loan_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid loan ID format".to_string(),
+        )
+    })?;
 
-    info!("✅ API: Loan details retrieved");
-    Ok(Json(response))
+    // Get loan from database
+    let loan = get_loan_by_id(&state.pool, loan_uuid).await.map_err(|e| {
+        error!("❌ Failed to get loan: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to get loan".to_string(),
+        )
+    })?;
+
+    match loan {
+        Some(loan) => {
+            let response = LoanDetailsResponse {
+                loan_id: loan.id.to_string(),
+                borrower_id: loan.borrower_id.to_string(),
+                lender_id: loan.lender_id.to_string(),
+                principal_amount: loan.principal_amount.to_string(),
+                outstanding_balance: loan.outstanding_balance.to_string(),
+                interest_rate_bps: loan.interest_rate_bps as u16,
+                loan_status: loan.loan_status,
+                originated_at: loan.originated_at,
+                last_updated: Some(loan.updated_at),
+            };
+
+            info!("✅ API: Loan details retrieved");
+            Ok(Json(response))
+        }
+        None => {
+            warn!("❌ API: Loan not found: {}", loan_id);
+            Err((StatusCode::NOT_FOUND, "Loan not found".to_string()))
+        }
+    }
 }
 
 /// Get loan statistics
+#[utoipa::path(
+    get,
+    path = "/api/v1/loans/stats",
+    responses(
+        (status = 200, description = "Loan statistics retrieved successfully", body = LoanStatsResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    params(ListLoansQuery),
+    tag = "Loans"
+)]
 #[instrument(skip(_state), level = "info")]
 async fn get_loan_stats_endpoint(
     State(_state): State<ApiState>,
@@ -2277,6 +3367,193 @@ async fn get_loan_stats_endpoint(
     };
 
     info!("✅ API: Loan statistics retrieved");
+    Ok(Json(response))
+}
+
+/// Update loan
+#[utoipa::path(
+    put,
+    path = "/api/v1/loan/{loan_id}",
+    request_body = UpdateLoanRequest,
+    responses(
+        (status = 200, description = "Loan updated successfully", body = UpdateLoanResponse),
+        (status = 400, description = "Invalid request data"),
+        (status = 404, description = "Loan not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("loan_id" = String, Path, description = "Loan ID")
+    ),
+    tag = "Loans"
+)]
+#[instrument(skip(state), level = "info")]
+async fn update_loan_endpoint(
+    State(state): State<ApiState>,
+    Path(loan_id): Path<String>,
+    Json(request): Json<UpdateLoanRequest>,
+) -> Result<Json<UpdateLoanResponse>, (StatusCode, String)> {
+    info!("📝 API: Updating loan: {}", loan_id);
+
+    // Parse loan ID
+    let loan_uuid = uuid::Uuid::parse_str(&loan_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid loan ID format".to_string(),
+        )
+    })?;
+
+    // Convert request fields to database types
+    let principal_amount = if let Some(amount_str) = &request.principal_amount {
+        Some(amount_str.parse::<rust_decimal::Decimal>().map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid principal amount".to_string(),
+            )
+        })?)
+    } else {
+        None
+    };
+
+    let outstanding_balance = if let Some(balance_str) = &request.outstanding_balance {
+        Some(balance_str.parse::<rust_decimal::Decimal>().map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid outstanding balance".to_string(),
+            )
+        })?)
+    } else {
+        None
+    };
+
+    let interest_rate_bps = request.interest_rate_bps.map(|rate| rate as i32);
+
+    let maturity_date = if let Some(date_opt) = &request.maturity_date {
+        Some(match date_opt {
+            Some(date_str) => Some(
+                chrono::DateTime::parse_from_rfc3339(date_str)
+                    .map_err(|_| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            "Invalid maturity date format".to_string(),
+                        )
+                    })?
+                    .with_timezone(&chrono::Utc),
+            ),
+            None => None,
+        })
+    } else {
+        None
+    };
+
+    // Update the loan in the database
+    let updated_loan = update_loan(
+        &state.pool,
+        loan_uuid,
+        principal_amount,
+        outstanding_balance,
+        interest_rate_bps,
+        request.loan_status.as_deref(),
+        maturity_date,
+    )
+    .await
+    .map_err(|e| {
+        error!("❌ Failed to update loan: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to update loan".to_string(),
+        )
+    })?;
+
+    match updated_loan {
+        Some(loan) => {
+            // Track which fields were updated
+            let mut updated_fields = Vec::new();
+            if request.principal_amount.is_some() {
+                updated_fields.push("principal_amount".to_string());
+            }
+            if request.outstanding_balance.is_some() {
+                updated_fields.push("outstanding_balance".to_string());
+            }
+            if request.interest_rate_bps.is_some() {
+                updated_fields.push("interest_rate_bps".to_string());
+            }
+            if request.loan_status.is_some() {
+                updated_fields.push("loan_status".to_string());
+            }
+            if request.maturity_date.is_some() {
+                updated_fields.push("maturity_date".to_string());
+            }
+
+            // Convert to response format
+            let loan_details = LoanDetailsResponse {
+                loan_id: loan.id.to_string(),
+                borrower_id: loan.borrower_id.to_string(),
+                lender_id: loan.lender_id.to_string(),
+                principal_amount: loan.principal_amount.to_string(),
+                outstanding_balance: loan.outstanding_balance.to_string(),
+                interest_rate_bps: loan.interest_rate_bps as u16,
+                loan_status: loan.loan_status,
+                originated_at: loan.originated_at,
+                last_updated: Some(loan.updated_at),
+            };
+
+            let response = UpdateLoanResponse {
+                loan_id: loan.id.to_string(),
+                updated_fields,
+                updated_at: loan.updated_at,
+                loan_details,
+            };
+
+            info!("✅ API: Loan updated successfully: {}", loan_id);
+            Ok(Json(response))
+        }
+        None => {
+            warn!("❌ API: Loan not found: {}", loan_id);
+            Err((StatusCode::NOT_FOUND, "Loan not found".to_string()))
+        }
+    }
+}
+
+/// Delete/close loan
+#[utoipa::path(
+    delete,
+    path = "/api/v1/loan/{loan_id}",
+    responses(
+        (status = 200, description = "Loan closed successfully", body = DeleteLoanResponse),
+        (status = 404, description = "Loan not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("loan_id" = String, Path, description = "Loan ID")
+    ),
+    tag = "Loans"
+)]
+#[instrument(skip(_state), level = "info")]
+async fn delete_loan_endpoint(
+    State(_state): State<ApiState>,
+    Path(loan_id): Path<String>,
+) -> Result<Json<DeleteLoanResponse>, (StatusCode, String)> {
+    info!("🗑️ API: Closing loan: loan_id={}", loan_id);
+
+    let _loan_uuid = uuid::Uuid::parse_str(&loan_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid loan ID format".to_string(),
+        )
+    })?;
+
+    // TODO: Implement loan closure with database integration
+    // For now, simulate successful closure
+    let _updated_rows = 1; // Simulate one row updated
+
+    let response = DeleteLoanResponse {
+        loan_id,
+        deleted: true,
+        deleted_at: Utc::now(),
+        final_status: "closed".to_string(),
+    };
+
+    info!("✅ API: Loan closed successfully");
     Ok(Json(response))
 }
 
@@ -2815,6 +4092,8 @@ async fn get_loan_lifecycle_summary_endpoint(
         // Authentication endpoints
         login_endpoint,
         logout_endpoint,
+        validate_invite_code_endpoint,
+        generate_invite_code_endpoint,
 
         // User Management endpoints
         register_user_endpoint,
@@ -2824,9 +4103,17 @@ async fn get_loan_lifecycle_summary_endpoint(
         delete_user_endpoint,
         submit_kyc_endpoint,
         update_kyc_status_endpoint,
+        list_pending_kyc_endpoint,
+        get_kyc_statistics_endpoint,
+        bulk_kyc_approval_endpoint,
 
         // Loan Management endpoints
-        create_loan_endpoint
+        create_loan_endpoint,
+        list_loans_endpoint,
+        get_loan_details_endpoint,
+        update_loan_endpoint,
+        delete_loan_endpoint,
+        get_loan_stats_endpoint
     ),
     components(
         schemas(
@@ -2861,6 +4148,10 @@ async fn get_loan_lifecycle_summary_endpoint(
             UserSummary,
             LogoutRequest,
             LogoutResponse,
+            InviteCodeResponse,
+            ValidateInviteCodeResponse,
+            GenerateInviteCodeRequest,
+            GenerateInviteCodeResponse,
 
             // User Management
             RegisterUserRequest,
@@ -2870,6 +4161,11 @@ async fn get_loan_lifecycle_summary_endpoint(
             KycData,
             SubmitKycResponse,
             UpdateKycStatusRequest,
+            ListPendingKycQuery,
+            ListPendingKycResponse,
+            KycStatisticsResponse,
+            BulkKycApprovalRequest,
+            BulkKycApprovalResponse,
             UpdateUserRequest,
             UpdateUserResponse,
             DeleteUserResponse,
@@ -2882,6 +4178,9 @@ async fn get_loan_lifecycle_summary_endpoint(
             ListLoansQuery,
             ListLoansResponse,
             LoanStatsResponse,
+            UpdateLoanRequest,
+            UpdateLoanResponse,
+            DeleteLoanResponse,
 
             // Payment Processing
             RecordPaymentRequest,

@@ -38,6 +38,8 @@ pub enum BalanceUpdateType {
     InterestAccrual = 4,
     /// Manual balance adjustment (reconciliation)
     ManualAdjustment = 5,
+    /// Credit from user deposit
+    CreditFromDeposit = 6,
 }
 
 impl BalanceUpdateType {
@@ -50,6 +52,7 @@ impl BalanceUpdateType {
             Self::CreditFromOrigination => "credit_from_origination",
             Self::InterestAccrual => "interest_accrual",
             Self::ManualAdjustment => "manual_adjustment",
+            Self::CreditFromDeposit => "credit_from_deposit",
         }
     }
 
@@ -58,7 +61,10 @@ impl BalanceUpdateType {
     pub const fn is_credit(&self) -> bool {
         matches!(
             self,
-            Self::CreditFromPayment | Self::CreditFromOrigination | Self::InterestAccrual
+            Self::CreditFromPayment
+                | Self::CreditFromOrigination
+                | Self::InterestAccrual
+                | Self::CreditFromDeposit
         )
     }
 
@@ -153,7 +159,8 @@ impl BalanceUpdate {
             BalanceUpdateType::CreditFromPayment
             | BalanceUpdateType::CreditFromOrigination
             | BalanceUpdateType::InterestAccrual
-            | BalanceUpdateType::ManualAdjustment => amount, // Assume positive for manual
+            | BalanceUpdateType::ManualAdjustment
+            | BalanceUpdateType::CreditFromDeposit => amount, // Assume positive for manual
             BalanceUpdateType::DebitFromOrigination => -amount,
         }
     }
@@ -403,6 +410,36 @@ impl BalanceState {
         updates.push(lender_debit);
 
         Ok(updates)
+    }
+
+    /// Create balance update from user deposit
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
+    pub fn create_deposit_update(
+        &self,
+        deposit_transaction_id: [u8; 32],
+        user_id: [u8; 32],
+        wallet_address: [u8; 32], // Wallet address where deposit came from
+        amount: u128,
+        timestamp: u64,
+    ) -> Result<BalanceUpdate, BalanceError> {
+        let update = BalanceUpdate::new(
+            self.generate_update_id(deposit_transaction_id, 1),
+            user_id,
+            None, // No loan associated with deposits
+            Some(deposit_transaction_id),
+            BalanceUpdateType::CreditFromDeposit,
+            amount,
+            self.get_balance(&user_id),
+            timestamp,
+            Some(format!(
+                "Deposit from wallet {:02x}{:02x}{:02x}{:02x}...",
+                wallet_address[0], wallet_address[1], wallet_address[2], wallet_address[3]
+            )),
+        )?;
+
+        Ok(update)
     }
 
     /// Get balance update history for a user
