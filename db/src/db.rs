@@ -928,6 +928,148 @@ pub async fn create_identity_with_password(
     Ok(identity)
 }
 
+/// Register or re-register user with soft delete handling
+/// If email exists and user is deleted, undelete them with new password
+/// If email exists and user is not deleted, return error
+/// If email doesn't exist, create new user
+pub async fn register_or_reregister_user(
+    pool: &PgPool,
+    user_type: &str,
+    email: &str,
+    password_hash: &str,
+) -> Result<RegisterResult, sqlx::Error> {
+    // First, check if email already exists
+    let existing_user = sqlx::query!(
+        "SELECT id, deleted_at FROM identities WHERE email = $1",
+        email
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    match existing_user {
+        Some(user) if user.deleted_at.is_some() => {
+            // User exists but is deleted - undelete them with new password
+            let now = chrono::Utc::now();
+            sqlx::query!(
+                r#"
+                UPDATE identities
+                SET user_type = $1,
+                    password_hash = $2,
+                    deleted_at = NULL,
+                    updated_at = $3,
+                    email_verified = $4,
+                    last_login_at = NULL,
+                    email_verification_token = NULL,
+                    password_reset_token = NULL,
+                    password_reset_expires_at = NULL
+                WHERE id = $5
+                "#,
+                user_type,
+                password_hash,
+                now,
+                false, // email_verified
+                user.id
+            )
+            .execute(pool)
+            .await?;
+
+            // Return the existing identity (now undeleted)
+            let identity = sqlx::query!(
+                r#"
+                SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+                       created_at as "created_at!", updated_at as "updated_at!",
+                       password_hash, last_login_at, email_verified, email_verification_token,
+                       password_reset_token, password_reset_expires_at, wallet_address,
+                       first_name, last_name, jurisdiction
+                FROM identities
+                WHERE id = $1
+                "#,
+                user.id
+            )
+            .fetch_one(pool)
+            .await?;
+
+            let identity_struct = Identity {
+                id: identity.id,
+                user_type: identity.user_type,
+                email: identity.email,
+                kyc_status: identity.kyc_status,
+                kyc_submitted_at: identity.kyc_submitted_at,
+                kyc_verified_at: identity.kyc_verified_at,
+                created_at: identity.created_at,
+                updated_at: identity.updated_at,
+                password_hash: identity.password_hash,
+                last_login_at: identity.last_login_at,
+                email_verified: identity.email_verified,
+                email_verification_token: identity.email_verification_token,
+                password_reset_token: identity.password_reset_token,
+                password_reset_expires_at: identity.password_reset_expires_at,
+                first_name: identity.first_name,
+                last_name: identity.last_name,
+                jurisdiction: identity.jurisdiction,
+                wallet_address: identity.wallet_address,
+            };
+
+            Ok(RegisterResult::Reregistered(identity_struct))
+        }
+        Some(_) => {
+            // User exists and is not deleted - cannot register
+            Ok(RegisterResult::AlreadyExists)
+        }
+        None => {
+            // Email doesn't exist - create new user
+            let id = uuid::Uuid::new_v4();
+            let now = chrono::Utc::now();
+
+            sqlx::query!(
+                r#"
+                INSERT INTO identities (id, user_type, email, password_hash, created_at, updated_at, email_verified)
+                VALUES ($1, $2, $3, $4, $5, $5, $6)
+                "#,
+                id,
+                user_type,
+                email,
+                password_hash,
+                now,
+                false // email_verified starts as false
+            )
+            .execute(pool)
+            .await?;
+
+            let identity = Identity {
+                id,
+                user_type: user_type.to_string(),
+                email: email.to_string(),
+                kyc_status: "not_submitted".to_string(),
+                kyc_submitted_at: None,
+                kyc_verified_at: None,
+                created_at: now,
+                updated_at: now,
+                password_hash: Some(password_hash.to_string()),
+                last_login_at: None,
+                email_verified: Some(false),
+                email_verification_token: None,
+                password_reset_token: None,
+                password_reset_expires_at: None,
+                first_name: None,
+                last_name: None,
+                jurisdiction: None,
+                wallet_address: None,
+            };
+
+            Ok(RegisterResult::Created(identity))
+        }
+    }
+}
+
+/// Result type for user registration operations
+#[derive(Debug)]
+pub enum RegisterResult {
+    Created(Identity),
+    Reregistered(Identity),
+    AlreadyExists,
+}
+
 /// Get identity by ID
 pub async fn get_identity_by_id(
     pool: &PgPool,
@@ -941,7 +1083,7 @@ pub async fn get_identity_by_id(
                password_reset_token, password_reset_expires_at, wallet_address,
                first_name, last_name, jurisdiction
         FROM identities
-        WHERE id = $1
+        WHERE id = $1 AND deleted_at IS NULL
         "#,
         id
     )
@@ -985,7 +1127,7 @@ pub async fn get_identity_by_email(
                password_reset_token, password_reset_expires_at, wallet_address,
                first_name, last_name, jurisdiction
         FROM identities
-        WHERE email = $1
+        WHERE email = $1 AND deleted_at IS NULL
         "#,
         email
     )

@@ -19,14 +19,15 @@ use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use arda_credit_db::{
-    create_identity_with_password, create_loan, generate_invite_code, get_all_batches,
-    get_batch_by_id, get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
+    create_loan, generate_invite_code, get_all_batches, get_batch_by_id,
+    get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
     get_deposits_by_user_address, get_identity_by_email, get_identity_by_id, get_invite_code_info,
     get_kyc_statistics, get_loan_by_id, get_pending_transactions, get_user_balance_by_address,
-    get_user_balance_by_id, list_loans, list_pending_kyc_applications, store_ads_state_commit,
-    submit_kyc_data, submit_transaction, update_batch_proof, update_identity_profile,
-    update_kyc_status, update_last_login, update_loan, use_invite_code, AuditEvent, Identity,
-    IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
+    get_user_balance_by_id, list_loans, list_pending_kyc_applications, register_or_reregister_user,
+    store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
+    update_identity_profile, update_kyc_status, update_last_login, update_loan, use_invite_code,
+    AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
+    RegisterResult,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -1824,8 +1825,8 @@ async fn register_user_endpoint(
         }
     };
 
-    // Create user with password
-    match create_identity_with_password(
+    // Create or re-register user with soft delete handling
+    match register_or_reregister_user(
         &state.pool,
         &request.user_type.to_string(),
         &request.email,
@@ -1833,8 +1834,11 @@ async fn register_user_endpoint(
     )
     .await
     {
-        Ok(identity) => {
-            info!("✅ API: User registered successfully: id={}", identity.id);
+        Ok(RegisterResult::Created(identity)) => {
+            info!(
+                "✅ API: New user registered successfully: id={}",
+                identity.id
+            );
 
             // If invite code was provided, mark it as used now that user is created
             if let Some(ref invite_code) = request.invite_code {
@@ -1859,14 +1863,54 @@ async fn register_user_endpoint(
 
             Ok(Json(identity_to_register_response(identity)))
         }
+        Ok(RegisterResult::Reregistered(identity)) => {
+            info!(
+                "✅ API: Deleted user re-registered successfully: id={}",
+                identity.id
+            );
+
+            // If invite code was provided, mark it as used for the re-registered user
+            if let Some(ref invite_code) = request.invite_code {
+                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
+                    Ok(was_used) => {
+                        if was_used {
+                            info!(
+                                "✅ API: Invite code marked as used for re-registered user: code={}, user_id={}",
+                                invite_code, identity.id
+                            );
+                        } else {
+                            warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "❌ API: Failed to mark invite code as used for re-registered user: {}",
+                            e
+                        );
+                        // Note: We don't fail the registration here since the user was already re-registered
+                        // This is logged for monitoring but shouldn't block the successful re-registration
+                    }
+                }
+            }
+
+            Ok(Json(identity_to_register_response(identity)))
+        }
+        Ok(RegisterResult::AlreadyExists) => {
+            warn!(
+                "❌ API: Registration failed - user with email already exists and is active: {}",
+                request.email
+            );
+            Err((
+                StatusCode::CONFLICT,
+                "User with this email already exists".to_string(),
+            ))
+        }
         Err(e) => {
             error!("❌ API: Failed to register user: {}", e);
-            let error_msg = if e.to_string().contains("duplicate key") {
-                "User with this email already exists".to_string()
-            } else {
-                "Failed to register user".to_string()
-            };
-            Err((StatusCode::BAD_REQUEST, error_msg))
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to register user".to_string(),
+            ))
         }
     }
 }
@@ -2243,11 +2287,12 @@ async fn list_identities_endpoint(
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
 
-    // Basic identity listing using direct SQL
+    // Basic identity listing using direct SQL (excludes soft deleted users)
     let identities_result = sqlx::query!(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
         FROM identities
+        WHERE deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
         "#,
@@ -2784,7 +2829,7 @@ async fn delete_user_endpoint(
     State(state): State<ApiState>,
     Path(user_id): Path<String>,
 ) -> Result<Json<DeleteUserResponse>, (StatusCode, String)> {
-    info!("🗑️ API: Deleting user: user_id={}", user_id);
+    info!("🗑️ API: Soft deleting user: user_id={}", user_id);
 
     let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
         (
@@ -2793,30 +2838,62 @@ async fn delete_user_endpoint(
         )
     })?;
 
-    // Check if user exists and delete
-    let deleted_rows = sqlx::query!("DELETE FROM identities WHERE id = $1", user_uuid)
-        .execute(&state.pool)
-        .await
-        .map_err(|e| {
-            error!("Failed to delete user: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to delete user".to_string(),
-            )
-        })?
-        .rows_affected();
+    // Check if user exists and is not already deleted
+    let existing_user = sqlx::query!(
+        "SELECT id, deleted_at FROM identities WHERE id = $1",
+        user_uuid
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to check user existence: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to check user existence".to_string(),
+        )
+    })?;
 
-    if deleted_rows == 0 {
-        return Err((StatusCode::NOT_FOUND, "User not found".to_string()));
+    let _user = match existing_user {
+        Some(user) if user.deleted_at.is_some() => {
+            return Err((StatusCode::CONFLICT, "User is already deleted".to_string()));
+        }
+        Some(user) => user,
+        None => {
+            return Err((StatusCode::NOT_FOUND, "User not found".to_string()));
+        }
+    };
+
+    // Perform soft delete by setting deleted_at timestamp
+    let deleted_at = Utc::now();
+    let update_result = sqlx::query!(
+        "UPDATE identities SET deleted_at = $1, updated_at = $1 WHERE id = $2",
+        deleted_at,
+        user_uuid
+    )
+    .execute(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to soft delete user: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to delete user".to_string(),
+        )
+    })?;
+
+    if update_result.rows_affected() == 0 {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to update user deletion status".to_string(),
+        ));
     }
 
     let response = DeleteUserResponse {
         user_id,
         deleted: true,
-        deleted_at: Utc::now(),
+        deleted_at,
     };
 
-    info!("✅ API: User deleted successfully");
+    info!("✅ API: User soft deleted successfully");
     Ok(Json(response))
 }
 

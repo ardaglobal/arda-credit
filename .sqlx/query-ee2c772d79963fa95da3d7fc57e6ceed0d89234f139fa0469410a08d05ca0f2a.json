@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,\n               created_at as \"created_at!\", updated_at as \"updated_at!\",\n               password_hash, last_login_at, email_verified, email_verification_token,\n               password_reset_token, password_reset_expires_at, wallet_address,\n               first_name, last_name, jurisdiction\n        FROM identities\n        WHERE id = $1\n        ",
+  "query": "\n        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,\n               created_at as \"created_at!\", updated_at as \"updated_at!\",\n               password_hash, last_login_at, email_verified, email_verification_token,\n               password_reset_token, password_reset_expires_at, wallet_address,\n               first_name, last_name, jurisdiction\n        FROM identities\n        WHERE id = $1 AND deleted_at IS NULL\n        ",
   "describe": {
     "columns": [
       {
@@ -120,5 +120,5 @@
       true
     ]
   },
-  "hash": "9393d5ae634d8c01b69cb595e61d0e580eff97537951e4d8b1678a54a0564d66"
+  "hash": "ee2c772d79963fa95da3d7fc57e6ceed0d89234f139fa0469410a08d05ca0f2a"
 }
