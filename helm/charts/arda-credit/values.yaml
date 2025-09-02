@@ -69,13 +69,13 @@ server:
     registry: ghcr.io/ardaglobal
     repository: arda-credit
     tag: "latest"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   
   replicaCount: 1
   
   # Configuration for ConfigMap (non-sensitive)
   config:
-    rustLog: "info"
+    rustLog: "debug"
     serverPort: "8080"
     sindriCircuitTag: "latest"
   
@@ -153,7 +153,7 @@ app:
     registry: ghcr.io/ardaglobal
     repository: arda-credit-app
     tag: "latest"
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   
   replicaCount: 1
   
