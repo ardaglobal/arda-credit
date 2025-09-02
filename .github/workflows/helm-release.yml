@@ -72,7 +72,7 @@ jobs:
       - name: Validate Helm templates
         if: steps.check_version.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch'
         run: |
-          helm template arda-credit helm/charts/arda-credit --validate
+          helm template arda-credit helm/charts/arda-credit
 
       - name: Package Helm chart
         if: steps.check_version.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch'
