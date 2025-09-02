@@ -1,0 +1,79 @@
+{{- if .Values.app.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-app
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: {{ .Values.app.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "arda-credit.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        {{- include "arda-credit.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "arda-credit.fullname" . }}
+      securityContext:
+        {{- toYaml .Values.appPodSecurityContext | nindent 8 }}
+      containers:
+        - name: app
+          securityContext:
+            {{- toYaml .Values.appSecurityContext | nindent 12 }}
+          image: "{{ .Values.app.image.registry }}/{{ .Values.app.image.repository }}:{{ .Values.app.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            # Load config from ConfigMap
+            - configMapRef:
+                name: {{ include "arda-credit.fullname" . }}-config
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+      {{- $nodeSelector := coalesce .Values.app.nodeSelector .Values.global.nodeSelector }}
+      {{- with $nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- if .Values.app.podAntiAffinity.enabled }}
+        podAntiAffinity:
+          {{- if eq .Values.app.podAntiAffinity.type "hard" }}
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "arda-credit.selectorLabels" . | nindent 18 }}
+                  app.kubernetes.io/component: app
+              topologyKey: {{ .Values.app.podAntiAffinity.topologyKey }}
+          {{- else if eq .Values.app.podAntiAffinity.type "soft" }}
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: {{ .Values.app.podAntiAffinity.weight | default 100 }}
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "arda-credit.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: app
+                topologyKey: {{ .Values.app.podAntiAffinity.topologyKey }}
+          {{- end }}
+        {{- end }}
+        {{- $affinity := coalesce .Values.app.affinity .Values.global.affinity }}
+        {{- with $affinity }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- $tolerations := coalesce .Values.app.tolerations .Values.global.tolerations }}
+      {{- with $tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

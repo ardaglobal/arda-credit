@@ -1,0 +1,288 @@
+# Default values for arda-credit
+# This is a YAML-formatted file.
+
+global:
+  imagePullSecrets:
+    - name: ghcr-secret
+  # Global node selectors applied to all components by default
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Namespace creation
+namespaceCreate: true
+
+# PostgreSQL configuration
+# Can use either bundled PostgreSQL (enabled: true) or external instance (enabled: false)
+postgresql:
+  # Enable bundled PostgreSQL
+  enabled: true
+  
+  # Override global registry for PostgreSQL to use public Bitnami registry
+  global:
+    imageRegistry: ""
+    imagePullSecrets: []
+  
+  image:
+    registry: docker.io
+    repository: bitnami/postgresql
+  
+  # Configuration for bundled PostgreSQL
+  auth:
+    database: "arda_credit_db"
+    username: "postgres"
+    password: "change-me-in-production"
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+      # storageClass: ""  # Leave empty for default, or specify for cloud providers (e.g., "gp2", "gp3" for EKS)
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+    
+    # Node placement configuration for PostgreSQL primary
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
+  # External PostgreSQL configuration (when enabled: false)
+  external:
+    host: "external-postgresql"
+    port: 5432
+    database: "arda_credit_db"
+    username: "postgres"
+    existingSecret: "external-postgres-secret"
+    secretPasswordKey: "password"
+
+# API Server configuration
+server:
+  enabled: true
+  
+  image:
+    registry: ghcr.io/ardaglobal
+    repository: arda-credit
+    tag: "latest"
+    pullPolicy: Always
+  
+  replicaCount: 1
+  
+  # Configuration for ConfigMap (non-sensitive)
+  config:
+    rustLog: "debug"
+    serverPort: "8080"
+    sindriCircuitTag: "latest"
+  
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  readinessProbe:
+    httpGet:
+      path: /api/v2/health
+      port: 8080
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  
+  livenessProbe:
+    httpGet:
+      path: /api/v2/health
+      port: 8080
+    initialDelaySeconds: 30
+    periodSeconds: 15
+  
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+  
+  # Pod Disruption Budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 50%
+  
+  # Pod Anti-Affinity - spreads pods across nodes
+  podAntiAffinity:
+    enabled: true
+    type: "soft"  # "soft" or "hard"
+    topologyKey: "kubernetes.io/hostname"
+    weight: 100
+  
+  # Node placement configuration
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Frontend App configuration
+app:
+  enabled: true
+  
+  image:
+    registry: ghcr.io/ardaglobal
+    repository: arda-credit-app
+    tag: "latest"
+    pullPolicy: Always
+  
+  replicaCount: 1
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+    behavior:
+      scaleDown:
+        stabilizationWindowSeconds: 300
+        policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+      scaleUp:
+        stabilizationWindowSeconds: 60
+        policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+  
+  # Pod Disruption Budget
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+    # maxUnavailable: 50%
+  
+  # Pod Anti-Affinity - spreads pods across nodes
+  podAntiAffinity:
+    enabled: true
+    type: "soft"  # "soft" or "hard"
+    topologyKey: "kubernetes.io/hostname"
+    weight: 100
+  
+  # Node placement configuration
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"  # Options: "nginx", "alb"
+  
+  annotations:
+    # nginx ingress annotations (used when className: "nginx")
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # ALB ingress annotations (used when className: "alb")  
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    # alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # alb.ingress.kubernetes.io/certificate-arn: ""  # ACM certificate ARN
+    # alb.ingress.kubernetes.io/load-balancer-name: ""
+    
+    # External DNS (works with both nginx and ALB)
+    # external-dns.alpha.kubernetes.io/hostname: ""
+  
+  hosts:
+    - host: app.stag.aws.arda.xyz
+      paths:
+        - path: /
+          pathType: Prefix
+          service:
+            name: app
+            port: 80
+  
+  tls:
+    - secretName: arda-credit-tls
+      hosts:
+        - app.stag.aws.arda.xyz
+
+# Application secrets - these should be overridden in environment-specific values
+secrets:
+  app:
+    sindriApiKey: "your-sindri-api-key"
+    ethereumRpcUrl: "https://eth-mainnet.alchemyapi.io/v2/demo"
+    ethereumContractAddress: "0x..."
+    ethereumWalletPrivateKey: "0x..."
+    ethereumDeployerAddress: "0x..."
+
+# Security Context
+podSecurityContext:
+  fsGroup: 1001
+  runAsNonRoot: true
+  runAsUser: 1001
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1001
+
+# App-specific security contexts (permissive for nginx)
+appPodSecurityContext: {}
+
+appSecurityContext: {}
+
+# Service Account and RBAC
+serviceAccount:
+  # Annotations to add to the service account
+  annotations: {}
+  # Automatically mount a ServiceAccount's API credentials
+  automount: false
+
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+
+# Component-specific node selectors are defined within each component section above
+
