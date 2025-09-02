@@ -96,6 +96,7 @@ pub use db::{
     mark_batch_posted_to_contract,
     mark_batch_posted_to_contract_with_tx_hash,
 
+    register_or_reregister_user,
     // Authentication functions
     reset_password_with_token,
     set_email_verification_token,
@@ -135,6 +136,7 @@ pub use db::{
     Payment,
     ProofBatch,
 
+    RegisterResult,
     StateSnapshot,
     UsdcDeposit,
     UserDepositBalance,
