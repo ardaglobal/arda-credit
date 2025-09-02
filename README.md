@@ -14,6 +14,7 @@ A privacy-preserving loan platform built on SP1 zero-knowledge proofs, enabling 
 - Flexible KYC requirements for different operations
 
 **💰 Loan Operations**
+- **USDC Deposits** - Deposit USDC to smart contract with automatic balance tracking
 - **Loan Origination** - Create loans between KYC'd parties
 - **Payment Processing** - Make payments with privacy guarantees  
 - **Loan Closeout** - Final settlement and completion
@@ -69,30 +70,37 @@ make deploy   # Deploy circuit to Sindri
 make up       # Start services
 ```
 
-**💡 Test the Loan Workflow**
+**💡 Test the Complete Workflow**
 ```bash
-# 1. Register users (investors and lenders)
+# 1. Test basic transaction processing
+cargo run --bin cli -- submit-transaction --amount 1000
+cargo run --bin cli -- view-pending
+cargo run --bin cli -- trigger-batch --verbose
+
+# 2. Test USDC deposit flow
+cargo run --bin cli -- get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+
+# 3. Register users (investors and lenders) 
 cargo run --bin cli -- register-user --user-type lender --email alice@example.com
 cargo run --bin cli -- register-user --user-type investor --email bob@example.com
 
-# 2. Submit KYC for both users (required for loan operations)
+# 4. Submit KYC for both users (required for loan operations)
 cargo run --bin cli -- submit-kyc --user-id <alice-uuid>
 cargo run --bin cli -- submit-kyc --user-id <bob-uuid>
 
-# 3. Originate a loan between KYC'd parties
+# 5. Originate a loan between KYC'd parties
 cargo run --bin cli -- originate-loan \
   --borrower-id <bob-uuid> \
   --lender-id <alice-uuid> \
   --amount 50000
 
-# 4. Make payments toward the loan
-cargo run --bin cli -- make-payment --loan-id <loan-uuid> --amount 5000
+# 6. Make payments toward the loan  
 cargo run --bin cli -- make-payment --loan-id <loan-uuid> --amount 5000
 
-# 5. Process batch and generate ZK proofs
+# 7. Process batch and generate ZK proofs
 cargo run --bin cli -- trigger-batch --verbose
 
-# 6. Verify payment inclusion (trustless)
+# 8. Verify transaction inclusion (trustless)
 cargo run --bin cli -- verify-transaction-inclusion \
   --proof-file proof_batch_1.json \
   --transaction-id <payment-uuid> \
@@ -136,7 +144,11 @@ cargo run --bin cli -- list-loans --user-id <lender-uuid>
 cargo run --bin cli -- register-user --user-type investor --email investor@example.com
 cargo run --bin cli -- submit-kyc --user-id <investor-uuid>
 
-# Make loan payments
+# Check USDC balance after deposit
+cargo run --bin cli -- get-user-balance-by-address --address <wallet-address>
+cargo run --bin cli -- get-user-balance-by-id --user-id <investor-uuid>
+
+# Make loan payments  
 cargo run --bin cli -- make-payment --loan-id <loan-uuid> --amount 2500
 
 # Prove payment was processed
@@ -144,6 +156,18 @@ cargo run --bin cli -- verify-transaction-inclusion \
   --proof-file proof_batch_1.json \
   --transaction-id <payment-id> \
   --transaction-type loan_payment
+```
+
+### USDC Deposit Flow
+```bash
+# 1. User deposits USDC to smart contract (automated)
+# 2. Transaction confirmation triggers database update
+# 3. Balance reflects in user interface
+cargo run --bin cli -- get-user-balance-by-address --address <wallet-address>
+
+# View deposit history and balances
+psql $DATABASE_URL -c "SELECT * FROM usdc_deposits WHERE user_address = '<wallet-address>';"
+psql $DATABASE_URL -c "SELECT * FROM user_deposit_balances WHERE user_address = '<wallet-address>';"
 ```
 
 ### For Auditors/Regulators

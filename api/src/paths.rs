@@ -58,7 +58,7 @@ pub const USER_KYC: &str = api_path!("/user/{user_id}/kyc");
 pub const USER_KYC_STATUS: &str = api_path!("/user/{user_id}/kyc-status");
 
 /// User balance by wallet address
-pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/user/{address}/balance");
+pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/user/address/{address}/balance");
 
 /// User balance by user ID
 pub const USER_BALANCE_BY_ID: &str = api_path!("/user/{user_id}/balance");

@@ -1,0 +1,106 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, \n               created_at as \"created_at!\", updated_at as \"updated_at!\", \n               password_hash, last_login_at, email_verified, email_verification_token, \n               password_reset_token, password_reset_expires_at, wallet_address\n        FROM identities\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "kyc_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "kyc_submitted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "kyc_verified_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "password_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "last_login_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "email_verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "email_verification_token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "password_reset_token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "password_reset_expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "wallet_address",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d11e134c0d89ce551a8b1fd5246e07a27526829c01b5306a25f4a90384dd0d87"
+}

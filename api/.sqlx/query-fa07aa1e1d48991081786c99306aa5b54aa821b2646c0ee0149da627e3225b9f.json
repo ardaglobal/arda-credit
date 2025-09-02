@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                'batch_summary' as \"operation_type!\",\n                1::BIGINT as \"operation_count!\",\n                0.0::DECIMAL as \"total_amount!\",\n                0.0::DECIMAL as \"avg_amount!\",\n                1::BIGINT as \"unique_loans!\",\n                1::BIGINT as \"unique_users!\"\n            FROM get_batch_loan_summary($1)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "operation_type!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "operation_count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_amount!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "avg_amount!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "unique_loans!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "unique_users!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "fa07aa1e1d48991081786c99306aa5b54aa821b2646c0ee0149da627e3225b9f"
+}
