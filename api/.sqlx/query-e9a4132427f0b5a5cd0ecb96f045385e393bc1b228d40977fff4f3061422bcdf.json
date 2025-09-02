@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE tree_state\n            SET total_nullifiers = total_nullifiers + 1, updated_at = NOW()\n            WHERE tree_id = $1\n            RETURNING tree_id, root_hash, next_available_index as \"next_available_index!\",\n                      tree_height as \"tree_height!\", total_nullifiers as \"total_nullifiers!\",\n                      updated_at as \"updated_at!\",\n                      total_loan_originations, total_loan_payments, total_loan_closeouts,\n                      total_loan_amount, active_loans_count, loan_stats_updated_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tree_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "root_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 2,
+        "name": "next_available_index!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "tree_height!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "total_nullifiers!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "total_loan_originations",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "total_loan_payments",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "total_loan_closeouts",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "total_loan_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 10,
+        "name": "active_loans_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "loan_stats_updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "e9a4132427f0b5a5cd0ecb96f045385e393bc1b228d40977fff4f3061422bcdf"
+}

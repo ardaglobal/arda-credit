@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT available_balance\n        FROM user_balances\n        WHERE user_id = $1 AND currency = 'USDC'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "available_balance",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "3476028bdb8095c03f1638e910a15e603bfd2c35aeb7718439c5f02ca6e377d3"
+}

@@ -4,16 +4,27 @@
 BEGIN;
 
 -- ============================================================================
--- ADD WALLET ADDRESS COLUMN TO IDENTITIES TABLE
+-- ADD WALLET ADDRESS COLUMN TO IDENTITIES TABLE (SKIP IF EXISTS)
 -- ============================================================================
 
-ALTER TABLE identities ADD COLUMN wallet_address VARCHAR(42);
+-- Only add wallet_address if it doesn't already exist (migration 28 may have added it)
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'identities'
+        AND column_name = 'wallet_address'
+    ) THEN
+        ALTER TABLE identities ADD COLUMN wallet_address VARCHAR(42);
+    END IF;
+END $$;
 
 -- ============================================================================
--- CREATE USER BALANCES TABLE
+-- CREATE USER BALANCES TABLE (SKIP IF EXISTS)
 -- ============================================================================
 
-CREATE TABLE user_balances (
+-- Only create user_balances if it doesn't already exist (migration 31 may have created it)
+CREATE TABLE IF NOT EXISTS user_balances (
     user_id UUID PRIMARY KEY REFERENCES identities(id),
     currency VARCHAR(10) NOT NULL DEFAULT 'USDC',
     available_balance NUMERIC(78,0) NOT NULL DEFAULT 0,
@@ -25,27 +36,38 @@ CREATE TABLE user_balances (
 );
 
 -- ============================================================================
--- ADD INDEXES FOR USER BALANCES
+-- ADD INDEXES FOR USER BALANCES (SKIP IF EXISTS)
 -- ============================================================================
 
-CREATE INDEX idx_user_balances_user_id ON user_balances(user_id);
-CREATE INDEX idx_user_balances_currency ON user_balances(currency);
-CREATE INDEX idx_user_balances_updated_at ON user_balances(updated_at);
+CREATE INDEX IF NOT EXISTS idx_user_balances_user_id ON user_balances(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_balances_currency ON user_balances(currency);
+CREATE INDEX IF NOT EXISTS idx_user_balances_updated_at ON user_balances(updated_at);
 
 -- ============================================================================
--- ADD TRIGGER FOR UPDATED_AT ON USER_BALANCES
+-- ADD TRIGGER FOR UPDATED_AT ON USER_BALANCES (SKIP IF EXISTS)
 -- ============================================================================
 
-CREATE TRIGGER trigger_user_balances_updated_at
-    BEFORE UPDATE ON user_balances
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+-- Only create trigger if it doesn't already exist
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.triggers
+        WHERE event_object_table = 'user_balances'
+        AND trigger_name = 'trigger_user_balances_updated_at'
+    ) THEN
+        CREATE TRIGGER trigger_user_balances_updated_at
+            BEFORE UPDATE ON user_balances
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
 -- ============================================================================
--- ADD INDEX FOR WALLET ADDRESS LOOKUP
+-- ADD INDEX FOR WALLET ADDRESS LOOKUP (SKIP IF EXISTS)
 -- ============================================================================
 
-CREATE INDEX idx_identities_wallet_address ON identities(wallet_address)
+-- Only create index if it doesn't already exist (migration 28 may have created it)
+CREATE INDEX IF NOT EXISTS idx_identities_wallet_address ON identities(wallet_address)
 WHERE wallet_address IS NOT NULL;
 
 COMMIT;

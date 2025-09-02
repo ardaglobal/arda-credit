@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COUNT(*) > 0\n            FROM proof_batches pb\n            JOIN audit_events ae ON ae.nullifier_value = $1\n            WHERE pb.id = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "?column?",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "a3d98e16a90f0b07a778a8b192142ae75aa6bdf84329c53b01edbb131771c75f"
+}
