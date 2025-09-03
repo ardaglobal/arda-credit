@@ -27,8 +27,27 @@ rules:
 
   # Allow truthy values (on/off, yes/no) which are common in config files
   truthy:
-    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    allowed-values: ["true", "false", "yes", "no", "on", "off"]
     check-keys: false
+
+  # Disable braces checking for Helm templates
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  # Be more flexible with brackets for arrays
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  # Disable empty lines rules that conflict with Helm templates
+  empty-lines:
+    max: 2
+    max-start: 0
+    max-end: 1
+
+  # Disable key ordering for flexibility
+  key-ordering: disable
 
 # Ignore specific directories and files
 ignore: |
@@ -37,3 +56,4 @@ ignore: |
   /contracts/lib/
   *.log
   /.github/dependabot.yaml
+  helm/

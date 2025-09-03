@@ -226,6 +226,43 @@ pub struct UserDepositBalance {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+/// USDC withdrawal record from smart contract events
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UsdcWithdrawal {
+    pub id: i32,
+    pub user_address: String,
+    pub recipient_address: String,
+    pub amount: rust_decimal::Decimal,
+    pub withdrawal_amount_usdc: Option<rust_decimal::Decimal>,
+    pub transaction_hash: String,
+    pub event_transaction_hash: String,
+    pub block_number: i64,
+    pub event_timestamp: i64,
+    pub block_timestamp: Option<DateTime<Utc>>,
+    pub log_index: i64,
+    pub event_signature: String,
+    pub status: String, // pending, confirmed, processed, failed
+    pub confirmation_count: i32,
+    pub required_confirmations: i32,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub processed_at: Option<DateTime<Utc>>,
+}
+
+/// User withdrawal balance aggregation
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserWithdrawalBalance {
+    pub id: i32,
+    pub user_address: String,
+    pub total_withdrawn: rust_decimal::Decimal,
+    pub total_withdrawn_usdc: Option<rust_decimal::Decimal>,
+    pub withdrawal_count: i32,
+    pub first_withdrawal_at: Option<DateTime<Utc>>,
+    pub last_withdrawal_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
 // ============================================================================
 // DATABASE CONNECTION FUNCTIONS
 // ============================================================================
@@ -2443,6 +2480,242 @@ pub async fn update_user_balance_from_deposit_tx(
         "#,
         user_id,
         deposit_amount
+    )
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
+
+// ============================================================================
+// USDC WITHDRAWAL FUNCTIONS
+// ============================================================================
+
+/// Create a new USDC withdrawal record
+pub async fn create_withdrawal(
+    pool: &PgPool,
+    user_address: &str,
+    recipient_address: &str,
+    amount: rust_decimal::Decimal,
+    transaction_hash: &str,
+    event_transaction_hash: &str,
+    block_number: i64,
+    event_timestamp: i64,
+    log_index: i64,
+    required_confirmations: i32,
+) -> Result<UsdcWithdrawal, sqlx::Error> {
+    let withdrawal = sqlx::query_as!(
+        UsdcWithdrawal,
+        r#"
+        INSERT INTO usdc_withdrawals (
+            user_address, recipient_address, amount, transaction_hash, event_transaction_hash,
+            block_number, event_timestamp, log_index, required_confirmations,
+            status, confirmation_count, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 0, NOW())
+        ON CONFLICT (event_transaction_hash, log_index)
+        DO UPDATE SET updated_at = NOW()
+        RETURNING 
+            id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        "#,
+        user_address,
+        recipient_address,
+        amount,
+        transaction_hash,
+        event_transaction_hash,
+        block_number,
+        event_timestamp,
+        log_index,
+        required_confirmations
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(withdrawal)
+}
+
+/// Update withdrawal status and confirmation count
+pub async fn update_withdrawal_status(
+    pool: &PgPool,
+    withdrawal_id: i32,
+    status: &str,
+    confirmation_count: i32,
+    block_timestamp: Option<DateTime<Utc>>,
+) -> Result<UsdcWithdrawal, sqlx::Error> {
+    let should_set_processed = status == "processed" || status == "confirmed";
+
+    let withdrawal = sqlx::query_as!(
+        UsdcWithdrawal,
+        r#"
+        UPDATE usdc_withdrawals 
+        SET status = $2, confirmation_count = $3, block_timestamp = $4,
+            processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING 
+            id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        "#,
+        withdrawal_id,
+        status,
+        confirmation_count,
+        block_timestamp,
+        should_set_processed
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(withdrawal)
+}
+
+/// Transactional version: Update withdrawal status within a transaction
+pub async fn update_withdrawal_status_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    withdrawal_id: i32,
+    status: &str,
+    confirmation_count: i32,
+    block_timestamp: Option<DateTime<Utc>>,
+) -> Result<UsdcWithdrawal, sqlx::Error> {
+    let should_set_processed = status == "processed" || status == "confirmed";
+
+    let withdrawal = sqlx::query_as!(
+        UsdcWithdrawal,
+        r#"
+        UPDATE usdc_withdrawals 
+        SET status = $2, confirmation_count = $3, block_timestamp = $4,
+            processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING 
+            id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        "#,
+        withdrawal_id,
+        status,
+        confirmation_count,
+        block_timestamp,
+        should_set_processed
+    )
+    .fetch_one(&mut **tx)
+    .await?;
+
+    Ok(withdrawal)
+}
+
+/// Get withdrawals by user address
+pub async fn get_withdrawals_by_user_address(
+    pool: &PgPool,
+    user_address: &str,
+) -> Result<Vec<UsdcWithdrawal>, sqlx::Error> {
+    let withdrawals = sqlx::query_as!(
+        UsdcWithdrawal,
+        r#"
+        SELECT 
+            id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        FROM usdc_withdrawals
+        WHERE user_address = $1
+        ORDER BY created_at DESC
+        "#,
+        user_address
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(withdrawals)
+}
+
+/// Get withdrawal by transaction hash
+pub async fn get_withdrawal_by_tx_hash(
+    pool: &PgPool,
+    tx_hash: &str,
+) -> Result<Option<UsdcWithdrawal>, sqlx::Error> {
+    let withdrawal = sqlx::query_as!(
+        UsdcWithdrawal,
+        r#"
+        SELECT 
+            id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
+            event_transaction_hash, block_number, event_timestamp, block_timestamp,
+            log_index, event_signature, status, confirmation_count, required_confirmations,
+            created_at, updated_at, processed_at
+        FROM usdc_withdrawals
+        WHERE transaction_hash = $1 OR event_transaction_hash = $1
+        "#,
+        tx_hash
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(withdrawal)
+}
+
+/// Get user withdrawal balance by wallet address
+pub async fn get_user_withdrawal_balance(
+    pool: &PgPool,
+    user_address: &str,
+) -> Result<Option<UserWithdrawalBalance>, sqlx::Error> {
+    let balance = sqlx::query_as!(
+        UserWithdrawalBalance,
+        r#"
+        SELECT 
+            id, user_address, total_withdrawn, total_withdrawn_usdc, withdrawal_count,
+            first_withdrawal_at, last_withdrawal_at, created_at, updated_at
+        FROM user_withdrawal_balances
+        WHERE user_address = $1
+        "#,
+        user_address
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(balance)
+}
+
+/// Update user balance after withdrawal (debit)
+pub async fn update_user_balance_from_withdrawal(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    withdrawal_amount: rust_decimal::Decimal,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE user_balances 
+        SET available_balance = available_balance - $2,
+            last_updated_at = NOW()
+        WHERE user_id = $1 AND currency = 'USDC'
+        "#,
+        user_id,
+        withdrawal_amount
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Transactional version: Update user balance from withdrawal within a transaction
+pub async fn update_user_balance_from_withdrawal_tx(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: uuid::Uuid,
+    withdrawal_amount: rust_decimal::Decimal,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        UPDATE user_balances 
+        SET available_balance = available_balance - $2,
+            last_updated_at = NOW()
+        WHERE user_id = $1 AND currency = 'USDC'
+        "#,
+        user_id,
+        withdrawal_amount
     )
     .execute(&mut **tx)
     .await?;
