@@ -32,10 +32,9 @@ jobs:
             # Set Rust to use all 72 vCPUs
             echo "CARGO_BUILD_JOBS=72"
             echo "RUSTFLAGS=-C target-cpu=native"
-            # Configure BuildKit for maximum parallelism
-            echo "BUILDKIT_PARALLEL_JOBS=72"
-            echo "BUILDKIT_STEP_LOG_MAX_SIZE=100000000"
-            # Optimize cargo for large memory operations
+            # Set BuildKit log buffer to 50MB (reduced from 100MB)
+            echo "BUILDKIT_STEP_LOG_MAX_SIZE=50000000"
+            # Cargo network optimizations
             echo "CARGO_NET_GIT_FETCH_WITH_CLI=true"
             echo "CARGO_HTTP_MULTIPLEXING=false"
           } >> $GITHUB_ENV
@@ -52,7 +51,6 @@ jobs:
           driver-opts: |
             network=host
             env.BUILDKIT_STEP_LOG_MAX_SIZE=${{ env.BUILDKIT_STEP_LOG_MAX_SIZE }}
-            env.BUILDKIT_PARALLEL_JOBS=${{ env.BUILDKIT_PARALLEL_JOBS }}
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
