@@ -204,81 +204,87 @@ mod tests {
     use arda_credit_db::{create_usdc_deposit, register_or_reregister_user};
     use chrono::Utc;
 
-    // #[sqlx::test]
-    // async fn test_balance_verification_service(pool: sqlx::PgPool) -> sqlx::Result<()> {
-    //     let service = BalanceVerificationService::new(pool.clone());
-    //     let wallet_address = "0x1234567890123456789012345678901234567890";
+    #[sqlx::test]
+    async fn test_balance_verification_service(pool: sqlx::PgPool) -> sqlx::Result<()> {
+        let service = BalanceVerificationService::new(pool.clone());
+        let wallet_address = "0x1234567890123456789012345678901234567890";
 
-    //     // Create a test user with linked wallet
-    //     let user_result = register_or_reregister_user(
-    //         &pool,
-    //         "investor",
-    //         "test@example.com",
-    //         "hashed_password", // password_hash
-    //     )
-    //     .await?;
+        // Create a test user with linked wallet
+        let user_result = register_or_reregister_user(
+            &pool,
+            "investor",
+            "test@example.com",
+            "hashed_password", // password_hash
+        )
+        .await?;
 
-    //     let user_id = match user_result {
-    //         arda_credit_db::RegisterResult::Created(identity) => identity.id,
-    //         arda_credit_db::RegisterResult::Reregistered(identity) => identity.id,
-    //         arda_credit_db::RegisterResult::AlreadyExists => panic!("User should not exist"),
-    //     };
+        let user_id = match user_result {
+            arda_credit_db::RegisterResult::Created(identity) => identity.id,
+            arda_credit_db::RegisterResult::Reregistered(identity) => identity.id,
+            arda_credit_db::RegisterResult::AlreadyExists => panic!("User should not exist"),
+        };
 
-    //     // Link wallet address
-    //     sqlx::query!(
-    //         "UPDATE identities SET wallet_address = $1 WHERE id = $2",
-    //         wallet_address,
-    //         user_id
-    //     )
-    //     .execute(&pool)
-    //     .await?;
+        // Link wallet address
+        sqlx::query!(
+            "UPDATE identities SET wallet_address = $1 WHERE id = $2",
+            wallet_address,
+            user_id
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
 
-    //         // Test balance verification with no deposits
-    //         let result = service
-    //             .verify_balance_for_withdrawal_by_address(wallet_address, Decimal::new(1000000, 0))
-    //             .await?;
-    //         assert!(!result.is_sufficient);
-    //         assert_eq!(result.available_balance, Decimal::ZERO);
-    //
-    //         // Create a deposit
-    //         let deposit_amount = Decimal::new(5000000, 0); // 5 USDC in wei
-    //         create_usdc_deposit(
-    //             &pool,
-    //             wallet_address,
-    //             deposit_amount,
-    //             "0xtest_tx_hash",
-    //             "0xtest_event_tx_hash", // event_transaction_hash
-    //             Utc::now().timestamp(),
-    //             0,
-    //             12,
-    //         )
-    //         .await?;
-    //
-    //         // Update deposit status to confirmed to trigger balance update
-    //         sqlx::query!(
-    //             "UPDATE usdc_deposits SET status = 'confirmed' WHERE transaction_hash = $1",
-    //             "0xtest_tx_hash"
-    //         )
-    //         .execute(&pool)
-    //         .await?;
-    //
-    //         // Test balance verification with sufficient balance
-    //         let withdrawal_amount = Decimal::new(3000000, 0); // 3 USDC
-    //         let result = service
-    //             .verify_balance_for_withdrawal_by_address(wallet_address, withdrawal_amount)
-    //             .await?;
-    //         assert!(result.is_sufficient);
-    //         assert_eq!(result.available_balance, deposit_amount);
-    //
-    //         // Test balance verification with insufficient balance
-    //         let large_withdrawal = Decimal::new(10000000, 0); // 10 USDC
-    //         let result = service
-    //             .verify_balance_for_withdrawal_by_address(wallet_address, large_withdrawal)
-    //             .await?;
-    //         assert!(!result.is_sufficient);
-    //         assert!(result.shortfall.is_some());
-    //         assert_eq!(result.shortfall.unwrap(), large_withdrawal - deposit_amount);
-    //
-    //         // Ok(())
-    //     // }
+        // Test balance verification with no deposits
+        let result = service
+            .verify_balance_for_withdrawal_by_address(wallet_address, Decimal::new(1000000, 0))
+            .await
+            .unwrap();
+        assert!(!result.is_sufficient);
+        assert_eq!(result.available_balance, Decimal::ZERO);
+
+        // Create a deposit
+        let deposit_amount = Decimal::new(5000000, 0); // 5 USDC in wei
+        create_usdc_deposit(
+            &pool,
+            wallet_address,
+            deposit_amount,
+            "0xtest_tx_hash",
+            "0xtest_event_tx_hash", // event_transaction_hash
+            Utc::now().timestamp(),
+            0,
+            12,
+        )
+        .await
+        .unwrap();
+
+        // Update deposit status to confirmed to trigger balance update
+        sqlx::query!(
+            "UPDATE usdc_deposits SET status = 'confirmed' WHERE transaction_hash = $1",
+            "0xtest_tx_hash"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // Test balance verification with sufficient balance
+        let withdrawal_amount = Decimal::new(3000000, 0); // 3 USDC
+        let result = service
+            .verify_balance_for_withdrawal_by_address(wallet_address, withdrawal_amount)
+            .await
+            .unwrap();
+        assert!(result.is_sufficient);
+        assert_eq!(result.available_balance, deposit_amount);
+
+        // Test balance verification with insufficient balance
+        let large_withdrawal = Decimal::new(10000000, 0); // 10 USDC
+        let result = service
+            .verify_balance_for_withdrawal_by_address(wallet_address, large_withdrawal)
+            .await
+            .unwrap();
+        assert!(!result.is_sufficient);
+        assert!(result.shortfall.is_some());
+        assert_eq!(result.shortfall.unwrap(), large_withdrawal - deposit_amount);
+
+        Ok(())
+    }
 }
