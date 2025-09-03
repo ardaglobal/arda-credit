@@ -88,6 +88,9 @@ Key configuration options in `values.yaml`:
 | `server.replicaCount` | Number of server replicas | `2` |
 | `server.config.rustLog` | Rust logging level | `"info"` |
 | `server.config.serverPort` | Server port | `"8080"` |
+| **App Configuration** |
+| `app.replicaCount` | Number of app replicas | `1` |
+| `app.image.repository` | Frontend app image name | `"arda-credit-app"` |
 | **Autoscaling** |
 | `server.autoscaling.enabled` | Enable server autoscaling | `false` |
 | `server.autoscaling.minReplicas` | Min server replicas | `2` |
@@ -105,6 +108,7 @@ Key configuration options in `values.yaml`:
 | `postgresql.auth.password` | PostgreSQL password | `"change-me-in-production"` |
 | **Ingress** |
 | `ingress.enabled` | Enable ingress | `true` |
+| `ingress.className` | Ingress class (nginx/alb) | `"nginx"` |
 | `ingress.hosts[0].host` | Ingress hostname | `arda-credit.example.com` |
 
 ## EKS Deployment
@@ -225,6 +229,31 @@ kubectl create secret generic arda-credit-secrets \
 
 ## Troubleshooting
 
+### API Connectivity Issues
+
+If you're seeing "Failed to fetch" errors when the frontend tries to call API endpoints:
+
+1. **Check ingress routing**:
+   ```bash
+   kubectl get ingress -n arda-credit
+   kubectl describe ingress arda-credit -n arda-credit
+   ```
+
+2. **Verify API routing**:
+   ```bash
+   # Test API endpoint directly
+   curl -H "Host: your-domain.com" http://ingress-controller-ip/api/v1/health
+
+   # Check if requests are reaching the server
+   kubectl logs -f deployment/arda-credit-server -n arda-credit
+   ```
+
+3. **Frontend API calls**: Ensure your frontend makes relative API calls like `/api/v1/health` instead of hardcoded localhost URLs.
+
+4. **CORS issues**: The nginx proxy in the app deployment handles CORS headers. Check app logs for CORS-related errors.
+
+### General Troubleshooting
+
 ### Check pod status
 ```bash
 kubectl get pods -n arda-credit
@@ -234,12 +263,42 @@ kubectl describe pod <pod-name> -n arda-credit
 ### View logs
 ```bash
 kubectl logs -f deployment/arda-credit-server -n arda-credit
+kubectl logs -f deployment/arda-credit-app -n arda-credit
 ```
 
 ### Check autoscaling
 ```bash
 kubectl get hpa -n arda-credit
 kubectl describe hpa arda-credit-server -n arda-credit
+```
+
+### Test service connectivity
+```bash
+# Test server service
+kubectl run test-pod --image=busybox --rm -it --restart=Never -- sh
+# Inside pod:
+wget -O- http://arda-credit-server:8080/api/v1/health
+
+# Test app service
+wget -O- http://arda-credit-app:80
+```
+
+## Testing the API Routing
+
+After deployment, test the API routing setup:
+
+```bash
+# 1. Check all resources are created
+kubectl get all -n arda-credit
+
+# 2. Test API endpoint through ingress
+curl -H "Host: your-domain.com" https://your-ingress-ip/api/v1/health
+
+# 3. Test frontend through ingress
+curl -H "Host: your-domain.com" https://your-ingress-ip/
+
+# 4. Check nginx proxy configuration in app pod
+kubectl exec -it deployment/arda-credit-app -n arda-credit -- cat /etc/nginx/conf.d/default.conf
 ```
 
 ## Upgrading
