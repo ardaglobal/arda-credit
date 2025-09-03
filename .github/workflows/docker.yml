@@ -22,7 +22,7 @@ jobs:
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
-      - instance-size=large
+      - instance-size=2xlarge
     permissions:
       contents: read
       packages: write  # Includes read access for pulling private base containers
