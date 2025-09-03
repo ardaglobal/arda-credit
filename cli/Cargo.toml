@@ -34,4 +34,5 @@ hex              = { workspace = true }
 
 # API types for consistent response parsing
 arda-credit-api = { path = "../api", package = "api", default-features = false }
+rust_decimal    = { workspace = true }
 sha2            = { workspace = true }

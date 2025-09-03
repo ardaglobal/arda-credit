@@ -34,13 +34,16 @@
 #![allow(clippy::suboptimal_flops)]
 
 pub mod auth;
+pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
+pub mod kyc_service;
 pub mod middleware;
 pub mod paths;
 pub mod rest;
 pub mod server;
 pub mod unified_batch_service;
+pub mod withdrawal_service;
 
 #[cfg(test)]
 pub mod openapi_test;
@@ -86,6 +89,17 @@ pub use server::{ApiServer, ApiServerBuilder, ApiServerConfig};
 pub use unified_batch_service::{BatchCreationResult, UnifiedBatchService};
 
 pub use auth::{AuthError, AuthService, Claims};
+
+pub use kyc_service::{KycValidationResult, KycValidationService};
+
+pub use balance_service::{
+    AvailableBalance, BalanceVerificationResult, BalanceVerificationService,
+};
+
+pub use withdrawal_service::{
+    InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
+    WithdrawalStatusResponse, WithdrawalTransactionService,
+};
 
 // Re-export database types that the API uses
 pub use arda_credit_db::{

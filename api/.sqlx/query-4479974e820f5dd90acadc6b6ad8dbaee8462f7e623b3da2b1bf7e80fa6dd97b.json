@@ -1,0 +1,128 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE usdc_withdrawals \n        SET status = $2, confirmation_count = $3, block_timestamp = $4,\n            processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,\n            updated_at = NOW()\n        WHERE id = $1\n        RETURNING \n            id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,\n            event_transaction_hash, block_number, event_timestamp, block_timestamp,\n            log_index, event_signature, status, confirmation_count, required_confirmations,\n            created_at, updated_at, processed_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "recipient_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "withdrawal_amount_usdc",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "transaction_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "event_transaction_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "block_number",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "event_timestamp",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "block_timestamp",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "log_index",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "event_signature",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "confirmation_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "required_confirmations",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 15,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 17,
+        "name": "processed_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Varchar",
+        "Int4",
+        "Timestamptz",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4479974e820f5dd90acadc6b6ad8dbaee8462f7e623b3da2b1bf7e80fa6dd97b"
+}

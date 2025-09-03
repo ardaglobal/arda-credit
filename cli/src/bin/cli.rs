@@ -403,6 +403,75 @@ enum Commands {
     },
 
     // ============================================================================
+    // WITHDRAWAL MANAGEMENT COMMANDS
+    // ============================================================================
+    /// Initiate a withdrawal request
+    InitiateWithdrawal {
+        /// User's wallet address
+        #[arg(long)]
+        user_address: String,
+        /// Recipient address for the withdrawal
+        #[arg(long)]
+        recipient_address: String,
+        /// Amount in USDC to withdraw (e.g., 100.50)
+        #[arg(long)]
+        amount: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get withdrawal request status
+    GetWithdrawalStatus {
+        /// Withdrawal request ID
+        #[arg(long)]
+        request_id: i32,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get user's available balance for withdrawals
+    GetAvailableBalance {
+        /// User's wallet address
+        #[arg(long)]
+        address: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get user's withdrawal history
+    GetWithdrawalHistory {
+        /// User's wallet address
+        #[arg(long)]
+        address: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Cancel a withdrawal request
+    CancelWithdrawal {
+        /// Withdrawal request ID to cancel
+        #[arg(long)]
+        request_id: i32,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get pending withdrawal requests (admin command)
+    GetPendingWithdrawals {
+        /// Maximum number of requests to return
+        #[arg(long)]
+        limit: Option<i32>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    // ============================================================================
     // ENHANCED LOAN OPERATION TESTING COMMANDS
     // ============================================================================
     /// Test prefixed nullifier generation for loan operations
@@ -858,6 +927,38 @@ async fn main() -> Result<()> {
             verbose,
         } => {
             link_user_wallet(&client, &user_id, &wallet_address, verbose).await?;
+        }
+
+        // Withdrawal Management Commands
+        Commands::InitiateWithdrawal {
+            user_address,
+            recipient_address,
+            amount,
+            verbose,
+        } => {
+            initiate_withdrawal(&client, &user_address, &recipient_address, &amount, verbose)
+                .await?;
+        }
+        Commands::GetWithdrawalStatus {
+            request_id,
+            verbose,
+        } => {
+            get_withdrawal_status(&client, request_id, verbose).await?;
+        }
+        Commands::GetAvailableBalance { address, verbose } => {
+            get_available_balance(&client, &address, verbose).await?;
+        }
+        Commands::GetWithdrawalHistory { address, verbose } => {
+            get_withdrawal_history(&client, &address, verbose).await?;
+        }
+        Commands::CancelWithdrawal {
+            request_id,
+            verbose,
+        } => {
+            cancel_withdrawal(&client, request_id, verbose).await?;
+        }
+        Commands::GetPendingWithdrawals { limit, verbose } => {
+            get_pending_withdrawals(&client, limit, verbose).await?;
         }
 
         Commands::SubmitKyc {
@@ -3830,6 +3931,519 @@ async fn link_user_wallet(
             } else {
                 return Err(eyre::eyre!("Failed to link wallet: {}", e));
             }
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// WITHDRAWAL MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Initiate a withdrawal request
+async fn initiate_withdrawal(
+    _client: &BatchApiClient,
+    user_address: &str,
+    recipient_address: &str,
+    amount_str: &str,
+    verbose: bool,
+) -> Result<()> {
+    // Validate Ethereum addresses
+    validate_ethereum_address(user_address)?;
+    validate_ethereum_address(recipient_address)?;
+
+    // Parse amount
+    let amount: rust_decimal::Decimal = amount_str
+        .parse()
+        .map_err(|_| eyre::eyre!("Invalid amount format: {}", amount_str))?;
+
+    if amount <= rust_decimal::Decimal::ZERO {
+        return Err(eyre::eyre!("Amount must be positive"));
+    }
+
+    println!("🏦 Initiating withdrawal request...");
+    println!("   From: {}", user_address);
+    println!("   To: {}", recipient_address);
+    println!("   Amount: {} USDC", amount);
+
+    // Create withdrawal request
+    let request_body = serde_json::json!({
+        "user_address": user_address,
+        "recipient_address": recipient_address,
+        "amount_usdc": amount
+    });
+
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let http_client = reqwest::Client::new();
+    let response = http_client
+        .post(&format!("{}/api/v1/withdrawals", api_url))
+        .json(&request_body)
+        .send()
+        .await?;
+
+    match response.status() {
+        reqwest::StatusCode::OK => {
+            let withdrawal_response: serde_json::Value = response.json().await?;
+
+            let request_id = withdrawal_response["request_id"].as_i64().unwrap_or(0);
+            let state = withdrawal_response["state"].as_str().unwrap_or("unknown");
+            let kyc_validated = withdrawal_response["kyc_validated"]
+                .as_bool()
+                .unwrap_or(false);
+            let balance_validated = withdrawal_response["balance_validated"]
+                .as_bool()
+                .unwrap_or(false);
+
+            println!("✅ Withdrawal request created!");
+            println!("   Request ID: {}", request_id);
+            println!("   Status: {}", state);
+
+            if state == "validated" {
+                println!("   ✅ KYC Validation: Passed");
+                println!("   ✅ Balance Validation: Passed");
+                println!("   🎉 Your withdrawal is ready for submission to the blockchain!");
+            } else {
+                println!(
+                    "   KYC Validation: {}",
+                    if kyc_validated {
+                        "✅ Passed"
+                    } else {
+                        "❌ Failed"
+                    }
+                );
+                println!(
+                    "   Balance Validation: {}",
+                    if balance_validated {
+                        "✅ Passed"
+                    } else {
+                        "❌ Failed"
+                    }
+                );
+
+                if !kyc_validated {
+                    println!("   💡 KYC must be approved before withdrawals");
+                    println!("   Run: cargo run --bin cli -- submit-kyc --user-id <YOUR_USER_ID>");
+                }
+                if !balance_validated {
+                    println!("   💡 Insufficient balance for this withdrawal");
+                    println!(
+                        "   Run: cargo run --bin cli -- get-available-balance --address {}",
+                        user_address
+                    );
+                }
+            }
+
+            println!();
+            println!(
+                "🔍 Check status: cargo run --bin cli -- get-withdrawal-status --request-id {}",
+                request_id
+            );
+
+            if verbose {
+                println!();
+                println!("Full Response: {:#?}", withdrawal_response);
+            }
+        }
+        reqwest::StatusCode::NOT_FOUND => {
+            println!("❌ User not found for address: {}", user_address);
+            println!("   💡 Make sure you have registered and linked this wallet address");
+            println!("   Run: cargo run --bin cli -- link-wallet --user-id <YOUR_USER_ID> --wallet-address {}", user_address);
+        }
+        reqwest::StatusCode::BAD_REQUEST => {
+            let error_response = response.text().await?;
+            println!("❌ Withdrawal request failed: {}", error_response);
+        }
+        _ => {
+            return Err(eyre::eyre!(
+                "Failed to initiate withdrawal: {}",
+                response.status()
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get withdrawal request status
+async fn get_withdrawal_status(
+    _client: &BatchApiClient,
+    request_id: i32,
+    verbose: bool,
+) -> Result<()> {
+    println!("🔍 Getting withdrawal status for request: {}", request_id);
+
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let http_client = reqwest::Client::new();
+    let response = http_client
+        .get(&format!("{}/api/v1/withdrawals/{}", api_url, request_id))
+        .send()
+        .await?;
+
+    match response.status() {
+        reqwest::StatusCode::OK => {
+            let withdrawal: serde_json::Value = response.json().await?;
+
+            let state = withdrawal["state"].as_str().unwrap_or("unknown");
+            let amount_usdc = withdrawal["amount_usdc"].as_f64().unwrap_or(0.0);
+            let user_address = withdrawal["user_address"].as_str().unwrap_or("unknown");
+            let recipient_address = withdrawal["recipient_address"]
+                .as_str()
+                .unwrap_or("unknown");
+            let kyc_validated = withdrawal["kyc_validated"].as_bool().unwrap_or(false);
+            let balance_validated = withdrawal["balance_validated"].as_bool().unwrap_or(false);
+            let confirmation_count = withdrawal["confirmation_count"].as_i64().unwrap_or(0);
+            let required_confirmations =
+                withdrawal["required_confirmations"].as_i64().unwrap_or(12);
+
+            println!("📊 Withdrawal Status:");
+            println!("   Request ID: {}", request_id);
+            println!("   Status: {}", state);
+            println!("   Amount: {} USDC", amount_usdc);
+            println!("   From: {}", user_address);
+            println!("   To: {}", recipient_address);
+            println!();
+
+            match state {
+                "pending" => {
+                    println!("⏳ Status: Pending validation");
+                    println!(
+                        "   KYC Check: {}",
+                        if kyc_validated {
+                            "✅ Passed"
+                        } else {
+                            "❌ Failed"
+                        }
+                    );
+                    println!(
+                        "   Balance Check: {}",
+                        if balance_validated {
+                            "✅ Passed"
+                        } else {
+                            "❌ Failed"
+                        }
+                    );
+                }
+                "validated" => {
+                    println!("✅ Status: Validated and ready for blockchain submission");
+                    println!("   ✅ All validation checks passed");
+                }
+                "submitted" => {
+                    println!("🚀 Status: Submitted to blockchain");
+                    println!(
+                        "   Confirmations: {}/{}",
+                        confirmation_count, required_confirmations
+                    );
+                    if let Some(tx_hash) = withdrawal["transaction_hash"].as_str() {
+                        println!("   Transaction: {}", tx_hash);
+                    }
+                }
+                "confirmed" => {
+                    println!("🎉 Status: Confirmed on blockchain!");
+                    if let Some(tx_hash) = withdrawal["transaction_hash"].as_str() {
+                        println!("   Transaction: {}", tx_hash);
+                    }
+                    if let Some(confirmed_at) = withdrawal["confirmed_at"].as_str() {
+                        println!("   Confirmed: {}", confirmed_at);
+                    }
+                }
+                "failed" => {
+                    println!("❌ Status: Failed");
+                    if let Some(error) = withdrawal["error_message"].as_str() {
+                        println!("   Error: {}", error);
+                    }
+                }
+                "cancelled" => {
+                    println!("🚫 Status: Cancelled");
+                    if let Some(cancelled_at) = withdrawal["cancelled_at"].as_str() {
+                        println!("   Cancelled: {}", cancelled_at);
+                    }
+                }
+                _ => {
+                    println!("❓ Status: Unknown ({})", state);
+                }
+            }
+
+            if verbose {
+                println!();
+                println!("Full Response: {:#?}", withdrawal);
+            }
+        }
+        reqwest::StatusCode::NOT_FOUND => {
+            println!("❌ Withdrawal request not found: {}", request_id);
+        }
+        _ => {
+            return Err(eyre::eyre!(
+                "Failed to get withdrawal status: {}",
+                response.status()
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get user's available balance for withdrawals
+async fn get_available_balance(
+    _client: &BatchApiClient,
+    address: &str,
+    verbose: bool,
+) -> Result<()> {
+    validate_ethereum_address(address)?;
+
+    println!("💰 Getting available balance for address: {}", address);
+
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let http_client = reqwest::Client::new();
+    let response = http_client
+        .get(&format!(
+            "{}/api/v1/users/{}/available-balance",
+            api_url, address
+        ))
+        .send()
+        .await?;
+
+    match response.status() {
+        reqwest::StatusCode::OK => {
+            let balance: serde_json::Value = response.json().await?;
+
+            let available_usdc = balance["available_balance_usdc"].as_f64().unwrap_or(0.0);
+            let total_deposited_usdc = balance["total_deposited_usdc"].as_f64().unwrap_or(0.0);
+            let deposit_count = balance["deposit_count"].as_i64().unwrap_or(0);
+
+            println!("✅ Balance Information:");
+            println!("   Available for Withdrawal: {} USDC", available_usdc);
+            println!("   Total Deposited: {} USDC", total_deposited_usdc);
+            println!("   Number of Deposits: {}", deposit_count);
+
+            if available_usdc > 0.0 {
+                println!();
+                println!("💡 You can withdraw up to {} USDC", available_usdc);
+                println!("   Run: cargo run --bin cli -- initiate-withdrawal --user-address {} --recipient-address <RECIPIENT> --amount <AMOUNT>", address);
+            } else {
+                println!();
+                println!("💡 No funds available for withdrawal");
+                println!("   Send USDC to your address: {}", address);
+            }
+
+            if verbose {
+                println!();
+                println!("Full Response: {:#?}", balance);
+            }
+        }
+        reqwest::StatusCode::NOT_FOUND => {
+            println!("❌ No balance found for address: {}", address);
+            println!("   💡 Make sure you have made deposits to this address");
+        }
+        _ => {
+            return Err(eyre::eyre!(
+                "Failed to get available balance: {}",
+                response.status()
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get user's withdrawal history
+async fn get_withdrawal_history(
+    _client: &BatchApiClient,
+    address: &str,
+    verbose: bool,
+) -> Result<()> {
+    validate_ethereum_address(address)?;
+
+    println!("📋 Getting withdrawal history for address: {}", address);
+
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let http_client = reqwest::Client::new();
+    let response = http_client
+        .get(&format!("{}/api/v1/users/{}/withdrawals", api_url, address))
+        .send()
+        .await?;
+
+    match response.status() {
+        reqwest::StatusCode::OK => {
+            let withdrawals: Vec<serde_json::Value> = response.json().await?;
+
+            if withdrawals.is_empty() {
+                println!("📭 No withdrawal history found");
+                return Ok(());
+            }
+
+            println!("✅ Withdrawal History ({} requests):", withdrawals.len());
+            println!();
+
+            for withdrawal in &withdrawals {
+                let request_id = withdrawal["request_id"].as_i64().unwrap_or(0);
+                let state = withdrawal["state"].as_str().unwrap_or("unknown");
+                let amount_usdc = withdrawal["amount_usdc"].as_f64().unwrap_or(0.0);
+                let recipient = withdrawal["recipient_address"]
+                    .as_str()
+                    .unwrap_or("unknown");
+                let created_at = withdrawal["created_at"].as_str().unwrap_or("unknown");
+
+                let status_icon = match state {
+                    "pending" => "⏳",
+                    "validated" => "✅",
+                    "submitted" => "🚀",
+                    "confirmed" => "🎉",
+                    "failed" => "❌",
+                    "cancelled" => "🚫",
+                    _ => "❓",
+                };
+
+                println!(
+                    "   {} Request #{}: {} USDC → {} ({})",
+                    status_icon,
+                    request_id,
+                    amount_usdc,
+                    &recipient[..8],
+                    state
+                );
+
+                if verbose {
+                    println!("      Created: {}", created_at);
+                    if let Some(tx_hash) = withdrawal["transaction_hash"].as_str() {
+                        println!("      Transaction: {}", tx_hash);
+                    }
+                    println!();
+                }
+            }
+
+            if !verbose {
+                println!();
+                println!("💡 Use --verbose for more details");
+            }
+
+            if verbose {
+                println!("Full Response: {:#?}", withdrawals);
+            }
+        }
+        _ => {
+            return Err(eyre::eyre!(
+                "Failed to get withdrawal history: {}",
+                response.status()
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Cancel a withdrawal request
+async fn cancel_withdrawal(_client: &BatchApiClient, request_id: i32, verbose: bool) -> Result<()> {
+    println!("🚫 Cancelling withdrawal request: {}", request_id);
+
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let http_client = reqwest::Client::new();
+    let response = http_client
+        .post(&format!(
+            "{}/api/v1/withdrawals/{}/cancel",
+            api_url, request_id
+        ))
+        .send()
+        .await?;
+
+    match response.status() {
+        reqwest::StatusCode::OK => {
+            let withdrawal: serde_json::Value = response.json().await?;
+
+            let state = withdrawal["state"].as_str().unwrap_or("unknown");
+            let amount_usdc = withdrawal["amount_usdc"].as_f64().unwrap_or(0.0);
+
+            println!("✅ Withdrawal request cancelled!");
+            println!("   Request ID: {}", request_id);
+            println!("   Amount: {} USDC", amount_usdc);
+            println!("   Status: {}", state);
+
+            if verbose {
+                println!();
+                println!("Full Response: {:#?}", withdrawal);
+            }
+        }
+        reqwest::StatusCode::NOT_FOUND => {
+            println!("❌ Withdrawal request not found: {}", request_id);
+        }
+        reqwest::StatusCode::BAD_REQUEST => {
+            let error_response = response.text().await?;
+            println!("❌ Cannot cancel withdrawal: {}", error_response);
+            println!("   💡 Withdrawals cannot be cancelled once submitted to blockchain");
+        }
+        _ => {
+            return Err(eyre::eyre!(
+                "Failed to cancel withdrawal: {}",
+                response.status()
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get pending withdrawal requests (admin command)
+async fn get_pending_withdrawals(
+    _client: &BatchApiClient,
+    limit: Option<i32>,
+    verbose: bool,
+) -> Result<()> {
+    println!("🔍 Getting pending withdrawal requests...");
+
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let mut url = format!("{}/api/v1/admin/withdrawals/pending", api_url);
+    if let Some(limit) = limit {
+        url.push_str(&format!("?limit={}", limit));
+    }
+
+    let http_client = reqwest::Client::new();
+    let response = http_client.get(&url).send().await?;
+
+    match response.status() {
+        reqwest::StatusCode::OK => {
+            let withdrawals: Vec<serde_json::Value> = response.json().await?;
+
+            if withdrawals.is_empty() {
+                println!("📭 No pending withdrawal requests");
+                return Ok(());
+            }
+
+            println!("✅ Pending Withdrawals ({} requests):", withdrawals.len());
+            println!();
+
+            for withdrawal in &withdrawals {
+                let request_id = withdrawal["request_id"].as_i64().unwrap_or(0);
+                let state = withdrawal["state"].as_str().unwrap_or("unknown");
+                let amount_usdc = withdrawal["amount_usdc"].as_f64().unwrap_or(0.0);
+                let user_address = withdrawal["user_address"].as_str().unwrap_or("unknown");
+                let recipient = withdrawal["recipient_address"]
+                    .as_str()
+                    .unwrap_or("unknown");
+                let created_at = withdrawal["created_at"].as_str().unwrap_or("unknown");
+
+                println!("   Request #{}: {} USDC", request_id, amount_usdc);
+                println!("      From: {}", user_address);
+                println!("      To: {}", recipient);
+                println!("      Status: {}", state);
+                println!("      Created: {}", created_at);
+                println!();
+            }
+
+            if verbose {
+                println!("Full Response: {:#?}", withdrawals);
+            }
+        }
+        _ => {
+            return Err(eyre::eyre!(
+                "Failed to get pending withdrawals: {}",
+                response.status()
+            ));
         }
     }
 

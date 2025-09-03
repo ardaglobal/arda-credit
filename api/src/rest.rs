@@ -18,6 +18,7 @@ use uuid;
 use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
+use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
     create_loan, generate_invite_code, get_all_batches, get_batch_by_id,
     get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
@@ -89,6 +90,8 @@ pub struct ApiState {
     pub batch_processor: Option<BatchProcessorHandle>,
     pub ads_service: Arc<RwLock<IndexedMerkleTreeADS>>,
     pub auth_service: Arc<AuthService>,
+    pub withdrawal_service: WithdrawalTransactionService,
+    pub balance_service: BalanceVerificationService,
 }
 
 /// Configuration for API server
@@ -926,6 +929,27 @@ pub fn create_router(state: ApiState) -> Router {
             paths::TRANSACTION_BY_HASH,
             get(get_transaction_by_hash_endpoint),
         )
+        // ========================================================================
+        // WITHDRAWAL MANAGEMENT ENDPOINTS
+        // ========================================================================
+        .route(paths::WITHDRAWALS, post(initiate_withdrawal_endpoint))
+        .route(paths::WITHDRAWAL_BY_ID, get(get_withdrawal_status_endpoint))
+        .route(
+            paths::USER_AVAILABLE_BALANCE,
+            get(get_user_available_balance_endpoint),
+        )
+        .route(
+            paths::USER_WITHDRAWALS,
+            get(get_user_withdrawal_history_endpoint),
+        )
+        .route(paths::WITHDRAWAL_CANCEL, post(cancel_withdrawal_endpoint))
+        .route(
+            paths::ADMIN_PENDING_WITHDRAWALS,
+            get(get_pending_withdrawals_endpoint),
+        )
+        // ========================================================================
+        // LOAN MANAGEMENT ENDPOINTS
+        // ========================================================================
         // Loan Management
         .route(paths::LOAN, post(create_loan_endpoint))
         .route(paths::LOANS, get(list_loans_endpoint))
@@ -4136,6 +4160,232 @@ async fn get_loan_lifecycle_summary_endpoint(
         summary.total_operations, summary.total_payments
     );
     Ok(Json(summary))
+}
+
+// ============================================================================
+// WITHDRAWAL ENDPOINT HANDLERS
+// ============================================================================
+
+/// Initiate a new withdrawal request
+#[utoipa::path(
+    post,
+    path = "/api/v1/withdrawals",
+    responses(
+        (status = 200, description = "Withdrawal initiated successfully"),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Withdrawals"
+)]
+#[instrument(skip(state), level = "info")]
+async fn initiate_withdrawal_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<crate::InitiateWithdrawalRequest>,
+) -> Result<Json<crate::InitiateWithdrawalResponse>, StatusCode> {
+    match state.withdrawal_service.initiate_withdrawal(request).await {
+        Ok(response) => {
+            info!("Withdrawal initiated successfully: {}", response.request_id);
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("Failed to initiate withdrawal: {:?}", e);
+            match e {
+                crate::WithdrawalServiceError::UserNotFound(_) => Err(StatusCode::NOT_FOUND),
+                crate::WithdrawalServiceError::InvalidAmount(_) => Err(StatusCode::BAD_REQUEST),
+                crate::WithdrawalServiceError::KycValidationFailed(_) => {
+                    Err(StatusCode::BAD_REQUEST)
+                }
+                crate::WithdrawalServiceError::InsufficientBalance(_) => {
+                    Err(StatusCode::BAD_REQUEST)
+                }
+                _ => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            }
+        }
+    }
+}
+
+/// Get withdrawal request status
+#[utoipa::path(
+    get,
+    path = "/api/v1/withdrawals/{request_id}",
+    params(
+        ("request_id" = i32, Path, description = "Withdrawal request ID")
+    ),
+    responses(
+        (status = 200, description = "Withdrawal status retrieved"),
+        (status = 404, description = "Withdrawal request not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Withdrawals"
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_withdrawal_status_endpoint(
+    State(state): State<ApiState>,
+    Path(request_id): Path<i32>,
+) -> Result<Json<crate::WithdrawalStatusResponse>, StatusCode> {
+    match state
+        .withdrawal_service
+        .get_withdrawal_status(request_id)
+        .await
+    {
+        Ok(response) => {
+            info!("Retrieved withdrawal status for request {}", request_id);
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("Failed to get withdrawal status: {:?}", e);
+            match e {
+                crate::WithdrawalServiceError::Sql(sqlx::Error::RowNotFound) => {
+                    Err(StatusCode::NOT_FOUND)
+                }
+                _ => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            }
+        }
+    }
+}
+
+/// Get user's available balance for withdrawals
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/{address}/available-balance",
+    params(
+        ("address" = String, Path, description = "User's wallet address")
+    ),
+    responses(
+        (status = 200, description = "Available balance retrieved"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Withdrawals"
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_user_available_balance_endpoint(
+    State(state): State<ApiState>,
+    Path(address): Path<String>,
+) -> Result<Json<crate::AvailableBalance>, StatusCode> {
+    match state.balance_service.get_available_balance(&address).await {
+        Ok(Some(balance)) => {
+            info!("Retrieved available balance for address {}", address);
+            Ok(Json(balance))
+        }
+        Ok(None) => {
+            warn!("No balance found for address {}", address);
+            Err(StatusCode::NOT_FOUND)
+        }
+        Err(e) => {
+            error!("Failed to get available balance: {:?}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Get user's withdrawal history
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/{address}/withdrawals",
+    params(
+        ("address" = String, Path, description = "User's wallet address")
+    ),
+    responses(
+        (status = 200, description = "Withdrawal history retrieved"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Withdrawals"
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_user_withdrawal_history_endpoint(
+    State(state): State<ApiState>,
+    Path(address): Path<String>,
+) -> Result<Json<Vec<crate::WithdrawalStatusResponse>>, StatusCode> {
+    match state
+        .withdrawal_service
+        .get_user_withdrawal_history(&address)
+        .await
+    {
+        Ok(history) => {
+            info!("Retrieved withdrawal history for address {}", address);
+            Ok(Json(history))
+        }
+        Err(e) => {
+            error!("Failed to get withdrawal history: {:?}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Cancel a withdrawal request
+#[utoipa::path(
+    post,
+    path = "/api/v1/withdrawals/{request_id}/cancel",
+    params(
+        ("request_id" = i32, Path, description = "Withdrawal request ID to cancel")
+    ),
+    responses(
+        (status = 200, description = "Withdrawal cancelled successfully"),
+        (status = 400, description = "Cannot cancel withdrawal"),
+        (status = 404, description = "Withdrawal request not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Withdrawals"
+)]
+#[instrument(skip(state), level = "info")]
+async fn cancel_withdrawal_endpoint(
+    State(state): State<ApiState>,
+    Path(request_id): Path<i32>,
+) -> Result<Json<crate::WithdrawalStatusResponse>, StatusCode> {
+    match state.withdrawal_service.cancel_withdrawal(request_id).await {
+        Ok(response) => {
+            info!("Cancelled withdrawal request {}", request_id);
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("Failed to cancel withdrawal: {:?}", e);
+            match e {
+                crate::WithdrawalServiceError::Sql(sqlx::Error::RowNotFound) => {
+                    Err(StatusCode::NOT_FOUND)
+                }
+                crate::WithdrawalServiceError::InvalidAmount(_) => Err(StatusCode::BAD_REQUEST),
+                _ => Err(StatusCode::INTERNAL_SERVER_ERROR),
+            }
+        }
+    }
+}
+
+/// Get pending withdrawal requests (admin endpoint)
+#[utoipa::path(
+    get,
+    path = "/api/v1/admin/withdrawals/pending",
+    params(
+        ("limit" = Option<i32>, Query, description = "Maximum number of requests to return")
+    ),
+    responses(
+        (status = 200, description = "Pending withdrawals retrieved"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Admin"
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_pending_withdrawals_endpoint(
+    State(state): State<ApiState>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<crate::WithdrawalStatusResponse>>, StatusCode> {
+    let limit = params.get("limit").and_then(|s| s.parse().ok());
+
+    match state
+        .withdrawal_service
+        .get_pending_withdrawals(limit)
+        .await
+    {
+        Ok(withdrawals) => {
+            info!("Retrieved {} pending withdrawals", withdrawals.len());
+            Ok(Json(withdrawals))
+        }
+        Err(e) => {
+            error!("Failed to get pending withdrawals: {:?}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 // ============================================================================
