@@ -94,14 +94,14 @@ server:
   
   readinessProbe:
     httpGet:
-      path: /api/v2/health
+      path: /api/v1/health
       port: 8080
     initialDelaySeconds: 15
     periodSeconds: 10
   
   livenessProbe:
     httpGet:
-      path: /api/v2/health
+      path: /api/v1/health
       port: 8080
     initialDelaySeconds: 30
     periodSeconds: 15
@@ -285,4 +285,3 @@ rbac:
   create: true
 
 # Component-specific node selectors are defined within each component section above
-
