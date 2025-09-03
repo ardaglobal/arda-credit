@@ -141,8 +141,8 @@ actionlint-fix:
 test:
 	docker compose up postgres -d
 	@sleep 2
-	sqlx migrate run --source db/migrations
-	cargo test
+	DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?sslmode=disable" sqlx migrate run --source db/migrations
+	DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?sslmode=disable" cargo test
 	docker compose down -v
 
 ## cover: Generate code coverage report
