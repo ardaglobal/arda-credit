@@ -299,7 +299,12 @@ impl GlobalLoanState {
             // Add outstanding balance for each active loan
             if matches!(
                 loan.loan_status,
-                crate::loan::LoanStatus::Active | crate::loan::LoanStatus::Funded | crate::loan::LoanStatus::Servicing | crate::loan::LoanStatus::Draft
+                crate::loan::LoanStatus::Active
+                    | crate::loan::LoanStatus::Funded
+                    | crate::loan::LoanStatus::Servicing
+                    | crate::loan::LoanStatus::Matured
+                    | crate::loan::LoanStatus::Closed
+                    | crate::loan::LoanStatus::Defaulted
             ) {
                 total_balance = total_balance.saturating_add(u128::from(loan.outstanding_balance));
             }
