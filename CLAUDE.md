@@ -178,10 +178,39 @@ forge test --fork-url http://127.0.0.1:8545  # Test against local testnet
 
 ### Loan Processing Flow
 1. **User Registration**: Users register as investors/lenders with optional KYC
-2. **Loan Origination**: KYC'd users create loans (queued in `loan_transactions` table)
-3. **Payment Processing**: Loan payments batched and processed via ZK proofs
-4. **State Transitions**: Loan states (active, paid, closed) updated with cryptographic verification
-5. **Contract Posting**: Background process posts proven loan state changes to Ethereum
+2. **USDC Deposits**: Users deposit USDC to smart contract, automatically updating internal balances
+3. **Loan Origination**: KYC'd users create loans (queued in `loan_transactions` table)
+4. **Payment Processing**: Loan payments batched and processed via ZK proofs
+5. **USDC Withdrawals**: KYC'd users withdraw USDC with balance validation and smart contract execution
+6. **State Transitions**: Loan states (active, paid, closed) updated with cryptographic verification
+7. **Contract Posting**: Background process posts proven loan state changes to Ethereum
+
+### ZK Program Withdrawal Flow Integration
+The ZK program in `program/src/main.rs` fully supports the withdrawal flow through:
+
+**Transaction Processing:**
+- `UserWithdrawal` (TransactionType = 8) transactions are processed in mixed batches
+- KYC verification required for all withdrawal transactions
+- Balance validation ensures sufficient funds before processing
+- Withdrawal metadata contains recipient address for smart contract execution
+
+**ADS Integration:**
+- All withdrawal transactions are converted to nullifiers using `transaction_to_nullifier()` 
+- Nullifiers are inserted into the Indexed Merkle Tree (IMT) for cryptographic consistency
+- State root transitions (`previous_state_root` → `new_state_root`) include withdrawal proofs
+- Off-chain and ZK program state roots remain synchronized through ADS operations
+
+**Balance State Tracking:**
+- `DebitFromWithdrawal` balance updates automatically created for each withdrawal
+- Balance updates include recipient wallet address in metadata for audit trail
+- Total system balance decreases correctly when USDC exits the system via withdrawals
+- Individual user balances updated atomically with withdrawal processing
+
+**Privacy Guarantees:**
+- Withdrawal amounts and recipient addresses remain private within ZK execution
+- Only state root changes and transaction counts are published on-chain
+- Users can prove withdrawal inclusion without revealing other batch transactions
+- Batch processing maintains privacy while enabling regulatory compliance
 
 ### Zero-Knowledge Properties
 ```rust
@@ -389,7 +418,7 @@ cargo run --bin cli -- verify-transaction-inclusion \
   --transaction-type loan_payment
 ```
 
-### Complete Withdrawal Lifecycle
+### Complete Withdrawal Lifecycle with ZK Proof Integration
 ```bash
 # 1. Check available balance for withdrawals
 cargo run --bin cli -- get-available-balance --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
@@ -412,9 +441,52 @@ cargo run --bin cli -- cancel-withdrawal --request-id 1
 # 6. Admin: View pending withdrawals
 cargo run --bin cli -- get-pending-withdrawals --limit 10
 
-# 7. View withdrawal database records
+# 7. Create batch and generate ZK proof (includes withdrawal transactions)
+cargo run --bin cli -- trigger-batch --verbose
+
+# 8. Verify withdrawal inclusion in ZK proof (trustless verification)
+cargo run --bin cli -- verify-transaction-inclusion \
+  --proof-file proof_batch_1.json \
+  --transaction-id withdrawal-transaction-uuid \
+  --transaction-type user_withdrawal
+
+# 9. View withdrawal database records with ZK proof data
 psql $DATABASE_URL -c "SELECT * FROM withdrawal_requests WHERE user_address = '0x742E...';"
 psql $DATABASE_URL -c "SELECT * FROM withdrawal_request_history WHERE withdrawal_request_id = 1;"
+psql $DATABASE_URL -c "SELECT * FROM loan_transactions WHERE transaction_type = 'UserWithdrawal';"
+```
+
+### ZK Program State Changes for Withdrawals
+The withdrawal flow integrates completely with the ZK program's ADS operations:
+
+**Core Flow Verification:**
+1. User requests withdrawal → Creates `UserWithdrawal` transaction (type 8)
+2. System performs boolean KYC check → Validated in `validate_transaction_with_state()`
+3. Validate sufficient balance → Checked in `BalanceState::create_withdrawal_update()`
+4. Smart contract transfers USDC → External to ZK program (triggered by withdrawal processing)
+5. Database balance updated → `DebitFromWithdrawal` balance update applied
+6. Balance reflects in CLI → ZK-verified state transition with privacy preservation
+
+**ZK Program Processing (lib/src/loan_processor.rs:225-242):**
+```rust
+TransactionType::UserWithdrawal => {
+    // Extract recipient address from metadata
+    let metadata = transaction.metadata.as_bytes();
+    let mut recipient_address = [0u8; 32];
+    recipient_address.copy_from_slice(&metadata[0..32]);
+
+    // Create balance update (validates sufficient balance)
+    let balance_update = self.balance_state.create_withdrawal_update(
+        transaction.transaction_id,
+        transaction.user_id,
+        recipient_address,
+        u128::from(transaction.amount),
+        transaction.created_at,
+    )?;
+
+    // Apply balance update atomically
+    self.balance_state.apply_update(balance_update)?;
+}
 ```
 
 ## Debugging Tips
