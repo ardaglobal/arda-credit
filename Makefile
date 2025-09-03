@@ -29,7 +29,7 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 ## lint: Lint code
 .PHONY: lint
 lint: yamllint actionlint docker-lint deny
-	SQLX_OFFLINE=true cargo clippy --all-targets -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
+	SQLX_OFFLINE=true cargo clippy --all-targets -p api -p cli -p lib -p utils -p ethereum-client -p scripts -p program -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
 
 ## env: Copy .env.example to .env
 .PHONY: env
@@ -351,8 +351,10 @@ setup-hooks:
 	@echo "🔧 Setting up git hooks..."
 	@git config core.hooksPath .githooks
 	@chmod +x .githooks/pre-commit
+	@chmod +x .githooks/pre-push
 	@echo "✅ Git hooks configured successfully"
 	@echo "💡 Pre-commit hook will run 'make fmt' and 'make lint' automatically"
+	@echo "💡 Pre-push hook will run 'make test' automatically"
 
 ## setup: Complete setup from scratch
 .PHONY: setup

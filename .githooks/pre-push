@@ -1,0 +1,35 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Running pre-push checks..."
+
+# Store the current status to check for changes after database initialization
+echo "📊 Checking initial git status..."
+INITIAL_STATUS=$(git status --porcelain)
+
+echo "🧹 Cleaning SQLx resources and initializing database..."
+make clean-sqlx initDB
+
+# Check if database initialization made any changes
+echo "🔍 Checking for changes after database initialization..."
+AFTER_INIT_STATUS=$(git status --porcelain)
+
+if [ "$INITIAL_STATUS" != "$AFTER_INIT_STATUS" ] || [ -n "$(git status --porcelain)" ]; then
+    echo ""
+    echo "❌ Database initialization made changes. Please review and commit the changes:"
+    echo ""
+    git status --porcelain | sed 's/^/  - /'
+    echo ""
+    echo "💡 The .sqlx/ directory may have been updated. Please commit these changes before pushing."
+    exit 1
+fi
+
+echo "✅ Database initialization completed without changes"
+
+echo "🧪 Running tests..."
+make test
+
+echo ""
+echo "✅ All pre-push checks passed! Push can proceed. 🎉"
+exit 0

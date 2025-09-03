@@ -1,6 +1,7 @@
 name: deny
 on:
-  pull_request:
+  push:
+    branches: [main]
 
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.
