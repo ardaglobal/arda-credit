@@ -20,9 +20,7 @@ env:
 jobs:
   build-and-push:
     runs-on:
-      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
-        image:ubuntu-7.0
-        instance-size:2xlarge
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }} image:ubuntu-7.0 instance-size:2xlarge
     permissions:
       contents: read
       packages: write  # Includes read access for pulling private base containers
@@ -30,6 +28,12 @@ jobs:
       attestations: write
 
     steps:
+      # debug runner size and label override (temporary)
+      - name: Verify EC2 instance type
+        run: |
+          echo "Checking EC2 instance type..."
+          curl -s http://169.254.169.254/latest/meta-data/instance-type
+
       - name: Checkout repository
         uses: actions/checkout@v5
 
