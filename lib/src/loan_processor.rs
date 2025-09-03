@@ -422,12 +422,15 @@ pub fn validate_transaction_with_state(
 
     // Validate KYC requirements for transactions that require it
     if transaction.transaction_type.requires_kyc() {
-        let user = current_state
-            .users
-            .get(&transaction.user_id)
-            .ok_or(ProcessingError::UserError(crate::user::UserError::UserNotFound {
-                user_id: transaction.user_id,
-            }))?;
+        let user =
+            current_state
+                .users
+                .get(&transaction.user_id)
+                .ok_or(ProcessingError::UserError(
+                    crate::user::UserError::UserNotFound {
+                        user_id: transaction.user_id,
+                    },
+                ))?;
 
         if !user.is_kyc_approved() {
             return Err(ProcessingError::UserError(
@@ -439,9 +442,11 @@ pub fn validate_transaction_with_state(
 
         // For withdrawals, also validate sufficient balance
         if transaction.transaction_type == TransactionType::UserWithdrawal {
-            let current_balance = current_state.balance_state.get_balance(&transaction.user_id);
+            let current_balance = current_state
+                .balance_state
+                .get_balance(&transaction.user_id);
             let withdrawal_amount = u128::from(transaction.amount);
-            
+
             if current_balance < withdrawal_amount {
                 return Err(ProcessingError::BalanceError(
                     crate::balance::BalanceError::InsufficientBalance {
@@ -1690,10 +1695,10 @@ mod tests {
         // Register and KYC user
         let user_reg = create_test_user_registration(user_id, 1);
         state.process_transaction(&user_reg).unwrap();
-        
+
         let kyc_submission = create_test_kyc_submission(user_id);
         state.process_transaction(&kyc_submission).unwrap();
-        
+
         let kyc_verification = create_test_kyc_verification(user_id, true);
         state.process_transaction(&kyc_verification).unwrap();
 
@@ -1718,11 +1723,18 @@ mod tests {
         let updates = state.balance_state.get_user_update_history(&user_id, None);
         assert_eq!(updates.len(), 2); // Deposit + withdrawal
 
-        let withdrawal_update = updates.iter().find(|u| u.update_type == BalanceUpdateType::DebitFromWithdrawal).unwrap();
+        let withdrawal_update = updates
+            .iter()
+            .find(|u| u.update_type == BalanceUpdateType::DebitFromWithdrawal)
+            .unwrap();
         assert_eq!(withdrawal_update.amount, 25000);
         assert_eq!(withdrawal_update.previous_balance, 100000);
         assert_eq!(withdrawal_update.new_balance, 75000);
-        assert!(withdrawal_update.metadata.as_ref().unwrap().contains("Withdrawal to wallet 2a2a2a2a"));
+        assert!(withdrawal_update
+            .metadata
+            .as_ref()
+            .unwrap()
+            .contains("Withdrawal to wallet 2a2a2a2a"));
     }
 
     #[test]
@@ -1734,10 +1746,10 @@ mod tests {
         // Register and KYC user
         let user_reg = create_test_user_registration(user_id, 1);
         state.process_transaction(&user_reg).unwrap();
-        
+
         let kyc_submission = create_test_kyc_submission(user_id);
         state.process_transaction(&kyc_submission).unwrap();
-        
+
         let kyc_verification = create_test_kyc_verification(user_id, true);
         state.process_transaction(&kyc_verification).unwrap();
 
@@ -1752,7 +1764,9 @@ mod tests {
         assert!(matches!(
             result,
             Err(ProcessingError::UserError(UserError::KycNotApproved { .. }))
-                | Err(ProcessingError::BalanceError(BalanceError::InsufficientBalance { .. }))
+                | Err(ProcessingError::BalanceError(
+                    BalanceError::InsufficientBalance { .. }
+                ))
         ));
     }
 
@@ -1794,16 +1808,28 @@ mod tests {
 
         // Setup two KYC'd users with balances
         setup_kycd_users(&mut state, user1_id, user2_id);
-        
+
         // Give both users deposits (after KYC setup which uses timestamps up to base + 3100)
-        let deposit1 = create_test_deposit_with_timestamp(user1_id, [99u8; 32], 100000, 1_640_995_200 + 4000); // $1000
-        let deposit2 = create_test_deposit_with_timestamp(user2_id, [98u8; 32], 200000, 1_640_995_200 + 4100); // $2000
+        let deposit1 =
+            create_test_deposit_with_timestamp(user1_id, [99u8; 32], 100000, 1_640_995_200 + 4000); // $1000
+        let deposit2 =
+            create_test_deposit_with_timestamp(user2_id, [98u8; 32], 200000, 1_640_995_200 + 4100); // $2000
         state.process_transaction(&deposit1).unwrap();
         state.process_transaction(&deposit2).unwrap();
 
         // Create batch with withdrawals from both users
-        let withdrawal1 = create_test_withdrawal_with_timestamp(user1_id, recipient1, 30000, 1_640_995_200 + 5000); // $300
-        let withdrawal2 = create_test_withdrawal_with_timestamp(user2_id, recipient2, 50000, 1_640_995_200 + 5100); // $500
+        let withdrawal1 = create_test_withdrawal_with_timestamp(
+            user1_id,
+            recipient1,
+            30000,
+            1_640_995_200 + 5000,
+        ); // $300
+        let withdrawal2 = create_test_withdrawal_with_timestamp(
+            user2_id,
+            recipient2,
+            50000,
+            1_640_995_200 + 5100,
+        ); // $500
 
         let batch = LoanBatch {
             batch_id: [99u8; 32],
@@ -1827,7 +1853,7 @@ mod tests {
     // Helper function to create test KYC submission transaction
     fn create_test_kyc_submission(user_id: [u8; 32]) -> LoanTransaction {
         use crate::transactions::MetadataArray;
-        
+
         LoanTransaction {
             transaction_id: [6u8; 32],
             user_id,
@@ -1842,10 +1868,10 @@ mod tests {
     // Helper function to create test KYC verification transaction
     fn create_test_kyc_verification(user_id: [u8; 32], approved: bool) -> LoanTransaction {
         use crate::transactions::MetadataArray;
-        
+
         let mut metadata = MetadataArray::empty();
         metadata.as_mut_bytes()[0] = if approved { 1 } else { 0 };
-        
+
         LoanTransaction {
             transaction_id: [7u8; 32],
             user_id,
@@ -1858,17 +1884,26 @@ mod tests {
     }
 
     // Helper function to create test withdrawal transaction
-    fn create_test_withdrawal(user_id: [u8; 32], recipient_address: [u8; 32], amount: u64) -> LoanTransaction {
+    fn create_test_withdrawal(
+        user_id: [u8; 32],
+        recipient_address: [u8; 32],
+        amount: u64,
+    ) -> LoanTransaction {
         create_test_withdrawal_with_timestamp(user_id, recipient_address, amount, 1_640_995_250)
     }
 
     // Helper function to create test withdrawal transaction with custom timestamp
-    fn create_test_withdrawal_with_timestamp(user_id: [u8; 32], recipient_address: [u8; 32], amount: u64, timestamp: u64) -> LoanTransaction {
+    fn create_test_withdrawal_with_timestamp(
+        user_id: [u8; 32],
+        recipient_address: [u8; 32],
+        amount: u64,
+        timestamp: u64,
+    ) -> LoanTransaction {
         use crate::transactions::MetadataArray;
-        
+
         let mut metadata_bytes = vec![0u8; 64];
         metadata_bytes[0..32].copy_from_slice(&recipient_address);
-        
+
         LoanTransaction {
             transaction_id: [3u8; 32], // Mock transaction ID
             user_id,
@@ -1881,17 +1916,26 @@ mod tests {
     }
 
     // Helper function to create test deposit transaction
-    fn create_test_deposit(user_id: [u8; 32], wallet_address: [u8; 32], amount: u64) -> LoanTransaction {
+    fn create_test_deposit(
+        user_id: [u8; 32],
+        wallet_address: [u8; 32],
+        amount: u64,
+    ) -> LoanTransaction {
         create_test_deposit_with_timestamp(user_id, wallet_address, amount, 1_640_995_220)
     }
 
     // Helper function to create test deposit transaction with custom timestamp
-    fn create_test_deposit_with_timestamp(user_id: [u8; 32], wallet_address: [u8; 32], amount: u64, timestamp: u64) -> LoanTransaction {
+    fn create_test_deposit_with_timestamp(
+        user_id: [u8; 32],
+        wallet_address: [u8; 32],
+        amount: u64,
+        timestamp: u64,
+    ) -> LoanTransaction {
         use crate::transactions::MetadataArray;
-        
+
         let mut metadata_bytes = vec![0u8; 64];
         metadata_bytes[0..32].copy_from_slice(&wallet_address);
-        
+
         LoanTransaction {
             transaction_id: [4u8; 32], // Mock transaction ID
             user_id,

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -e
+
+echo "🔧 Running pre-push checks..."
+
+echo "🧪 Running tests..."
+make test
+
+echo ""
+echo "✅ All pre-push checks passed! Push can proceed. 🎉"
+exit 0

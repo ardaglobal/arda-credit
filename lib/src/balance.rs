@@ -164,8 +164,9 @@ impl BalanceUpdate {
             | BalanceUpdateType::InterestAccrual
             | BalanceUpdateType::ManualAdjustment
             | BalanceUpdateType::CreditFromDeposit => amount, // Assume positive for manual
-            BalanceUpdateType::DebitFromOrigination
-            | BalanceUpdateType::DebitFromWithdrawal => -amount,
+            BalanceUpdateType::DebitFromOrigination | BalanceUpdateType::DebitFromWithdrawal => {
+                -amount
+            }
         }
     }
 
@@ -460,7 +461,7 @@ impl BalanceState {
         timestamp: u64,
     ) -> Result<BalanceUpdate, BalanceError> {
         let current_balance = self.get_balance(&user_id);
-        
+
         // Check for sufficient balance
         if current_balance < amount {
             return Err(BalanceError::InsufficientBalance {
@@ -480,7 +481,10 @@ impl BalanceState {
             timestamp,
             Some(format!(
                 "Withdrawal to wallet {:02x}{:02x}{:02x}{:02x}...",
-                recipient_address[0], recipient_address[1], recipient_address[2], recipient_address[3]
+                recipient_address[0],
+                recipient_address[1],
+                recipient_address[2],
+                recipient_address[3]
             )),
         )?;
 
