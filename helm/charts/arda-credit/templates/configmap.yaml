@@ -19,6 +19,10 @@ data:
     server {
         listen 80;
         server_name localhost;
+        
+        # Set document root for static frontend files
+        root /usr/share/nginx/html;
+        index index.html;
 
         # Proxy API requests to the server service
         location /api/ {
@@ -45,7 +49,7 @@ data:
             }
         }
 
-        # Serve static files and handle other routes
+        # Serve static files and handle client-side routing (SPA)
         location / {
             try_files $uri $uri/ /index.html;
             add_header Cache-Control "no-cache, no-store, must-revalidate";
