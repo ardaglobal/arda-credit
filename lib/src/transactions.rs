@@ -52,6 +52,7 @@ pub enum TransactionType {
     LoanPayment = 5,
     LoanCloseout = 6,
     UserDeposit = 7,
+    UserWithdrawal = 8,
 }
 
 impl TransactionType {
@@ -60,7 +61,7 @@ impl TransactionType {
     pub const fn requires_kyc(&self) -> bool {
         matches!(
             self,
-            Self::LoanOrigination | Self::LoanPayment | Self::LoanCloseout
+            Self::LoanOrigination | Self::LoanPayment | Self::LoanCloseout | Self::UserWithdrawal
         )
     }
 
@@ -69,7 +70,7 @@ impl TransactionType {
     pub const fn is_monetary(&self) -> bool {
         matches!(
             self,
-            Self::LoanOrigination | Self::LoanPayment | Self::UserDeposit
+            Self::LoanOrigination | Self::LoanPayment | Self::UserDeposit | Self::UserWithdrawal
         )
     }
 }

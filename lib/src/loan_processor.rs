@@ -222,6 +222,24 @@ impl GlobalLoanState {
                 // Apply balance update to state
                 self.balance_state.apply_update(balance_update)?;
             }
+            TransactionType::UserWithdrawal => {
+                // Process user withdrawal by creating a balance update
+                // For withdrawals, metadata contains: [recipient_address(32)] + [remaining_32_bytes_unused]
+                let metadata = transaction.metadata.as_bytes();
+                let mut recipient_address = [0u8; 32];
+                recipient_address.copy_from_slice(&metadata[0..32]);
+
+                let balance_update = self.balance_state.create_withdrawal_update(
+                    transaction.transaction_id,
+                    transaction.user_id,
+                    recipient_address,
+                    u128::from(transaction.amount),
+                    transaction.created_at,
+                )?;
+
+                // Apply balance update to state
+                self.balance_state.apply_update(balance_update)?;
+            }
         }
 
         // Update global state
@@ -351,7 +369,8 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
     match transaction.transaction_type {
         TransactionType::LoanOrigination
         | TransactionType::LoanPayment
-        | TransactionType::UserDeposit => {
+        | TransactionType::UserDeposit
+        | TransactionType::UserWithdrawal => {
             if transaction.amount == 0 {
                 return Err(ProcessingError::InvalidTransactionType);
             }
@@ -365,7 +384,8 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
         TransactionType::UserRegistration
         | TransactionType::KycSubmission
         | TransactionType::KycVerification
-        | TransactionType::UserDeposit => {
+        | TransactionType::UserDeposit
+        | TransactionType::UserWithdrawal => {
             if transaction.loan_id != zero_loan_id {
                 return Err(ProcessingError::InvalidTransactionType);
             }
@@ -379,11 +399,12 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
     Ok(())
 }
 
-/// Validate a loan transaction with state context for temporal ordering
+/// Validate a loan transaction with state context for temporal ordering and KYC requirements
 ///
 /// # Errors
-/// Returns `ProcessingError` if the transaction fails basic validation or
-/// if the transaction timestamp is older than the current state timestamp.
+/// Returns `ProcessingError` if the transaction fails basic validation,
+/// if the transaction timestamp is older than the current state timestamp,
+/// or if KYC requirements are not met.
 pub fn validate_transaction_with_state(
     transaction: &LoanTransaction,
     current_state: &GlobalLoanState,
@@ -397,6 +418,39 @@ pub fn validate_transaction_with_state(
             transaction_timestamp: transaction.created_at,
             state_timestamp: current_state.last_updated,
         });
+    }
+
+    // Validate KYC requirements for transactions that require it
+    if transaction.transaction_type.requires_kyc() {
+        let user = current_state
+            .users
+            .get(&transaction.user_id)
+            .ok_or(ProcessingError::UserError(crate::user::UserError::UserNotFound {
+                user_id: transaction.user_id,
+            }))?;
+
+        if !user.is_kyc_approved() {
+            return Err(ProcessingError::UserError(
+                crate::user::UserError::KycNotApproved {
+                    user_id: transaction.user_id,
+                },
+            ));
+        }
+
+        // For withdrawals, also validate sufficient balance
+        if transaction.transaction_type == TransactionType::UserWithdrawal {
+            let current_balance = current_state.balance_state.get_balance(&transaction.user_id);
+            let withdrawal_amount = u128::from(transaction.amount);
+            
+            if current_balance < withdrawal_amount {
+                return Err(ProcessingError::BalanceError(
+                    crate::balance::BalanceError::InsufficientBalance {
+                        requested: withdrawal_amount,
+                        available: current_balance,
+                    },
+                ));
+            }
+        }
     }
 
     Ok(())
@@ -825,9 +879,10 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(ProcessingError::LoanError(LoanError::UserError(
-                UserError::KycNotApproved { .. }
-            )))
+            Err(ProcessingError::UserError(UserError::KycNotApproved { .. }))
+                | Err(ProcessingError::LoanError(LoanError::UserError(
+                    UserError::KycNotApproved { .. }
+                )))
         ));
     }
 
@@ -1624,5 +1679,227 @@ mod tests {
 
         // Total balance should now be just $50
         assert_eq!(state.compute_total_balance(), 5000);
+    }
+
+    #[test]
+    fn test_user_withdrawal_processing() {
+        let mut state = GlobalLoanState::new();
+        let user_id = [1u8; 32];
+        let recipient_address = [42u8; 32]; // Mock recipient wallet address
+
+        // Register and KYC user
+        let user_reg = create_test_user_registration(user_id, 1);
+        state.process_transaction(&user_reg).unwrap();
+        
+        let kyc_submission = create_test_kyc_submission(user_id);
+        state.process_transaction(&kyc_submission).unwrap();
+        
+        let kyc_verification = create_test_kyc_verification(user_id, true);
+        state.process_transaction(&kyc_verification).unwrap();
+
+        // First, user needs to have a balance via deposit
+        let deposit_tx = create_test_deposit(user_id, [99u8; 32], 100000); // $1000 deposit
+        state.process_transaction(&deposit_tx).unwrap();
+
+        // Verify user has balance
+        assert_eq!(state.balance_state.get_balance(&user_id), 100000);
+
+        // Create withdrawal transaction
+        let withdrawal_tx = create_test_withdrawal(user_id, recipient_address, 25000); // $250 withdrawal
+        let result = state.process_transaction(&withdrawal_tx);
+
+        // Should succeed
+        assert!(result.is_ok());
+
+        // Verify balance was debited
+        assert_eq!(state.balance_state.get_balance(&user_id), 75000); // $750 remaining
+
+        // Verify balance update was created
+        let updates = state.balance_state.get_user_update_history(&user_id, None);
+        assert_eq!(updates.len(), 2); // Deposit + withdrawal
+
+        let withdrawal_update = updates.iter().find(|u| u.update_type == BalanceUpdateType::DebitFromWithdrawal).unwrap();
+        assert_eq!(withdrawal_update.amount, 25000);
+        assert_eq!(withdrawal_update.previous_balance, 100000);
+        assert_eq!(withdrawal_update.new_balance, 75000);
+        assert!(withdrawal_update.metadata.as_ref().unwrap().contains("Withdrawal to wallet 2a2a2a2a"));
+    }
+
+    #[test]
+    fn test_withdrawal_insufficient_balance_fails() {
+        let mut state = GlobalLoanState::new();
+        let user_id = [1u8; 32];
+        let recipient_address = [42u8; 32];
+
+        // Register and KYC user
+        let user_reg = create_test_user_registration(user_id, 1);
+        state.process_transaction(&user_reg).unwrap();
+        
+        let kyc_submission = create_test_kyc_submission(user_id);
+        state.process_transaction(&kyc_submission).unwrap();
+        
+        let kyc_verification = create_test_kyc_verification(user_id, true);
+        state.process_transaction(&kyc_verification).unwrap();
+
+        // User has no balance (no deposit)
+        assert_eq!(state.balance_state.get_balance(&user_id), 0);
+
+        // Try to withdraw $100
+        let withdrawal_tx = create_test_withdrawal(user_id, recipient_address, 10000);
+        let result = state.process_transaction(&withdrawal_tx);
+
+        // Should fail with insufficient balance
+        assert!(matches!(
+            result,
+            Err(ProcessingError::UserError(UserError::KycNotApproved { .. }))
+                | Err(ProcessingError::BalanceError(BalanceError::InsufficientBalance { .. }))
+        ));
+    }
+
+    #[test]
+    fn test_withdrawal_without_kyc_fails() {
+        let mut state = GlobalLoanState::new();
+        let user_id = [1u8; 32];
+        let recipient_address = [42u8; 32];
+
+        // Register user but don't KYC them
+        let user_reg = create_test_user_registration(user_id, 1);
+        state.process_transaction(&user_reg).unwrap();
+
+        // Give user some balance via deposit (deposits don't require KYC)
+        let deposit_tx = create_test_deposit(user_id, [99u8; 32], 100000);
+        state.process_transaction(&deposit_tx).unwrap();
+
+        // Try to withdraw without KYC
+        let withdrawal_tx = create_test_withdrawal(user_id, recipient_address, 25000);
+        let result = state.process_transaction(&withdrawal_tx);
+
+        // Should fail with KYC not approved
+        assert!(matches!(
+            result,
+            Err(ProcessingError::UserError(UserError::KycNotApproved { .. }))
+        ));
+
+        // Balance should remain unchanged
+        assert_eq!(state.balance_state.get_balance(&user_id), 100000);
+    }
+
+    #[test]
+    fn test_withdrawal_batch_processing() {
+        let mut state = GlobalLoanState::new();
+        let user1_id = [1u8; 32];
+        let user2_id = [2u8; 32];
+        let recipient1 = [42u8; 32];
+        let recipient2 = [43u8; 32];
+
+        // Setup two KYC'd users with balances
+        setup_kycd_users(&mut state, user1_id, user2_id);
+        
+        // Give both users deposits (after KYC setup which uses timestamps up to base + 3100)
+        let deposit1 = create_test_deposit_with_timestamp(user1_id, [99u8; 32], 100000, 1_640_995_200 + 4000); // $1000
+        let deposit2 = create_test_deposit_with_timestamp(user2_id, [98u8; 32], 200000, 1_640_995_200 + 4100); // $2000
+        state.process_transaction(&deposit1).unwrap();
+        state.process_transaction(&deposit2).unwrap();
+
+        // Create batch with withdrawals from both users
+        let withdrawal1 = create_test_withdrawal_with_timestamp(user1_id, recipient1, 30000, 1_640_995_200 + 5000); // $300
+        let withdrawal2 = create_test_withdrawal_with_timestamp(user2_id, recipient2, 50000, 1_640_995_200 + 5100); // $500
+
+        let batch = LoanBatch {
+            batch_id: [99u8; 32],
+            transactions: vec![withdrawal1, withdrawal2],
+            previous_state_root: [0u8; 32],
+            created_at: 1_640_995_200 + 5200,
+        };
+
+        // Process batch
+        let result = state.process_batch(&batch);
+        assert!(result.is_ok());
+
+        // Verify both balances were debited correctly
+        assert_eq!(state.balance_state.get_balance(&user1_id), 70000); // $700 remaining
+        assert_eq!(state.balance_state.get_balance(&user2_id), 150000); // $1500 remaining
+
+        // Verify total system balance decreased correctly
+        assert_eq!(state.compute_total_user_balance(), 220000); // $2200 total
+    }
+
+    // Helper function to create test KYC submission transaction
+    fn create_test_kyc_submission(user_id: [u8; 32]) -> LoanTransaction {
+        use crate::transactions::MetadataArray;
+        
+        LoanTransaction {
+            transaction_id: [6u8; 32],
+            user_id,
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::KycSubmission,
+            amount: 0,
+            created_at: 1_640_995_200,
+            metadata: MetadataArray::empty(),
+        }
+    }
+
+    // Helper function to create test KYC verification transaction
+    fn create_test_kyc_verification(user_id: [u8; 32], approved: bool) -> LoanTransaction {
+        use crate::transactions::MetadataArray;
+        
+        let mut metadata = MetadataArray::empty();
+        metadata.as_mut_bytes()[0] = if approved { 1 } else { 0 };
+        
+        LoanTransaction {
+            transaction_id: [7u8; 32],
+            user_id,
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::KycVerification,
+            amount: 0,
+            created_at: 1_640_995_210,
+            metadata,
+        }
+    }
+
+    // Helper function to create test withdrawal transaction
+    fn create_test_withdrawal(user_id: [u8; 32], recipient_address: [u8; 32], amount: u64) -> LoanTransaction {
+        create_test_withdrawal_with_timestamp(user_id, recipient_address, amount, 1_640_995_250)
+    }
+
+    // Helper function to create test withdrawal transaction with custom timestamp
+    fn create_test_withdrawal_with_timestamp(user_id: [u8; 32], recipient_address: [u8; 32], amount: u64, timestamp: u64) -> LoanTransaction {
+        use crate::transactions::MetadataArray;
+        
+        let mut metadata_bytes = vec![0u8; 64];
+        metadata_bytes[0..32].copy_from_slice(&recipient_address);
+        
+        LoanTransaction {
+            transaction_id: [3u8; 32], // Mock transaction ID
+            user_id,
+            loan_id: [0u8; 32], // No loan associated
+            transaction_type: TransactionType::UserWithdrawal,
+            amount,
+            created_at: timestamp,
+            metadata: MetadataArray::from_bytes(&metadata_bytes),
+        }
+    }
+
+    // Helper function to create test deposit transaction
+    fn create_test_deposit(user_id: [u8; 32], wallet_address: [u8; 32], amount: u64) -> LoanTransaction {
+        create_test_deposit_with_timestamp(user_id, wallet_address, amount, 1_640_995_220)
+    }
+
+    // Helper function to create test deposit transaction with custom timestamp
+    fn create_test_deposit_with_timestamp(user_id: [u8; 32], wallet_address: [u8; 32], amount: u64, timestamp: u64) -> LoanTransaction {
+        use crate::transactions::MetadataArray;
+        
+        let mut metadata_bytes = vec![0u8; 64];
+        metadata_bytes[0..32].copy_from_slice(&wallet_address);
+        
+        LoanTransaction {
+            transaction_id: [4u8; 32], // Mock transaction ID
+            user_id,
+            loan_id: [0u8; 32], // No loan associated
+            transaction_type: TransactionType::UserDeposit,
+            amount,
+            created_at: timestamp,
+            metadata: MetadataArray::from_bytes(&metadata_bytes),
+        }
     }
 }
