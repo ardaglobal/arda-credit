@@ -20,6 +20,7 @@ env:
 jobs:
   build-and-push:
     runs-on:
+      # https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-yaml.images.html
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }} image:ubuntu-7.0 instance-size:2xlarge
     permissions:
       contents: read
