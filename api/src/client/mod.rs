@@ -369,12 +369,14 @@ impl BatchApiClient {
         &self,
         user_type: &str,
         email: &str,
+        password: &str,
         jurisdiction: Option<&str>,
     ) -> Result<serde_json::Value, ApiClientError> {
         let url = format!("{}{}", self.base_url, paths::USER);
         let request = serde_json::json!({
             "user_type": user_type,
             "email": email,
+            "password": password,
             "jurisdiction": jurisdiction.unwrap_or("US")
         });
 

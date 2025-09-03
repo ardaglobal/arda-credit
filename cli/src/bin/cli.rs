@@ -161,12 +161,15 @@ enum Commands {
     // ============================================================================
     /// Create a new user
     CreateUser {
-        /// User type (Investor or Lender)
+        /// User type (user, investor, originator, admin)
         #[arg(long)]
         user_type: String,
         /// User email address
         #[arg(long)]
         email: String,
+        /// User password
+        #[arg(long)]
+        password: String,
         /// User jurisdiction (optional, defaults to US)
         #[arg(long)]
         jurisdiction: Option<String>,
@@ -815,6 +818,7 @@ async fn main() -> Result<()> {
         Commands::CreateUser {
             user_type,
             email,
+            password,
             jurisdiction,
             verbose,
         } => {
@@ -822,6 +826,7 @@ async fn main() -> Result<()> {
                 &client,
                 &user_type,
                 &email,
+                &password,
                 jurisdiction.as_deref(),
                 verbose,
             )
@@ -2954,6 +2959,7 @@ async fn create_user(
     client: &BatchApiClient,
     user_type: &str,
     email: &str,
+    password: &str,
     jurisdiction: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
@@ -2966,7 +2972,10 @@ async fn create_user(
         }
     }
 
-    match client.create_user(user_type, email, jurisdiction).await {
+    match client
+        .create_user(user_type, email, password, jurisdiction)
+        .await
+    {
         Ok(user) => {
             println!("✅ User created successfully:");
             println!("   User ID: {}", user["user_id"].as_str().unwrap_or("N/A"));
@@ -3356,7 +3365,7 @@ async fn test_user_operations(
             println!("   Creating user {}/{}: {}", i + 1, user_count, email);
         }
 
-        match create_user(client, user_type, &email, Some("US"), false).await {
+        match create_user(client, user_type, &email, "test123", Some("US"), false).await {
             Ok(_) => {
                 success_count += 1;
                 // In a real implementation, we'd extract and store the user ID
