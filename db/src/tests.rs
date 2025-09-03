@@ -148,6 +148,18 @@ mod db_tests {
             .await
             .expect("Failed to create test database");
 
+        // Ensure clean slate by checking for any existing transactions
+        let existing_transactions = get_pending_transactions(&test_db.pool)
+            .await
+            .expect("Failed to check for existing transactions");
+
+        if !existing_transactions.is_empty() {
+            panic!(
+                "Test isolation failure: Found {} existing transactions in fresh test database",
+                existing_transactions.len()
+            );
+        }
+
         // Test various transaction amounts
         let test_amounts = vec![15, 0, -2, 50, -30];
 
@@ -397,6 +409,18 @@ mod edge_case_tests {
         let test_db = TestDatabase::new()
             .await
             .expect("Failed to create test database");
+
+        // Ensure clean slate by checking for any existing transactions
+        let existing_transactions = get_pending_transactions(&test_db.pool)
+            .await
+            .expect("Failed to check for existing transactions");
+
+        if !existing_transactions.is_empty() {
+            panic!(
+                "Test isolation failure: Found {} existing transactions in fresh test database",
+                existing_transactions.len()
+            );
+        }
 
         // Test zero and offsetting amounts
         let zero_amounts = vec![0, 0, 0, 0]; // Submit multiple zero amounts

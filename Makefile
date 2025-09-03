@@ -137,6 +137,7 @@ actionlint-fix:
 	@echo "💡 Fix GitHub Actions issues based on the output above"
 
 ## test: Run all tests
+# --test-threads=1 can help to avoid race conditions when running tests in parallel
 .PHONY: test
 test:
 	docker compose up postgres -d
