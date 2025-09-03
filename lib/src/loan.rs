@@ -279,6 +279,11 @@ impl LoanState {
         // Apply payment
         loan.outstanding_balance -= payment_amount;
 
+        // Activate loan on first payment if it's still in Draft status
+        if loan.loan_status == LoanStatus::Draft {
+            loan.loan_status = LoanStatus::Active;
+        }
+
         // Update loan status based on remaining balance
         if loan.outstanding_balance == 0 {
             loan.loan_status = LoanStatus::Matured;
@@ -444,6 +449,12 @@ mod tests {
             .process_loan_origination(&origination, &users, &loan_terms)
             .unwrap();
 
+        // Activate the loan (simulate the loan becoming active)
+        {
+            let loan = loan_state.loans.get_mut(&loan_id).unwrap();
+            loan.loan_status = LoanStatus::Active;
+        }
+
         // Then make payment
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
@@ -481,6 +492,12 @@ mod tests {
         loan_state
             .process_loan_origination(&origination, &users, &loan_terms)
             .unwrap();
+
+        // Activate the loan (simulate the loan becoming active)
+        {
+            let loan = loan_state.loans.get_mut(&loan_id).unwrap();
+            loan.loan_status = LoanStatus::Active;
+        }
 
         // Full payment
         let payment_transaction = LoanTransaction {
@@ -520,6 +537,12 @@ mod tests {
         loan_state
             .process_loan_origination(&origination, &users, &loan_terms)
             .unwrap();
+
+        // Activate the loan (simulate the loan becoming active)
+        {
+            let loan = loan_state.loans.get_mut(&loan_id).unwrap();
+            loan.loan_status = LoanStatus::Active;
+        }
 
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],

@@ -8,24 +8,25 @@ use std::env;
 
 async fn setup_test_db() -> PgPool {
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
-        "postgresql://postgres:password@localhost:5432/arda_credit_test".to_string()
+        "postgresql://postgres:password@localhost:5432/arda_credit_db".to_string()
     });
 
     let pool = PgPool::connect(&database_url)
         .await
         .expect("Failed to connect to test database");
 
-    // Skip cleanup in setup to avoid foreign key constraint issues
-    // In a real scenario, we'd want to properly clean up test data
-    // but for this demo, we'll work with existing data
-
     pool
 }
 
-async fn teardown_test_db(_pool: &PgPool) {
-    // Skip cleanup for now to avoid foreign key constraint issues
-    // In a real scenario, we'd want to properly clean up test data
-    // but for this demo, we'll let the database handle cleanup
+async fn teardown_test_db(pool: &PgPool) {
+    // Clean up test data to prevent conflicts in subsequent test runs
+    // Delete test users created during this test session
+    let test_email_pattern = "test-%@example.com";
+
+    let _ = sqlx::query("DELETE FROM identities WHERE email LIKE $1")
+        .bind(test_email_pattern)
+        .execute(pool)
+        .await;
 }
 
 #[tokio::test]
@@ -76,23 +77,23 @@ async fn test_partial_user_profile_updates() {
     assert_eq!(update_result.email, test_email); // Should remain unchanged
 
     // Test 3: Update only wallet_address
-    let wallet_addr = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5";
+    let wallet_addr = format!("0x{:040x}", Utc::now().timestamp() as u128);
     let update_result = update_identity_profile(
         &pool,
         user.id,
-        None,              // email
-        None,              // user_type
-        None,              // jurisdiction
-        None,              // first_name
-        None,              // last_name
-        Some(wallet_addr), // wallet_address
+        None,               // email
+        None,               // user_type
+        None,               // jurisdiction
+        None,               // first_name
+        None,               // last_name
+        Some(&wallet_addr), // wallet_address
     )
     .await
     .expect("Failed to update wallet address");
 
     assert_eq!(update_result.first_name, Some("John".to_string())); // Should remain unchanged
     assert_eq!(update_result.last_name, Some("Doe".to_string())); // Should remain unchanged
-    assert_eq!(update_result.wallet_address, Some(wallet_addr.to_string()));
+    assert_eq!(update_result.wallet_address, Some(wallet_addr.clone()));
     assert_eq!(update_result.email, test_email); // Should remain unchanged
 
     // Test 4: Update multiple fields at once
@@ -114,7 +115,7 @@ async fn test_partial_user_profile_updates() {
     assert_eq!(update_result.user_type, "investor");
     assert_eq!(update_result.first_name, Some("Jane".to_string()));
     assert_eq!(update_result.last_name, Some("Smith".to_string()));
-    assert_eq!(update_result.wallet_address, Some(wallet_addr.to_string())); // Should remain unchanged
+    assert_eq!(update_result.wallet_address, Some(wallet_addr.clone())); // Should remain unchanged
 
     // Test 5: Clear optional fields by setting to None (null)
     let update_result = update_identity_profile(

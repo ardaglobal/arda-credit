@@ -817,6 +817,9 @@ mod tests {
         assert_eq!(loan.loan_status, LoanStatus::Draft);
         assert_eq!(loan.principal_amount, 50000);
 
+        // Activate the loan (simulate the loan becoming active)
+        state.loans.get_mut(&loan_id).unwrap().loan_status = LoanStatus::Active;
+
         // 5. Loan payment
         let payment = LoanTransaction {
             transaction_id: [4u8; 32],
