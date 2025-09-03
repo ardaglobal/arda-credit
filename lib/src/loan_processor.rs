@@ -281,7 +281,7 @@ impl GlobalLoanState {
             // Add outstanding balance for each active loan
             if matches!(
                 loan.loan_status,
-                crate::loan::LoanStatus::Active | crate::loan::LoanStatus::Originated
+                crate::loan::LoanStatus::Active | crate::loan::LoanStatus::Funded | crate::loan::LoanStatus::Servicing | crate::loan::LoanStatus::Draft
             ) {
                 total_balance = total_balance.saturating_add(u128::from(loan.outstanding_balance));
             }
@@ -750,7 +750,7 @@ mod tests {
         state.process_transaction(&loan_origination).unwrap();
 
         let loan = state.get_loan(&loan_id).unwrap();
-        assert_eq!(loan.loan_status, LoanStatus::Originated);
+        assert_eq!(loan.loan_status, LoanStatus::Draft);
         assert_eq!(loan.principal_amount, 50000);
 
         // 5. Loan payment
@@ -782,7 +782,7 @@ mod tests {
         state.process_transaction(&final_payment).unwrap();
 
         let loan = state.get_loan(&loan_id).unwrap();
-        assert_eq!(loan.loan_status, LoanStatus::PaidOff);
+        assert_eq!(loan.loan_status, LoanStatus::Matured);
         assert_eq!(loan.outstanding_balance, 0);
 
         // 6. Loan closeout
@@ -1584,7 +1584,7 @@ mod tests {
             outstanding_balance: 20000,
             interest_rate: 750,
             term_months: 36,
-            loan_status: LoanStatus::Originated,
+            loan_status: LoanStatus::Draft,
             originated_at: 1_640_995_200,
             funded_at: 0,
             maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
@@ -1599,7 +1599,7 @@ mod tests {
             outstanding_balance: 0,
             interest_rate: 750,
             term_months: 36,
-            loan_status: LoanStatus::PaidOff,
+            loan_status: LoanStatus::Matured,
             originated_at: 1_640_995_200,
             funded_at: 1_640_995_200,
             maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
@@ -1620,7 +1620,7 @@ mod tests {
 
         // Pay off loan2
         state.loans.get_mut(&loan2_id).unwrap().outstanding_balance = 0;
-        state.loans.get_mut(&loan2_id).unwrap().loan_status = LoanStatus::PaidOff;
+        state.loans.get_mut(&loan2_id).unwrap().loan_status = LoanStatus::Matured;
 
         // Total balance should now be just $50
         assert_eq!(state.compute_total_balance(), 5000);

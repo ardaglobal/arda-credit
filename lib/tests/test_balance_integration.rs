@@ -572,7 +572,7 @@ mod tests {
         // Verify loan is fully paid off
         let loan = state.get_loan(&loan_id).unwrap();
         assert_eq!(loan.outstanding_balance, 0);
-        assert_eq!(loan.loan_status, LoanStatus::PaidOff);
+        assert_eq!(loan.loan_status, LoanStatus::Matured);
 
         // Lender should have received full repayment (200_000 initial - 100_000 lent + 100_000 repaid)
         assert_eq!(lender_balance, 200_000);

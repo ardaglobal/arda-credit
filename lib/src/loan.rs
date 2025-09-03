@@ -73,11 +73,19 @@ impl LoanTerms {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum LoanStatus {
-    Originated = 1, // Created, not funded
-    Active = 2,     // Funded and active
-    PaidOff = 3,    // Fully repaid
-    Closed = 4,     // Closed/settled
-    Defaulted = 5,  // In default
+    Draft = 1,               // Deal created, metadata incomplete
+    Proposed = 2,            // Deal formally submitted by originator
+    PendingAffirmation = 3,  // Counterparty review in progress
+    Affirmed = 4,            // Accepted, can progress to Active
+    Amended = 5,             // Counter-proposal made
+    Rejected = 6,            // Terminal, cannot progress further
+    AutoAffirmed = 7,        // Bypassed pending via rule
+    Active = 8,              // Deal live and binding (funded or committed)
+    Funded = 9,              // Cash/asset transfers settled, deal obligations begin
+    Servicing = 10,          // In repayment/monitoring phase
+    Matured = 11,            // Natural end of term, fully paid
+    Defaulted = 12,          // Event of default triggered, no longer performing
+    Closed = 13,             // Administratively terminated
 }
 
 /// Loan record (zkVM compatible)
@@ -102,7 +110,7 @@ impl Loan {
     pub const fn can_accept_payment(&self) -> bool {
         matches!(
             self.loan_status,
-            LoanStatus::Active | LoanStatus::Originated
+            LoanStatus::Active | LoanStatus::Funded | LoanStatus::Servicing | LoanStatus::Draft
         )
     }
 
@@ -209,7 +217,7 @@ impl LoanState {
             outstanding_balance: transaction.amount,
             interest_rate: loan_terms.interest_rate,
             term_months: loan_terms.term_months,
-            loan_status: LoanStatus::Originated,
+            loan_status: LoanStatus::Draft,
             originated_at: transaction.created_at,
             funded_at: 0,
             maturity_date: loan_terms.calculate_maturity_date(transaction.created_at),
@@ -273,8 +281,8 @@ impl LoanState {
 
         // Update loan status based on remaining balance
         if loan.outstanding_balance == 0 {
-            loan.loan_status = LoanStatus::PaidOff;
-        } else if loan.loan_status == LoanStatus::Originated {
+            loan.loan_status = LoanStatus::Matured;
+        } else if loan.loan_status == LoanStatus::Draft {
             // First payment activates the loan
             loan.loan_status = LoanStatus::Active;
             loan.funded_at = transaction.created_at;
@@ -314,9 +322,9 @@ impl LoanState {
             .get_mut(&loan_id)
             .ok_or(LoanError::LoanNotFound { loan_id })?;
 
-        // Only allow closeout of paid off loans
+        // Only allow closeout of matured loans
         match loan.loan_status {
-            LoanStatus::PaidOff => {
+            LoanStatus::Matured => {
                 loan.loan_status = LoanStatus::Closed;
                 Ok(())
             }
@@ -418,7 +426,7 @@ mod tests {
         let loan = loan_state.get_loan(&loan_id).unwrap();
         assert_eq!(loan.principal_amount, 10000);
         assert_eq!(loan.outstanding_balance, 10000);
-        assert_eq!(loan.loan_status, LoanStatus::Originated);
+        assert_eq!(loan.loan_status, LoanStatus::Draft);
     }
 
     #[test]
@@ -494,7 +502,7 @@ mod tests {
 
         let loan = loan_state.get_loan(&loan_id).unwrap();
         assert_eq!(loan.outstanding_balance, 0);
-        assert_eq!(loan.loan_status, LoanStatus::PaidOff);
+        assert_eq!(loan.loan_status, LoanStatus::Matured);
         assert!(loan.is_paid_off());
     }
 
