@@ -89,16 +89,24 @@ impl KycValidationService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arda_credit_db::{init_db_with_url, register_or_reregister_user, submit_kyc_data};
+    use arda_credit_db::{init_db, register_or_reregister_user, submit_kyc_data};
     use chrono::Utc;
-    #[sqlx::test]
-    async fn test_kyc_validation_service(pool: sqlx::PgPool) -> sqlx::Result<()> {
+    #[tokio::test]
+    async fn test_kyc_validation_service() -> sqlx::Result<()> {
+        let pool = init_db().await?;
         let service = KycValidationService::new(pool.clone());
-        // Create a test user
+
+        // Create a test user with unique email
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let email = format!("kyc-test-{timestamp}@example.com");
+
         let user_result = register_or_reregister_user(
             &pool,
             "investor",
-            "test@example.com",
+            &email,
             "hashed_password", // password_hash
         )
         .await
