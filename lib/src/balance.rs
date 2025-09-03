@@ -40,6 +40,8 @@ pub enum BalanceUpdateType {
     ManualAdjustment = 5,
     /// Credit from user deposit
     CreditFromDeposit = 6,
+    /// Debit from user withdrawal
+    DebitFromWithdrawal = 7,
 }
 
 impl BalanceUpdateType {
@@ -53,6 +55,7 @@ impl BalanceUpdateType {
             Self::InterestAccrual => "interest_accrual",
             Self::ManualAdjustment => "manual_adjustment",
             Self::CreditFromDeposit => "credit_from_deposit",
+            Self::DebitFromWithdrawal => "debit_from_withdrawal",
         }
     }
 
@@ -71,7 +74,7 @@ impl BalanceUpdateType {
     /// Check if this update type decreases balance
     #[must_use]
     pub const fn is_debit(&self) -> bool {
-        matches!(self, Self::DebitFromOrigination)
+        matches!(self, Self::DebitFromOrigination | Self::DebitFromWithdrawal)
     }
 }
 
@@ -161,7 +164,8 @@ impl BalanceUpdate {
             | BalanceUpdateType::InterestAccrual
             | BalanceUpdateType::ManualAdjustment
             | BalanceUpdateType::CreditFromDeposit => amount, // Assume positive for manual
-            BalanceUpdateType::DebitFromOrigination => -amount,
+            BalanceUpdateType::DebitFromOrigination
+            | BalanceUpdateType::DebitFromWithdrawal => -amount,
         }
     }
 
@@ -436,6 +440,47 @@ impl BalanceState {
             Some(format!(
                 "Deposit from wallet {:02x}{:02x}{:02x}{:02x}...",
                 wallet_address[0], wallet_address[1], wallet_address[2], wallet_address[3]
+            )),
+        )?;
+
+        Ok(update)
+    }
+
+    /// Create balance update from user withdrawal
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
+    /// Returns `BalanceError::InsufficientBalance` if user doesn't have enough balance
+    pub fn create_withdrawal_update(
+        &self,
+        withdrawal_transaction_id: [u8; 32],
+        user_id: [u8; 32],
+        recipient_address: [u8; 32], // Recipient wallet address for withdrawal
+        amount: u128,
+        timestamp: u64,
+    ) -> Result<BalanceUpdate, BalanceError> {
+        let current_balance = self.get_balance(&user_id);
+        
+        // Check for sufficient balance
+        if current_balance < amount {
+            return Err(BalanceError::InsufficientBalance {
+                requested: amount,
+                available: current_balance,
+            });
+        }
+
+        let update = BalanceUpdate::new(
+            self.generate_update_id(withdrawal_transaction_id, 1),
+            user_id,
+            None, // No loan associated with withdrawals
+            Some(withdrawal_transaction_id),
+            BalanceUpdateType::DebitFromWithdrawal,
+            amount,
+            current_balance,
+            timestamp,
+            Some(format!(
+                "Withdrawal to wallet {:02x}{:02x}{:02x}{:02x}...",
+                recipient_address[0], recipient_address[1], recipient_address[2], recipient_address[3]
             )),
         )?;
 
