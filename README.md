@@ -15,6 +15,7 @@ A privacy-preserving loan platform built on SP1 zero-knowledge proofs, enabling 
 
 **💰 Loan Operations**
 - **USDC Deposits** - Deposit USDC to smart contract with automatic balance tracking
+- **USDC Withdrawals** - Withdraw USDC with KYC validation and balance verification
 - **Loan Origination** - Create loans between KYC'd parties
 - **Payment Processing** - Make payments with privacy guarantees  
 - **Loan Closeout** - Final settlement and completion
@@ -146,6 +147,21 @@ cargo run --bin cli -- submit-kyc --user-id <investor-uuid>
 
 # Check USDC balance after deposit
 cargo run --bin cli -- get-user-balance-by-address --address <wallet-address>
+
+# Check available balance for withdrawals
+cargo run --bin cli -- get-available-balance --address <wallet-address>
+
+# Initiate USDC withdrawal (requires KYC approval)
+cargo run --bin cli -- initiate-withdrawal \
+  --user-address <wallet-address> \
+  --recipient-address <destination-address> \
+  --amount 100.50
+
+# Track withdrawal status
+cargo run --bin cli -- get-withdrawal-status --request-id <request-id>
+
+# View withdrawal history
+cargo run --bin cli -- get-withdrawal-history --address <wallet-address>
 cargo run --bin cli -- get-user-balance-by-id --user-id <investor-uuid>
 
 # Make loan payments  
@@ -168,6 +184,43 @@ cargo run --bin cli -- get-user-balance-by-address --address <wallet-address>
 # View deposit history and balances
 psql $DATABASE_URL -c "SELECT * FROM usdc_deposits WHERE user_address = '<wallet-address>';"
 psql $DATABASE_URL -c "SELECT * FROM user_deposit_balances WHERE user_address = '<wallet-address>';"
+```
+
+### USDC Withdrawal Flow
+```bash
+# 1. Check available balance for withdrawals
+cargo run --bin cli -- get-available-balance --address <wallet-address>
+
+# 2. Initiate withdrawal (requires KYC approval + sufficient balance)
+cargo run --bin cli -- initiate-withdrawal \
+  --user-address <wallet-address> \
+  --recipient-address <destination-address> \
+  --amount 100.50
+
+# 3. Track withdrawal status through lifecycle
+cargo run --bin cli -- get-withdrawal-status --request-id <request-id>
+
+# 4. View complete withdrawal history
+cargo run --bin cli -- get-withdrawal-history --address <wallet-address>
+
+# 5. Cancel pending withdrawal (before blockchain submission)
+cargo run --bin cli -- cancel-withdrawal --request-id <request-id>
+
+# View withdrawal database records
+psql $DATABASE_URL -c "SELECT * FROM withdrawal_requests WHERE user_address = '<wallet-address>';"
+psql $DATABASE_URL -c "SELECT * FROM withdrawal_request_history WHERE withdrawal_request_id = <request-id>;"
+```
+
+### For Administrators
+```bash
+# Monitor pending withdrawal requests
+cargo run --bin cli -- get-pending-withdrawals --limit 10
+
+# Review withdrawal validation failures
+psql $DATABASE_URL -c "SELECT * FROM withdrawal_requests WHERE state = 'failed';"
+
+# Track withdrawal processing metrics
+psql $DATABASE_URL -c "SELECT state, COUNT(*) FROM withdrawal_requests GROUP BY state;"
 ```
 
 ### For Auditors/Regulators

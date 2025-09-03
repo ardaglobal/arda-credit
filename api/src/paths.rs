@@ -79,6 +79,28 @@ pub const USER_TRANSACTIONS_BY_ID: &str = api_path!("/user/{user_id}/transaction
 pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
 
 // ============================================================================
+// WITHDRAWAL MANAGEMENT PATHS
+// ============================================================================
+
+/// Initiate withdrawal request
+pub const WITHDRAWALS: &str = api_path!("/withdrawals");
+
+/// Get withdrawal status by request ID
+pub const WITHDRAWAL_BY_ID: &str = api_path!("/withdrawals/{request_id}");
+
+/// Get user's available balance for withdrawals
+pub const USER_AVAILABLE_BALANCE: &str = api_path!("/users/{address}/available-balance");
+
+/// Get user's withdrawal history by address  
+pub const USER_WITHDRAWALS: &str = api_path!("/users/{address}/withdrawals");
+
+/// Cancel withdrawal request
+pub const WITHDRAWAL_CANCEL: &str = api_path!("/withdrawals/{request_id}/cancel");
+
+/// Admin endpoint: Get pending withdrawal requests
+pub const ADMIN_PENDING_WITHDRAWALS: &str = api_path!("/admin/withdrawals/pending");
+
+// ============================================================================
 // INVITE CODE MANAGEMENT PATHS
 // ============================================================================
 
@@ -316,6 +338,27 @@ pub fn user_balance_by_id_path(user_id: &str) -> String {
 /// Generate user transactions by ID path
 pub fn user_transactions_by_id_path(user_id: &str) -> String {
     replace_param(USER_TRANSACTIONS_BY_ID, "user_id", user_id)
+}
+
+// Withdrawal Management Helper Functions
+/// Build withdrawal path with request_id parameter
+pub fn withdrawal_path(request_id: &str) -> String {
+    replace_param(WITHDRAWAL_BY_ID, "request_id", request_id)
+}
+
+/// Build user available balance path with address parameter
+pub fn user_available_balance_path(address: &str) -> String {
+    replace_param(USER_AVAILABLE_BALANCE, "address", address)
+}
+
+/// Build user withdrawals path with address parameter
+pub fn user_withdrawals_path(address: &str) -> String {
+    replace_param(USER_WITHDRAWALS, "address", address)
+}
+
+/// Build withdrawal cancel path with request_id parameter
+pub fn withdrawal_cancel_path(request_id: &str) -> String {
+    replace_param(WITHDRAWAL_CANCEL, "request_id", request_id)
 }
 
 /// Generate transaction by hash path

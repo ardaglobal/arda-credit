@@ -263,6 +263,52 @@ pub struct UserWithdrawalBalance {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
+/// User-initiated withdrawal request (before smart contract execution)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct WithdrawalRequest {
+    pub id: i32,
+    pub user_id: uuid::Uuid,
+    pub user_address: String,
+    pub recipient_address: String,
+    pub amount: rust_decimal::Decimal,
+    pub amount_usdc: Option<rust_decimal::Decimal>,
+    pub state: String, // pending, validated, submitted, confirmed, failed, cancelled
+    pub kyc_validated: bool,
+    pub balance_validated: bool,
+    pub kyc_status_at_request: Option<String>,
+    pub available_balance_at_request: Option<rust_decimal::Decimal>,
+    pub transaction_hash: Option<String>,
+    pub block_number: Option<i64>,
+    pub confirmation_count: i32,
+    pub required_confirmations: i32,
+    pub error_message: Option<String>,
+    pub validation_errors: Option<serde_json::Value>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub validated_at: Option<DateTime<Utc>>,
+    pub submitted_at: Option<DateTime<Utc>>,
+    pub confirmed_at: Option<DateTime<Utc>>,
+    pub failed_at: Option<DateTime<Utc>>,
+    pub cancelled_at: Option<DateTime<Utc>>,
+}
+
+/// Withdrawal request processing history
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct WithdrawalRequestHistory {
+    pub id: i32,
+    pub withdrawal_request_id: i32,
+    pub event_type: String, // kyc_validation, balance_validation, contract_submission, etc.
+    pub old_state: Option<String>,
+    pub new_state: Option<String>,
+    pub success: bool,
+    pub message: Option<String>,
+    pub details: Option<serde_json::Value>,
+    pub retry_count: i32,
+    pub next_retry_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub processing_duration_ms: Option<i32>,
+}
+
 // ============================================================================
 // DATABASE CONNECTION FUNCTIONS
 // ============================================================================
@@ -2721,4 +2767,349 @@ pub async fn update_user_balance_from_withdrawal_tx(
     .await?;
 
     Ok(())
+}
+
+// ============================================================================
+// WITHDRAWAL REQUEST FUNCTIONS
+// ============================================================================
+
+/// Create a new withdrawal request
+pub async fn create_withdrawal_request(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    user_address: &str,
+    recipient_address: &str,
+    amount: rust_decimal::Decimal,
+    kyc_status_at_request: &str,
+    available_balance_at_request: rust_decimal::Decimal,
+) -> Result<WithdrawalRequest, sqlx::Error> {
+    let request = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        INSERT INTO withdrawal_requests (
+            user_id, user_address, recipient_address, amount, state,
+            kyc_status_at_request, available_balance_at_request,
+            created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, 'pending', $5, $6, NOW(), NOW())
+        RETURNING 
+            id, user_id, user_address, recipient_address, amount, amount_usdc, 
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        "#,
+        user_id,
+        user_address,
+        recipient_address,
+        amount,
+        kyc_status_at_request,
+        available_balance_at_request
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(request)
+}
+
+/// Get withdrawal request by ID
+pub async fn get_withdrawal_request_by_id(
+    pool: &PgPool,
+    request_id: i32,
+) -> Result<WithdrawalRequest, sqlx::Error> {
+    let request = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        SELECT 
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        FROM withdrawal_requests
+        WHERE id = $1
+        "#,
+        request_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(request)
+}
+
+/// Get withdrawal requests by user address
+pub async fn get_withdrawal_requests_by_user_address(
+    pool: &PgPool,
+    user_address: &str,
+) -> Result<Vec<WithdrawalRequest>, sqlx::Error> {
+    let requests = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        SELECT 
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        FROM withdrawal_requests
+        WHERE user_address = $1
+        ORDER BY created_at DESC
+        "#,
+        user_address
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(requests)
+}
+
+/// Get withdrawal requests by user ID
+pub async fn get_withdrawal_requests_by_user_id(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+) -> Result<Vec<WithdrawalRequest>, sqlx::Error> {
+    let requests = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        SELECT 
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        FROM withdrawal_requests
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        "#,
+        user_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(requests)
+}
+
+/// Update withdrawal request state
+pub async fn update_withdrawal_request_state(
+    pool: &PgPool,
+    request_id: i32,
+    new_state: &str,
+    error_message: Option<&str>,
+) -> Result<WithdrawalRequest, sqlx::Error> {
+    let updated_at = chrono::Utc::now();
+
+    // Set failed_at or cancelled_at based on state
+    let failed_at = if new_state == "failed" {
+        Some(updated_at)
+    } else {
+        None
+    };
+    let cancelled_at = if new_state == "cancelled" {
+        Some(updated_at)
+    } else {
+        None
+    };
+
+    let request = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        UPDATE withdrawal_requests
+        SET state = $2,
+            error_message = $3,
+            updated_at = $4,
+            failed_at = COALESCE($5, failed_at),
+            cancelled_at = COALESCE($6, cancelled_at)
+        WHERE id = $1
+        RETURNING 
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        "#,
+        request_id,
+        new_state,
+        error_message,
+        updated_at,
+        failed_at,
+        cancelled_at
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(request)
+}
+
+/// Update withdrawal request validation status
+pub async fn update_withdrawal_request_validation(
+    pool: &PgPool,
+    request_id: i32,
+    kyc_validated: bool,
+    balance_validated: bool,
+    validation_errors: Option<serde_json::Value>,
+) -> Result<WithdrawalRequest, sqlx::Error> {
+    let validated_at = chrono::Utc::now();
+    let new_state = if kyc_validated && balance_validated {
+        "validated"
+    } else {
+        "failed"
+    };
+
+    let failed_at = if new_state == "failed" {
+        Some(validated_at)
+    } else {
+        None
+    };
+
+    let request = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        UPDATE withdrawal_requests
+        SET kyc_validated = $2,
+            balance_validated = $3,
+            validation_errors = $4,
+            state = $5,
+            validated_at = $6,
+            updated_at = $6,
+            failed_at = COALESCE($7, failed_at)
+        WHERE id = $1
+        RETURNING 
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        "#,
+        request_id,
+        kyc_validated,
+        balance_validated,
+        validation_errors,
+        new_state,
+        validated_at,
+        failed_at
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(request)
+}
+
+/// Update withdrawal request with transaction details (when submitted to contract)
+pub async fn update_withdrawal_request_submitted(
+    pool: &PgPool,
+    request_id: i32,
+    transaction_hash: &str,
+    block_number: Option<i64>,
+) -> Result<WithdrawalRequest, sqlx::Error> {
+    let submitted_at = chrono::Utc::now();
+
+    let request = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        UPDATE withdrawal_requests
+        SET state = 'submitted',
+            transaction_hash = $2,
+            block_number = $3,
+            submitted_at = $4,
+            updated_at = $4
+        WHERE id = $1
+        RETURNING 
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        "#,
+        request_id,
+        transaction_hash,
+        block_number,
+        submitted_at
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(request)
+}
+
+/// Update withdrawal request confirmation status
+pub async fn update_withdrawal_request_confirmations(
+    pool: &PgPool,
+    request_id: i32,
+    confirmation_count: i32,
+) -> Result<WithdrawalRequest, sqlx::Error> {
+    let updated_at = chrono::Utc::now();
+    let confirmed_at = if confirmation_count >= 12 {
+        Some(updated_at)
+    } else {
+        None
+    };
+    let new_state = if confirmation_count >= 12 {
+        "confirmed"
+    } else {
+        "submitted"
+    };
+
+    let request = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        UPDATE withdrawal_requests
+        SET confirmation_count = $2,
+            state = $3,
+            confirmed_at = COALESCE($4, confirmed_at),
+            updated_at = $5
+        WHERE id = $1
+        RETURNING 
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        "#,
+        request_id,
+        confirmation_count,
+        new_state,
+        confirmed_at,
+        updated_at
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(request)
+}
+
+/// Get pending withdrawal requests (those needing validation or processing)
+pub async fn get_pending_withdrawal_requests(
+    pool: &PgPool,
+    limit: Option<i32>,
+) -> Result<Vec<WithdrawalRequest>, sqlx::Error> {
+    let limit = limit.unwrap_or(100) as i64;
+
+    let requests = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        SELECT 
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        FROM withdrawal_requests
+        WHERE state IN ('pending', 'validated')
+        ORDER BY created_at ASC
+        LIMIT $1
+        "#,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(requests)
 }

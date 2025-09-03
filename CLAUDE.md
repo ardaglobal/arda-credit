@@ -13,11 +13,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **KYC Status** - used in transaction flows for compliance
 - **Account Registration** - user registration with KYC verification
 
-**USDC Deposit System:**
-- **Smart Contract Integration** - Direct USDC deposits to vApp contract
+**USDC Deposit & Withdrawal System:**
+- **Smart Contract Integration** - Direct USDC deposits/withdrawals to/from vApp contract
 - **Automatic Balance Tracking** - Database triggers update user balances
 - **Deposit History** - Complete audit trail of all deposits and confirmations
-- **Multi-table Architecture** - Separate deposit tracking and user balance systems
+- **Withdrawal Processing** - KYC validation, balance verification, and transaction tracking
+- **Multi-table Architecture** - Separate deposit/withdrawal tracking and user balance systems
 
 **Loan Operations:**
 - **Loan Origination** - create new loans between parties
@@ -86,6 +87,14 @@ cargo run --bin cli -- get-user --user-id 123
 cargo run --bin cli -- get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
 cargo run --bin cli -- get-user-balance-by-id --user-id 123
 cargo run --bin cli -- link-wallet --user-id 123 --wallet-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+
+# USDC Withdrawal Management
+cargo run --bin cli -- get-available-balance --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+cargo run --bin cli -- initiate-withdrawal --user-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB --recipient-address 0x123... --amount 100.50
+cargo run --bin cli -- get-withdrawal-status --request-id 1
+cargo run --bin cli -- get-withdrawal-history --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+cargo run --bin cli -- cancel-withdrawal --request-id 1
+cargo run --bin cli -- get-pending-withdrawals --limit 10  # Admin command
 
 # Loan Operations
 cargo run --bin cli -- originate-loan --borrower-id 123 --lender-id 456 --amount 10000
@@ -378,6 +387,34 @@ cargo run --bin cli -- verify-transaction-inclusion \
   --proof-file proof_batch_1.json \
   --transaction-id payment-uuid \
   --transaction-type loan_payment
+```
+
+### Complete Withdrawal Lifecycle
+```bash
+# 1. Check available balance for withdrawals
+cargo run --bin cli -- get-available-balance --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+
+# 2. Initiate withdrawal (requires KYC approval + sufficient balance)
+cargo run --bin cli -- initiate-withdrawal \
+  --user-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB \
+  --recipient-address 0x123456789012345678901234567890123456789 \
+  --amount 100.50
+
+# 3. Check withdrawal status
+cargo run --bin cli -- get-withdrawal-status --request-id 1
+
+# 4. View withdrawal history
+cargo run --bin cli -- get-withdrawal-history --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+
+# 5. Cancel withdrawal (only if not yet submitted to blockchain)
+cargo run --bin cli -- cancel-withdrawal --request-id 1
+
+# 6. Admin: View pending withdrawals
+cargo run --bin cli -- get-pending-withdrawals --limit 10
+
+# 7. View withdrawal database records
+psql $DATABASE_URL -c "SELECT * FROM withdrawal_requests WHERE user_address = '0x742E...';"
+psql $DATABASE_URL -c "SELECT * FROM withdrawal_request_history WHERE withdrawal_request_id = 1;"
 ```
 
 ## Debugging Tips

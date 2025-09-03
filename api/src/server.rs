@@ -121,6 +121,10 @@ impl ApiServer {
             Some(config.jwt_expiry_hours),
         ));
 
+        // Initialize withdrawal and balance services
+        let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
+        let balance_service = crate::BalanceVerificationService::new(pool.clone());
+
         // Create API state
         let state = ApiState {
             pool,
@@ -128,6 +132,8 @@ impl ApiServer {
             batch_processor: Some(batch_processor_handle),
             ads_service,
             auth_service,
+            withdrawal_service,
+            balance_service,
         };
 
         let server = Self { config, state };
@@ -158,12 +164,18 @@ impl ApiServer {
             Some(config.jwt_expiry_hours),
         ));
 
+        // Initialize withdrawal and balance services
+        let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
+        let balance_service = crate::BalanceVerificationService::new(pool.clone());
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
             batch_processor: Some(batch_processor_handle),
             ads_service,
             auth_service,
+            withdrawal_service,
+            balance_service,
         };
 
         Ok(Self { config, state })

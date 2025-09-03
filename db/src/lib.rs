@@ -60,6 +60,7 @@ pub use db::{
     create_usdc_deposit,
     // Withdrawal functions
     create_withdrawal,
+    create_withdrawal_request,
     delete_identity,
 
     generate_invite_code,
@@ -82,6 +83,7 @@ pub use db::{
     get_payments_by_loan,
     get_pending_transactions,
 
+    get_pending_withdrawal_requests,
     get_potential_stuck_batches,
     get_proven_unposted_batches,
     get_user_balance_by_address,
@@ -90,6 +92,9 @@ pub use db::{
     get_user_id_by_wallet_address,
     get_user_withdrawal_balance,
     get_withdrawal_by_tx_hash,
+    get_withdrawal_request_by_id,
+    get_withdrawal_requests_by_user_address,
+    get_withdrawal_requests_by_user_id,
     get_withdrawals_by_user_address,
     // Database connection
     init_db,
@@ -124,6 +129,10 @@ pub use db::{
     update_user_balance_from_withdrawal,
     update_user_balance_from_withdrawal_tx,
     update_user_password,
+    update_withdrawal_request_confirmations,
+    update_withdrawal_request_state,
+    update_withdrawal_request_submitted,
+    update_withdrawal_request_validation,
     update_withdrawal_status,
     update_withdrawal_status_tx,
     use_invite_code,
@@ -151,6 +160,8 @@ pub use db::{
     UsdcWithdrawal,
     UserDepositBalance,
     UserWithdrawalBalance,
+    WithdrawalRequest,
+    WithdrawalRequestHistory,
 };
 
 // Re-export essential error types
