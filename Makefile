@@ -29,7 +29,7 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 ## lint: Lint code
 .PHONY: lint
 lint: yamllint actionlint docker-lint deny
-	cargo clippy --all-targets -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
+	SQLX_OFFLINE=true cargo clippy --all-targets -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
 
 ## env: Copy .env.example to .env
 .PHONY: env
@@ -286,7 +286,7 @@ clean-docker:
 ## clean-sqlx: Clean up SQLx resources
 .PHONY: clean-sqlx
 clean-sqlx:
-	rm -rf .sqlx
+	find . -type d -name ".sqlx" -exec rm -rf {} +
 	@echo "✅ SQLx resources cleaned up"
 
 ## clean-builds: Clean up build artifacts

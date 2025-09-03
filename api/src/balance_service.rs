@@ -225,14 +225,12 @@ mod tests {
         };
 
         // Link wallet address
-        sqlx::query!(
-            "UPDATE identities SET wallet_address = $1 WHERE id = $2",
-            wallet_address,
-            user_id
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+        sqlx::query("UPDATE identities SET wallet_address = $1 WHERE id = $2")
+            .bind(wallet_address)
+            .bind(user_id)
+            .execute(&pool)
+            .await
+            .unwrap();
 
         // Test balance verification with no deposits
         let result = service
@@ -258,13 +256,11 @@ mod tests {
         .unwrap();
 
         // Update deposit status to confirmed to trigger balance update
-        sqlx::query!(
-            "UPDATE usdc_deposits SET status = 'confirmed' WHERE transaction_hash = $1",
-            "0xtest_tx_hash"
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
+        sqlx::query("UPDATE usdc_deposits SET status = 'confirmed' WHERE transaction_hash = $1")
+            .bind("0xtest_tx_hash")
+            .execute(&pool)
+            .await
+            .unwrap();
 
         // Test balance verification with sufficient balance
         let withdrawal_amount = Decimal::new(3000000, 0); // 3 USDC
