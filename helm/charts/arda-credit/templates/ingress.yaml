@@ -28,14 +28,21 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-          {{- range .paths }}
-          - path: {{ .path }}
-            pathType: {{ .pathType }}
+          # Route API requests to server service
+          - path: /api
+            pathType: Prefix
             backend:
               service:
-                name: {{ include "arda-credit.fullname" $ }}-{{ .service.name }}
+                name: {{ include "arda-credit.fullname" $ }}-server
                 port:
-                  number: {{ .service.port }}
-          {{- end }}
+                  number: {{ $.Values.server.service.port }}
+          # Route all other requests to app service
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "arda-credit.fullname" $ }}-app
+                port:
+                  number: {{ $.Values.app.service.port }}
     {{- end }}
 {{- end }}

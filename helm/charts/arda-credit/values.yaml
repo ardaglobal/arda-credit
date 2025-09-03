@@ -233,6 +233,11 @@ ingress:
   hosts:
     - host: app.stag.aws.arda.xyz
       paths:
+        - path: /api
+          pathType: Prefix
+          service:
+            name: server
+            port: 8080
         - path: /
           pathType: Prefix
           service:
