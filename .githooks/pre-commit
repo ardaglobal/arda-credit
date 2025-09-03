@@ -4,19 +4,83 @@ set -e
 
 echo "🔧 Running pre-commit checks..."
 
-# Store the current diff to check for changes after formatting
-INITIAL_DIFF=$(git diff --name-only)
+# Store the current working directory state before database initialization
+echo "📊 Storing current working directory state..."
+STAGED_BEFORE_INIT=$(git diff --cached --name-only)
+UNSTAGED_BEFORE_INIT=$(git diff --name-only)
+UNTRACKED_BEFORE_INIT=$(git ls-files --others --exclude-standard)
+
+echo "🧹 Cleaning SQLx resources and initializing database..."
+make clean-sqlx initDB
+
+# Check what files changed due to database initialization (excluding already modified files)
+echo "🔍 Checking for new changes after database initialization..."
+STAGED_AFTER_INIT=$(git diff --cached --name-only)
+UNSTAGED_AFTER_INIT=$(git diff --name-only)
+UNTRACKED_AFTER_INIT=$(git ls-files --others --exclude-standard)
+
+# Find new files that weren't already present
+NEW_STAGED_FILES=$(comm -23 <(echo "$STAGED_AFTER_INIT" | sort) <(echo "$STAGED_BEFORE_INIT" | sort))
+NEW_UNSTAGED_FILES=$(comm -23 <(echo "$UNSTAGED_AFTER_INIT" | sort) <(echo "$UNSTAGED_BEFORE_INIT" | sort))
+NEW_UNTRACKED_FILES=$(comm -23 <(echo "$UNTRACKED_AFTER_INIT" | sort) <(echo "$UNTRACKED_BEFORE_INIT" | sort))
+
+if [ -n "$NEW_STAGED_FILES" ] || [ -n "$NEW_UNSTAGED_FILES" ] || [ -n "$NEW_UNTRACKED_FILES" ]; then
+    echo ""
+    echo "❌ Database initialization made new changes. Please review and commit the changes:"
+    echo ""
+    if [ -n "$NEW_STAGED_FILES" ]; then
+        echo "New staged files:"
+        echo "$NEW_STAGED_FILES" | sed 's/^/  + /'
+    fi
+    if [ -n "$NEW_UNSTAGED_FILES" ]; then
+        echo "New unstaged files:"
+        echo "$NEW_UNSTAGED_FILES" | sed 's/^/  + /'
+    fi
+    if [ -n "$NEW_UNTRACKED_FILES" ]; then
+        echo "New untracked files:"
+        echo "$NEW_UNTRACKED_FILES" | sed 's/^/  + /'
+    fi
+    echo ""
+    echo "💡 The .sqlx/ directory may have been updated. Please commit these changes."
+    exit 1
+fi
+
+echo "✅ Database initialization completed without changes"
+
+# Store the current working directory state before formatting
+STAGED_BEFORE_FMT=$(git diff --cached --name-only)
+UNSTAGED_BEFORE_FMT=$(git diff --name-only)
+UNTRACKED_BEFORE_FMT=$(git ls-files --others --exclude-standard)
 
 echo "📝 Running code formatting..."
 make fmt
 
-# Check if formatting made any changes
-AFTER_FMT_DIFF=$(git diff --name-only)
-if [ "$INITIAL_DIFF" != "$AFTER_FMT_DIFF" ] || [ -n "$(git diff --name-only)" ]; then
+# Check what files changed due to formatting (excluding already modified files)
+STAGED_AFTER_FMT=$(git diff --cached --name-only)
+UNSTAGED_AFTER_FMT=$(git diff --name-only)
+UNTRACKED_AFTER_FMT=$(git ls-files --others --exclude-standard)
+
+# Find new files that weren't already present
+NEW_FMT_STAGED_FILES=$(comm -23 <(echo "$STAGED_AFTER_FMT" | sort) <(echo "$STAGED_BEFORE_FMT" | sort))
+NEW_FMT_UNSTAGED_FILES=$(comm -23 <(echo "$UNSTAGED_AFTER_FMT" | sort) <(echo "$UNSTAGED_BEFORE_FMT" | sort))
+NEW_FMT_UNTRACKED_FILES=$(comm -23 <(echo "$UNTRACKED_AFTER_FMT" | sort) <(echo "$UNTRACKED_BEFORE_FMT" | sort))
+
+if [ -n "$NEW_FMT_STAGED_FILES" ] || [ -n "$NEW_FMT_UNSTAGED_FILES" ] || [ -n "$NEW_FMT_UNTRACKED_FILES" ]; then
     echo ""
     echo "❌ Code formatting made changes. Please review and stage the changes:"
     echo ""
-    git diff --name-only | sed 's/^/  - /'
+    if [ -n "$NEW_FMT_STAGED_FILES" ]; then
+        echo "New staged files:"
+        echo "$NEW_FMT_STAGED_FILES" | sed 's/^/  + /'
+    fi
+    if [ -n "$NEW_FMT_UNSTAGED_FILES" ]; then
+        echo "New unstaged files:"
+        echo "$NEW_FMT_UNSTAGED_FILES" | sed 's/^/  + /'
+    fi
+    if [ -n "$NEW_FMT_UNTRACKED_FILES" ]; then
+        echo "New untracked files:"
+        echo "$NEW_FMT_UNTRACKED_FILES" | sed 's/^/  + /'
+    fi
     echo ""
     echo "💡 Run 'git add .' to stage the formatted changes and commit again."
     exit 1

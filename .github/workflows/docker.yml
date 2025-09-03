@@ -1,22 +1,17 @@
 name: Build and Push Docker Image
-
 on:
   push:
     branches:
       - main
-  pull_request:
   release:
     types: [published]
-
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   build-and-push:
     runs-on:
@@ -27,11 +22,21 @@ jobs:
       packages: write  # Includes read access for pulling private base containers
       id-token: write
       attestations: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-
+      - name: Configure maximum parallelism for high-CPU environment
+        run: |
+          {
+            # Set Rust to use all 72 vCPUs
+            echo "CARGO_BUILD_JOBS=72"
+            echo "RUSTFLAGS=-C target-cpu=native"
+            # Set BuildKit log buffer to 50MB (reduced from 100MB)
+            echo "BUILDKIT_STEP_LOG_MAX_SIZE=50000000"
+            # Cargo network optimizations
+            echo "CARGO_NET_GIT_FETCH_WITH_CLI=true"
+            echo "CARGO_HTTP_MULTIPLEXING=false"
+          } >> $GITHUB_ENV
       - name: Lint Dockerfile with hadolint
         uses: hadolint/hadolint-action@v3.1.0
         with:
@@ -39,26 +44,23 @@ jobs:
           config: .hadolint.yaml
           no-color: false
           no-fail: false
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           driver-opts: |
             network=host
-
+            env.BUILDKIT_STEP_LOG_MAX_SIZE=${{ env.BUILDKIT_STEP_LOG_MAX_SIZE }}
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Log in to GH Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -72,7 +74,6 @@ jobs:
             type=semver,pattern={{major}}
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
-
       # For PRs, build single platform for speed
       # For releases/main, build multi-platform
       - name: Determine build platforms
@@ -83,7 +84,6 @@ jobs:
           else
             echo "platforms=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
           fi
-
       - name: Build and push Docker image
         id: build
         uses: docker/build-push-action@v6
@@ -94,7 +94,13 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: ${{ steps.platforms.outputs.platforms }}
-          # Remove GitHub cache dependency - CodeBuild uses its built-in Docker layer caching
-          # See: https://docs.aws.amazon.com/codebuild/latest/userguide/specify-caching-local.html
           build-args: |
             BUILDKIT_INLINE_CACHE=1
+            CARGO_BUILD_JOBS=${{ env.CARGO_BUILD_JOBS }}
+            RUSTFLAGS=${{ env.RUSTFLAGS }}
+          # Performance optimizations
+          provenance: false
+          sbom: false
+          no-cache: false
+          load: false
+          outputs: type=image,push=true

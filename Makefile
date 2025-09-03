@@ -141,8 +141,8 @@ actionlint-fix:
 test:
 	docker compose up postgres -d
 	@sleep 2
-	sqlx migrate run --source db/migrations
-	cargo test
+	DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?sslmode=disable" sqlx migrate run --source db/migrations
+	DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?sslmode=disable" cargo test
 	docker compose down -v
 
 ## cover: Generate code coverage report
@@ -286,7 +286,7 @@ clean-docker:
 ## clean-sqlx: Clean up SQLx resources
 .PHONY: clean-sqlx
 clean-sqlx:
-	rm -rf .sqlx
+	find . -type d -name ".sqlx" -exec rm -rf {} +
 	@echo "✅ SQLx resources cleaned up"
 
 ## clean-builds: Clean up build artifacts
@@ -351,8 +351,10 @@ setup-hooks:
 	@echo "🔧 Setting up git hooks..."
 	@git config core.hooksPath .githooks
 	@chmod +x .githooks/pre-commit
+	@chmod +x .githooks/pre-push
 	@echo "✅ Git hooks configured successfully"
 	@echo "💡 Pre-commit hook will run 'make fmt' and 'make lint' automatically"
+	@echo "💡 Pre-push hook will run 'make test' automatically"
 
 ## setup: Complete setup from scratch
 .PHONY: setup

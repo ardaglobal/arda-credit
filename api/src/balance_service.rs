@@ -201,76 +201,92 @@ impl BalanceVerificationService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arda_credit_db::{create_usdc_deposit, register_or_reregister_user};
+    use arda_credit_db::{create_usdc_deposit, init_db, register_or_reregister_user};
     use chrono::Utc;
 
-    #[sqlx::test]
-    async fn test_balance_verification_service(pool: sqlx::PgPool) -> sqlx::Result<()> {
+    #[tokio::test]
+    async fn test_balance_verification_service() -> sqlx::Result<()> {
+        let pool = init_db().await?;
         let service = BalanceVerificationService::new(pool.clone());
         let wallet_address = "0x1234567890123456789012345678901234567890";
 
         // Create a test user with linked wallet
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let email = format!("balance-test-{timestamp}@example.com");
+        let unique_wallet = format!("0x{:040x}", timestamp as u64);
+
         let user_result = register_or_reregister_user(
             &pool,
             "investor",
-            "test@example.com",
-            None, // jurisdiction
+            &email,
+            "hashed_password", // password_hash
         )
         .await?;
 
-        let user_id = user_result.identity.id;
+        let user_id = match user_result {
+            arda_credit_db::RegisterResult::Created(identity) => identity.id,
+            arda_credit_db::RegisterResult::Reregistered(identity) => identity.id,
+            arda_credit_db::RegisterResult::AlreadyExists => panic!("User should not exist"),
+        };
 
         // Link wallet address
-        sqlx::query!(
-            "UPDATE identities SET wallet_address = $1 WHERE id = $2",
-            wallet_address,
-            user_id
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query("UPDATE identities SET wallet_address = $1 WHERE id = $2")
+            .bind(&unique_wallet)
+            .bind(user_id)
+            .execute(&pool)
+            .await
+            .unwrap();
 
         // Test balance verification with no deposits
         let result = service
-            .verify_balance_for_withdrawal_by_address(wallet_address, Decimal::new(1000000, 0))
-            .await?;
+            .verify_balance_for_withdrawal_by_address(&unique_wallet, Decimal::new(1000000, 0))
+            .await
+            .unwrap();
         assert!(!result.is_sufficient);
         assert_eq!(result.available_balance, Decimal::ZERO);
 
         // Create a deposit
         let deposit_amount = Decimal::new(5000000, 0); // 5 USDC in wei
+        let tx_hash = format!("0x{:064x}", timestamp);
+        let event_tx_hash = format!("0x{:064x}", timestamp + 1);
         create_usdc_deposit(
             &pool,
-            wallet_address,
+            &unique_wallet,
             deposit_amount,
-            "0xtest_tx_hash",
-            12345,
+            &tx_hash,
+            &event_tx_hash, // event_transaction_hash
             Utc::now().timestamp(),
             0,
-            12,
+            (timestamp % 1000) as i64, // unique log_index
         )
-        .await?;
+        .await
+        .unwrap();
 
         // Update deposit status to confirmed to trigger balance update
-        sqlx::query!(
-            "UPDATE usdc_deposits SET status = 'confirmed' WHERE transaction_hash = $1",
-            "0xtest_tx_hash"
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query("UPDATE usdc_deposits SET status = 'confirmed' WHERE transaction_hash = $1")
+            .bind(&tx_hash)
+            .execute(&pool)
+            .await
+            .unwrap();
 
         // Test balance verification with sufficient balance
         let withdrawal_amount = Decimal::new(3000000, 0); // 3 USDC
         let result = service
-            .verify_balance_for_withdrawal_by_address(wallet_address, withdrawal_amount)
-            .await?;
+            .verify_balance_for_withdrawal_by_address(&unique_wallet, withdrawal_amount)
+            .await
+            .unwrap();
         assert!(result.is_sufficient);
         assert_eq!(result.available_balance, deposit_amount);
 
         // Test balance verification with insufficient balance
         let large_withdrawal = Decimal::new(10000000, 0); // 10 USDC
         let result = service
-            .verify_balance_for_withdrawal_by_address(wallet_address, large_withdrawal)
-            .await?;
+            .verify_balance_for_withdrawal_by_address(&unique_wallet, large_withdrawal)
+            .await
+            .unwrap();
         assert!(!result.is_sufficient);
         assert!(result.shortfall.is_some());
         assert_eq!(result.shortfall.unwrap(), large_withdrawal - deposit_amount);
