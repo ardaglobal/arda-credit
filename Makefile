@@ -302,6 +302,60 @@ clean-builds:
 clean: clean-docker clean-sqlx clean-builds
 	@echo "✅ All resources cleaned up"
 
+## helm-deps: Update Helm chart dependencies
+.PHONY: helm-deps
+helm-deps:
+	@echo "📦 Updating Helm chart dependencies..."
+	@command -v helm >/dev/null 2>&1 || { echo "❌ helm not found. Please install Helm 3.8+"; exit 1; }
+	@if [ ! -f "helm/charts/arda-credit/Chart.lock" ] || [ "helm/charts/arda-credit/Chart.yaml" -nt "helm/charts/arda-credit/Chart.lock" ]; then \
+		echo "🔄 Chart.yaml newer than Chart.lock or Chart.lock missing, updating dependencies..."; \
+		helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true; \
+		helm repo update >/dev/null 2>&1; \
+		helm dependency update ./helm/charts/arda-credit; \
+		echo "✅ Helm dependencies updated successfully"; \
+	else \
+		echo "✅ Helm dependencies are up to date"; \
+	fi
+
+## helm-upgrade: Upgrade Arda Credit Helm deployment (preserves PostgreSQL by default)
+# Environment variables (optional):
+#   HELM_NAMESPACE      - Kubernetes namespace (default: arda-credit)
+#   HELM_VALUES_FILE    - Custom values file path
+#   UPGRADE_POSTGRES    - Set to "true" to include PostgreSQL in upgrade (default: false)
+.PHONY: helm-upgrade
+helm-upgrade: helm-deps
+	@echo "🔄 Upgrading Arda Credit Helm deployment..."
+	@command -v helm >/dev/null 2>&1 || { echo "❌ helm not found. Please install Helm 3.8+"; exit 1; }
+	@command -v kubectl >/dev/null 2>&1 || { echo "❌ kubectl not found. Please install kubectl"; exit 1; }
+	@NAMESPACE=$${HELM_NAMESPACE:-arda-credit}; \
+	VALUES_FILE=$${HELM_VALUES_FILE:-}; \
+	UPGRADE_POSTGRES=$${UPGRADE_POSTGRES:-false}; \
+	echo "📍 Target namespace: $$NAMESPACE"; \
+	if [ "$$UPGRADE_POSTGRES" = "true" ]; then \
+		echo "⚠️  PostgreSQL will be included in upgrade"; \
+	else \
+		echo "🛡️  PostgreSQL will be preserved (use UPGRADE_POSTGRES=true to include)"; \
+	fi; \
+	if helm status arda-credit -n $$NAMESPACE >/dev/null 2>&1; then \
+		if [ "$$UPGRADE_POSTGRES" = "true" ]; then \
+			echo "⚠️  Including PostgreSQL in upgrade - this may restart the database"; \
+			UPGRADE_CMD="helm upgrade arda-credit ./helm/charts/arda-credit -n $$NAMESPACE --reuse-values"; \
+		else \
+			echo "🛡️  Preserving PostgreSQL completely - only upgrading app components"; \
+			UPGRADE_CMD="helm upgrade arda-credit ./helm/charts/arda-credit -n $$NAMESPACE --reuse-values --no-hooks"; \
+		fi; \
+		if [ -n "$$VALUES_FILE" ]; then \
+			echo "📊 Using custom values file: $$VALUES_FILE"; \
+			UPGRADE_CMD="$$UPGRADE_CMD -f $$VALUES_FILE"; \
+		fi; \
+		eval $$UPGRADE_CMD; \
+		echo "✅ Helm upgrade completed successfully"; \
+	else \
+		echo "❌ Release 'arda-credit' not found in namespace $$NAMESPACE"; \
+		echo "💡 Use 'helm install' for initial deployment"; \
+		exit 1; \
+	fi
+
 ## initDB: Initialize database (start, migrate, generate cache, stop)
 .PHONY: initDB
 initDB:
@@ -355,6 +409,20 @@ setup-hooks:
 	@echo "✅ Git hooks configured successfully"
 	@echo "💡 Pre-commit hook will run 'make fmt' and 'make lint' automatically"
 	@echo "💡 Pre-push hook will run 'make test' automatically"
+
+## helm-uninstall: Remove Arda Credit from Kubernetes
+.PHONY: helm-uninstall
+helm-uninstall:
+	@echo "🗑️  Uninstalling Arda Credit from Kubernetes..."
+	@NAMESPACE=$${HELM_NAMESPACE:-arda-credit}; \
+	echo "📍 Target namespace: $$NAMESPACE"; \
+	if helm status arda-credit -n $$NAMESPACE >/dev/null 2>&1; then \
+		helm uninstall arda-credit -n $$NAMESPACE; \
+		echo "✅ Helm uninstall completed successfully"; \
+		echo "💡 Note: Namespace and PVCs preserved"; \
+	else \
+		echo "ℹ️  Release 'arda-credit' not found in namespace $$NAMESPACE"; \
+	fi
 
 ## setup: Complete setup from scratch
 .PHONY: setup
