@@ -10,6 +10,7 @@ use humantime::format_duration;
 
 use serde::{Deserialize, Serialize};
 use sqlx::{Error as SqlxError, PgPool};
+use std::str::FromStr;
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
@@ -20,15 +21,17 @@ use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
-    create_loan, generate_invite_code, get_all_batches, get_batch_by_id,
+    create_liquidity_pool, create_loan, find_matching_liquidity_pools, 
+    generate_invite_code, get_all_batches, get_batch_by_id,
     get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
     get_deposits_by_user_address, get_identity_by_email, get_identity_by_id, get_invite_code_info,
-    get_kyc_statistics, get_loan_by_id, get_pending_transactions, get_user_balance_by_address,
+    get_kyc_statistics, get_liquidity_pool_by_id, get_liquidity_pools_by_investor, 
+    get_loan_by_id, get_pending_transactions, get_user_balance_by_address,
     get_user_balance_by_id, list_loans, list_pending_kyc_applications, register_or_reregister_user,
     store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
-    update_identity_profile, update_kyc_status, update_last_login, update_loan, use_invite_code,
-    AuditEvent, Identity, IndexedMerkleTreeADS, LoanInclusionProof, LoanLifecycleSummary,
-    RegisterResult,
+    update_identity_profile, update_kyc_status, update_last_login, update_liquidity_pool_status, update_loan, use_invite_code,
+    AuditEvent, CreateLiquidityPoolRequest, Identity, IndexedMerkleTreeADS, 
+    LoanInclusionProof, LoanLifecycleSummary, PoolMatchingCriteria, RegisterResult,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -851,6 +854,71 @@ pub struct TransactionStatusResponse {
 }
 
 // ============================================================================
+// LIQUIDITY POOL API MODELS
+// ============================================================================
+
+/// Request to create a new liquidity pool
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CreatePoolRequest {
+    pub name: String,
+    pub max_ltv_ratio: rust_decimal::Decimal,
+    pub max_interest_rate: rust_decimal::Decimal,
+    pub repayment_period_days: i32,
+}
+
+/// Response from pool creation
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CreatePoolResponse {
+    pub pool_id: String,
+    pub investor_id: String,
+    pub name: String,
+    pub max_ltv_ratio: rust_decimal::Decimal,
+    pub max_interest_rate: rust_decimal::Decimal,
+    pub repayment_period_days: i32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Pool details response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PoolDetailsResponse {
+    pub pool_id: String,
+    pub investor_id: String,
+    pub name: String,
+    pub total_deposits: rust_decimal::Decimal,
+    pub available_liquidity: rust_decimal::Decimal,
+    pub utilized_liquidity: rust_decimal::Decimal,
+    pub max_ltv_ratio: rust_decimal::Decimal,
+    pub max_interest_rate: rust_decimal::Decimal,
+    pub repayment_period_days: i32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Pool list response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PoolListResponse {
+    pub pools: Vec<PoolDetailsResponse>,
+    pub total_count: usize,
+}
+
+/// Pool status update request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdatePoolStatusRequest {
+    pub status: String, // ACTIVE, PAUSED, CLOSED
+}
+
+/// Pool matching criteria for auto-deployment
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PoolMatchRequest {
+    pub required_liquidity: rust_decimal::Decimal,
+    pub max_ltv: rust_decimal::Decimal,
+    pub max_rate: rust_decimal::Decimal,
+    pub min_repayment_days: i32,
+}
+
+// ============================================================================
 // ROUTER SETUP
 // ============================================================================
 
@@ -1001,6 +1069,14 @@ pub fn create_router(state: ApiState) -> Router {
             paths::LOAN_LIFECYCLE_SUMMARY,
             get(get_loan_lifecycle_summary_endpoint),
         )
+        // ========================================================================
+        // LIQUIDITY POOL ENDPOINTS
+        // ========================================================================
+        .route("/api/pool", post(create_pool_endpoint))
+        .route("/api/pools", get(list_pools_endpoint))
+        .route("/api/pools/:pool_id", get(get_pool_endpoint))
+        .route("/api/pools/:pool_id/status", put(update_pool_status_endpoint))
+        .route("/api/pools/match", post(find_matching_pools_endpoint))
         .with_state(state)
 }
 
@@ -4536,7 +4612,15 @@ async fn get_pending_withdrawals_endpoint(
 
             // Proof Management
             GenerateLoanOperationProofRequest,
-            LoanOperationProofResponse
+            LoanOperationProofResponse,
+
+            // Liquidity Pool Management
+            CreatePoolRequest,
+            CreatePoolResponse,
+            PoolDetailsResponse,
+            PoolListResponse,
+            UpdatePoolStatusRequest,
+            PoolMatchRequest
         )
     ),
     tags(
@@ -4548,7 +4632,8 @@ async fn get_pending_withdrawals_endpoint(
         (name = "Loans", description = "Loan creation and management"),
         (name = "Payments", description = "Payment processing and history"),
         (name = "State", description = "System state and proof verification"),
-        (name = "Proofs", description = "Zero-knowledge proof generation and verification")
+        (name = "Proofs", description = "Zero-knowledge proof generation and verification"),
+        (name = "Liquidity Pools", description = "Liquidity pool creation and management for auto-deployment")
     ),
     info(
         title = "Arda Credit API",
@@ -4580,4 +4665,414 @@ fn swagger_ui() -> Router<ApiState> {
     SwaggerUi::new("/api-docs")
         .url("/api-docs/openapi.json", get_openapi_spec())
         .into()
+}
+
+// ============================================================================
+// LIQUIDITY POOL ENDPOINT HANDLERS
+// ============================================================================
+
+/// Create a new liquidity pool
+#[utoipa::path(
+    post,
+    path = "/api/pool",
+    request_body = CreatePoolRequest,
+    responses(
+        (status = 201, description = "Pool created successfully", body = CreatePoolResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Only investors can create pools"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Liquidity Pools"
+)]
+#[instrument(skip(state), level = "info")]
+async fn create_pool_endpoint(
+    State(state): State<ApiState>,
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    Json(request): Json<CreatePoolRequest>,
+) -> Result<Json<CreatePoolResponse>, (StatusCode, String)> {
+    info!("🏦 Creating liquidity pool: name={}", request.name);
+
+    // Validate user is an investor
+    if user.user_type != "investor" {
+        warn!("Non-investor {} attempted to create pool", user.email);
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only investors can create liquidity pools".to_string(),
+        ));
+    }
+
+    // Validate parameters
+    if request.name.trim().is_empty() || request.name.len() > 255 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Pool name must be between 1 and 255 characters".to_string(),
+        ));
+    }
+
+    if request.max_ltv_ratio < rust_decimal::Decimal::from_str("0.1").unwrap()
+        || request.max_ltv_ratio > rust_decimal::Decimal::from_str("0.95").unwrap()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "LTV ratio must be between 10% (0.1) and 95% (0.95)".to_string(),
+        ));
+    }
+
+    if request.max_interest_rate < rust_decimal::Decimal::from_str("0.01").unwrap()
+        || request.max_interest_rate > rust_decimal::Decimal::from_str("0.50").unwrap()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Interest rate must be between 1% (0.01) and 50% (0.50)".to_string(),
+        ));
+    }
+
+    if !(7..=365).contains(&request.repayment_period_days) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Repayment period must be between 7 and 365 days".to_string(),
+        ));
+    }
+
+    // Create database request
+    let db_request = CreateLiquidityPoolRequest {
+        investor_id: user.user_id,
+        name: request.name.trim().to_string(),
+        max_ltv_ratio: request.max_ltv_ratio,
+        max_interest_rate: request.max_interest_rate,
+        repayment_period_days: request.repayment_period_days,
+    };
+
+    // Create pool in database
+    let pool = match create_liquidity_pool(&state.pool, &db_request).await {
+        Ok(pool) => pool,
+        Err(e) => {
+            error!("Failed to create liquidity pool: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to create pool: {}", e),
+            ));
+        }
+    };
+
+    let response = CreatePoolResponse {
+        pool_id: pool.id.to_string(),
+        investor_id: pool.investor_id.to_string(),
+        name: pool.name,
+        max_ltv_ratio: pool.max_ltv_ratio,
+        max_interest_rate: pool.max_interest_rate,
+        repayment_period_days: pool.repayment_period_days,
+        status: pool.status,
+        created_at: pool.created_at,
+    };
+
+    info!("✅ Pool created: id={}", pool.id);
+    Ok(Json(response))
+}
+
+/// List liquidity pools for authenticated investor
+#[utoipa::path(
+    get,
+    path = "/api/pools",
+    params(
+        ("status" = Option<String>, Query, description = "Filter by pool status")
+    ),
+    responses(
+        (status = 200, description = "Pool list retrieved successfully", body = PoolListResponse),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Only investors can list pools"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Liquidity Pools"
+)]
+#[instrument(skip(state), level = "info")]
+async fn list_pools_endpoint(
+    State(state): State<ApiState>,
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<PoolListResponse>, (StatusCode, String)> {
+    info!("📋 Listing pools for investor: {}", user.user_id);
+
+    // Validate user is an investor
+    if user.user_type != "investor" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Only investors can list pools".to_string(),
+        ));
+    }
+
+    let status_filter = params.get("status").cloned();
+
+    let pools = match get_liquidity_pools_by_investor(&state.pool, user.user_id).await {
+        Ok(pools) => pools,
+        Err(e) => {
+            error!("Failed to list pools: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to list pools: {}", e),
+            ));
+        }
+    };
+
+    let pool_details: Vec<PoolDetailsResponse> = pools
+        .iter()
+        .map(|pool| PoolDetailsResponse {
+            pool_id: pool.id.to_string(),
+            investor_id: pool.investor_id.to_string(),
+            name: pool.name.clone(),
+            total_deposits: pool.total_deposits,
+            available_liquidity: pool.available_liquidity,
+            utilized_liquidity: pool.utilized_liquidity,
+            max_ltv_ratio: pool.max_ltv_ratio,
+            max_interest_rate: pool.max_interest_rate,
+            repayment_period_days: pool.repayment_period_days,
+            status: pool.status.clone(),
+            created_at: pool.created_at,
+            updated_at: pool.updated_at,
+        })
+        .collect();
+
+    let response = PoolListResponse {
+        total_count: pool_details.len(),
+        pools: pool_details,
+    };
+
+    info!("✅ Listed {} pools", response.total_count);
+    Ok(Json(response))
+}
+
+/// Get specific pool details
+#[utoipa::path(
+    get,
+    path = "/api/pools/{pool_id}",
+    params(
+        ("pool_id" = String, Path, description = "Pool ID")
+    ),
+    responses(
+        (status = 200, description = "Pool details retrieved successfully", body = PoolDetailsResponse),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Access denied to this pool"),
+        (status = 404, description = "Pool not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Liquidity Pools"
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_pool_endpoint(
+    State(state): State<ApiState>,
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    Path(pool_id_str): Path<String>,
+) -> Result<Json<PoolDetailsResponse>, (StatusCode, String)> {
+    info!("🔍 Getting pool details: id={}", pool_id_str);
+
+    let pool_id = match uuid::Uuid::parse_str(&pool_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Invalid pool ID format".to_string(),
+            ))
+        }
+    };
+
+    let pool = match get_liquidity_pool_by_id(&state.pool, pool_id).await {
+        Ok(pool) => pool,
+        Err(e) => {
+            error!("Failed to get pool: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get pool: {}", e),
+            ));
+        }
+    };
+
+    // Check ownership (investors can only see their own pools)
+    if user.user_type == "investor" && pool.investor_id != user.user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Access denied to this pool".to_string(),
+        ));
+    }
+
+    let response = PoolDetailsResponse {
+        pool_id: pool.id.to_string(),
+        investor_id: pool.investor_id.to_string(),
+        name: pool.name,
+        total_deposits: pool.total_deposits,
+        available_liquidity: pool.available_liquidity,
+        utilized_liquidity: pool.utilized_liquidity,
+        max_ltv_ratio: pool.max_ltv_ratio,
+        max_interest_rate: pool.max_interest_rate,
+        repayment_period_days: pool.repayment_period_days,
+        status: pool.status,
+        created_at: pool.created_at,
+        updated_at: pool.updated_at,
+    };
+
+    info!("✅ Pool details retrieved: {}", pool.name);
+    Ok(Json(response))
+}
+
+/// Update pool status
+#[utoipa::path(
+    put,
+    path = "/api/pools/{pool_id}/status",
+    params(
+        ("pool_id" = String, Path, description = "Pool ID")
+    ),
+    request_body = UpdatePoolStatusRequest,
+    responses(
+        (status = 200, description = "Pool status updated successfully", body = PoolDetailsResponse),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Access denied to this pool"),
+        (status = 404, description = "Pool not found"),
+        (status = 400, description = "Invalid status"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Liquidity Pools"
+)]
+#[instrument(skip(state), level = "info")]
+async fn update_pool_status_endpoint(
+    State(state): State<ApiState>,
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+    Path(pool_id_str): Path<String>,
+    Json(request): Json<UpdatePoolStatusRequest>,
+) -> Result<Json<PoolDetailsResponse>, (StatusCode, String)> {
+    info!("🔄 Updating pool status: id={}, status={}", pool_id_str, request.status);
+
+    let pool_id = match uuid::Uuid::parse_str(&pool_id_str) {
+        Ok(id) => id,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Invalid pool ID format".to_string(),
+            ))
+        }
+    };
+
+    // Validate status
+    if !matches!(request.status.as_str(), "ACTIVE" | "PAUSED" | "CLOSED") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Status must be ACTIVE, PAUSED, or CLOSED".to_string(),
+        ));
+    }
+
+    // Check pool exists and ownership
+    let existing_pool = match get_liquidity_pool_by_id(&state.pool, pool_id).await {
+        Ok(Some(pool)) => pool,
+        Ok(None) => {
+            return Err((StatusCode::NOT_FOUND, "Pool not found".to_string()))
+        }
+        Err(e) => {
+            error!("Failed to get pool: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get pool: {}", e),
+            ));
+        }
+    };
+
+    // Check ownership
+    if existing_pool.investor_id != user.user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Access denied to this pool".to_string(),
+        ));
+    }
+
+    // Update status
+    let updated_pool = match update_liquidity_pool_status(&state.pool, pool_id, &request.status).await {
+        Ok(pool) => pool,
+        Err(e) => {
+            error!("Failed to update pool status: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update pool status: {}", e),
+            ));
+        }
+    };
+
+    let response = PoolDetailsResponse {
+        pool_id: updated_pool.id.to_string(),
+        investor_id: updated_pool.investor_id.to_string(),
+        name: updated_pool.name,
+        total_deposits: updated_pool.total_deposits,
+        available_liquidity: updated_pool.available_liquidity,
+        utilized_liquidity: updated_pool.utilized_liquidity,
+        max_ltv_ratio: updated_pool.max_ltv_ratio,
+        max_interest_rate: updated_pool.max_interest_rate,
+        repayment_period_days: updated_pool.repayment_period_days,
+        status: updated_pool.status,
+        created_at: updated_pool.created_at,
+        updated_at: updated_pool.updated_at,
+    };
+
+    info!("✅ Pool status updated: {} -> {}", pool_id, request.status);
+    Ok(Json(response))
+}
+
+/// Find matching pools for auto-deployment
+#[utoipa::path(
+    post,
+    path = "/api/pools/match",
+    request_body = PoolMatchRequest,
+    responses(
+        (status = 200, description = "Matching pools found", body = PoolListResponse),
+        (status = 400, description = "Invalid matching criteria"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Liquidity Pools"
+)]
+#[instrument(skip(state), level = "info")]
+async fn find_matching_pools_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<PoolMatchRequest>,
+) -> Result<Json<PoolListResponse>, (StatusCode, String)> {
+    info!("🔍 Finding matching pools: required={}", request.required_liquidity);
+
+    let criteria = PoolMatchingCriteria {
+        required_liquidity: request.required_liquidity,
+        max_ltv: request.max_ltv,
+        max_rate: request.max_rate,
+        min_repayment_days: request.min_repayment_days,
+    };
+
+    let pools = match find_matching_liquidity_pools(&state.pool, &criteria).await {
+        Ok(pools) => pools,
+        Err(e) => {
+            error!("Failed to find matching pools: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to find matching pools: {}", e),
+            ));
+        }
+    };
+
+    let pool_details: Vec<PoolDetailsResponse> = pools
+        .iter()
+        .map(|pool| PoolDetailsResponse {
+            pool_id: pool.id.to_string(),
+            investor_id: pool.investor_id.to_string(),
+            name: pool.name.clone(),
+            total_deposits: pool.total_deposits,
+            available_liquidity: pool.available_liquidity,
+            utilized_liquidity: pool.utilized_liquidity,
+            max_ltv_ratio: pool.max_ltv_ratio,
+            max_interest_rate: pool.max_interest_rate,
+            repayment_period_days: pool.repayment_period_days,
+            status: pool.status.clone(),
+            created_at: pool.created_at,
+            updated_at: pool.updated_at,
+        })
+        .collect();
+
+    let response = PoolListResponse {
+        total_count: pool_details.len(),
+        pools: pool_details,
+    };
+
+    info!("✅ Found {} matching pools", response.total_count);
+    Ok(Json(response))
 }

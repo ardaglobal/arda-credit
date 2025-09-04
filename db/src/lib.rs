@@ -137,6 +137,13 @@ pub use db::{
     update_withdrawal_status_tx,
     use_invite_code,
     verify_email_with_token,
+    // Liquidity pool functions
+    create_liquidity_pool,
+    find_matching_liquidity_pools,
+    get_liquidity_pool_by_id,
+    get_liquidity_pools_by_investor,
+    update_liquidity_pool_status,
+    validate_pool_parameters,
     // Types
     AdsStateCommit,
     Balance,
@@ -144,14 +151,18 @@ pub use db::{
     ContractPublicData,
     ContractSubmissionData,
     CounterState,
+    CreateLiquidityPoolRequest,
     // CCR Domain types
     Identity,
     IncomingTransaction,
     InviteCodeInfo,
     KycStatistics,
+    LiquidityPool,
+    LiquidityPoolAudit,
     Loan,
     LoanTransactionDb,
     Payment,
+    PoolMatchingCriteria,
     ProofBatch,
 
     RegisterResult,
