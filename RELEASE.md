@@ -1,4 +1,4 @@
-# Release Management Strategy
+# Release Management Strategy (WIP)
 
 This document outlines the comprehensive release management strategy for the arda-credit repository, which contains three distinct but interconnected components that require coordinated versioning.
 
