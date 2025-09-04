@@ -92,7 +92,7 @@ server:
       cpu: 500m
       memory: 512Mi
   
-  nProbe:
+  readinessProbe:
     httpGet:
       path: /api/v1/health
       port: 8080
