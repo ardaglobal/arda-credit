@@ -38,3 +38,17 @@ nodes:
   - role: worker
     image: kindest/node:v1.33.0
 
+# Configure containerd to allow insecure registries
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = ""
+
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."kind-registry:5000"]
+        endpoint = ["http://kind-registry:5000"]
+      
+    [plugins."io.containerd.grpc.v1.cri".registry.configs]
+      [plugins."io.containerd.grpc.v1.cri".registry.configs."kind-registry:5000".tls]
+        insecure_skip_verify = true
+

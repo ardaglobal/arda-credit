@@ -11,8 +11,8 @@ global:
   tolerations: []
   affinity: {}
 
-# Disable namespace creation - use default for simplicity
-namespaceCreate: false
+# Enable namespace creation for proper isolation
+namespaceCreate: true
 
 # PostgreSQL configuration - optimized for local development
 postgresql:
@@ -61,16 +61,16 @@ postgresql:
           CREATE DATABASE arda_credit_db_local;
           GRANT ALL PRIVILEGES ON DATABASE arda_credit_db_local TO postgres;
 
-# API Server configuration - use local built image
+# API Server configuration - use local registry image
 server:
   enabled: true
   
-  # Local image configuration - use locally built image
+  # Local registry configuration - use local registry
   image:
-    registry: "localhost"  # Local Kind registry
+    registry: "kind-registry:5000"  # Local container registry (internal network name)
     repository: "arda-credit"
     tag: "local-dev"
-    pullPolicy: Never  # Never pull - use local image only
+    pullPolicy: Always  # Always pull to ensure latest image
   
   replicaCount: 1
   
@@ -127,16 +127,16 @@ server:
   podAntiAffinity:
     enabled: false
 
-# Frontend App configuration - use local built image 
+# Frontend App configuration - use real app from GHCR
 app:
   enabled: true
   
-  # Local image configuration (assuming separate app image)
+  # Use production app image from GHCR (real frontend)
   image:
-    registry: "localhost"
+    registry: "ghcr.io/ardaglobal"
     repository: "arda-credit-app" 
-    tag: "local-dev"
-    pullPolicy: Never
+    tag: "latest"
+    pullPolicy: Always
   
   replicaCount: 1
   

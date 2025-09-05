@@ -6,7 +6,8 @@ This directory contains everything needed to set up a local Kind (Kubernetes in 
 
 The e2e environment provides:
 - **Local Kubernetes cluster** using Kind with realistic multi-node setup
-- **Local image builds** loaded directly into the cluster (no registry needed)
+- **Local container registry** for seamless image distribution to cluster nodes
+- **Hybrid image deployment** - local server builds + production frontend from GHCR
 - **Direct port access** to services for debugging (NodePort configuration)
 - **Complete Arda Credit stack** deployed via Helm with PostgreSQL
 - **Developer-friendly tooling** integrated with existing Makefile
@@ -42,23 +43,25 @@ make kind-teardown
 
 ### Integration
 - **Makefile targets** - `kind-*` commands integrated with existing workflow
-- **Local image builds** - Uses localhost registry, no external dependencies
+- **Local container registry** - Automatic setup on port 5001, connected to Kind network
+- **Hybrid image strategy** - Local server builds + production frontend from GHCR
 - **PostgreSQL integration** - Ephemeral storage, exposed for debugging
 
 ## Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐
-│   Host System   │    │   Kind Cluster  │
-│                 │    │                 │
-│ localhost:3000  ├────┤ App (NodePort)  │
-│ localhost:8080  ├────┤ Server (NodePort│
-│ localhost:5432  ├────┤ PostgreSQL      │
-│                 │    │                 │
-│ Docker Images   │    │                 │
-│ ├ arda-credit   ├────┤ Loaded Images   │
-│ └ arda-credit-app    │                 │
-└─────────────────┘    └─────────────────┘
+┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────┐
+│   Host System   │    │  Local Registry     │    │   Kind Cluster  │
+│                 │    │  (localhost:5001)   │    │                 │
+│ localhost:3000  ├────┤ ├ kind-registry:5000 ├────┤ App (GHCR)     │
+│ localhost:8080  ├────┤ │ └ arda-credit:      │    │ Server (Local)  │
+│ localhost:5432  ├────┤ │   local-dev        │    │ PostgreSQL      │
+│                 │    │ │                   │    │                 │
+│ Docker Build    │    │ Auto-connected to   │    │ Image Pulls     │
+│ ├ arda-credit   ├────┤ Kind network        ├────┤ ├ ghcr.io/...   │
+│ └ Push to reg   │    │ (eliminates         │    │ └ kind-registry │
+└─────────────────┘    │  snapshotter issue) │    └─────────────────┘
+                       └─────────────────────┘
 ```
 
 ## Development Workflow
@@ -150,17 +153,19 @@ kubectl port-forward svc/arda-credit-postgresql 5432:5432
 - **MetalLB**: LoadBalancer simulation for realistic testing
 
 ### Helm Values (values-local.yaml)
-- **Images**: Uses `localhost/arda-credit:local-dev` (no registry)
+- **Server Image**: `kind-registry:5000/arda-credit:local-dev` (local registry)
+- **App Image**: `ghcr.io/ardaglobal/arda-credit-app:latest` (production frontend)
 - **Resources**: Minimal CPU/memory for local development  
 - **Storage**: Ephemeral (no persistence) for fast cleanup
 - **Services**: NodePort type for direct access
 - **Security**: Permissive settings for development ease
 
-### Local Images
-- **Build**: Standard Dockerfile with local SP1 base image
-- **Tag**: `localhost/arda-credit:local-dev`
-- **Loading**: Direct load into Kind cluster (no push/pull)
-- **Caching**: Docker build cache for faster rebuilds
+### Image Management
+- **Local Registry**: Automatic `registry:2` container on port 5001 
+- **Server Build**: Local Dockerfile → pushed to local registry
+- **App Deployment**: Production frontend from GHCR (separate repository)
+- **Network Integration**: Registry connected to Kind network as `kind-registry`
+- **Caching**: Docker build cache + registry storage for faster rebuilds
 
 ## Troubleshooting
 
@@ -178,11 +183,17 @@ docker system prune  # If low on space
 
 **Images not loading**  
 ```bash
-# Rebuild and reload images
+# Check local registry is running
+docker ps | grep registry
+
+# Check images in registry
+curl http://localhost:5001/v2/_catalog
+
+# Rebuild and push to registry
 make kind-rebuild
 
-# Check images in cluster
-docker exec -it arda-credit-e2e-control-plane crictl images
+# Check images in cluster nodes
+docker exec -it arda-credit-e2e-control-plane crictl images | grep arda-credit
 ```
 
 **Services not accessible**
@@ -230,8 +241,24 @@ kubectl get events --sort-by=.metadata.creationTimestamp
 ```bash
 # Complete cleanup and restart
 make kind-teardown
+docker stop kind-registry && docker rm kind-registry  # Clean up registry
 docker system prune -f
 make kind-setup
+```
+
+### Registry Issues
+
+```bash
+# Registry not accessible
+docker ps | grep registry  # Check if running
+docker logs kind-registry   # Check registry logs
+
+# Network connectivity 
+docker network inspect kind | grep registry  # Should show registry connected
+
+# Manual registry restart
+docker stop kind-registry && docker rm kind-registry
+make kind-setup  # Will recreate registry automatically
 ```
 
 ## Integration with CI/CD
@@ -257,10 +284,12 @@ This setup can be easily integrated into GitHub Actions or other CI systems:
 
 ## Performance Considerations
 
-- **Startup time**: ~2-3 minutes for full setup
-- **Resource usage**: ~2GB RAM, 4 CPU cores recommended
-- **Rebuild time**: ~30 seconds for code changes
-- **Storage**: Ephemeral, no persistent data between runs
+- **Startup time**: ~2-3 minutes for full setup (includes registry setup)
+- **Resource usage**: ~2GB RAM, 4 CPU cores recommended  
+- **Registry overhead**: ~50MB RAM for local registry container
+- **Rebuild time**: ~30 seconds for code changes (push to registry)
+- **Storage**: Ephemeral cluster + registry storage for image caching
+- **Network**: Local registry eliminates external image pulls for server
 
 ## Extending the Setup
 

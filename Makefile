@@ -470,11 +470,14 @@ kind-status:
 	@if kind get clusters | grep -q "arda-credit-e2e"; then \
 		echo "✅ Cluster 'arda-credit-e2e' is running"; \
 		echo ""; \
-		echo "📦 Pods:"; \
-		kubectl get pods --context=kind-arda-credit-e2e 2>/dev/null || echo "❌ Cannot connect to cluster"; \
+		echo "📦 Arda Credit Pods (arda-credit namespace):"; \
+		kubectl get pods -n arda-credit --context=kind-arda-credit-e2e 2>/dev/null || echo "❌ No pods found in arda-credit namespace"; \
 		echo ""; \
-		echo "🔗 Services:"; \
-		kubectl get services --context=kind-arda-credit-e2e 2>/dev/null || echo "❌ Cannot connect to cluster"; \
+		echo "🔗 Arda Credit Services (arda-credit namespace):"; \
+		kubectl get services -n arda-credit --context=kind-arda-credit-e2e 2>/dev/null || echo "❌ No services found in arda-credit namespace"; \
+		echo ""; \
+		echo "📊 All Namespaces:"; \
+		kubectl get pods --all-namespaces --context=kind-arda-credit-e2e 2>/dev/null | head -10 || echo "❌ Cannot connect to cluster"; \
 	else \
 		echo "❌ Cluster 'arda-credit-e2e' not found"; \
 		echo "💡 Run 'make kind-setup' to create the cluster"; \
@@ -487,24 +490,24 @@ kind-logs:
 	@echo "📋 Arda Credit Service Logs:"
 	@echo ""
 	@echo "=== Server Logs ==="
-	@kubectl logs --context=kind-arda-credit-e2e -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --tail=50 2>/dev/null || echo "❌ No server logs available"
+	@kubectl logs --context=kind-arda-credit-e2e -n arda-credit -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --tail=50 2>/dev/null || echo "❌ No server logs available"
 	@echo ""
 	@echo "=== App Logs ==="
-	@kubectl logs --context=kind-arda-credit-e2e -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app --tail=50 2>/dev/null || echo "❌ No app logs available"
+	@kubectl logs --context=kind-arda-credit-e2e -n arda-credit -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app --tail=50 2>/dev/null || echo "❌ No app logs available"
 	@echo ""
 	@echo "=== PostgreSQL Logs ==="
-	@kubectl logs --context=kind-arda-credit-e2e -l app.kubernetes.io/name=postgresql --tail=20 2>/dev/null || echo "❌ No PostgreSQL logs available"
+	@kubectl logs --context=kind-arda-credit-e2e -n arda-credit -l app.kubernetes.io/name=postgresql --tail=20 2>/dev/null || echo "❌ No PostgreSQL logs available"
 
 ## kind-restart: Restart Kind cluster services
 # Restart Arda Credit deployments (keeps cluster and data)
 .PHONY: kind-restart
 kind-restart:
 	@echo "🔄 Restarting Arda Credit services..."
-	@kubectl rollout restart deployment/arda-credit-server --context=kind-arda-credit-e2e
-	@kubectl rollout restart deployment/arda-credit-app --context=kind-arda-credit-e2e
+	@kubectl rollout restart deployment/arda-credit-server --context=kind-arda-credit-e2e -n arda-credit
+	@kubectl rollout restart deployment/arda-credit-app --context=kind-arda-credit-e2e -n arda-credit
 	@echo "⏳ Waiting for rollout to complete..."
-	@kubectl rollout status deployment/arda-credit-server --context=kind-arda-credit-e2e --timeout=120s
-	@kubectl rollout status deployment/arda-credit-app --context=kind-arda-credit-e2e --timeout=60s
+	@kubectl rollout status deployment/arda-credit-server --context=kind-arda-credit-e2e -n arda-credit --timeout=120s
+	@kubectl rollout status deployment/arda-credit-app --context=kind-arda-credit-e2e -n arda-credit --timeout=60s
 	@echo "✅ Services restarted successfully"
 
 ## kind-rebuild: Rebuild images and restart Kind services
@@ -521,3 +524,10 @@ kind-rebuild:
 	@echo "Restarting services..."
 	@$(MAKE) kind-restart
 	@echo "✅ Rebuild and restart complete!"
+
+## kind-test: Run deployment validation tests
+# Test current Kind cluster deployment health
+.PHONY: kind-test
+kind-test:
+	@echo "🧪 Running deployment validation tests..."
+	cd helm/e2e && ./tests/test-deployment.sh

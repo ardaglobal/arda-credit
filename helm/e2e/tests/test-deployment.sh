@@ -7,6 +7,7 @@ set -euo pipefail
 # Configuration
 CLUSTER_NAME="arda-credit-e2e"
 KUBECTL_CONTEXT="kind-${CLUSTER_NAME}"
+NAMESPACE="arda-credit"
 API_BASE_URL="http://localhost:8080"
 APP_BASE_URL="http://localhost:3000"
 
@@ -57,6 +58,11 @@ test_skipped() {
     log_warning "⚠ $1 (SKIPPED)"
 }
 
+test_warning() {
+    ((TESTS_RUN++))
+    log_warning "⚠ $1"
+}
+
 # Check if cluster is running
 check_cluster_running() {
     log_info "Checking if Kind cluster is running..."
@@ -105,16 +111,16 @@ test_postgresql() {
     log_info "Testing PostgreSQL deployment..."
     
     # Check PostgreSQL pod is running
-    if kubectl get pods --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=postgresql --field-selector=status.phase=Running --no-headers | grep -q postgresql; then
+    if kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=postgresql --field-selector=status.phase=Running --no-headers | grep -q postgresql; then
         test_passed "PostgreSQL pod is running"
     else
         test_failed "PostgreSQL pod is not running"
-        kubectl get pods --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=postgresql || true
+        kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=postgresql || true
         return
     fi
     
     # Check PostgreSQL service exists
-    if kubectl get service --context="${KUBECTL_CONTEXT}" arda-credit-postgresql >/dev/null 2>&1; then
+    if kubectl get service --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" arda-credit-postgresql >/dev/null 2>&1; then
         test_passed "PostgreSQL service exists"
     else
         test_failed "PostgreSQL service not found"
@@ -134,16 +140,16 @@ test_server() {
     log_info "Testing Arda Credit Server deployment..."
     
     # Check server pod is running
-    if kubectl get pods --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --field-selector=status.phase=Running --no-headers | grep -q server; then
+    if kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --field-selector=status.phase=Running --no-headers | grep -q server; then
         test_passed "Server pod is running"
     else
         test_failed "Server pod is not running"
-        kubectl get pods --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server || true
+        kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server || true
         return
     fi
     
     # Check server service
-    if kubectl get service --context="${KUBECTL_CONTEXT}" arda-credit-server >/dev/null 2>&1; then
+    if kubectl get service --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" arda-credit-server >/dev/null 2>&1; then
         test_passed "Server service exists"
     else
         test_failed "Server service not found"
@@ -151,7 +157,7 @@ test_server() {
     
     # Test server readiness
     local ready_replicas
-    ready_replicas=$(kubectl get deployment arda-credit-server --context="${KUBECTL_CONTEXT}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
+    ready_replicas=$(kubectl get deployment arda-credit-server --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
     
     if [ "$ready_replicas" -ge 1 ]; then
         test_passed "Server deployment has ready replicas ($ready_replicas)"
@@ -165,16 +171,16 @@ test_app() {
     log_info "Testing Arda Credit App deployment..."
     
     # Check app pod is running
-    if kubectl get pods --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app --field-selector=status.phase=Running --no-headers | grep -q app; then
+    if kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app --field-selector=status.phase=Running --no-headers | grep -q app; then
         test_passed "App pod is running"
     else
         test_failed "App pod is not running"
-        kubectl get pods --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app || true
+        kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app || true
         return
     fi
     
     # Check app service
-    if kubectl get service --context="${KUBECTL_CONTEXT}" arda-credit-app >/dev/null 2>&1; then
+    if kubectl get service --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" arda-credit-app >/dev/null 2>&1; then
         test_passed "App service exists"
     else
         test_failed "App service not found"
@@ -230,7 +236,7 @@ test_networking() {
     log_info "Testing internal service networking..."
     
     # Test internal service DNS resolution
-    if kubectl exec --context="${KUBECTL_CONTEXT}" deployment/arda-credit-server -- nslookup arda-credit-postgresql >/dev/null 2>&1; then
+    if kubectl exec --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" deployment/arda-credit-server -- nslookup arda-credit-postgresql >/dev/null 2>&1; then
         test_passed "Internal DNS resolution works (server -> postgresql)"
     else
         test_failed "Internal DNS resolution failed"
@@ -238,7 +244,7 @@ test_networking() {
     
     # Test NodePort services
     local server_nodeport
-    server_nodeport=$(kubectl get service arda-credit-server --context="${KUBECTL_CONTEXT}" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
+    server_nodeport=$(kubectl get service arda-credit-server --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "")
     
     if [ -n "$server_nodeport" ] && [ "$server_nodeport" != "null" ]; then
         test_passed "Server NodePort configured: $server_nodeport"
@@ -253,7 +259,7 @@ test_resources() {
     
     # Check pod resource usage
     local server_cpu
-    server_cpu=$(kubectl top pod --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --no-headers 2>/dev/null | awk '{print $2}' | head -1 || echo "")
+    server_cpu=$(kubectl top pod --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --no-headers 2>/dev/null | awk '{print $2}' | head -1 || echo "")
     
     if [ -n "$server_cpu" ]; then
         test_passed "Server pod resource metrics available: CPU $server_cpu"
@@ -263,7 +269,7 @@ test_resources() {
     
     # Check memory usage
     local memory_usage
-    memory_usage=$(kubectl get pods --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=arda-credit --no-headers | wc -l)
+    memory_usage=$(kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit --no-headers | wc -l)
     
     if [ "$memory_usage" -ge 2 ]; then
         test_passed "Expected number of Arda Credit pods running ($memory_usage)"
@@ -278,7 +284,7 @@ test_logs() {
     
     # Check server logs for errors
     local server_errors
-    server_errors=$(kubectl logs --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --tail=20 2>/dev/null | grep -i "error\|panic\|fatal" | wc -l || echo "0")
+    server_errors=$(kubectl logs --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --tail=20 2>/dev/null | grep -i "error\|panic\|fatal" | wc -l || echo "0")
     
     if [ "$server_errors" -eq 0 ]; then
         test_passed "No errors found in server logs"
@@ -287,7 +293,7 @@ test_logs() {
     fi
     
     # Check if server is logging startup messages
-    if kubectl logs --context="${KUBECTL_CONTEXT}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --tail=10 2>/dev/null | grep -q "Starting\|Listening\|Started\|Ready"; then
+    if kubectl logs --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --tail=10 2>/dev/null | grep -q "Starting\|Listening\|Started\|Ready"; then
         test_passed "Server shows startup messages in logs"
     else
         test_failed "No startup messages found in server logs"
@@ -314,7 +320,7 @@ display_summary() {
         log_info "🔧 Debug commands:"
         echo "  make kind-status    # Show cluster status"
         echo "  make kind-logs      # Show service logs"
-        echo "  kubectl get pods --context=${KUBECTL_CONTEXT}"
+        echo "  kubectl get pods -n arda-credit --context=${KUBECTL_CONTEXT}"
         return 0
     else
         log_error "❌ ${TESTS_FAILED} test(s) failed. Check the output above for details."
@@ -322,7 +328,7 @@ display_summary() {
         log_info "🔧 Debugging tips:"
         echo "  make kind-logs      # Check service logs"
         echo "  make kind-status    # Check cluster status"
-        echo "  kubectl describe pods --context=${KUBECTL_CONTEXT}"
+        echo "  kubectl describe pods -n arda-credit --context=${KUBECTL_CONTEXT}"
         return 1
     fi
 }

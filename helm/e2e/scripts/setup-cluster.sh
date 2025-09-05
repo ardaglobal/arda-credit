@@ -6,6 +6,8 @@ set -euo pipefail
 
 # Configuration
 CLUSTER_NAME="arda-credit-e2e"
+REGISTRY_NAME="kind-registry"
+REGISTRY_PORT="5001"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 KIND_CONFIG="${SCRIPT_DIR}/../cluster/kind-config.yaml"
@@ -86,6 +88,57 @@ check_existing_cluster() {
     return 0  # Proceed with cluster creation
 }
 
+# Setup local container registry
+setup_local_registry() {
+    log_info "Setting up local container registry..."
+    
+    # Check if registry is already running
+    if docker ps | grep -q "${REGISTRY_NAME}"; then
+        log_info "Registry '${REGISTRY_NAME}' is already running"
+        return 0
+    fi
+    
+    # Remove stopped registry container if it exists
+    if docker ps -a | grep -q "${REGISTRY_NAME}"; then
+        log_info "Removing stopped registry container..."
+        docker rm -f "${REGISTRY_NAME}"
+    fi
+    
+    # Start local registry
+    log_info "Starting local registry on port ${REGISTRY_PORT}..."
+    docker run -d --restart=always -p "127.0.0.1:${REGISTRY_PORT}:5000" --name "${REGISTRY_NAME}" registry:2
+    
+    # Wait for registry to be ready
+    log_info "Waiting for registry to be ready..."
+    until curl -s "http://localhost:${REGISTRY_PORT}/v2/" > /dev/null; do
+        sleep 1
+    done
+    
+    log_success "Local registry is running at localhost:${REGISTRY_PORT}"
+}
+
+# Connect registry to Kind network
+connect_registry_to_kind() {
+    log_info "Connecting registry to Kind network..."
+    
+    # Get Kind network name
+    local kind_network
+    kind_network=$(docker network ls --format "{{.Name}}" | grep "^kind$" || echo "")
+    
+    if [ -z "${kind_network}" ]; then
+        log_error "Kind network not found"
+        exit 1
+    fi
+    
+    # Connect registry to Kind network if not already connected
+    if ! docker network inspect "${kind_network}" | grep -q "${REGISTRY_NAME}"; then
+        docker network connect "${kind_network}" "${REGISTRY_NAME}"
+        log_success "Registry connected to Kind network"
+    else
+        log_info "Registry already connected to Kind network"
+    fi
+}
+
 # Create Kind cluster
 create_cluster() {
     log_info "Creating Kind cluster '${CLUSTER_NAME}'..."
@@ -103,42 +156,46 @@ create_cluster() {
     log_success "Cluster nodes are ready"
 }
 
-# Build and load Docker images
-build_and_load_images() {
-    log_info "Building and loading Docker images..."
+# Build and push Docker images to local registry
+build_and_push_images() {
+    log_info "Building and pushing Docker images to local registry..."
     
     cd "${PROJECT_ROOT}"
     
-    # Login to GHCR if credentials are available
-    if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
-        log_info "Logging into GHCR for Docker build..."
-        echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+    # Registry URL
+    local registry_url="localhost:${REGISTRY_PORT}"
+    
+    # Check if image already exists locally
+    if docker images localhost/arda-credit:local-dev --format "table {{.Repository}}:{{.Tag}}" | grep -q "localhost/arda-credit:local-dev"; then
+        log_info "Image localhost/arda-credit:local-dev already exists, skipping build..."
     else
-        log_warning "No GHCR credentials found, build may fail if using private base images"
+        # Login to GHCR if credentials are available
+        if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
+            log_info "Logging into GHCR for Docker build..."
+            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+        else
+            log_warning "No GHCR credentials found, build may fail if using private base images"
+        fi
+        
+        # Build the main Arda Credit image
+        log_info "Building arda-credit:local-dev image..."
+        if ! docker build -t localhost/arda-credit:local-dev .; then
+            log_error "Failed to build arda-credit image"
+            log_info "Check Docker build logs above for details"
+            exit 1
+        fi
     fi
     
-    # Build the main Arda Credit image
-    log_info "Building arda-credit:local-dev image..."
-    if ! docker build -t localhost/arda-credit:local-dev .; then
-        log_error "Failed to build arda-credit image"
-        log_info "Check Docker build logs above for details"
-        exit 1
-    fi
+    # Tag and push server image to local registry
+    log_info "Tagging and pushing server image to local registry..."
     
-    # Load image into Kind cluster
-    log_info "Loading arda-credit image into Kind cluster..."
-    if ! kind load docker-image localhost/arda-credit:local-dev --name="${CLUSTER_NAME}"; then
-        log_error "Failed to load arda-credit image into Kind cluster"
-        exit 1
-    fi
+    # Push server image only (app will use GHCR)
+    docker tag localhost/arda-credit:local-dev "${registry_url}/arda-credit:local-dev"
+    docker push "${registry_url}/arda-credit:local-dev"
+    log_success "Pushed server image to ${registry_url}/arda-credit:local-dev"
     
-    # Note: App image would be built separately if it exists
-    # For now, we'll use the server image for both services
-    log_info "Tagging server image as app image for local testing..."
-    docker tag localhost/arda-credit:local-dev localhost/arda-credit-app:local-dev
-    kind load docker-image localhost/arda-credit-app:local-dev --name="${CLUSTER_NAME}"
-    
-    log_success "Docker images built and loaded successfully"
+    log_info "App will use production image from ghcr.io/ardaglobal/arda-credit-app:latest"
+    log_success "Local registry setup completed"
 }
 
 # Install dependencies (MetalLB + Docker registry secrets)
@@ -244,10 +301,15 @@ update_helm_dependencies() {
 deploy_arda_credit() {
     log_info "Deploying Arda Credit via Helm..."
     
-    # Deploy to default namespace for simplicity
+    # Deploy to arda-credit namespace for proper isolation
+    NAMESPACE="arda-credit"
+    kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f - || true
+    
     helm upgrade --install arda-credit \
         "${CHART_PATH}" \
         --values="${VALUES_FILE}" \
+        --namespace="${NAMESPACE}" \
+        --create-namespace \
         --wait \
         --timeout=300s \
         --debug
@@ -267,15 +329,15 @@ wait_for_services() {
     
     # Wait for PostgreSQL
     log_info "Waiting for PostgreSQL to be ready..."
-    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql --timeout=120s
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql -n arda-credit --timeout=120s
     
     # Wait for server
     log_info "Waiting for server to be ready..."
-    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --timeout=180s
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server -n arda-credit --timeout=180s
     
     # Wait for app (if enabled)
     log_info "Waiting for app to be ready..."
-    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app --timeout=120s
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app -n arda-credit --timeout=120s
     
     log_success "All services are ready"
 }
@@ -287,6 +349,7 @@ display_access_info() {
     log_info "Cluster Information:"
     echo "  Cluster Name: ${CLUSTER_NAME}"
     echo "  Kubectl Context: kind-${CLUSTER_NAME}"
+    echo "  Namespace: arda-credit"
     echo
     log_info "Service Access URLs:"
     echo "  🌐 Frontend App:    http://localhost:3000"
@@ -295,10 +358,10 @@ display_access_info() {
     echo "  🗄️  PostgreSQL:      localhost:5432"
     echo
     log_info "Kubernetes Access:"
-    echo "  kubectl get pods"
-    echo "  kubectl logs -f deployment/arda-credit-server"
-    echo "  kubectl logs -f deployment/arda-credit-app"
-    echo "  kubectl port-forward svc/arda-credit-postgresql 5432:5432"
+    echo "  kubectl get pods -n arda-credit"
+    echo "  kubectl logs -f deployment/arda-credit-server -n arda-credit"
+    echo "  kubectl logs -f deployment/arda-credit-app -n arda-credit"
+    echo "  kubectl port-forward svc/arda-credit-postgresql 5432:5432 -n arda-credit"
     echo
     log_info "Database Connection:"
     echo "  Host: localhost"
@@ -316,10 +379,12 @@ main() {
     echo
     
     check_prerequisites
+    setup_local_registry
     if check_existing_cluster; then
         create_cluster
     fi
-    build_and_load_images
+    connect_registry_to_kind
+    build_and_push_images
     install_dependencies
     update_helm_dependencies
     deploy_arda_credit
