@@ -32,15 +32,19 @@ jobs:
         id: detect
         run: |
           if [[ $GITHUB_REF == refs/tags/program-v* ]]; then
-            echo "component=program" >> $GITHUB_OUTPUT
-            echo "version=${GITHUB_REF#refs/tags/program-v}" >> $GITHUB_OUTPUT
-            echo "circuit_tag=program-${GITHUB_REF#refs/tags/program-v}" >> $GITHUB_OUTPUT
-            echo "is_program_release=true" >> $GITHUB_OUTPUT
+            {
+              echo "component=program"
+              echo "version=${GITHUB_REF#refs/tags/program-v}"
+              echo "circuit_tag=program-${GITHUB_REF#refs/tags/program-v}"
+              echo "is_program_release=true"
+            } >> $GITHUB_OUTPUT
           else
-            echo "component=circuit" >> $GITHUB_OUTPUT
-            echo "version=main" >> $GITHUB_OUTPUT
-            echo "circuit_tag=main-$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
-            echo "is_program_release=false" >> $GITHUB_OUTPUT
+            {
+              echo "component=circuit"
+              echo "version=main"
+              echo "circuit_tag=main-$(echo $GITHUB_SHA | cut -c1-7)"
+              echo "is_program_release=false"
+            } >> $GITHUB_OUTPUT
           fi
 
       - name: Setup Node.js
@@ -85,30 +89,11 @@ jobs:
           cd program
           ~/.sp1/bin/cargo-prove prove build --output-directory ../build
 
-      - name: Test Circuit
-        env:
-          SINDRI_TAG: ${{ steps.detect.outputs.circuit_tag }}
-        run: cargo run --release -- --sindri
-
       - name: Deploy Circuit to Sindri
         run: |
           sindri deploy --tag "${{ steps.detect.outputs.circuit_tag }}"
 
-      - name: Create Program Release Summary
-        if: steps.detect.outputs.is_program_release == 'true'
-        run: |
-          echo "## 🔧 Program Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Tag:** program-${{ steps.detect.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Circuit Tag:** ${{ steps.detect.outputs.circuit_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ✅ Built, deployed, and tested" >> $GITHUB_STEP_SUMMARY
-
-      - name: Create CI Summary
-        if: steps.detect.outputs.is_program_release == 'false'
-        run: |
-          echo "## 🔄 Circuit CI Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Circuit Tag:** ${{ steps.detect.outputs.circuit_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ✅ Built, deployed, and tested" >> $GITHUB_STEP_SUMMARY
+      - name: Test Circuit
+        env:
+          SINDRI_TAG: ${{ steps.detect.outputs.circuit_tag }}
+        run: cargo run --release -- --sindri

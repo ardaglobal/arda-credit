@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    tags:
+      - 'contracts-v*-rc*'
+      - 'contracts-v*'
     paths:
       - "contracts/**"
 
@@ -11,13 +14,47 @@ env:
   FOUNDRY_PROFILE: ci
 
 concurrency:
-  # One lane per PR or branch. New runs cancel older ones in that lane.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # One lane per workflow run
+  group: ${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: true
 
 jobs:
+  detect-component:
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=small
+    outputs:
+      component: ${{ steps.detect.outputs.component }}
+      version: ${{ steps.detect.outputs.version }}
+      is_rc: ${{ steps.detect.outputs.is_rc }}
+    steps:
+      - id: detect
+        run: |
+          if [[ $GITHUB_REF == refs/tags/contracts-v*-rc* ]]; then
+            {
+              echo "component=contracts"
+              echo "version=${GITHUB_REF#refs/tags/contracts-v}"
+              echo "is_rc=true"
+            } >> $GITHUB_OUTPUT
+          elif [[ $GITHUB_REF == refs/tags/contracts-v* ]]; then
+            {
+              echo "component=contracts"
+              echo "version=${GITHUB_REF#refs/tags/contracts-v}"
+              echo "is_rc=false"
+            } >> $GITHUB_OUTPUT
+          else
+            {
+              echo "component=contracts"
+              echo "version=main"
+              echo "is_rc=false"
+            } >> $GITHUB_OUTPUT
+          fi
+
   deploy:
     name: Deploy Contracts
+    needs: detect-component
+    if: needs.detect-component.outputs.component == 'contracts'
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
@@ -51,8 +88,110 @@ jobs:
 
       - name: Deploy contract
         run: |
-          forge create src/Loan.sol:Loan \
+          # Deploy contract and capture output
+          export SEPOLIA_RPC_URL="${{ secrets.SEPOLIA_RPC_URL }}"
+          export PRIVATE_KEY="${{ secrets.ETHEREUM_WALLET_PRIVATE_KEY }}"
+          export VERIFIER="${{ secrets.SEPOLIA_GROTH16_VERIFIER }}"
+          export PROGRAM_VKEY="${{ secrets.PROGRAM_VKEY }}"
+          export ETHERSCAN_KEY="${{ secrets.ETHERSCAN_API_KEY }}"
+
+          DEPLOY_OUTPUT=$(forge create src/Loan.sol:Loan \
             --broadcast \
-            --rpc-url ${{ secrets.SEPOLIA_RPC_URL }} \
-            --private-key ${{ secrets.ETHEREUM_WALLET_PRIVATE_KEY }} \
-            --constructor-args ${{ secrets.SEPOLIA_GROTH16_VERIFIER }} ${{ secrets.PROGRAM_VKEY }}
+            --rpc-url "$SEPOLIA_RPC_URL" \
+            --private-key "$PRIVATE_KEY" \
+            --constructor-args "$VERIFIER" "$PROGRAM_VKEY" \
+            --verify \
+            --verifier etherscan \
+            --etherscan-api-key "$ETHERSCAN_KEY")
+
+          echo "Deploy output:"
+          echo "$DEPLOY_OUTPUT"
+
+          # Extract contract address and transaction hash
+          CONTRACT_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep "Deployed to:" | cut -d' ' -f3)
+          TX_HASH=$(echo "$DEPLOY_OUTPUT" | grep "Transaction hash:" | cut -d' ' -f3)
+
+          if [ -z "$CONTRACT_ADDRESS" ]; then
+            echo "Failed to extract contract address"
+            exit 1
+          fi
+
+          echo "Contract deployed to: $CONTRACT_ADDRESS"
+          echo "Transaction hash: $TX_HASH"
+
+          # Export for use in subsequent steps
+          echo "CONTRACT_ADDRESS=$CONTRACT_ADDRESS" >> $GITHUB_ENV
+          echo "TX_HASH=$TX_HASH" >> $GITHUB_ENV
+
+      - name: Create deployment record
+        run: |
+          # Create deployment record
+          mkdir -p deployments
+          cat > deployments/contracts-${GITHUB_REF#refs/tags/}.json << EOF
+          {
+            "contractAddress": "$CONTRACT_ADDRESS",
+            "deploymentTx": "$TX_HASH",
+            "blockNumber": "$(cast block-number --rpc-url ${{ secrets.SEPOLIA_RPC_URL }})",
+            "network": "sepolia",
+            "timestamp": "$(date -Iseconds)",
+            "tag": "${GITHUB_REF#refs/tags/}",
+            "commit": "$GITHUB_SHA",
+            "verifier": "${{ secrets.SEPOLIA_GROTH16_VERIFIER }}",
+            "programVKey": "${{ secrets.PROGRAM_VKEY }}"
+          }
+          EOF
+
+      - name: Commit deployment record
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add deployments/
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add deployment record for ${GITHUB_REF#refs/tags/}
+
+          Contract: $CONTRACT_ADDRESS
+          Transaction: $TX_HASH
+          Network: Sepolia"
+
+            # Push the deployment record
+            git push
+          fi
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment..."
+          # Wait a bit for Etherscan verification
+          sleep 30
+
+          # Check if contract is verified on Etherscan
+          export ETHERSCAN_KEY="${{ secrets.ETHERSCAN_API_KEY }}"
+          VERIFICATION_STATUS=$(curl -s "https://api-sepolia.etherscan.io/api?module=contract&action=getabi&address=$CONTRACT_ADDRESS&apikey=$ETHERSCAN_KEY" | jq -r '.status')
+
+          if [ "$VERIFICATION_STATUS" = "1" ]; then
+            echo "✅ Contract verified on Etherscan"
+          else
+            echo "⚠️  Contract verification pending on Etherscan"
+          fi
+
+      - name: Create deployment summary
+        run: |
+          {
+            echo "## 🚀 Contract Deployment Summary"
+            echo ""
+            echo "**Tag:** ${GITHUB_REF#refs/tags/}"
+            echo "**Contract Address:** \`$CONTRACT_ADDRESS\`"
+            echo "**Transaction:** \`$TX_HASH\`"
+            echo "**Network:** Sepolia"
+            echo "**Block:** $(cast block-number --rpc-url ${{ secrets.SEPOLIA_RPC_URL }})"
+            echo "**Commit:** \`$GITHUB_SHA\`"
+            echo ""
+            echo "### Next Steps:"
+            echo "1. Test the deployed contract"
+            if [[ $GITHUB_REF == refs/tags/contracts-v*-rc* ]]; then
+              echo "2. If successful, create final version tag: \`git tag contracts-${GITHUB_REF#refs/tags/contracts-v}\`"
+              echo "3. Push final tag: \`git push origin contracts-${GITHUB_REF#refs/tags/contracts-v}\`"
+            fi
+          } >> $GITHUB_STEP_SUMMARY
