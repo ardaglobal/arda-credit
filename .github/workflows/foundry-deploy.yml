@@ -127,7 +127,7 @@ jobs:
         run: |
           # Create deployment record
           mkdir -p deployments
-          cat > deployments/contracts-${GITHUB_REF#refs/tags/}.json << EOF
+          cat > deployments/${{ needs.detect-component.outputs.version }}.json << EOF
           {
             "contractAddress": "$CONTRACT_ADDRESS",
             "deploymentTx": "$TX_HASH",
@@ -141,24 +141,36 @@ jobs:
           }
           EOF
 
-      - name: Commit deployment record
-        run: |
-          git config --local user.name "github-actions[bot]"
-          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Create Pull Request with deployment record
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            Add deployment record for ${GITHUB_REF#refs/tags/}
 
-          git add deployments/
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Add deployment record for ${GITHUB_REF#refs/tags/}
+            Contract: ${{ env.CONTRACT_ADDRESS }}
+            Transaction: ${{ env.TX_HASH }}
+            Network: Sepolia
+          title: "Deploy contract ${{ env.CONTRACT_ADDRESS }} (${{ needs.detect-component.outputs.version }})"
+          body: |
+            ## 🚀 Contract Deployment
 
-          Contract: $CONTRACT_ADDRESS
-          Transaction: $TX_HASH
-          Network: Sepolia"
+            **Tag:** ${GITHUB_REF#refs/tags/}
+            **Contract Address:** `${{ env.CONTRACT_ADDRESS }}`
+            **Transaction:** `${{ env.TX_HASH }}`
+            **Network:** Sepolia
+            **Commit:** `${GITHUB_SHA}`
 
-            # Push the deployment record
-            git push
-          fi
+            ### Files Changed:
+            - `contracts/deployments/${{ needs.detect-component.outputs.version }}.json` - Deployment record
+
+            ### Next Steps:
+            1. Review the deployment record
+            2. Test the deployed contract if needed
+            3. Merge this PR to add the deployment record to the repository
+          branch: deploy/${{ needs.detect-component.outputs.version }}
+          delete-branch: true
+          draft: false
 
       - name: Verify deployment
         run: |
