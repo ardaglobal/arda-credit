@@ -53,6 +53,8 @@ pub use db::{
     // CCR Domain functions
     create_identity,
     create_identity_with_password,
+    // Investor profile functions
+    create_investor_profile,
     // Liquidity pool functions
     create_liquidity_pool,
     create_loan,
@@ -80,6 +82,8 @@ pub use db::{
     get_identity_by_email,
     get_identity_by_id,
     get_identity_by_reset_token,
+    get_investor_profile_by_user_id,
+    get_investor_profile_with_identity,
     get_invite_code_info,
     get_kyc_statistics,
     get_liquidity_pool_by_id,
@@ -126,6 +130,7 @@ pub use db::{
     update_deposit_status,
     update_deposit_status_tx,
     update_identity_profile,
+    update_investor_profile,
     update_kyc_status,
     update_last_login,
     update_liquidity_pool_status,
@@ -151,11 +156,15 @@ pub use db::{
     ContractPublicData,
     ContractSubmissionData,
     CounterState,
+    // Investor profile types
+    CreateInvestorProfileRequest,
     CreateLiquidityPoolRequest,
     // CCR Domain types
     Identity,
     IncomingTransaction,
+    InvestorProfile,
     InviteCodeInfo,
+    KycInvestorType,
     KycStatistics,
     LiquidityPool,
     LiquidityPoolAudit,
@@ -167,6 +176,7 @@ pub use db::{
 
     RegisterResult,
     StateSnapshot,
+    UpdateInvestorProfileRequest,
     UsdcDeposit,
     UsdcWithdrawal,
     UserDepositBalance,

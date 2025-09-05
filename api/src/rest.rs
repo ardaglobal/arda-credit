@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
     routing::{delete, get, post, put},
     Router,
@@ -21,17 +21,19 @@ use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
-    create_liquidity_pool, create_loan, find_matching_liquidity_pools, generate_invite_code,
-    get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
-    get_deposit_by_tx_hash, get_deposits_by_user_address, get_identity_by_email,
-    get_identity_by_id, get_invite_code_info, get_kyc_statistics, get_liquidity_pool_by_id,
+    create_investor_profile, create_liquidity_pool, create_loan, find_matching_liquidity_pools,
+    generate_invite_code, get_all_batches, get_batch_by_id, get_contract_submission_data,
+    get_current_state, get_deposit_by_tx_hash, get_deposits_by_user_address, get_identity_by_email,
+    get_identity_by_id, get_investor_profile_by_user_id, get_investor_profile_with_identity,
+    get_invite_code_info, get_kyc_statistics, get_liquidity_pool_by_id,
     get_liquidity_pools_by_investor, get_loan_by_id, get_pending_transactions,
     get_user_balance_by_address, get_user_balance_by_id, list_loans, list_pending_kyc_applications,
     register_or_reregister_user, store_ads_state_commit, submit_kyc_data, submit_transaction,
-    update_batch_proof, update_identity_profile, update_kyc_status, update_last_login,
-    update_liquidity_pool_status, update_loan, use_invite_code, AuditEvent,
-    CreateLiquidityPoolRequest, Identity, IndexedMerkleTreeADS, LoanInclusionProof,
-    LoanLifecycleSummary, PoolMatchingCriteria, RegisterResult,
+    update_batch_proof, update_identity_profile, update_investor_profile, update_kyc_status,
+    update_last_login, update_liquidity_pool_status, update_loan, use_invite_code, AuditEvent,
+    CreateInvestorProfileRequest, CreateLiquidityPoolRequest, Identity, IndexedMerkleTreeADS,
+    InvestorProfile, LoanInclusionProof, LoanLifecycleSummary, PoolMatchingCriteria,
+    RegisterResult, UpdateInvestorProfileRequest as DbUpdateInvestorProfileRequest,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -423,6 +425,68 @@ pub struct RegisterUserResponse {
     pub created_at: DateTime<Utc>,
 }
 
+/// Request to register a new investor with profile
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterInvestorRequest {
+    #[schema(example = "investor@example.com")]
+    pub email: String,
+    #[schema(example = "SecureP@ssw0rd123")]
+    pub password: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub jurisdiction: Option<String>, // Optional, defaults to "US"
+    pub accredited_investor: Option<bool>, // Optional, defaults to false
+    #[schema(value_type = Option<String>, example = "100000.50")]
+    pub investment_capacity: Option<rust_decimal::Decimal>, // Optional max investment
+    pub regulatory_jurisdiction: Option<String>, // Optional, defaults to "US"
+    #[schema(example = "ABC123DEF456")]
+    pub invite_code: Option<String>, // Optional invite code for registration
+}
+
+/// Response from investor registration
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterInvestorResponse {
+    pub user_id: String, // UUID as string
+    pub user_type: UserType,
+    pub kyc_status: String,
+    pub created_at: DateTime<Utc>,
+    pub profile_id: String, // UUID as string of investor profile
+    pub accredited_investor: bool,
+    pub regulatory_jurisdiction: String,
+}
+
+/// Investor profile response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct InvestorProfileResponse {
+    pub profile_id: String,
+    pub user_id: String,
+    pub email: String,
+    pub user_type: UserType,
+    pub kyc_status: String,
+    pub kyc_submitted_at: Option<DateTime<Utc>>,
+    pub kyc_verified_at: Option<DateTime<Utc>>,
+    pub kyc_investor_type: Option<String>,
+    pub accredited_investor: bool,
+    #[schema(value_type = Option<String>, example = "100000.50")]
+    pub investment_capacity: Option<rust_decimal::Decimal>,
+    pub regulatory_jurisdiction: String,
+    pub profile_created_at: DateTime<Utc>,
+    pub profile_updated_at: DateTime<Utc>,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub jurisdiction: Option<String>,
+    pub wallet_address: Option<String>,
+}
+
+/// Request to update investor profile
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateInvestorProfileRequest {
+    pub accredited_investor: Option<bool>,
+    #[schema(value_type = Option<String>, example = "100000.50")]
+    pub investment_capacity: Option<rust_decimal::Decimal>,
+    pub regulatory_jurisdiction: Option<String>,
+}
+
 /// User details response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserDetailsResponse {
@@ -455,6 +519,7 @@ pub struct KycData {
     pub document_type: String,
     pub document_hash: String,
     pub jurisdiction: Option<String>,
+    pub kyc_investor_type: Option<String>, // QIB, QP, AI - required for investors
 }
 
 /// KYC submission response
@@ -992,6 +1057,13 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::USER_BY_ID, delete(delete_user_endpoint))
         .route(paths::USER_KYC, post(submit_kyc_endpoint))
         .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
+        // Investor Management endpoints
+        .route(paths::REGISTER_INVESTOR, post(register_investor_endpoint))
+        .route(paths::INVESTOR_PROFILE, get(get_investor_profile_endpoint))
+        .route(
+            paths::INVESTOR_PROFILE,
+            put(update_investor_profile_endpoint),
+        )
         // User Balance & Transaction endpoints
         .route(
             paths::USER_BALANCE_BY_ADDRESS,
@@ -2545,6 +2617,7 @@ async fn submit_kyc_endpoint(
         &request.kyc_data.document_type,
         &request.kyc_data.document_hash,
         request.kyc_data.jurisdiction.as_deref(),
+        request.kyc_data.kyc_investor_type.as_deref(),
     )
     .await
     {
@@ -3008,6 +3081,297 @@ async fn delete_user_endpoint(
 
     info!("✅ API: User soft deleted successfully");
     Ok(Json(response))
+}
+
+// ---- INVESTOR MANAGEMENT ENDPOINTS ----
+
+/// Register a new investor with profile
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/register/investor",
+    request_body = RegisterInvestorRequest,
+    responses(
+        (status = 201, description = "Investor registered successfully", body = RegisterInvestorResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 409, description = "Email already exists"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Investors"
+)]
+#[instrument(skip(state), level = "info")]
+async fn register_investor_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<RegisterInvestorRequest>,
+) -> Result<Json<RegisterInvestorResponse>, (StatusCode, String)> {
+    info!("🏗️ API: Registering investor: {}", request.email);
+
+    // Register the user first as investor
+    match register_or_reregister_user(&state.pool, "investor", &request.email, &request.password)
+        .await
+    {
+        Ok(result) => {
+            let identity = match result {
+                RegisterResult::Created(identity) => identity,
+                RegisterResult::Reregistered(identity) => identity,
+                RegisterResult::AlreadyExists => {
+                    return Err((StatusCode::CONFLICT, "Email already exists".to_string()));
+                }
+            };
+
+            // Update additional profile fields if provided
+            if request.first_name.is_some()
+                || request.last_name.is_some()
+                || request.jurisdiction.is_some()
+            {
+                let update_request = UpdateUserRequest {
+                    email: None,
+                    user_type: None,
+                    first_name: request.first_name.clone(),
+                    last_name: request.last_name.clone(),
+                    jurisdiction: request.jurisdiction.clone(),
+                    wallet_address: None,
+                };
+
+                let user_type_str = update_request.user_type.as_ref().map(|t| t.to_string());
+                if let Err(e) = update_identity_profile(
+                    &state.pool,
+                    identity.id,
+                    update_request.email.as_deref(),
+                    user_type_str.as_deref(),
+                    update_request.jurisdiction.as_deref(),
+                    update_request.first_name.as_deref(),
+                    update_request.last_name.as_deref(),
+                    update_request.wallet_address.as_deref(),
+                )
+                .await
+                {
+                    warn!("Failed to update investor profile fields: {}", e);
+                }
+            }
+
+            // Create investor profile
+            let profile_request = CreateInvestorProfileRequest {
+                accredited_investor: request.accredited_investor,
+                investment_capacity: request.investment_capacity,
+                regulatory_jurisdiction: request.regulatory_jurisdiction,
+            };
+
+            match create_investor_profile(&state.pool, identity.id, &profile_request).await {
+                Ok(profile) => {
+                    info!(
+                        "✅ API: Investor {} registered with profile {}",
+                        identity.id, profile.id
+                    );
+
+                    Ok(Json(RegisterInvestorResponse {
+                        user_id: identity.id.to_string(),
+                        user_type: UserType::Investor,
+                        kyc_status: identity.kyc_status,
+                        created_at: identity.created_at,
+                        profile_id: profile.id.to_string(),
+                        accredited_investor: profile.accredited_investor,
+                        regulatory_jurisdiction: profile.regulatory_jurisdiction,
+                    }))
+                }
+                Err(e) => {
+                    error!("❌ API: Failed to create investor profile: {}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to create investor profile".to_string(),
+                    ))
+                }
+            }
+        }
+        Err(e) => {
+            error!("❌ API: Failed to register investor: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to register investor".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get investor profile
+#[utoipa::path(
+    get,
+    path = "/api/v1/investor/profile",
+    responses(
+        (status = 200, description = "Investor profile retrieved successfully", body = InvestorProfileResponse),
+        (status = 404, description = "Investor profile not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Investors",
+    security(
+        ("jwt_auth" = [])
+    )
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_investor_profile_endpoint(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<InvestorProfileResponse>, (StatusCode, String)> {
+    // Extract user ID from X-User-ID header (temporary until JWT middleware is implemented)
+    let user_id_str = headers
+        .get("X-User-ID")
+        .ok_or((
+            StatusCode::UNAUTHORIZED,
+            "Missing user ID header".to_string(),
+        ))?
+        .to_str()
+        .map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid user ID header".to_string(),
+            )
+        })?;
+
+    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid user ID format".to_string(),
+        )
+    })?;
+
+    info!("🔍 API: Getting investor profile for user: {}", user_id);
+
+    match get_investor_profile_with_identity(&state.pool, user_id).await {
+        Ok(Some((profile, identity))) => Ok(Json(InvestorProfileResponse {
+            profile_id: profile.id.to_string(),
+            user_id: profile.user_id.to_string(),
+            email: identity.email,
+            user_type: UserType::Investor,
+            kyc_status: identity.kyc_status,
+            kyc_submitted_at: identity.kyc_submitted_at,
+            kyc_verified_at: identity.kyc_verified_at,
+            kyc_investor_type: identity.kyc_investor_type.map(|t| t.to_string()),
+            accredited_investor: profile.accredited_investor,
+            investment_capacity: profile.investment_capacity,
+            regulatory_jurisdiction: profile.regulatory_jurisdiction,
+            profile_created_at: profile.created_at,
+            profile_updated_at: profile.updated_at,
+            first_name: identity.first_name,
+            last_name: identity.last_name,
+            jurisdiction: identity.jurisdiction,
+            wallet_address: identity.wallet_address,
+        })),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            "Investor profile not found".to_string(),
+        )),
+        Err(e) => {
+            error!("❌ API: Failed to get investor profile: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get investor profile".to_string(),
+            ))
+        }
+    }
+}
+
+/// Update investor profile
+#[utoipa::path(
+    put,
+    path = "/api/v1/investor/profile",
+    request_body = UpdateInvestorProfileRequest,
+    responses(
+        (status = 200, description = "Investor profile updated successfully", body = InvestorProfileResponse),
+        (status = 404, description = "Investor profile not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Investors",
+    security(
+        ("jwt_auth" = [])
+    )
+)]
+#[instrument(skip(state), level = "info")]
+async fn update_investor_profile_endpoint(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(request): Json<UpdateInvestorProfileRequest>,
+) -> Result<Json<InvestorProfileResponse>, (StatusCode, String)> {
+    // Extract user ID from X-User-ID header (temporary until JWT middleware is implemented)
+    let user_id_str = headers
+        .get("X-User-ID")
+        .ok_or((
+            StatusCode::UNAUTHORIZED,
+            "Missing user ID header".to_string(),
+        ))?
+        .to_str()
+        .map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid user ID header".to_string(),
+            )
+        })?;
+
+    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid user ID format".to_string(),
+        )
+    })?;
+
+    info!("📝 API: Updating investor profile for user: {}", user_id);
+
+    // Convert to database update request
+    let db_request = DbUpdateInvestorProfileRequest {
+        accredited_investor: request.accredited_investor,
+        investment_capacity: request.investment_capacity,
+        regulatory_jurisdiction: request.regulatory_jurisdiction,
+    };
+
+    match update_investor_profile(&state.pool, user_id, &db_request).await {
+        Ok(profile) => {
+            // Get the updated profile with identity info for full response
+            match get_investor_profile_with_identity(&state.pool, user_id).await {
+                Ok(Some((_, identity))) => Ok(Json(InvestorProfileResponse {
+                    profile_id: profile.id.to_string(),
+                    user_id: profile.user_id.to_string(),
+                    email: identity.email,
+                    user_type: UserType::Investor,
+                    kyc_status: identity.kyc_status,
+                    kyc_submitted_at: identity.kyc_submitted_at,
+                    kyc_verified_at: identity.kyc_verified_at,
+                    kyc_investor_type: identity.kyc_investor_type.map(|t| t.to_string()),
+                    accredited_investor: profile.accredited_investor,
+                    investment_capacity: profile.investment_capacity,
+                    regulatory_jurisdiction: profile.regulatory_jurisdiction,
+                    profile_created_at: profile.created_at,
+                    profile_updated_at: profile.updated_at,
+                    first_name: identity.first_name,
+                    last_name: identity.last_name,
+                    jurisdiction: identity.jurisdiction,
+                    wallet_address: identity.wallet_address,
+                })),
+                Ok(None) => Err((
+                    StatusCode::NOT_FOUND,
+                    "Investor profile not found".to_string(),
+                )),
+                Err(e) => {
+                    error!("❌ API: Failed to get updated investor profile: {}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to get updated investor profile".to_string(),
+                    ))
+                }
+            }
+        }
+        Err(e) => {
+            if e.to_string().contains("not found") {
+                Err((
+                    StatusCode::NOT_FOUND,
+                    "Investor profile not found".to_string(),
+                ))
+            } else {
+                error!("❌ API: Failed to update investor profile: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to update investor profile".to_string(),
+                ))
+            }
+        }
+    }
 }
 
 // ---- DEPOSIT & BALANCE ENDPOINTS ----
@@ -4523,6 +4887,11 @@ async fn get_pending_withdrawals_endpoint(
         get_kyc_statistics_endpoint,
         bulk_kyc_approval_endpoint,
 
+        // Investor Management endpoints
+        register_investor_endpoint,
+        get_investor_profile_endpoint,
+        update_investor_profile_endpoint,
+
         // Loan Management endpoints
         create_loan_endpoint,
         list_loans_endpoint,
@@ -4587,6 +4956,12 @@ async fn get_pending_withdrawals_endpoint(
             DeleteUserResponse,
             ListIdentitiesQuery,
             ListIdentitiesResponse,
+
+            // Investor Management
+            RegisterInvestorRequest,
+            RegisterInvestorResponse,
+            InvestorProfileResponse,
+            UpdateInvestorProfileRequest,
 
             // Loan Management
             CreateLoanRequest,

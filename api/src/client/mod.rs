@@ -250,6 +250,16 @@ impl BatchApiClient {
         }
     }
 
+    /// Get the base URL
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// Get the HTTP client
+    pub fn http_client(&self) -> &Client {
+        &self.client
+    }
+
     /// Submit a new transaction
     pub async fn submit_transaction(
         &self,
@@ -472,13 +482,15 @@ impl BatchApiClient {
         document_type: &str,
         document_hash: &str,
         jurisdiction: Option<&str>,
+        kyc_investor_type: Option<&str>,
     ) -> Result<serde_json::Value, ApiClientError> {
         let url = format!("{}{}", self.base_url, paths::user_kyc_path(user_id));
         let request = serde_json::json!({
             "kyc_data": {
                 "document_type": document_type,
                 "document_hash": document_hash,
-                "jurisdiction": jurisdiction
+                "jurisdiction": jurisdiction,
+                "kyc_investor_type": kyc_investor_type
             }
         });
 
@@ -593,6 +605,97 @@ impl BatchApiClient {
         });
 
         let response = self.client.put(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Register a new investor
+    pub async fn register_investor(
+        &self,
+        email: &str,
+        password: &str,
+        first_name: Option<&str>,
+        last_name: Option<&str>,
+        jurisdiction: Option<&str>,
+        accredited_investor: Option<bool>,
+        investment_capacity: Option<f64>,
+        regulatory_jurisdiction: Option<&str>,
+        invite_code: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}/api/v1/auth/register/investor", self.base_url);
+        let mut request = serde_json::json!({
+            "email": email,
+            "password": password
+        });
+
+        if let Some(fn_val) = first_name {
+            request["first_name"] = serde_json::Value::String(fn_val.to_string());
+        }
+        if let Some(ln_val) = last_name {
+            request["last_name"] = serde_json::Value::String(ln_val.to_string());
+        }
+        if let Some(j_val) = jurisdiction {
+            request["jurisdiction"] = serde_json::Value::String(j_val.to_string());
+        }
+        if let Some(ai_val) = accredited_investor {
+            request["accredited_investor"] = serde_json::Value::Bool(ai_val);
+        }
+        if let Some(ic_val) = investment_capacity {
+            request["investment_capacity"] = serde_json::json!(ic_val);
+        }
+        if let Some(rj_val) = regulatory_jurisdiction {
+            request["regulatory_jurisdiction"] = serde_json::Value::String(rj_val.to_string());
+        }
+        if let Some(ic_val) = invite_code {
+            request["invite_code"] = serde_json::Value::String(ic_val.to_string());
+        }
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get investor profile
+    pub async fn get_investor_profile(
+        &self,
+        user_id: &str,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}/api/v1/investor/profile", self.base_url);
+        let response = self
+            .client
+            .get(&url)
+            .header("X-User-ID", user_id)
+            .send()
+            .await?;
+        self.handle_response(response).await
+    }
+
+    /// Update investor profile
+    pub async fn update_investor_profile(
+        &self,
+        user_id: &str,
+        accredited_investor: Option<bool>,
+        investment_capacity: Option<f64>,
+        regulatory_jurisdiction: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}/api/v1/investor/profile", self.base_url);
+        let mut request = serde_json::json!({});
+
+        if let Some(ai_val) = accredited_investor {
+            request["accredited_investor"] = serde_json::Value::Bool(ai_val);
+        }
+        if let Some(ic_val) = investment_capacity {
+            request["investment_capacity"] = serde_json::json!(ic_val);
+        }
+        if let Some(rj_val) = regulatory_jurisdiction {
+            request["regulatory_jurisdiction"] = serde_json::Value::String(rj_val.to_string());
+        }
+
+        let response = self
+            .client
+            .put(&url)
+            .header("X-User-ID", user_id)
+            .json(&request)
+            .send()
+            .await?;
         self.handle_response(response).await
     }
 

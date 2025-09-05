@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,\n               created_at as \"created_at!\", updated_at as \"updated_at!\",\n               password_hash, last_login_at, email_verified, email_verification_token,\n               password_reset_token, password_reset_expires_at, wallet_address,\n               first_name, last_name, jurisdiction\n        FROM identities\n        WHERE kyc_status = 'pending'\n        ORDER BY kyc_submitted_at ASC\n        LIMIT $1 OFFSET $2\n        ",
+  "query": "\n        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as \"kyc_investor_type?: KycInvestorType\",\n               created_at as \"created_at!\", updated_at as \"updated_at!\",\n               password_hash, last_login_at, email_verified, email_verification_token,\n               password_reset_token, password_reset_expires_at, wallet_address,\n               first_name, last_name, jurisdiction\n        FROM identities\n        ORDER BY created_at DESC\n        LIMIT $1 OFFSET $2\n        ",
   "describe": {
     "columns": [
       {
@@ -35,61 +35,77 @@
       },
       {
         "ordinal": 6,
+        "name": "kyc_investor_type?: KycInvestorType",
+        "type_info": {
+          "Custom": {
+            "name": "kyc_investor_type",
+            "kind": {
+              "Enum": [
+                "QIB",
+                "QP",
+                "AI"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 7,
         "name": "created_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "updated_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "password_hash",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "last_login_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 10,
+        "ordinal": 11,
         "name": "email_verified",
         "type_info": "Bool"
       },
       {
-        "ordinal": 11,
+        "ordinal": 12,
         "name": "email_verification_token",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 12,
+        "ordinal": 13,
         "name": "password_reset_token",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "password_reset_expires_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 14,
+        "ordinal": 15,
         "name": "wallet_address",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 15,
+        "ordinal": 16,
         "name": "first_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 16,
+        "ordinal": 17,
         "name": "last_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 17,
+        "ordinal": 18,
         "name": "jurisdiction",
         "type_info": "Varchar"
       }
@@ -118,8 +134,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "ea5c37b190655215c07b77f63d385d8da3323dce508955772886d9a48a3bc712"
+  "hash": "c0bc30ee5114269537a5366239b618a3b7ffd2ec80fd54d9221802dfc608f705"
 }

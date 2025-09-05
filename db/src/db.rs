@@ -90,6 +90,7 @@ pub struct Identity {
     pub kyc_status: String, // not_submitted, pending, approved, rejected
     pub kyc_submitted_at: Option<DateTime<Utc>>,
     pub kyc_verified_at: Option<DateTime<Utc>>,
+    pub kyc_investor_type: Option<KycInvestorType>, // QIB, QP, AI - only for investors
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     // Authentication fields
@@ -105,6 +106,66 @@ pub struct Identity {
     pub jurisdiction: Option<String>,
     // Wallet integration
     pub wallet_address: Option<String>,
+}
+
+/// Investor profile for enhanced investor account functionality
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct InvestorProfile {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub accredited_investor: bool,
+    pub investment_capacity: Option<rust_decimal::Decimal>, // maximum investment amount in USDC
+    pub regulatory_jurisdiction: String,                    // e.g., 'US', 'EU', 'UK'
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// KYC investor type enumeration
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "kyc_investor_type", rename_all = "UPPERCASE")]
+pub enum KycInvestorType {
+    QIB, // Qualified Institutional Buyer
+    QP,  // Qualified Purchaser
+    AI,  // Accredited Investor
+}
+
+impl std::fmt::Display for KycInvestorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::QIB => write!(f, "QIB"),
+            Self::QP => write!(f, "QP"),
+            Self::AI => write!(f, "AI"),
+        }
+    }
+}
+
+impl std::str::FromStr for KycInvestorType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "QIB" => Ok(Self::QIB),
+            "QP" => Ok(Self::QP),
+            "AI" => Ok(Self::AI),
+            _ => Err(format!("Invalid KYC investor type: {}", s)),
+        }
+    }
+}
+
+/// Request to create investor profile
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateInvestorProfileRequest {
+    pub accredited_investor: Option<bool>,
+    pub investment_capacity: Option<rust_decimal::Decimal>,
+    pub regulatory_jurisdiction: Option<String>,
+}
+
+/// Request to update investor profile
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateInvestorProfileRequest {
+    pub accredited_investor: Option<bool>,
+    pub investment_capacity: Option<rust_decimal::Decimal>,
+    pub regulatory_jurisdiction: Option<String>,
 }
 
 /// Loan record with borrower/lender relationship
@@ -945,6 +1006,7 @@ pub async fn create_identity(
         kyc_status: "not_submitted".to_string(),
         kyc_submitted_at: None,
         kyc_verified_at: None,
+        kyc_investor_type: None,
         created_at: now,
         updated_at: now,
         password_hash: None,
@@ -994,6 +1056,7 @@ pub async fn create_identity_with_password(
         kyc_status: "not_submitted".to_string(),
         kyc_submitted_at: None,
         kyc_verified_at: None,
+        kyc_investor_type: None,
         created_at: now,
         updated_at: now,
         password_hash: Some(password_hash.to_string()),
@@ -1059,7 +1122,7 @@ pub async fn register_or_reregister_user(
             // Return the existing identity (now undeleted)
             let identity = sqlx::query!(
                 r#"
-                SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+                SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                        created_at as "created_at!", updated_at as "updated_at!",
                        password_hash, last_login_at, email_verified, email_verification_token,
                        password_reset_token, password_reset_expires_at, wallet_address,
@@ -1079,6 +1142,7 @@ pub async fn register_or_reregister_user(
                 kyc_status: identity.kyc_status,
                 kyc_submitted_at: identity.kyc_submitted_at,
                 kyc_verified_at: identity.kyc_verified_at,
+                kyc_investor_type: identity.kyc_investor_type,
                 created_at: identity.created_at,
                 updated_at: identity.updated_at,
                 password_hash: identity.password_hash,
@@ -1126,6 +1190,7 @@ pub async fn register_or_reregister_user(
                 kyc_status: "not_submitted".to_string(),
                 kyc_submitted_at: None,
                 kyc_verified_at: None,
+                kyc_investor_type: None,
                 created_at: now,
                 updated_at: now,
                 password_hash: Some(password_hash.to_string()),
@@ -1160,7 +1225,7 @@ pub async fn get_identity_by_id(
 ) -> Result<Option<Identity>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
                password_hash, last_login_at, email_verified, email_verification_token,
                password_reset_token, password_reset_expires_at, wallet_address,
@@ -1180,6 +1245,7 @@ pub async fn get_identity_by_id(
         kyc_status: row.kyc_status,
         kyc_submitted_at: row.kyc_submitted_at,
         kyc_verified_at: row.kyc_verified_at,
+        kyc_investor_type: row.kyc_investor_type,
         created_at: row.created_at,
         updated_at: row.updated_at,
         password_hash: row.password_hash,
@@ -1204,7 +1270,7 @@ pub async fn get_identity_by_email(
 ) -> Result<Option<Identity>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
                password_hash, last_login_at, email_verified, email_verification_token,
                password_reset_token, password_reset_expires_at, wallet_address,
@@ -1224,6 +1290,7 @@ pub async fn get_identity_by_email(
         kyc_status: row.kyc_status,
         kyc_submitted_at: row.kyc_submitted_at,
         kyc_verified_at: row.kyc_verified_at,
+        kyc_investor_type: row.kyc_investor_type,
         created_at: row.created_at,
         updated_at: row.updated_at,
         password_hash: row.password_hash,
@@ -1251,7 +1318,7 @@ pub async fn list_identities(
     // Simplified version - can add filtering later
     let rows = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
                password_hash, last_login_at, email_verified, email_verification_token,
                password_reset_token, password_reset_expires_at, wallet_address,
@@ -1275,6 +1342,7 @@ pub async fn list_identities(
             kyc_status: row.kyc_status,
             kyc_submitted_at: row.kyc_submitted_at,
             kyc_verified_at: row.kyc_verified_at,
+            kyc_investor_type: row.kyc_investor_type,
             created_at: row.created_at,
             updated_at: row.updated_at,
             password_hash: row.password_hash,
@@ -1300,6 +1368,7 @@ pub async fn submit_kyc_data(
     _document_type: &str,
     _document_hash: &str,
     _jurisdiction: Option<&str>,
+    kyc_investor_type: Option<&str>,
 ) -> Result<Identity, sqlx::Error> {
     let now = Utc::now();
 
@@ -1317,11 +1386,13 @@ pub async fn submit_kyc_data(
         SET kyc_status = 'approved',
             kyc_submitted_at = $2,
             kyc_verified_at = $2,
+            kyc_investor_type = $3::kyc_investor_type,
             updated_at = $2
         WHERE id = $1
         "#,
         identity_id,
-        now
+        now,
+        kyc_investor_type as _
     )
     .execute(pool)
     .await?;
@@ -1340,7 +1411,7 @@ pub async fn list_pending_kyc_applications(
 ) -> Result<Vec<Identity>, sqlx::Error> {
     let rows = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
                password_hash, last_login_at, email_verified, email_verification_token,
                password_reset_token, password_reset_expires_at, wallet_address,
@@ -1365,6 +1436,7 @@ pub async fn list_pending_kyc_applications(
             kyc_status: row.kyc_status,
             kyc_submitted_at: row.kyc_submitted_at,
             kyc_verified_at: row.kyc_verified_at,
+            kyc_investor_type: row.kyc_investor_type,
             created_at: row.created_at,
             updated_at: row.updated_at,
             password_hash: row.password_hash,
@@ -2062,7 +2134,7 @@ pub async fn get_identity_by_reset_token(
 
     let row = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at,
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
                password_hash, last_login_at, email_verified, email_verification_token,
                password_reset_token, password_reset_expires_at, wallet_address,
@@ -2084,6 +2156,7 @@ pub async fn get_identity_by_reset_token(
         kyc_status: row.kyc_status,
         kyc_submitted_at: row.kyc_submitted_at,
         kyc_verified_at: row.kyc_verified_at,
+        kyc_investor_type: row.kyc_investor_type,
         created_at: row.created_at,
         updated_at: row.updated_at,
         password_hash: row.password_hash,
@@ -3355,4 +3428,190 @@ pub async fn update_liquidity_pool_status(
     .await?;
 
     Ok(liquidity_pool)
+}
+
+// ============================================================================
+// INVESTOR PROFILE FUNCTIONS
+// ============================================================================
+
+/// Create investor profile for a user
+pub async fn create_investor_profile(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    request: &CreateInvestorProfileRequest,
+) -> Result<InvestorProfile, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+    let now = chrono::Utc::now();
+    let accredited = request.accredited_investor.unwrap_or(false);
+    let jurisdiction = request.regulatory_jurisdiction.as_deref().unwrap_or("US");
+
+    let profile = sqlx::query_as!(
+        InvestorProfile,
+        r#"
+        INSERT INTO investor_profiles (id, user_id, accredited_investor, investment_capacity, regulatory_jurisdiction, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $6)
+        RETURNING 
+            id, user_id, accredited_investor, investment_capacity, regulatory_jurisdiction,
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        "#,
+        id,
+        user_id,
+        accredited,
+        request.investment_capacity,
+        jurisdiction,
+        now
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(profile)
+}
+
+/// Get investor profile by user ID
+pub async fn get_investor_profile_by_user_id(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+) -> Result<Option<InvestorProfile>, sqlx::Error> {
+    let profile = sqlx::query_as!(
+        InvestorProfile,
+        r#"
+        SELECT 
+            id, user_id, accredited_investor, investment_capacity, regulatory_jurisdiction,
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        FROM investor_profiles
+        WHERE user_id = $1
+        "#,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(profile)
+}
+
+/// Update investor profile
+pub async fn update_investor_profile(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    request: &UpdateInvestorProfileRequest,
+) -> Result<InvestorProfile, sqlx::Error> {
+    let now = chrono::Utc::now();
+
+    // Build dynamic update query
+    let mut set_clauses = vec!["updated_at = $2".to_string()];
+    let mut param_count = 2;
+
+    if request.accredited_investor.is_some() {
+        param_count += 1;
+        set_clauses.push(format!("accredited_investor = ${}", param_count));
+    }
+
+    if request.investment_capacity.is_some() {
+        param_count += 1;
+        set_clauses.push(format!("investment_capacity = ${}", param_count));
+    }
+
+    if request.regulatory_jurisdiction.is_some() {
+        param_count += 1;
+        set_clauses.push(format!("regulatory_jurisdiction = ${}", param_count));
+    }
+
+    let query_str = format!(
+        r#"
+        UPDATE investor_profiles
+        SET {}
+        WHERE user_id = $1
+        RETURNING 
+            id, user_id, accredited_investor, investment_capacity, regulatory_jurisdiction,
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        "#,
+        set_clauses.join(", ")
+    );
+
+    let mut query = sqlx::query_as::<_, InvestorProfile>(&query_str)
+        .bind(user_id)
+        .bind(now);
+
+    if let Some(accredited) = request.accredited_investor {
+        query = query.bind(accredited);
+    }
+
+    if let Some(capacity) = request.investment_capacity {
+        query = query.bind(capacity);
+    }
+
+    if let Some(jurisdiction) = &request.regulatory_jurisdiction {
+        query = query.bind(jurisdiction);
+    }
+
+    let profile = query.fetch_one(pool).await?;
+    Ok(profile)
+}
+
+/// Get investor profile with identity information
+pub async fn get_investor_profile_with_identity(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+) -> Result<Option<(InvestorProfile, Identity)>, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        SELECT 
+            ip.id as profile_id, ip.user_id, ip.accredited_investor, 
+            ip.investment_capacity, ip.regulatory_jurisdiction,
+            ip.created_at as "profile_created_at!", ip.updated_at as "profile_updated_at!",
+            i.id as identity_id, i.user_type, i.email, i.kyc_status, 
+            i.kyc_submitted_at, i.kyc_verified_at, i.kyc_investor_type as "kyc_investor_type?: KycInvestorType",
+            i.created_at as "identity_created_at!", i.updated_at as "identity_updated_at!",
+            i.password_hash, i.last_login_at, i.email_verified, i.email_verification_token,
+            i.password_reset_token, i.password_reset_expires_at,
+            i.first_name, i.last_name, i.jurisdiction, i.wallet_address
+        FROM investor_profiles ip
+        JOIN identities i ON ip.user_id = i.id
+        WHERE ip.user_id = $1 AND i.deleted_at IS NULL
+        "#,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(row) = result {
+        let profile = InvestorProfile {
+            id: row.profile_id,
+            user_id: row.user_id,
+            accredited_investor: row.accredited_investor,
+            investment_capacity: row.investment_capacity,
+            regulatory_jurisdiction: row.regulatory_jurisdiction,
+            created_at: row.profile_created_at,
+            updated_at: row.profile_updated_at,
+        };
+
+        let identity = Identity {
+            id: row.identity_id,
+            user_type: row.user_type,
+            email: row.email,
+            kyc_status: row.kyc_status,
+            kyc_submitted_at: row.kyc_submitted_at,
+            kyc_verified_at: row.kyc_verified_at,
+            kyc_investor_type: row.kyc_investor_type,
+            created_at: row.identity_created_at,
+            updated_at: row.identity_updated_at,
+            password_hash: row.password_hash,
+            last_login_at: row.last_login_at,
+            email_verified: row.email_verified,
+            email_verification_token: row.email_verification_token,
+            password_reset_token: row.password_reset_token,
+            password_reset_expires_at: row.password_reset_expires_at,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            jurisdiction: row.jurisdiction,
+            wallet_address: row.wallet_address,
+        };
+
+        Ok(Some((profile, identity)))
+    } else {
+        Ok(None)
+    }
 }
