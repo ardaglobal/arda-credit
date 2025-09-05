@@ -1,0 +1,64 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            COUNT(*)::int8 as \"total_pools!\",\n            COUNT(CASE WHEN status = 'active' THEN 1 END)::int8 as \"active_pools!\",\n            COALESCE(SUM(total_deposits), 0) as \"total_liquidity_provided!\",\n            COALESCE(SUM(utilized_liquidity), 0) as \"total_utilized_liquidity!\",\n            CASE \n                WHEN SUM(total_deposits) > 0 THEN SUM(utilized_liquidity) / SUM(total_deposits)\n                ELSE 0\n            END as \"average_utilization_rate!\",\n            -- TODO: Calculate from actual loan data when available\n            0::decimal as \"total_interest_earned!\",\n            0::int8 as \"total_loans_originated!\",\n            0::decimal as \"total_loan_volume!\"\n        FROM liquidity_pools\n        WHERE investor_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_pools!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "active_pools!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_liquidity_provided!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_utilized_liquidity!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "average_utilization_rate!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "total_interest_earned!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "total_loans_originated!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 7,
+        "name": "total_loan_volume!",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "5cde67c4edd9cf84243df3553f3d3f1882e80f273ba4efa8939e86f97237bacb"
+}
