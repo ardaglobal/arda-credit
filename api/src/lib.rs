@@ -40,6 +40,8 @@ pub mod client;
 pub mod kyc_service;
 pub mod middleware;
 pub mod paths;
+pub mod pool_api;
+pub mod pool_handlers;
 pub mod rest;
 pub mod server;
 pub mod unified_batch_service;
@@ -101,16 +103,38 @@ pub use withdrawal_service::{
     WithdrawalStatusResponse, WithdrawalTransactionService,
 };
 
+pub use pool_api::{
+    ErrorResponse, InvestorDashboardResponse, InvestorMetrics, InvestorPoolSummariesResponse,
+    InvestorPoolSummary, MarketOverviewResponse, PageInfo, PlatformMetrics, PoolDetailsResponse,
+    PoolListQuery, PoolListResponse, PoolPerformanceResponse, PoolSummaryInfo,
+    PoolTransactionsResponse, PoolUtilizationResponse, StandardPoolObject, TransactionHistoryQuery,
+    UtilizationDataPoint, UtilizationHistoryQuery,
+};
+
+pub use pool_handlers::{
+    get_investor_dashboard, get_investor_pool_summaries as handler_get_investor_pool_summaries,
+    get_market_overview, get_pool_details, get_pool_performance,
+    get_pool_transactions as handler_get_pool_transactions, get_pool_utilization, list_pools,
+};
+
 // Re-export database types that the API uses
 pub use arda_credit_db::{
     create_batch,
     create_loan,
     get_all_batches,
+    get_all_liquidity_pools,
     get_batch_by_id,
     get_contract_submission_data,
     get_current_state,
+    get_investor_dashboard_metrics,
+    get_investor_pool_summaries as db_get_investor_pool_summaries,
+    get_liquidity_pool_by_id,
     get_loan_by_id,
+    get_market_overview_metrics,
     get_pending_transactions,
+    get_pool_summary,
+    get_pool_transactions as db_get_pool_transactions,
+    get_pool_utilization_history,
     // Database functions
     init_db,
     list_loans,
@@ -130,5 +154,10 @@ pub use arda_credit_db::{
     DbResult,
     // New batch processing types
     IncomingTransaction,
+    InvestorDashboardMetrics,
+    MarketOverviewMetrics,
+    PoolSummary,
+    PoolTransaction,
+    PoolUtilizationData,
     ProofBatch,
 };

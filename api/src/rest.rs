@@ -19,6 +19,10 @@ use uuid;
 use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
+use crate::pool_handlers::{
+    get_investor_dashboard, get_investor_pool_summaries, get_market_overview, get_pool_details,
+    get_pool_performance, get_pool_transactions, get_pool_utilization, list_pools,
+};
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
     create_investor_profile, create_liquidity_pool, create_loan, find_matching_liquidity_pools,
@@ -1154,14 +1158,25 @@ pub fn create_router(state: ApiState) -> Router {
             get(get_loan_lifecycle_summary_endpoint),
         )
         // ========================================================================
-        // LIQUIDITY POOL ENDPOINTS - TEMPORARILY DISABLED DUE TO AXUM VERSION CONFLICTS
+        // LIQUIDITY POOL QUERY ENDPOINTS
         // ========================================================================
-        // TODO: Re-enable after resolving axum version conflicts from twirp-rs dependency
-        // .route("/api/pool", post(create_pool_endpoint))
-        // .route("/api/pools", get(list_pools_endpoint))
-        // .route("/api/pools/:pool_id", get(get_pool_endpoint))
-        // .route("/api/pools/:pool_id/status", put(update_pool_status_endpoint))
-        // .route("/api/pools/match", post(find_matching_pools_endpoint))
+        // Pool Query Endpoints
+        .route("/api/pools", get(list_pools))
+        .route("/api/pools/:pool_id", get(get_pool_details))
+        .route("/api/pools/:pool_id/utilization", get(get_pool_utilization))
+        .route(
+            "/api/pools/:pool_id/transactions",
+            get(get_pool_transactions),
+        )
+        // Investor Query Endpoints
+        .route("/api/investor/dashboard", get(get_investor_dashboard))
+        .route(
+            "/api/investor/pools/summary",
+            get(get_investor_pool_summaries),
+        )
+        // Analytics Endpoints
+        .route("/api/analytics/market-overview", get(get_market_overview))
+        .route("/api/analytics/pool-performance", get(get_pool_performance))
         .with_state(state)
 }
 

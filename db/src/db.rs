@@ -3615,3 +3615,374 @@ pub async fn get_investor_profile_with_identity(
         Ok(None)
     }
 }
+
+// ============================================================================
+// LIQUIDITY POOL QUERY FUNCTIONS
+// ============================================================================
+
+/// Get all liquidity pools with filtering and pagination
+pub async fn get_all_liquidity_pools(
+    pool: &PgPool,
+    status_filter: Option<&str>,
+    investor_id_filter: Option<uuid::Uuid>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    order_by: Option<&str>,
+) -> Result<Vec<LiquidityPool>, sqlx::Error> {
+    let limit = limit.unwrap_or(50);
+    let offset = offset.unwrap_or(0);
+    let order_clause = match order_by {
+        Some("name") => "ORDER BY name ASC",
+        Some("created_at") => "ORDER BY created_at DESC",
+        Some("updated_at") => "ORDER BY updated_at DESC",
+        Some("total_deposits") => "ORDER BY total_deposits DESC",
+        Some("utilization") => {
+            "ORDER BY (utilized_liquidity::float / NULLIF(total_deposits::float, 0)) DESC"
+        }
+        _ => "ORDER BY created_at DESC",
+    };
+
+    let mut query = format!(
+        r#"
+        SELECT 
+            id, investor_id, name, total_deposits, available_liquidity,
+            utilized_liquidity, max_ltv_ratio, max_interest_rate,
+            repayment_period_days, status,
+            created_at, updated_at
+        FROM liquidity_pools
+        WHERE 1=1
+        "#
+    );
+
+    let mut bind_count = 0;
+
+    if status_filter.is_some() {
+        bind_count += 1;
+        query.push_str(&format!(" AND status = ${}", bind_count));
+    }
+
+    if investor_id_filter.is_some() {
+        bind_count += 1;
+        query.push_str(&format!(" AND investor_id = ${}", bind_count));
+    }
+
+    query.push_str(&format!(
+        " {} LIMIT ${} OFFSET ${}",
+        order_clause,
+        bind_count + 1,
+        bind_count + 2
+    ));
+
+    let mut db_query = sqlx::query_as::<_, LiquidityPool>(&query);
+
+    if let Some(status) = status_filter {
+        db_query = db_query.bind(status);
+    }
+    if let Some(investor_id) = investor_id_filter {
+        db_query = db_query.bind(investor_id);
+    }
+
+    let pools = db_query.bind(limit).bind(offset).fetch_all(pool).await?;
+
+    Ok(pools)
+}
+
+/// Pool summary with calculated utilization rate
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PoolSummary {
+    // Pool basic information
+    pub id: uuid::Uuid,
+    pub investor_id: uuid::Uuid,
+    pub name: String,
+    pub total_deposits: rust_decimal::Decimal,
+    pub available_liquidity: rust_decimal::Decimal,
+    pub utilized_liquidity: rust_decimal::Decimal,
+    pub utilization_rate: Option<rust_decimal::Decimal>,
+    pub max_ltv_ratio: rust_decimal::Decimal,
+    pub max_interest_rate: rust_decimal::Decimal,
+    pub repayment_period_days: i32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    // Loan metrics
+    pub total_loans: i64,
+    pub active_loans: i64,
+    pub total_loan_volume: rust_decimal::Decimal,
+    pub average_loan_amount: Option<rust_decimal::Decimal>,
+    pub default_rate: rust_decimal::Decimal,
+    pub total_interest_earned: rust_decimal::Decimal,
+    pub total_principal_repaid: rust_decimal::Decimal,
+}
+
+/// Get pool summary with utilization rate calculation
+pub async fn get_pool_summary(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+) -> Result<Option<PoolSummary>, sqlx::Error> {
+    let summary = sqlx::query_as!(
+        PoolSummary,
+        r#"
+        SELECT 
+            lp.id, lp.investor_id, lp.name, lp.total_deposits, lp.available_liquidity,
+            lp.utilized_liquidity, 
+            CASE 
+                WHEN lp.total_deposits > 0 THEN (lp.utilized_liquidity / lp.total_deposits)
+                ELSE NULL 
+            END as "utilization_rate",
+            lp.max_ltv_ratio, lp.max_interest_rate,
+            lp.repayment_period_days, lp.status,
+            lp.created_at as "created_at!: DateTime<Utc>",
+            lp.updated_at as "updated_at!: DateTime<Utc>",
+            -- Loan metrics (default to 0 for now, TODO: calculate from actual loan data)
+            0::bigint as "total_loans!",
+            0::bigint as "active_loans!",
+            0::decimal as "total_loan_volume!",
+            NULL::decimal as "average_loan_amount",
+            0::decimal as "default_rate!",
+            0::decimal as "total_interest_earned!",
+            0::decimal as "total_principal_repaid!"
+        FROM liquidity_pools lp
+        WHERE lp.id = $1
+        "#,
+        pool_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(summary)
+}
+
+/// Get all pool summaries for an investor with aggregated metrics
+pub async fn get_investor_pool_summaries(
+    pool: &PgPool,
+    investor_id: uuid::Uuid,
+) -> Result<Vec<PoolSummary>, sqlx::Error> {
+    let summaries = sqlx::query_as!(
+        PoolSummary,
+        r#"
+        SELECT 
+            lp.id, lp.investor_id, lp.name, lp.total_deposits, lp.available_liquidity,
+            lp.utilized_liquidity,
+            CASE 
+                WHEN lp.total_deposits > 0 THEN (lp.utilized_liquidity / lp.total_deposits)
+                ELSE NULL 
+            END as "utilization_rate",
+            lp.max_ltv_ratio, lp.max_interest_rate,
+            lp.repayment_period_days, lp.status,
+            lp.created_at as "created_at!: DateTime<Utc>",
+            lp.updated_at as "updated_at!: DateTime<Utc>",
+            -- Loan metrics (default to 0 for now, TODO: calculate from actual loan data)
+            0::bigint as "total_loans!",
+            0::bigint as "active_loans!",
+            0::decimal as "total_loan_volume!",
+            NULL::decimal as "average_loan_amount",
+            0::decimal as "default_rate!",
+            0::decimal as "total_interest_earned!",
+            0::decimal as "total_principal_repaid!"
+        FROM liquidity_pools lp
+        WHERE lp.investor_id = $1
+        ORDER BY lp.created_at DESC
+        "#,
+        investor_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(summaries)
+}
+
+/// Investor dashboard metrics
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct InvestorDashboardMetrics {
+    pub total_pools: i64,
+    pub active_pools: i64,
+    pub total_liquidity_provided: rust_decimal::Decimal,
+    pub total_utilized_liquidity: rust_decimal::Decimal,
+    pub average_utilization_rate: rust_decimal::Decimal,
+    pub total_interest_earned: rust_decimal::Decimal,
+    pub total_loans_originated: i64,
+    pub total_loan_volume: rust_decimal::Decimal,
+}
+
+/// Get investor dashboard metrics
+pub async fn get_investor_dashboard_metrics(
+    pool: &PgPool,
+    investor_id: uuid::Uuid,
+) -> Result<InvestorDashboardMetrics, sqlx::Error> {
+    let metrics = sqlx::query_as!(
+        InvestorDashboardMetrics,
+        r#"
+        SELECT 
+            COUNT(*)::int8 as "total_pools!",
+            COUNT(CASE WHEN status = 'active' THEN 1 END)::int8 as "active_pools!",
+            COALESCE(SUM(total_deposits), 0) as "total_liquidity_provided!",
+            COALESCE(SUM(utilized_liquidity), 0) as "total_utilized_liquidity!",
+            CASE 
+                WHEN SUM(total_deposits) > 0 THEN SUM(utilized_liquidity) / SUM(total_deposits)
+                ELSE 0
+            END as "average_utilization_rate!",
+            -- TODO: Calculate from actual loan data when available
+            0::decimal as "total_interest_earned!",
+            0::int8 as "total_loans_originated!",
+            0::decimal as "total_loan_volume!"
+        FROM liquidity_pools
+        WHERE investor_id = $1
+        "#,
+        investor_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(metrics)
+}
+
+/// Pool utilization data point for historical analysis
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PoolUtilizationData {
+    pub timestamp: DateTime<Utc>,
+    pub total_deposits: rust_decimal::Decimal,
+    pub available_liquidity: rust_decimal::Decimal,
+    pub utilized_liquidity: rust_decimal::Decimal,
+    pub utilization_rate: Option<rust_decimal::Decimal>,
+}
+
+/// Get pool utilization history (for now, returns current state - can be extended with audit table)
+pub async fn get_pool_utilization_history(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    _period_days: i32,
+) -> Result<Vec<PoolUtilizationData>, sqlx::Error> {
+    // For now, return current state. This can be extended with historical data from audit logs
+    let current_data = sqlx::query_as!(
+        PoolUtilizationData,
+        r#"
+        SELECT 
+            updated_at as "timestamp!: DateTime<Utc>",
+            total_deposits,
+            available_liquidity,
+            utilized_liquidity,
+            CASE 
+                WHEN total_deposits > 0 THEN (utilized_liquidity / total_deposits)
+                ELSE NULL 
+            END as "utilization_rate"
+        FROM liquidity_pools
+        WHERE id = $1
+        "#,
+        pool_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(current_data)
+}
+
+/// Pool transaction record (simplified - can be extended with actual transaction tracking)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PoolTransaction {
+    pub transaction_id: uuid::Uuid,
+    pub pool_id: uuid::Uuid,
+    pub operation_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub user_id: uuid::Uuid,
+    pub timestamp: DateTime<Utc>,
+    pub metadata: Option<String>,
+}
+
+/// Get pool transaction history (placeholder - would need actual transaction tracking table)
+pub async fn get_pool_transactions(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    transaction_type_filter: Option<&str>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<PoolTransaction>, sqlx::Error> {
+    // For now, return pool audit events as transactions
+    // This could be extended with a proper transactions table
+    let limit = limit.unwrap_or(50);
+    let offset = offset.unwrap_or(0);
+
+    let mut query = r#"
+        SELECT 
+            id as transaction_id,
+            pool_id,
+            operation_type,
+            COALESCE(
+                (new_values->>'total_deposits')::decimal - COALESCE((old_values->>'total_deposits')::decimal, 0),
+                0
+            ) as amount,
+            COALESCE((metadata->>'user_id')::uuid, '00000000-0000-0000-0000-000000000000'::uuid) as user_id,
+            created_at as timestamp,
+            metadata::text as metadata
+        FROM liquidity_pool_audit
+        WHERE pool_id = $1
+    "#.to_string();
+
+    let mut bind_count = 1;
+
+    if transaction_type_filter.is_some() {
+        bind_count += 1;
+        query.push_str(&format!(" AND operation_type = ${}", bind_count));
+    }
+
+    query.push_str(&format!(
+        " ORDER BY created_at DESC LIMIT ${} OFFSET ${}",
+        bind_count + 1,
+        bind_count + 2
+    ));
+
+    let mut db_query = sqlx::query_as::<_, PoolTransaction>(&query).bind(pool_id);
+
+    if let Some(tx_type) = transaction_type_filter {
+        db_query = db_query.bind(tx_type);
+    }
+
+    let transactions = db_query.bind(limit).bind(offset).fetch_all(pool).await?;
+
+    Ok(transactions)
+}
+
+/// Market overview metrics
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct MarketOverviewMetrics {
+    pub total_pools: i64,
+    pub active_pools: i64,
+    pub total_liquidity: rust_decimal::Decimal,
+    pub total_utilized_liquidity: rust_decimal::Decimal,
+    pub platform_utilization_rate: rust_decimal::Decimal,
+    pub total_loans: i64,
+    pub active_loans: i64,
+    pub total_loan_volume: rust_decimal::Decimal,
+    pub average_interest_rate: rust_decimal::Decimal,
+    pub platform_default_rate: rust_decimal::Decimal,
+}
+
+/// Get market overview statistics
+pub async fn get_market_overview_metrics(
+    pool: &PgPool,
+) -> Result<MarketOverviewMetrics, sqlx::Error> {
+    let metrics = sqlx::query_as!(
+        MarketOverviewMetrics,
+        r#"
+        SELECT 
+            COUNT(*)::int8 as "total_pools!",
+            COUNT(CASE WHEN status = 'active' THEN 1 END)::int8 as "active_pools!",
+            COALESCE(SUM(total_deposits), 0) as "total_liquidity!",
+            COALESCE(SUM(utilized_liquidity), 0) as "total_utilized_liquidity!",
+            CASE 
+                WHEN SUM(total_deposits) > 0 THEN SUM(utilized_liquidity) / SUM(total_deposits)
+                ELSE 0
+            END as "platform_utilization_rate!",
+            -- TODO: Calculate from actual loan data when available
+            0::int8 as "total_loans!",
+            0::int8 as "active_loans!",
+            0::decimal as "total_loan_volume!",
+            COALESCE(AVG(max_interest_rate), 0) as "average_interest_rate!",
+            0::decimal as "platform_default_rate!"
+        FROM liquidity_pools
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(metrics)
+}
