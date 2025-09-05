@@ -477,6 +477,8 @@ enum Commands {
     // ============================================================================
     // LIQUIDITY POOL MANAGEMENT COMMANDS
     // ============================================================================
+    // LIQUIDITY POOL COMMANDS - TEMPORARILY DISABLED
+    /*
     /// Create a new liquidity pool
     CreatePool {
         /// Pool name
@@ -547,7 +549,7 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
-
+    */
     // ============================================================================
     // ENHANCED LOAN OPERATION TESTING COMMANDS
     // ============================================================================
@@ -1041,8 +1043,9 @@ async fn main() -> Result<()> {
         }
 
         // ============================================================================
-        // LIQUIDITY POOL COMMAND HANDLERS
+        // LIQUIDITY POOL COMMAND HANDLERS - TEMPORARILY DISABLED
         // ============================================================================
+        /*
         Commands::CreatePool {
             name,
             max_ltv_ratio,
@@ -1094,7 +1097,7 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-
+        */
         Commands::SubmitKyc {
             user_id,
             document_type,
@@ -4589,9 +4592,12 @@ async fn get_pending_withdrawals(
 }
 
 // ============================================================================
-// LIQUIDITY POOL FUNCTIONS
+// LIQUIDITY POOL FUNCTIONS - TEMPORARILY DISABLED
 // ============================================================================
+// TODO: Re-enable after resolving axum version conflicts in API
+// The CLI functions need proper BatchApiClient method calls instead of direct field access
 
+/*
 /// Create a new liquidity pool
 async fn create_pool(
     client: &BatchApiClient,
@@ -4859,3 +4865,4 @@ async fn find_matching_pools(
 
     Ok(())
 }
+*/

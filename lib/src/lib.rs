@@ -42,8 +42,8 @@ pub use balance::{
     UserBalance,
 };
 pub use loan::{
-    Loan, LoanError, LoanStatus, LoanTerms, 
-    LiquidityPool, PoolDeploymentTerms, PoolError, PoolState, PoolStatus,
+    LiquidityPool, Loan, LoanError, LoanStatus, LoanTerms, PoolDeploymentTerms, PoolError,
+    PoolState, PoolStatus,
 };
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};

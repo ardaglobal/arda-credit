@@ -21,17 +21,17 @@ use crate::batch_processor::BatchProcessorHandle;
 use crate::paths;
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
-    create_liquidity_pool, create_loan, find_matching_liquidity_pools, 
-    generate_invite_code, get_all_batches, get_batch_by_id,
-    get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
-    get_deposits_by_user_address, get_identity_by_email, get_identity_by_id, get_invite_code_info,
-    get_kyc_statistics, get_liquidity_pool_by_id, get_liquidity_pools_by_investor, 
-    get_loan_by_id, get_pending_transactions, get_user_balance_by_address,
-    get_user_balance_by_id, list_loans, list_pending_kyc_applications, register_or_reregister_user,
-    store_ads_state_commit, submit_kyc_data, submit_transaction, update_batch_proof,
-    update_identity_profile, update_kyc_status, update_last_login, update_liquidity_pool_status, update_loan, use_invite_code,
-    AuditEvent, CreateLiquidityPoolRequest, Identity, IndexedMerkleTreeADS, 
-    LoanInclusionProof, LoanLifecycleSummary, PoolMatchingCriteria, RegisterResult,
+    create_liquidity_pool, create_loan, find_matching_liquidity_pools, generate_invite_code,
+    get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
+    get_deposit_by_tx_hash, get_deposits_by_user_address, get_identity_by_email,
+    get_identity_by_id, get_invite_code_info, get_kyc_statistics, get_liquidity_pool_by_id,
+    get_liquidity_pools_by_investor, get_loan_by_id, get_pending_transactions,
+    get_user_balance_by_address, get_user_balance_by_id, list_loans, list_pending_kyc_applications,
+    register_or_reregister_user, store_ads_state_commit, submit_kyc_data, submit_transaction,
+    update_batch_proof, update_identity_profile, update_kyc_status, update_last_login,
+    update_liquidity_pool_status, update_loan, use_invite_code, AuditEvent,
+    CreateLiquidityPoolRequest, Identity, IndexedMerkleTreeADS, LoanInclusionProof,
+    LoanLifecycleSummary, PoolMatchingCriteria, RegisterResult,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -861,8 +861,10 @@ pub struct TransactionStatusResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CreatePoolRequest {
     pub name: String,
-    pub max_ltv_ratio: rust_decimal::Decimal,
-    pub max_interest_rate: rust_decimal::Decimal,
+    /// Maximum loan-to-value ratio as a decimal string (e.g., "0.8000" for 80%)
+    pub max_ltv_ratio: String,
+    /// Maximum interest rate as a decimal string (e.g., "0.1200" for 12%)
+    pub max_interest_rate: String,
     pub repayment_period_days: i32,
 }
 
@@ -872,8 +874,10 @@ pub struct CreatePoolResponse {
     pub pool_id: String,
     pub investor_id: String,
     pub name: String,
-    pub max_ltv_ratio: rust_decimal::Decimal,
-    pub max_interest_rate: rust_decimal::Decimal,
+    /// Maximum loan-to-value ratio as a decimal string (e.g., "0.8000" for 80%)
+    pub max_ltv_ratio: String,
+    /// Maximum interest rate as a decimal string (e.g., "0.1200" for 12%)
+    pub max_interest_rate: String,
     pub repayment_period_days: i32,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -885,11 +889,16 @@ pub struct PoolDetailsResponse {
     pub pool_id: String,
     pub investor_id: String,
     pub name: String,
-    pub total_deposits: rust_decimal::Decimal,
-    pub available_liquidity: rust_decimal::Decimal,
-    pub utilized_liquidity: rust_decimal::Decimal,
-    pub max_ltv_ratio: rust_decimal::Decimal,
-    pub max_interest_rate: rust_decimal::Decimal,
+    /// Total deposits as decimal string
+    pub total_deposits: String,
+    /// Available liquidity as decimal string
+    pub available_liquidity: String,
+    /// Utilized liquidity as decimal string
+    pub utilized_liquidity: String,
+    /// Maximum loan-to-value ratio as a decimal string (e.g., "0.8000" for 80%)
+    pub max_ltv_ratio: String,
+    /// Maximum interest rate as a decimal string (e.g., "0.1200" for 12%)
+    pub max_interest_rate: String,
     pub repayment_period_days: i32,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -912,9 +921,12 @@ pub struct UpdatePoolStatusRequest {
 /// Pool matching criteria for auto-deployment
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PoolMatchRequest {
-    pub required_liquidity: rust_decimal::Decimal,
-    pub max_ltv: rust_decimal::Decimal,
-    pub max_rate: rust_decimal::Decimal,
+    /// Required liquidity amount as decimal string
+    pub required_liquidity: String,
+    /// Maximum LTV ratio as decimal string
+    pub max_ltv: String,
+    /// Maximum interest rate as decimal string
+    pub max_rate: String,
     pub min_repayment_days: i32,
 }
 
@@ -1070,13 +1082,14 @@ pub fn create_router(state: ApiState) -> Router {
             get(get_loan_lifecycle_summary_endpoint),
         )
         // ========================================================================
-        // LIQUIDITY POOL ENDPOINTS
+        // LIQUIDITY POOL ENDPOINTS - TEMPORARILY DISABLED DUE TO AXUM VERSION CONFLICTS
         // ========================================================================
-        .route("/api/pool", post(create_pool_endpoint))
-        .route("/api/pools", get(list_pools_endpoint))
-        .route("/api/pools/:pool_id", get(get_pool_endpoint))
-        .route("/api/pools/:pool_id/status", put(update_pool_status_endpoint))
-        .route("/api/pools/match", post(find_matching_pools_endpoint))
+        // TODO: Re-enable after resolving axum version conflicts from twirp-rs dependency
+        // .route("/api/pool", post(create_pool_endpoint))
+        // .route("/api/pools", get(list_pools_endpoint))
+        // .route("/api/pools/:pool_id", get(get_pool_endpoint))
+        // .route("/api/pools/:pool_id/status", put(update_pool_status_endpoint))
+        // .route("/api/pools/match", post(find_matching_pools_endpoint))
         .with_state(state)
 }
 
@@ -4710,8 +4723,29 @@ async fn create_pool_endpoint(
         ));
     }
 
-    if request.max_ltv_ratio < rust_decimal::Decimal::from_str("0.1").unwrap()
-        || request.max_ltv_ratio > rust_decimal::Decimal::from_str("0.95").unwrap()
+    // Parse and validate decimal parameters
+    let max_ltv_ratio = match rust_decimal::Decimal::from_str(&request.max_ltv_ratio) {
+        Ok(val) => val,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Invalid LTV ratio format, must be a decimal string".to_string(),
+            ))
+        }
+    };
+
+    let max_interest_rate = match rust_decimal::Decimal::from_str(&request.max_interest_rate) {
+        Ok(val) => val,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Invalid interest rate format, must be a decimal string".to_string(),
+            ))
+        }
+    };
+
+    if max_ltv_ratio < rust_decimal::Decimal::from_str("0.1").unwrap()
+        || max_ltv_ratio > rust_decimal::Decimal::from_str("0.95").unwrap()
     {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -4719,8 +4753,8 @@ async fn create_pool_endpoint(
         ));
     }
 
-    if request.max_interest_rate < rust_decimal::Decimal::from_str("0.01").unwrap()
-        || request.max_interest_rate > rust_decimal::Decimal::from_str("0.50").unwrap()
+    if max_interest_rate < rust_decimal::Decimal::from_str("0.01").unwrap()
+        || max_interest_rate > rust_decimal::Decimal::from_str("0.50").unwrap()
     {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -4739,8 +4773,8 @@ async fn create_pool_endpoint(
     let db_request = CreateLiquidityPoolRequest {
         investor_id: user.user_id,
         name: request.name.trim().to_string(),
-        max_ltv_ratio: request.max_ltv_ratio,
-        max_interest_rate: request.max_interest_rate,
+        max_ltv_ratio,
+        max_interest_rate,
         repayment_period_days: request.repayment_period_days,
     };
 
@@ -4760,8 +4794,8 @@ async fn create_pool_endpoint(
         pool_id: pool.id.to_string(),
         investor_id: pool.investor_id.to_string(),
         name: pool.name,
-        max_ltv_ratio: pool.max_ltv_ratio,
-        max_interest_rate: pool.max_interest_rate,
+        max_ltv_ratio: pool.max_ltv_ratio.to_string(),
+        max_interest_rate: pool.max_interest_rate.to_string(),
         repayment_period_days: pool.repayment_period_days,
         status: pool.status,
         created_at: pool.created_at,
@@ -4802,7 +4836,7 @@ async fn list_pools_endpoint(
         ));
     }
 
-    let status_filter = params.get("status").cloned();
+    let _status_filter = params.get("status").cloned();
 
     let pools = match get_liquidity_pools_by_investor(&state.pool, user.user_id).await {
         Ok(pools) => pools,
@@ -4821,11 +4855,11 @@ async fn list_pools_endpoint(
             pool_id: pool.id.to_string(),
             investor_id: pool.investor_id.to_string(),
             name: pool.name.clone(),
-            total_deposits: pool.total_deposits,
-            available_liquidity: pool.available_liquidity,
-            utilized_liquidity: pool.utilized_liquidity,
-            max_ltv_ratio: pool.max_ltv_ratio,
-            max_interest_rate: pool.max_interest_rate,
+            total_deposits: pool.total_deposits.to_string(),
+            available_liquidity: pool.available_liquidity.to_string(),
+            utilized_liquidity: pool.utilized_liquidity.to_string(),
+            max_ltv_ratio: pool.max_ltv_ratio.to_string(),
+            max_interest_rate: pool.max_interest_rate.to_string(),
             repayment_period_days: pool.repayment_period_days,
             status: pool.status.clone(),
             created_at: pool.created_at,
@@ -4898,12 +4932,12 @@ async fn get_pool_endpoint(
     let response = PoolDetailsResponse {
         pool_id: pool.id.to_string(),
         investor_id: pool.investor_id.to_string(),
-        name: pool.name,
-        total_deposits: pool.total_deposits,
-        available_liquidity: pool.available_liquidity,
-        utilized_liquidity: pool.utilized_liquidity,
-        max_ltv_ratio: pool.max_ltv_ratio,
-        max_interest_rate: pool.max_interest_rate,
+        name: pool.name.clone(),
+        total_deposits: pool.total_deposits.to_string(),
+        available_liquidity: pool.available_liquidity.to_string(),
+        utilized_liquidity: pool.utilized_liquidity.to_string(),
+        max_ltv_ratio: pool.max_ltv_ratio.to_string(),
+        max_interest_rate: pool.max_interest_rate.to_string(),
         repayment_period_days: pool.repayment_period_days,
         status: pool.status,
         created_at: pool.created_at,
@@ -4939,7 +4973,10 @@ async fn update_pool_status_endpoint(
     Path(pool_id_str): Path<String>,
     Json(request): Json<UpdatePoolStatusRequest>,
 ) -> Result<Json<PoolDetailsResponse>, (StatusCode, String)> {
-    info!("🔄 Updating pool status: id={}, status={}", pool_id_str, request.status);
+    info!(
+        "🔄 Updating pool status: id={}, status={}",
+        pool_id_str, request.status
+    );
 
     let pool_id = match uuid::Uuid::parse_str(&pool_id_str) {
         Ok(id) => id,
@@ -4961,10 +4998,7 @@ async fn update_pool_status_endpoint(
 
     // Check pool exists and ownership
     let existing_pool = match get_liquidity_pool_by_id(&state.pool, pool_id).await {
-        Ok(Some(pool)) => pool,
-        Ok(None) => {
-            return Err((StatusCode::NOT_FOUND, "Pool not found".to_string()))
-        }
+        Ok(pool) => pool,
         Err(e) => {
             error!("Failed to get pool: {}", e);
             return Err((
@@ -4983,26 +5017,27 @@ async fn update_pool_status_endpoint(
     }
 
     // Update status
-    let updated_pool = match update_liquidity_pool_status(&state.pool, pool_id, &request.status).await {
-        Ok(pool) => pool,
-        Err(e) => {
-            error!("Failed to update pool status: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to update pool status: {}", e),
-            ));
-        }
-    };
+    let updated_pool =
+        match update_liquidity_pool_status(&state.pool, pool_id, &request.status).await {
+            Ok(pool) => pool,
+            Err(e) => {
+                error!("Failed to update pool status: {}", e);
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to update pool status: {}", e),
+                ));
+            }
+        };
 
     let response = PoolDetailsResponse {
         pool_id: updated_pool.id.to_string(),
         investor_id: updated_pool.investor_id.to_string(),
         name: updated_pool.name,
-        total_deposits: updated_pool.total_deposits,
-        available_liquidity: updated_pool.available_liquidity,
-        utilized_liquidity: updated_pool.utilized_liquidity,
-        max_ltv_ratio: updated_pool.max_ltv_ratio,
-        max_interest_rate: updated_pool.max_interest_rate,
+        total_deposits: updated_pool.total_deposits.to_string(),
+        available_liquidity: updated_pool.available_liquidity.to_string(),
+        utilized_liquidity: updated_pool.utilized_liquidity.to_string(),
+        max_ltv_ratio: updated_pool.max_ltv_ratio.to_string(),
+        max_interest_rate: updated_pool.max_interest_rate.to_string(),
         repayment_period_days: updated_pool.repayment_period_days,
         status: updated_pool.status,
         created_at: updated_pool.created_at,
@@ -5030,12 +5065,46 @@ async fn find_matching_pools_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<PoolMatchRequest>,
 ) -> Result<Json<PoolListResponse>, (StatusCode, String)> {
-    info!("🔍 Finding matching pools: required={}", request.required_liquidity);
+    info!(
+        "🔍 Finding matching pools: required={}",
+        request.required_liquidity
+    );
+
+    // Parse decimal strings
+    let required_liquidity = match rust_decimal::Decimal::from_str(&request.required_liquidity) {
+        Ok(val) => val,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Invalid required liquidity format".to_string(),
+            ))
+        }
+    };
+
+    let max_ltv = match rust_decimal::Decimal::from_str(&request.max_ltv) {
+        Ok(val) => val,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Invalid max LTV format".to_string(),
+            ))
+        }
+    };
+
+    let max_rate = match rust_decimal::Decimal::from_str(&request.max_rate) {
+        Ok(val) => val,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Invalid max rate format".to_string(),
+            ))
+        }
+    };
 
     let criteria = PoolMatchingCriteria {
-        required_liquidity: request.required_liquidity,
-        max_ltv: request.max_ltv,
-        max_rate: request.max_rate,
+        required_liquidity,
+        max_ltv,
+        max_rate,
         min_repayment_days: request.min_repayment_days,
     };
 
@@ -5056,11 +5125,11 @@ async fn find_matching_pools_endpoint(
             pool_id: pool.id.to_string(),
             investor_id: pool.investor_id.to_string(),
             name: pool.name.clone(),
-            total_deposits: pool.total_deposits,
-            available_liquidity: pool.available_liquidity,
-            utilized_liquidity: pool.utilized_liquidity,
-            max_ltv_ratio: pool.max_ltv_ratio,
-            max_interest_rate: pool.max_interest_rate,
+            total_deposits: pool.total_deposits.to_string(),
+            available_liquidity: pool.available_liquidity.to_string(),
+            utilized_liquidity: pool.utilized_liquidity.to_string(),
+            max_ltv_ratio: pool.max_ltv_ratio.to_string(),
+            max_interest_rate: pool.max_interest_rate.to_string(),
             repayment_period_days: pool.repayment_period_days,
             status: pool.status.clone(),
             created_at: pool.created_at,

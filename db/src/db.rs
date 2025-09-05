@@ -3174,17 +3174,17 @@ pub fn validate_pool_parameters(
     repayment_period_days: i32,
 ) -> Result<(), String> {
     use std::str::FromStr;
-    
+
     // LTV ratio validation: 10% to 95%
     let min_ltv = rust_decimal::Decimal::from_str("0.1000").unwrap();
     let max_ltv = rust_decimal::Decimal::from_str("0.9500").unwrap();
     if max_ltv_ratio < min_ltv || max_ltv_ratio > max_ltv {
         return Err(format!(
-            "LTV ratio must be between 10% and 95%, got: {}%", 
+            "LTV ratio must be between 10% and 95%, got: {}%",
             max_ltv_ratio * rust_decimal::Decimal::from(100)
         ));
     }
-    
+
     // Interest rate validation: 1% to 50%
     let min_rate = rust_decimal::Decimal::from_str("0.0100").unwrap();
     let max_rate = rust_decimal::Decimal::from_str("0.5000").unwrap();
@@ -3194,7 +3194,7 @@ pub fn validate_pool_parameters(
             max_interest_rate * rust_decimal::Decimal::from(100)
         ));
     }
-    
+
     // Repayment period validation: 7 days to 1 year
     if repayment_period_days < 7 || repayment_period_days > 365 {
         return Err(format!(
@@ -3202,7 +3202,7 @@ pub fn validate_pool_parameters(
             repayment_period_days
         ));
     }
-    
+
     Ok(())
 }
 

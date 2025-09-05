@@ -89,9 +89,9 @@ pub enum LoanStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum PoolStatus {
-    Active = 1,  // Active and accepting deployments
-    Paused = 2,  // Temporarily paused
-    Closed = 3,  // Permanently closed
+    Active = 1, // Active and accepting deployments
+    Paused = 2, // Temporarily paused
+    Closed = 3, // Permanently closed
 }
 
 impl Default for PoolStatus {
@@ -122,7 +122,7 @@ impl PoolDeploymentTerms {
         repayment_period_days: u16,
     ) -> Result<Self, PoolError> {
         Self::validate_parameters(max_ltv_ratio, max_interest_rate, repayment_period_days)?;
-        
+
         Ok(Self {
             max_ltv_ratio,
             max_interest_rate,
@@ -138,22 +138,24 @@ impl PoolDeploymentTerms {
     ) -> Result<(), PoolError> {
         if !(1000..=9500).contains(&max_ltv_ratio) {
             return Err(PoolError::InvalidParameters {
-                reason: "LTV ratio must be between 10% (1000) and 95% (9500) basis points".to_string(),
+                reason: "LTV ratio must be between 10% (1000) and 95% (9500) basis points"
+                    .to_string(),
             });
         }
-        
+
         if !(100..=50000).contains(&max_interest_rate) {
             return Err(PoolError::InvalidParameters {
-                reason: "Interest rate must be between 1% (100) and 50% (50000) basis points".to_string(),
+                reason: "Interest rate must be between 1% (100) and 50% (50000) basis points"
+                    .to_string(),
             });
         }
-        
+
         if !(7..=365).contains(&repayment_period_days) {
             return Err(PoolError::InvalidParameters {
                 reason: "Repayment period must be between 7 and 365 days".to_string(),
             });
         }
-        
+
         Ok(())
     }
 }
@@ -161,9 +163,9 @@ impl PoolDeploymentTerms {
 impl Default for PoolDeploymentTerms {
     fn default() -> Self {
         Self {
-            max_ltv_ratio: 8000,  // 80% default LTV
-            max_interest_rate: 1200,  // 12% default max rate
-            repayment_period_days: 30,  // 30 days default
+            max_ltv_ratio: 8000,       // 80% default LTV
+            max_interest_rate: 1200,   // 12% default max rate
+            repayment_period_days: 30, // 30 days default
         }
     }
 }
@@ -171,21 +173,21 @@ impl Default for PoolDeploymentTerms {
 /// Liquidity pool for investor-funded auto-deployment
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LiquidityPool {
-    pub pool_id: [u8; 32],        // Hashed UUID
-    pub investor_id: [u8; 32],    // Hashed investor UUID
-    pub name: String,             // Pool name (max 255 chars)
-    
+    pub pool_id: [u8; 32],     // Hashed UUID
+    pub investor_id: [u8; 32], // Hashed investor UUID
+    pub name: String,          // Pool name (max 255 chars)
+
     // Pool balances
     pub total_deposits: u64,      // Total funds deposited (in cents)
     pub available_liquidity: u64, // Available for new deployments
     pub utilized_liquidity: u64,  // Currently deployed in active loans
-    
+
     // Auto-deployment terms
     pub deployment_terms: PoolDeploymentTerms,
-    
+
     pub status: PoolStatus,
-    pub created_at: u64,          // Unix timestamp
-    pub updated_at: u64,          // Unix timestamp
+    pub created_at: u64, // Unix timestamp
+    pub updated_at: u64, // Unix timestamp
 }
 
 impl LiquidityPool {
@@ -349,7 +351,9 @@ pub enum PoolError {
     #[error("Pool is not active: {status:?}")]
     PoolNotActive { status: PoolStatus },
 
-    #[error("Unauthorized pool operation: investor {investor_id:?} cannot access pool {pool_id:?}")]
+    #[error(
+        "Unauthorized pool operation: investor {investor_id:?} cannot access pool {pool_id:?}"
+    )]
     UnauthorizedAccess {
         investor_id: [u8; 32],
         pool_id: [u8; 32],
@@ -400,10 +404,10 @@ impl PoolState {
         }
 
         // Verify investor exists and is KYC approved
-        let investor = users
-            .get(&investor_id)
-            .ok_or(UserError::UserNotFound { user_id: investor_id })?;
-        
+        let investor = users.get(&investor_id).ok_or(UserError::UserNotFound {
+            user_id: investor_id,
+        })?;
+
         if !investor.is_kyc_approved() {
             return Err(PoolError::UserError(UserError::KycNotApproved {
                 user_id: investor_id,
@@ -411,16 +415,18 @@ impl PoolState {
         }
 
         // Check for duplicate pool name for this investor
-        if self.pools.values().any(|pool| 
-            pool.investor_id == investor_id && pool.name == name && pool.status != PoolStatus::Closed
-        ) {
+        if self.pools.values().any(|pool| {
+            pool.investor_id == investor_id
+                && pool.name == name
+                && pool.status != PoolStatus::Closed
+        }) {
             return Err(PoolError::DuplicatePoolName);
         }
 
         // Create new pool
         let pool = LiquidityPool::new(pool_id, investor_id, name, deployment_terms, created_at);
         self.pools.insert(pool_id, pool);
-        
+
         Ok(())
     }
 
@@ -475,12 +481,15 @@ impl PoolState {
         let mut matching: Vec<&LiquidityPool> = self
             .pools
             .values()
-            .filter(|pool| pool.matches_criteria(required_amount, max_ltv, max_rate, min_repayment_days))
+            .filter(|pool| {
+                pool.matches_criteria(required_amount, max_ltv, max_rate, min_repayment_days)
+            })
             .collect();
 
         // Sort by preference: lower interest rates first, then higher liquidity
         matching.sort_by(|a, b| {
-            a.deployment_terms.max_interest_rate
+            a.deployment_terms
+                .max_interest_rate
                 .cmp(&b.deployment_terms.max_interest_rate)
                 .then_with(|| b.available_liquidity.cmp(&a.available_liquidity))
         });
