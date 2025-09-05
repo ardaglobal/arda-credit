@@ -39,6 +39,8 @@ This document outlines the comprehensive release management strategy for the ard
 - **MINOR**: Performance improvements, additional features that don't change verification
 - **PATCH**: Bug fixes, optimizations that don't affect verification
 
+**Circuit Versioning**: Each program release automatically creates a corresponding Sindri circuit with matching tag (e.g., `program-v2.1.0` → circuit tag `program-v2.1.0`). This ensures circuit deployments are version-locked with program releases.
+
 #### Main Application (`vX.Y.Z`)
 - **MAJOR**: Breaking changes to API, database schema, or deployment requirements
 - **MINOR**: New features, API enhancements, backward-compatible changes
@@ -77,15 +79,29 @@ This document outlines the comprehensive release management strategy for the ard
 - [ ] Update program documentation
 
 #### Release Steps
-1. **Tag the release**: `git tag program-v2.1.0`
-2. **Build ELF binary**: Automated via CI/CD
-3. **Generate verification key**: Store in release assets
-4. **Test with current contracts**: Ensure compatibility
-5. **Create GitHub release**: Include vkey and performance metrics
+1. **Create program tag**: `git tag program-v2.1.0`
+2. **Push program tag**: `git push origin program-v2.1.0`
+3. **Automated circuit deployment**: GitHub Actions builds and deploys to Sindri with tag `program-v2.1.0`
+4. **Circuit testing**: Automated testing with deployed circuit
+5. **Generate verification key**: Extract vkey from deployed circuit
+6. **Test compatibility**: Ensure circuit works with current contracts
+7. **Create GitHub release**: Include circuit tag and performance metrics
 
 #### Post-Release
 - Update contract deployments if vkey changed (major version)
 - Update web server configuration to use new program version
+- Update Sindri circuit references in dependent services
+
+#### ZK Program Dependencies
+The ZK program circuit depends on changes in these directories:
+- **`program/`**: Core ZKVM program logic
+- **`lib/`**: Business logic, transaction processing, ADS operations
+- **`script/`**: CLI tools and testing infrastructure
+- **`api/`**: Proof generation/verification (affects integration)
+- **`ethereum-client/`**: On-chain proof submission
+- **`db/`**: Proof storage and verification tracking
+
+**Circuit Versioning Impact**: Changes to any of these can affect the verification key and require a new circuit deployment.
 
 ### 3. Main Application Releases
 
@@ -133,6 +149,8 @@ This document outlines the comprehensive release management strategy for the ard
 | v1.1.0           | contracts-v1.0.0-rc2 | program-v1.1.0  | 5.2.1          |
 | v1.2.0           | contracts-v1.1.0-rc1 | program-v1.1.0  | 5.2.1          |
 | v2.0.0           | contracts-v2.0.0-rc0 | program-v2.0.0  | 5.3.0          |
+
+**Program Circuit Tags**: Each program version corresponds to a Sindri circuit tag (e.g., `program-v1.0.0` → circuit `program-v1.0.0`).
 
 ## Configuration Management
 
@@ -183,7 +201,7 @@ impl Default for VersionConfig {
 ### Main Application Release (v3.4.5)
 **Component Versions:**
 - Smart Contracts: contracts-v1.2.3-rc0 (0x1234...7890)
-- ZKVM Program: program-v2.1.0 (vkey: 0x0062...4e0e)
+- ZKVM Program: program-v2.1.0 (circuit: program-v2.1.0, vkey: 0x0062...4e0e)
 - SP1 SDK: 5.2.1
 
 **Changes:**
