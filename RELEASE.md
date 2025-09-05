@@ -21,9 +21,9 @@ This document outlines the comprehensive release management strategy for the ard
 ### 3. Web Server Application (Main Repository)
 - **Location**: Root workspace with `api/`, `db/`, `cli/`, etc.
 - **Dependencies**: Both smart contracts and ZKVM program
-- **Deployment Target**: Docker containers via `docker-compose.yml`
+- **Deployment Target**: K8s via helm chats `helm`
 - **Versioning Strategy**: Main repository version that references specific versions of contracts and ZKVM program
-- **Release Artifacts**: Docker images, deployment configurations
+- **Release Artifacts**: Docker images, helm charts, deployment configurations
 
 ## Semantic Versioning Strategy
 
@@ -60,7 +60,7 @@ This document outlines the comprehensive release management strategy for the ard
 #### Release Steps
 1. **Create RC tag**: `git tag contracts-v1.2.3-rc0`
 2. **Push RC tag**: `git push origin contracts-v1.2.3-rc0`
-3. **Automated deployment**: GitHub Actions deploys and captures address in `contracts/deployments/contracts-v1.2.3-rc0.json`
+3. **Automated deployment**: GitHub Actions deploys and captures address in `contracts/deployments/contracts-v1.2.3-rc0.json`, merge PR from GHA.
 4. **Verify deployment**: Ensure Etherscan verification and test functionality
 5. **Create final tag**: `git tag contracts-v1.2.3` (references RC deployment)
 6. **Create GitHub release**: Include deployment addresses and ABI files from RC deployment
