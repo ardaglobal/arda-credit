@@ -1,0 +1,54 @@
+# Kind cluster configuration for Arda Credit local e2e testing
+# Optimized for developer debugging and local development workflow
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: arda-credit-e2e
+
+# Network configuration for local development
+networking:
+  # Disable default CNI to use kindnet (faster startup)
+  disableDefaultCNI: false
+  # Custom pod/service subnets to avoid conflicts with Docker Desktop
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/16"
+  # API server configuration
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 6443
+
+# Node configuration - minimal but realistic setup
+nodes:
+  # Control plane node with port mappings for local access
+  - role: control-plane
+    image: kindest/node:v1.33.0
+    extraPortMappings:
+    # App frontend (port 3000 -> NodePort 30000)
+    - containerPort: 30000
+      hostPort: 3000
+      protocol: TCP
+    # API server (port 8080 -> NodePort 30001) 
+    - containerPort: 30001
+      hostPort: 8080
+      protocol: TCP
+    # PostgreSQL debug access (port 5432 -> NodePort 30002)
+    - containerPort: 30002  
+      hostPort: 5432
+      protocol: TCP
+      
+  # Single worker node for realistic multi-node behavior
+  - role: worker
+    image: kindest/node:v1.33.0
+
+# Configure containerd to allow insecure registries
+containerdConfigPatches:
+- |-
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = ""
+
+    [plugins."io.containerd.grpc.v1.cri".registry.mirrors]
+      [plugins."io.containerd.grpc.v1.cri".registry.mirrors."kind-registry:5000"]
+        endpoint = ["http://kind-registry:5000"]
+      
+    [plugins."io.containerd.grpc.v1.cri".registry.configs]
+      [plugins."io.containerd.grpc.v1.cri".registry.configs."kind-registry:5000".tls]
+        insecure_skip_verify = true
+
