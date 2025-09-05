@@ -53,6 +53,9 @@ pub enum TransactionType {
     LoanCloseout = 6,
     UserDeposit = 7,
     UserWithdrawal = 8,
+    // New pool operations
+    InvestorRegistration = 9,
+    PoolCreation = 10,
 }
 
 impl TransactionType {
@@ -61,7 +64,11 @@ impl TransactionType {
     pub const fn requires_kyc(&self) -> bool {
         matches!(
             self,
-            Self::LoanOrigination | Self::LoanPayment | Self::LoanCloseout | Self::UserWithdrawal
+            Self::LoanOrigination
+                | Self::LoanPayment
+                | Self::LoanCloseout
+                | Self::UserWithdrawal
+                | Self::PoolCreation
         )
     }
 
@@ -72,6 +79,12 @@ impl TransactionType {
             self,
             Self::LoanOrigination | Self::LoanPayment | Self::UserDeposit | Self::UserWithdrawal
         )
+    }
+
+    /// Check if transaction type requires investor role
+    #[must_use]
+    pub const fn requires_investor_role(&self) -> bool {
+        matches!(self, Self::InvestorRegistration | Self::PoolCreation)
     }
 }
 

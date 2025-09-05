@@ -1,0 +1,198 @@
+# Helm values for local Kind cluster e2e testing
+# Optimized for developer debugging with local image builds
+
+global:
+  # Use ghcr-secret for pulling private base images
+  imagePullSecrets:
+    - name: ghcr-secret
+  
+  # Node selectors for Kind cluster
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Enable namespace creation for proper isolation
+namespaceCreate: true
+
+# PostgreSQL configuration - optimized for local development
+postgresql:
+  enabled: true
+  
+  # Use public registry for PostgreSQL (no auth needed)
+  global:
+    imageRegistry: ""
+    imagePullSecrets: []
+  
+  image:
+    registry: docker.io
+    repository: bitnami/postgresql
+    tag: "15"
+  
+  auth:
+    database: "arda_credit_db_local"
+    username: "postgres" 
+    password: "local-dev-password"
+  
+  primary:
+    # Use ephemeral storage for faster testing
+    persistence:
+      enabled: false
+    
+    # Minimal resources for local development
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m  
+        memory: 128Mi
+    
+    # Expose PostgreSQL via NodePort for debugging
+    service:
+      type: NodePort
+      nodePorts:
+        postgresql: 30002
+    
+    # Fast startup configuration
+    initdb:
+      scripts:
+        00-init.sql: |
+          -- Create test database with proper permissions
+          CREATE DATABASE arda_credit_db_local;
+          GRANT ALL PRIVILEGES ON DATABASE arda_credit_db_local TO postgres;
+
+# API Server configuration - use local registry image
+server:
+  enabled: true
+  
+  # Local registry configuration - use local registry
+  image:
+    registry: "kind-registry:5000"  # Local container registry (internal network name)
+    repository: "arda-credit"
+    tag: "local-dev"
+    pullPolicy: Always  # Always pull to ensure latest image
+  
+  replicaCount: 1
+  
+  # Development-friendly configuration
+  config:
+    rustLog: "debug"  # Verbose logging for debugging
+    serverPort: "8080"
+    sindriCircuitTag: "latest"
+  
+  # Expose via NodePort for direct access
+  service:
+    type: NodePort
+    port: 8080
+    targetPort: 8080
+    nodePort: 30001
+  
+  # Minimal resources for local testing
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Fast health checks
+  readinessProbe:
+    httpGet:
+      path: /api/v1/health
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  livenessProbe:
+    httpGet:
+      path: /api/v1/health  
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  # Disable autoscaling for local development
+  autoscaling:
+    enabled: false
+  
+  # Disable PDB for single replica
+  podDisruptionBudget:
+    enabled: false
+  
+  # Disable anti-affinity for single-node testing
+  podAntiAffinity:
+    enabled: false
+
+# Frontend App configuration - use real app from GHCR
+app:
+  enabled: true
+  
+  # Use production app image from GHCR (real frontend)
+  image:
+    registry: "ghcr.io/ardaglobal"
+    repository: "arda-credit-app" 
+    tag: "latest"
+    pullPolicy: Always
+  
+  replicaCount: 1
+  
+  # Expose via NodePort for direct access
+  service:
+    type: NodePort
+    port: 80
+    targetPort: 80
+    nodePort: 30000
+  
+  # Minimal resources
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  
+  # Disable autoscaling and PDB for local development
+  autoscaling:
+    enabled: false
+  
+  podDisruptionBudget:
+    enabled: false
+    
+  podAntiAffinity:
+    enabled: false
+
+# Ingress configuration - disabled for NodePort access
+ingress:
+  enabled: false
+
+# Use secrets created from .env variables
+# The setup script creates 'arda-credit-secrets' from .env values
+secrets:
+  # Reference the secret created from .env
+  existingSecret: "arda-credit-secrets"
+  # Keys match the secret created in setup-cluster.sh
+  secretKeys:
+    sindriApiKey: "sindri-api-key"
+    ethereumRpcUrl: "ethereum-rpc-url"
+    ethereumContractAddress: "ethereum-contract-address"
+    ethereumWalletPrivateKey: "ethereum-wallet-private-key"
+    ethereumDeployerAddress: "ethereum-deployer-address"
+
+# Security context - permissive for local development
+podSecurityContext: {}
+securityContext: {}
+appPodSecurityContext: {} 
+appSecurityContext: {}
+
+# Service Account - minimal RBAC for local testing  
+serviceAccount:
+  annotations: {}
+  automount: false
+
+rbac:
+  create: false

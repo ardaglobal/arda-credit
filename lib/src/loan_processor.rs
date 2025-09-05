@@ -9,6 +9,7 @@ use crate::balance::BalanceUpdateType;
 use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
 use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
+use crate::pool::{Pool, PoolConfig, PoolState};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
 use crate::user::{User, UserError, UserState};
 use serde::{Deserialize, Serialize};
@@ -42,9 +43,15 @@ pub enum ProcessingError {
         transaction_timestamp: u64,
         state_timestamp: u64,
     },
+
+    #[error("User not found")]
+    UserNotFound,
+
+    #[error("Invalid transaction data")]
+    InvalidTransactionData,
 }
 
-/// Global state for loan processing (maintains user and loan state)
+/// Global state for loan processing (maintains user, loan, and pool state)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalLoanState {
     /// All users in the system
@@ -52,6 +59,9 @@ pub struct GlobalLoanState {
 
     /// All loans in the system
     pub loans: HashMap<[u8; 32], Loan>,
+
+    /// All liquidity pools in the system
+    pub pools: PoolState,
 
     /// User balance tracking state
     pub balance_state: BalanceState,
@@ -71,6 +81,7 @@ impl Default for GlobalLoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
+            pools: PoolState::new(),
             balance_state: BalanceState::new(),
             loan_terms: LoanTerms::default(),
             transaction_count: 0,
@@ -92,6 +103,7 @@ impl GlobalLoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
+            pools: PoolState::new(),
             balance_state: BalanceState::new(),
             loan_terms,
             transaction_count: 0,
@@ -239,6 +251,62 @@ impl GlobalLoanState {
 
                 // Apply balance update to state
                 self.balance_state.apply_update(balance_update)?;
+            }
+            TransactionType::InvestorRegistration => {
+                // Process investor registration - update user type to investor
+                if let Some(user) = self.users.get_mut(&transaction.user_id) {
+                    user.user_type = crate::user::UserType::Investor;
+                } else {
+                    return Err(ProcessingError::UserNotFound);
+                }
+            }
+            TransactionType::PoolCreation => {
+                // Process pool creation transaction
+                // Metadata format: [max_ltv_ratio(8)] + [max_interest_rate(8)] + [repayment_period_days(4)] + [remaining_44_bytes_unused]
+                let metadata = transaction.metadata.as_bytes();
+
+                let max_ltv_ratio = u64::from_le_bytes([
+                    metadata[0],
+                    metadata[1],
+                    metadata[2],
+                    metadata[3],
+                    metadata[4],
+                    metadata[5],
+                    metadata[6],
+                    metadata[7],
+                ]);
+                let max_interest_rate = u64::from_le_bytes([
+                    metadata[8],
+                    metadata[9],
+                    metadata[10],
+                    metadata[11],
+                    metadata[12],
+                    metadata[13],
+                    metadata[14],
+                    metadata[15],
+                ]);
+                let repayment_period_days =
+                    u32::from_le_bytes([metadata[16], metadata[17], metadata[18], metadata[19]]);
+
+                let pool_config = PoolConfig {
+                    max_ltv_ratio,
+                    max_interest_rate,
+                    repayment_period_days,
+                };
+
+                // Create new pool using loan_id as pool_id
+                let pool = Pool::new(
+                    transaction.loan_id, // Using loan_id field as pool_id
+                    transaction.user_id, // investor_id
+                    pool_config,
+                    transaction.created_at,
+                )
+                .map_err(|_| ProcessingError::InvalidTransactionData)?;
+
+                // Add pool to state
+                self.pools
+                    .add_pool(pool)
+                    .map_err(|_| ProcessingError::InvalidTransactionData)?;
             }
         }
 
@@ -1945,5 +2013,90 @@ mod tests {
             created_at: timestamp,
             metadata: MetadataArray::from_bytes(&metadata_bytes),
         }
+    }
+
+    #[test]
+    fn test_pool_creation() {
+        let mut state = GlobalLoanState::new();
+        let investor_id = [1u8; 32];
+        let pool_id = [10u8; 32];
+
+        // Register investor first
+        let investor_registration = create_test_user_registration(investor_id, 1);
+        state.process_transaction(&investor_registration).unwrap();
+
+        // Create investor registration transaction
+        let investor_reg = LoanTransaction {
+            transaction_id: [20u8; 32],
+            user_id: investor_id,
+            loan_id: [0u8; 32], // Zero for non-loan transactions
+            transaction_type: TransactionType::InvestorRegistration,
+            amount: 0,
+            created_at: 1_640_995_300,
+            metadata: MetadataArray::empty(),
+        };
+
+        // Process investor registration
+        state.process_transaction(&investor_reg).unwrap();
+
+        // Add KYC verification (required for pool creation)
+        let mut kyc_metadata = vec![0u8; 64];
+        kyc_metadata[0] = 1; // 1 = approval, 0 = rejection
+
+        let kyc_verification = LoanTransaction {
+            transaction_id: [25u8; 32],
+            user_id: investor_id,
+            loan_id: [0u8; 32], // Zero for non-loan transactions
+            transaction_type: TransactionType::KycVerification,
+            amount: 0,
+            created_at: 1_640_995_350,
+            metadata: MetadataArray::from_bytes(&kyc_metadata),
+        };
+
+        state.process_transaction(&kyc_verification).unwrap();
+
+        // Verify user type updated to investor and KYC approved
+        let user = state.users.get(&investor_id).unwrap();
+        assert_eq!(user.user_type, crate::user::UserType::Investor);
+        assert_eq!(user.kyc_status, crate::user::KycStatus::Approved);
+
+        // Create pool creation transaction
+        let mut pool_metadata = vec![0u8; 64];
+        // Pack pool configuration: max_ltv_ratio (8000 = 80%), max_interest_rate (1200 = 12%), repayment_period_days (365)
+        let max_ltv_ratio = 8000u64;
+        let max_interest_rate = 1200u64;
+        let repayment_period_days = 365u32;
+
+        pool_metadata[0..8].copy_from_slice(&max_ltv_ratio.to_le_bytes());
+        pool_metadata[8..16].copy_from_slice(&max_interest_rate.to_le_bytes());
+        pool_metadata[16..20].copy_from_slice(&repayment_period_days.to_le_bytes());
+
+        let pool_creation = LoanTransaction {
+            transaction_id: [30u8; 32],
+            user_id: investor_id,
+            loan_id: pool_id, // Using loan_id field as pool_id
+            transaction_type: TransactionType::PoolCreation,
+            amount: 0,
+            created_at: 1_640_995_400,
+            metadata: MetadataArray::from_bytes(&pool_metadata),
+        };
+
+        // Process pool creation
+        state.process_transaction(&pool_creation).unwrap();
+
+        // Verify pool was created
+        let pool = state.pools.get_pool(&pool_id).unwrap();
+        assert_eq!(pool.investor_id, investor_id);
+        assert_eq!(pool.max_ltv_ratio, 8000);
+        assert_eq!(pool.max_interest_rate, 1200);
+        assert_eq!(pool.repayment_period_days, 365);
+        assert_eq!(pool.status, crate::pool::PoolStatus::Pending);
+
+        // Verify pool state integrity
+        assert_eq!(state.pools.total_pools(), 1);
+        assert_eq!(state.pools.active_pools(), 0); // Still pending
+
+        // Verify transaction counter was incremented
+        assert_eq!(state.transaction_count, 4); // 1 user registration + 1 investor registration + 1 kyc verification + 1 pool creation
     }
 }
