@@ -53,15 +53,20 @@ make kind-teardown
 ┌─────────────────┐    ┌─────────────────────┐    ┌─────────────────┐
 │   Host System   │    │  Local Registry     │    │   Kind Cluster  │
 │                 │    │  (localhost:5001)   │    │                 │
-│ localhost:3000  ├────┤ ├ kind-registry:5000 ├────┤ App (GHCR)     │
-│ localhost:8080  ├────┤ │ └ arda-credit:      │    │ Server (Local)  │
-│ localhost:5432  ├────┤ │   local-dev        │    │ PostgreSQL      │
-│                 │    │ │                   │    │                 │
-│ Docker Build    │    │ Auto-connected to   │    │ Image Pulls     │
-│ ├ arda-credit   ├────┤ Kind network        ├────┤ ├ ghcr.io/...   │
-│ └ Push to reg   │    │ (eliminates         │    │ └ kind-registry │
-└─────────────────┘    │  snapshotter issue) │    └─────────────────┘
-                       └─────────────────────┘
+│ localhost:3000  ├────┼─────────────────────┼────┤ App (NodePort)  │
+│ localhost:8080  ├────┼─────────────────────┼────┤ Server          │
+│ localhost:5432  ├────┼─────────────────────┼────┤ PostgreSQL      │
+│                 │    │                     │    │                 │
+│ Docker Build:   │    │ Registry Storage:   │    │ Image Sources:  │
+│ • Build image   ├────┤ • arda-credit:      ├────┤ • kind-registry │
+│ • Push to reg   │    │   local-dev         │    │ • ghcr.io/...   │
+│                 │    │                     │    │                 │
+└─────────────────┘    └─────────────────────┘    └─────────────────┘
+                                │
+                                │ Connected to Kind network
+                                │ (eliminates snapshotter issue)
+                                ▼
+                       Auto-configured as kind-registry:5000
 ```
 
 ## Development Workflow
