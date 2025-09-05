@@ -210,6 +210,29 @@ impl TransactionMapper {
                 }])
             }
 
+            TransactionType::InvestorRegistration => {
+                // For investor registration, we don't generate CCR operations
+                // since this is a user state change, not a financial operation
+                Ok(vec![])
+            }
+
+            TransactionType::PoolCreation => {
+                // For pool creation, we don't generate CCR operations
+                // since this is pool state management, not a financial operation
+                Ok(vec![])
+            }
+
+            // Other non-monetary transaction types
+            TransactionType::UserRegistration
+            | TransactionType::KycSubmission
+            | TransactionType::KycVerification
+            | TransactionType::UserDeposit
+            | TransactionType::UserWithdrawal => {
+                // These transaction types don't generate CCR operations
+                // They are handled by their respective state management systems
+                Ok(vec![])
+            }
+
             _ => Err(MappingError::UnsupportedTransactionType {
                 transaction_type: transaction.transaction_type,
             }),
@@ -259,6 +282,22 @@ impl TransactionMapper {
                         .map_err(|_| MappingError::InvalidAmount { amount: 0 })?,
                     created_at,
                 }])
+            }
+
+            "investor_registration" => {
+                // For investor registration, we don't generate CCR operations
+                Ok(vec![])
+            }
+
+            "pool_creation" => {
+                // For pool creation, we don't generate CCR operations
+                Ok(vec![])
+            }
+
+            "user_registration" | "kyc_submission" | "kyc_verification" | "user_deposit"
+            | "user_withdrawal" => {
+                // These transaction types don't generate CCR operations
+                Ok(vec![])
             }
 
             "loan_payment" | "payment" => {
