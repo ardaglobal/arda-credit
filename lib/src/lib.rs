@@ -41,7 +41,10 @@ pub use balance::{
     BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType,
     UserBalance,
 };
-pub use loan::{Loan, LoanError, LoanStatus, LoanTerms};
+pub use loan::{
+    LiquidityPool, Loan, LoanError, LoanStatus, LoanTerms, PoolDeploymentTerms, PoolError,
+    PoolState, PoolStatus,
+};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};
 pub use utils::{cents_to_decimal, decimal_to_cents, hash_uuid};

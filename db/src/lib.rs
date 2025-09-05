@@ -53,6 +53,8 @@ pub use db::{
     // CCR Domain functions
     create_identity,
     create_identity_with_password,
+    // Liquidity pool functions
+    create_liquidity_pool,
     create_loan,
     create_payment,
     create_state_snapshot,
@@ -63,6 +65,7 @@ pub use db::{
     create_withdrawal_request,
     delete_identity,
 
+    find_matching_liquidity_pools,
     generate_invite_code,
     get_all_batches,
     get_balance,
@@ -79,6 +82,8 @@ pub use db::{
     get_identity_by_reset_token,
     get_invite_code_info,
     get_kyc_statistics,
+    get_liquidity_pool_by_id,
+    get_liquidity_pools_by_investor,
     get_loan_by_id,
     get_payments_by_loan,
     get_pending_transactions,
@@ -123,6 +128,7 @@ pub use db::{
     update_identity_profile,
     update_kyc_status,
     update_last_login,
+    update_liquidity_pool_status,
     update_loan,
     update_user_balance_from_deposit,
     update_user_balance_from_deposit_tx,
@@ -136,6 +142,7 @@ pub use db::{
     update_withdrawal_status,
     update_withdrawal_status_tx,
     use_invite_code,
+    validate_pool_parameters,
     verify_email_with_token,
     // Types
     AdsStateCommit,
@@ -144,14 +151,18 @@ pub use db::{
     ContractPublicData,
     ContractSubmissionData,
     CounterState,
+    CreateLiquidityPoolRequest,
     // CCR Domain types
     Identity,
     IncomingTransaction,
     InviteCodeInfo,
     KycStatistics,
+    LiquidityPool,
+    LiquidityPoolAudit,
     Loan,
     LoanTransactionDb,
     Payment,
+    PoolMatchingCriteria,
     ProofBatch,
 
     RegisterResult,

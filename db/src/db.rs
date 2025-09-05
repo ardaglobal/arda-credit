@@ -3113,3 +3113,246 @@ pub async fn get_pending_withdrawal_requests(
 
     Ok(requests)
 }
+
+// ============================================================================
+// LIQUIDITY POOL FUNCTIONS
+// ============================================================================
+
+/// Database model for liquidity pools
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct LiquidityPool {
+    pub id: uuid::Uuid,
+    pub investor_id: uuid::Uuid,
+    pub name: String,
+    pub total_deposits: rust_decimal::Decimal,
+    pub available_liquidity: rust_decimal::Decimal,
+    pub utilized_liquidity: rust_decimal::Decimal,
+    pub max_ltv_ratio: rust_decimal::Decimal,
+    pub max_interest_rate: rust_decimal::Decimal,
+    pub repayment_period_days: i32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Database model for liquidity pool audit records
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct LiquidityPoolAudit {
+    pub id: uuid::Uuid,
+    pub pool_id: uuid::Uuid,
+    pub operation_type: String,
+    pub old_values: Option<serde_json::Value>,
+    pub new_values: Option<serde_json::Value>,
+    pub operator_id: Option<uuid::Uuid>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request structure for creating a liquidity pool
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateLiquidityPoolRequest {
+    pub investor_id: uuid::Uuid,
+    pub name: String,
+    pub max_ltv_ratio: rust_decimal::Decimal,
+    pub max_interest_rate: rust_decimal::Decimal,
+    pub repayment_period_days: i32,
+}
+
+/// Pool matching criteria for auto-deployment
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PoolMatchingCriteria {
+    pub required_liquidity: rust_decimal::Decimal,
+    pub max_ltv: rust_decimal::Decimal,
+    pub max_rate: rust_decimal::Decimal,
+    pub min_repayment_days: i32,
+}
+
+/// Validate pool parameters
+pub fn validate_pool_parameters(
+    max_ltv_ratio: rust_decimal::Decimal,
+    max_interest_rate: rust_decimal::Decimal,
+    repayment_period_days: i32,
+) -> Result<(), String> {
+    use std::str::FromStr;
+
+    // LTV ratio validation: 10% to 95%
+    let min_ltv = rust_decimal::Decimal::from_str("0.1000").unwrap();
+    let max_ltv = rust_decimal::Decimal::from_str("0.9500").unwrap();
+    if max_ltv_ratio < min_ltv || max_ltv_ratio > max_ltv {
+        return Err(format!(
+            "LTV ratio must be between 10% and 95%, got: {}%",
+            max_ltv_ratio * rust_decimal::Decimal::from(100)
+        ));
+    }
+
+    // Interest rate validation: 1% to 50%
+    let min_rate = rust_decimal::Decimal::from_str("0.0100").unwrap();
+    let max_rate = rust_decimal::Decimal::from_str("0.5000").unwrap();
+    if max_interest_rate < min_rate || max_interest_rate > max_rate {
+        return Err(format!(
+            "Interest rate must be between 1% and 50%, got: {}%",
+            max_interest_rate * rust_decimal::Decimal::from(100)
+        ));
+    }
+
+    // Repayment period validation: 7 days to 1 year
+    if repayment_period_days < 7 || repayment_period_days > 365 {
+        return Err(format!(
+            "Repayment period must be between 7 and 365 days, got: {} days",
+            repayment_period_days
+        ));
+    }
+
+    Ok(())
+}
+
+/// Create a new liquidity pool
+pub async fn create_liquidity_pool(
+    pool: &PgPool,
+    request: &CreateLiquidityPoolRequest,
+) -> Result<LiquidityPool, sqlx::Error> {
+    // Validate parameters first
+    if let Err(_validation_error) = validate_pool_parameters(
+        request.max_ltv_ratio,
+        request.max_interest_rate,
+        request.repayment_period_days,
+    ) {
+        return Err(sqlx::Error::PoolClosed); // Use a generic error for validation
+    }
+    let liquidity_pool = sqlx::query_as!(
+        LiquidityPool,
+        r#"
+        INSERT INTO liquidity_pools (
+            investor_id, name, max_ltv_ratio, max_interest_rate, 
+            repayment_period_days, status
+        ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
+        RETURNING 
+            id, investor_id, name, total_deposits, available_liquidity, 
+            utilized_liquidity, max_ltv_ratio, max_interest_rate,
+            repayment_period_days, status, 
+            created_at as "created_at!: DateTime<Utc>", 
+            updated_at as "updated_at!: DateTime<Utc>"
+        "#,
+        request.investor_id,
+        request.name,
+        request.max_ltv_ratio,
+        request.max_interest_rate,
+        request.repayment_period_days
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(liquidity_pool)
+}
+
+/// Get liquidity pool by ID
+pub async fn get_liquidity_pool_by_id(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+) -> Result<LiquidityPool, sqlx::Error> {
+    let liquidity_pool = sqlx::query_as!(
+        LiquidityPool,
+        r#"
+        SELECT 
+            id, investor_id, name, total_deposits, available_liquidity,
+            utilized_liquidity, max_ltv_ratio, max_interest_rate,
+            repayment_period_days, status,
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        FROM liquidity_pools
+        WHERE id = $1
+        "#,
+        pool_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(liquidity_pool)
+}
+
+/// Get liquidity pools by investor ID
+pub async fn get_liquidity_pools_by_investor(
+    pool: &PgPool,
+    investor_id: uuid::Uuid,
+) -> Result<Vec<LiquidityPool>, sqlx::Error> {
+    let pools = sqlx::query_as!(
+        LiquidityPool,
+        r#"
+        SELECT 
+            id, investor_id, name, total_deposits, available_liquidity,
+            utilized_liquidity, max_ltv_ratio, max_interest_rate,
+            repayment_period_days, status,
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        FROM liquidity_pools
+        WHERE investor_id = $1
+        ORDER BY created_at DESC
+        "#,
+        investor_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(pools)
+}
+
+/// Find matching liquidity pools for auto-deployment
+pub async fn find_matching_liquidity_pools(
+    pool: &PgPool,
+    criteria: &PoolMatchingCriteria,
+) -> Result<Vec<LiquidityPool>, sqlx::Error> {
+    let pools = sqlx::query_as!(
+        LiquidityPool,
+        r#"
+        SELECT 
+            id, investor_id, name, total_deposits, available_liquidity,
+            utilized_liquidity, max_ltv_ratio, max_interest_rate,
+            repayment_period_days, status,
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        FROM liquidity_pools
+        WHERE status = 'ACTIVE'
+            AND available_liquidity >= $1
+            AND max_ltv_ratio >= $2
+            AND max_interest_rate >= $3
+            AND repayment_period_days >= $4
+        ORDER BY max_interest_rate ASC, available_liquidity DESC
+        "#,
+        criteria.required_liquidity,
+        criteria.max_ltv,
+        criteria.max_rate,
+        criteria.min_repayment_days
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(pools)
+}
+
+/// Update liquidity pool status
+pub async fn update_liquidity_pool_status(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    new_status: &str,
+) -> Result<LiquidityPool, sqlx::Error> {
+    let liquidity_pool = sqlx::query_as!(
+        LiquidityPool,
+        r#"
+        UPDATE liquidity_pools
+        SET status = $2, updated_at = NOW()
+        WHERE id = $1
+        RETURNING 
+            id, investor_id, name, total_deposits, available_liquidity,
+            utilized_liquidity, max_ltv_ratio, max_interest_rate,
+            repayment_period_days, status,
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        "#,
+        pool_id,
+        new_status
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(liquidity_pool)
+}
