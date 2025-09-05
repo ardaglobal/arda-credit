@@ -438,3 +438,86 @@ setup: install env initDB setup-hooks
 .PHONY: deny
 deny:
 	cargo deny check
+
+## kind-setup: Setup Kind cluster for local e2e testing
+# This creates a local Kubernetes cluster with Arda Credit deployed
+# Uses locally built images for debugging and development
+.PHONY: kind-setup
+kind-setup:
+	@echo "🚀 Setting up Kind cluster for e2e testing..."
+	@command -v kind >/dev/null 2>&1 || { echo "❌ kind not found. Run 'make install' to install dependencies."; exit 1; }
+	@command -v kubectl >/dev/null 2>&1 || { echo "❌ kubectl not found. Run 'make install' to install dependencies."; exit 1; }
+	@command -v helm >/dev/null 2>&1 || { echo "❌ helm not found. Run 'make install' to install dependencies."; exit 1; }
+	cd helm/e2e && ./scripts/setup-cluster.sh
+	@echo ""
+	@echo "✅ Kind cluster setup complete!"
+	@echo "🌐 Frontend: http://localhost:3000"
+	@echo "🔧 API: http://localhost:8080"
+	@echo "🗄️  Database: localhost:5432"
+
+## kind-teardown: Teardown Kind cluster
+# Removes the local Kubernetes cluster and cleans up resources
+.PHONY: kind-teardown
+kind-teardown:
+	@echo "🗑️  Tearing down Kind cluster..."
+	cd helm/e2e && ./scripts/teardown-cluster.sh
+
+## kind-status: Show Kind cluster status
+# Display current status of the local e2e environment
+.PHONY: kind-status
+kind-status:
+	@echo "📊 Kind Cluster Status:"
+	@if kind get clusters | grep -q "arda-credit-e2e"; then \
+		echo "✅ Cluster 'arda-credit-e2e' is running"; \
+		echo ""; \
+		echo "📦 Pods:"; \
+		kubectl get pods --context=kind-arda-credit-e2e 2>/dev/null || echo "❌ Cannot connect to cluster"; \
+		echo ""; \
+		echo "🔗 Services:"; \
+		kubectl get services --context=kind-arda-credit-e2e 2>/dev/null || echo "❌ Cannot connect to cluster"; \
+	else \
+		echo "❌ Cluster 'arda-credit-e2e' not found"; \
+		echo "💡 Run 'make kind-setup' to create the cluster"; \
+	fi
+
+## kind-logs: Show logs from Kind cluster services
+# Display logs from Arda Credit services for debugging
+.PHONY: kind-logs
+kind-logs:
+	@echo "📋 Arda Credit Service Logs:"
+	@echo ""
+	@echo "=== Server Logs ==="
+	@kubectl logs --context=kind-arda-credit-e2e -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --tail=50 2>/dev/null || echo "❌ No server logs available"
+	@echo ""
+	@echo "=== App Logs ==="
+	@kubectl logs --context=kind-arda-credit-e2e -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app --tail=50 2>/dev/null || echo "❌ No app logs available"
+	@echo ""
+	@echo "=== PostgreSQL Logs ==="
+	@kubectl logs --context=kind-arda-credit-e2e -l app.kubernetes.io/name=postgresql --tail=20 2>/dev/null || echo "❌ No PostgreSQL logs available"
+
+## kind-restart: Restart Kind cluster services
+# Restart Arda Credit deployments (keeps cluster and data)
+.PHONY: kind-restart
+kind-restart:
+	@echo "🔄 Restarting Arda Credit services..."
+	@kubectl rollout restart deployment/arda-credit-server --context=kind-arda-credit-e2e
+	@kubectl rollout restart deployment/arda-credit-app --context=kind-arda-credit-e2e
+	@echo "⏳ Waiting for rollout to complete..."
+	@kubectl rollout status deployment/arda-credit-server --context=kind-arda-credit-e2e --timeout=120s
+	@kubectl rollout status deployment/arda-credit-app --context=kind-arda-credit-e2e --timeout=60s
+	@echo "✅ Services restarted successfully"
+
+## kind-rebuild: Rebuild images and restart Kind services
+# Rebuilds local images, loads them into Kind, and restarts services
+.PHONY: kind-rebuild
+kind-rebuild:
+	@echo "🔨 Rebuilding images and restarting services..."
+	@echo "Building new image..."
+	@docker build -t localhost/arda-credit:local-dev .
+	@echo "Loading image into Kind cluster..."
+	@kind load docker-image localhost/arda-credit:local-dev --name=arda-credit-e2e
+	@docker tag localhost/arda-credit:local-dev localhost/arda-credit-app:local-dev
+	@kind load docker-image localhost/arda-credit-app:local-dev --name=arda-credit-e2e
+	@echo "Restarting services..."
+	@$(MAKE) kind-restart
+	@echo "✅ Rebuild and restart complete!"
