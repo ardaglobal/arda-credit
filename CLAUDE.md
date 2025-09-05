@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Arda Credit** is a privacy-preserving loan vApp (verifiable app) built on SP1 zero-knowledge proofs. The MVP enables loan origination, payments, and closeouts with KYC verification, all while maintaining transaction privacy through batch processing and ZK proofs.
+**Arda Credit** is a privacy-preserving loan vApp (verifiable app) built on SP1 zero-knowledge proofs. The MVP enables loan origination, payments, and closeouts with KYC verification, plus **liquidity pool creation and management** for investors. All operations maintain transaction privacy through batch processing and ZK proofs.
 
 ### Core Loan Features
 
@@ -24,6 +24,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Loan Origination** - create new loans between parties
 - **Loan Payments** - make payments toward outstanding loans  
 - **Loan Closeout** - final settlement and loan completion
+
+**Liquidity Pool Management:**
+- **Pool Creation** - investors can create yield-bearing liquidity pools with deployment rules
+- **Pool Funding** - deposit USDC into pools for credit line matching
+- **Pool Configuration** - LTV ratios, interest rates, repayment periods per pool
+- **Pool State Tracking** - total deposits, available/utilized liquidity, status management
 
 **Privacy & Verification:**
 - Users can **prove transaction inclusion** (loan payment, origination, closeout, KYC status)
@@ -77,6 +83,14 @@ cargo run -p api --bin server --release  # Run server locally
 ```bash
 # Health check
 cargo run --bin cli -- health-check
+
+# Liquidity Pool Management (ZK-integrated)
+# Create and manage liquidity pools with full ZK proof integration
+cargo run --bin cli -- create-pool --name "My Pool" --max-ltv-ratio 0.8 --max-interest-rate 0.12 --repayment-period-days 365
+cargo run --bin cli -- list-pools --verbose
+cargo run --bin cli -- get-pool --pool-id <pool-id> --verbose
+cargo run --bin cli -- update-pool-status --pool-id <pool-id> --status ACTIVE
+cargo run --bin cli -- find-matching-pools --required-liquidity 10000 --max-ltv 0.8 --max-rate 0.12 --min-repayment-days 30
 
 # User & KYC Management
 cargo run --bin cli -- register-user --user-type investor --email user@example.com
@@ -416,6 +430,45 @@ cargo run --bin cli -- verify-transaction-inclusion \
   --proof-file proof_batch_1.json \
   --transaction-id payment-uuid \
   --transaction-type loan_payment
+```
+
+### Complete Liquidity Pool Lifecycle
+```bash
+# 1. Register as investor and get KYC approval
+cargo run --bin cli -- register-user --user-type investor --email investor@example.com
+cargo run --bin cli -- submit-kyc --user-id <investor-uuid>
+
+# 2. Create a new liquidity pool with deployment terms
+cargo run --bin cli -- create-pool \
+  --name "Conservative Credit Pool" \
+  --max-ltv-ratio 0.75 \
+  --max-interest-rate 0.10 \
+  --repayment-period-days 180
+
+# 3. List all pools (with status filter)
+cargo run --bin cli -- list-pools --status ACTIVE --verbose
+
+# 4. Check specific pool details
+cargo run --bin cli -- get-pool --pool-id <pool-uuid> --verbose
+
+# 5. Update pool status (pause/reactivate)
+cargo run --bin cli -- update-pool-status --pool-id <pool-uuid> --status PAUSED
+
+# 6. Find matching pools for credit deployment
+cargo run --bin cli -- find-matching-pools \
+  --required-liquidity 50000 \
+  --max-ltv 0.80 \
+  --max-rate 0.12 \
+  --min-repayment-days 90
+
+# 7. Pool operations are included in batch processing for ZK proofs
+cargo run --bin cli -- trigger-batch --verbose
+
+# 8. Verify pool creation was included in ZK proof (trustless verification)
+cargo run --bin cli -- verify-transaction-inclusion \
+  --proof-file proof_batch_1.json \
+  --transaction-id <pool-creation-uuid> \
+  --transaction-type pool_creation
 ```
 
 ### Complete Withdrawal Lifecycle with ZK Proof Integration

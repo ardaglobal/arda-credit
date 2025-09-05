@@ -546,8 +546,6 @@ enum Commands {
     // ============================================================================
     // LIQUIDITY POOL MANAGEMENT COMMANDS
     // ============================================================================
-    // LIQUIDITY POOL COMMANDS - TEMPORARILY DISABLED
-    /*
     /// Create a new liquidity pool
     CreatePool {
         /// Pool name
@@ -618,7 +616,6 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
-    */
     // ============================================================================
     // ENHANCED LOAN OPERATION TESTING COMMANDS
     // ============================================================================
@@ -1112,9 +1109,8 @@ async fn main() -> Result<()> {
         }
 
         // ============================================================================
-        // LIQUIDITY POOL COMMAND HANDLERS - TEMPORARILY DISABLED
+        // LIQUIDITY POOL COMMAND HANDLERS
         // ============================================================================
-        /*
         Commands::CreatePool {
             name,
             max_ltv_ratio,
@@ -1166,7 +1162,6 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        */
         Commands::SubmitKyc {
             user_id,
             document_type,
@@ -4726,12 +4721,9 @@ async fn get_pending_withdrawals(
 }
 
 // ============================================================================
-// LIQUIDITY POOL FUNCTIONS - TEMPORARILY DISABLED
+// LIQUIDITY POOL FUNCTIONS
 // ============================================================================
-// TODO: Re-enable after resolving axum version conflicts in API
-// The CLI functions need proper BatchApiClient method calls instead of direct field access
 
-/*
 /// Create a new liquidity pool
 async fn create_pool(
     client: &BatchApiClient,
@@ -4743,38 +4735,33 @@ async fn create_pool(
 ) -> Result<()> {
     println!("🏦 Creating liquidity pool: {}", name);
 
-    let request = serde_json::json!({
-        "name": name,
-        "max_ltv_ratio": max_ltv_ratio,
-        "max_interest_rate": max_interest_rate,
-        "repayment_period_days": repayment_period_days
-    });
-
-    let response = client
-        .http_client
-        .post(&format!("{}/api/pool", client.base_url))
-        .json(&request)
-        .send()
-        .await?;
-
-    match response.status() {
-        reqwest::StatusCode::CREATED => {
-            let pool: serde_json::Value = response.json().await?;
+    match client
+        .create_pool(
+            name,
+            max_ltv_ratio,
+            max_interest_rate,
+            repayment_period_days,
+        )
+        .await
+    {
+        Ok(pool) => {
             println!("✅ Pool created successfully!");
-            println!("   Pool ID: {}", pool["pool_id"].as_str().unwrap_or("N/A"));
-            println!("   Name: {}", pool["name"].as_str().unwrap_or("N/A"));
-            println!("   Max LTV: {}%", (pool["max_ltv_ratio"].as_f64().unwrap_or(0.0) * 100.0));
-            println!("   Max Interest Rate: {}%", (pool["max_interest_rate"].as_f64().unwrap_or(0.0) * 100.0));
-            println!("   Repayment Period: {} days", pool["repayment_period_days"].as_i64().unwrap_or(0));
-            println!("   Status: {}", pool["status"].as_str().unwrap_or("N/A"));
+            println!("   Pool ID: {}", pool.pool_id);
+            println!("   Name: {}", pool.name);
+            println!("   Max LTV: {:.1}%", pool.max_ltv_ratio * 100.0);
+            println!(
+                "   Max Interest Rate: {:.1}%",
+                pool.max_interest_rate * 100.0
+            );
+            println!("   Repayment Period: {} days", pool.repayment_period_days);
+            println!("   Status: {}", pool.status);
 
             if verbose {
                 println!("Full Response: {:#?}", pool);
             }
         }
-        _ => {
-            let error_text = response.text().await?;
-            return Err(eyre::eyre!("Failed to create pool: {}", error_text));
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to create pool: {}", e));
         }
     }
 
@@ -4789,40 +4776,29 @@ async fn list_pools(
 ) -> Result<()> {
     println!("📋 Listing liquidity pools...");
 
-    let mut url = format!("{}/api/pools", client.base_url);
-    if let Some(status) = status_filter {
-        url.push_str(&format!("?status={}", status));
-    }
-
-    let response = client.http_client.get(&url).send().await?;
-
-    match response.status() {
-        reqwest::StatusCode::OK => {
-            let pools_response: serde_json::Value = response.json().await?;
-            let pools = pools_response["pools"].as_array().unwrap_or(&vec![]);
-
-            if pools.is_empty() {
+    match client.list_pools(status_filter).await {
+        Ok(pools_response) => {
+            if pools_response.pools.is_empty() {
                 println!("📭 No pools found");
                 return Ok(());
             }
 
-            println!("✅ Found {} pools:", pools.len());
+            println!("✅ Found {} pools:", pools_response.pools.len());
             println!();
 
-            for pool in pools {
-                let pool_id = pool["pool_id"].as_str().unwrap_or("N/A");
-                let name = pool["name"].as_str().unwrap_or("N/A");
-                let status = pool["status"].as_str().unwrap_or("N/A");
-                let available = pool["available_liquidity"].as_f64().unwrap_or(0.0);
-                let total = pool["total_deposits"].as_f64().unwrap_or(0.0);
-                let ltv = pool["max_ltv_ratio"].as_f64().unwrap_or(0.0) * 100.0;
-                let rate = pool["max_interest_rate"].as_f64().unwrap_or(0.0) * 100.0;
-
-                println!("   Pool: {} ({})", name, pool_id);
-                println!("      Status: {}", status);
-                println!("      Available: ${:.2} / ${:.2}", available, total);
-                println!("      Max LTV: {:.1}% | Max Rate: {:.1}%", ltv, rate);
-                println!("      Days: {}", pool["repayment_period_days"].as_i64().unwrap_or(0));
+            for pool in &pools_response.pools {
+                println!("   Pool: {} ({})", pool.name, pool.pool_id);
+                println!("      Status: {}", pool.status);
+                println!(
+                    "      Available: ${:.2} / ${:.2}",
+                    pool.available_liquidity, pool.total_deposits
+                );
+                println!(
+                    "      Max LTV: {:.1}% | Max Rate: {:.1}%",
+                    pool.max_ltv_ratio * 100.0,
+                    pool.max_interest_rate * 100.0
+                );
+                println!("      Days: {}", pool.repayment_period_days);
                 println!();
             }
 
@@ -4830,9 +4806,8 @@ async fn list_pools(
                 println!("Full Response: {:#?}", pools_response);
             }
         }
-        _ => {
-            let error_text = response.text().await?;
-            return Err(eyre::eyre!("Failed to list pools: {}", error_text));
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to list pools: {}", e));
         }
     }
 
@@ -4843,44 +4818,42 @@ async fn list_pools(
 async fn get_pool(client: &BatchApiClient, pool_id: &str, verbose: bool) -> Result<()> {
     println!("🔍 Getting pool details: {}", pool_id);
 
-    let response = client
-        .http_client
-        .get(&format!("{}/api/pools/{}", client.base_url, pool_id))
-        .send()
-        .await?;
-
-    match response.status() {
-        reqwest::StatusCode::OK => {
-            let pool: serde_json::Value = response.json().await?;
+    match client.get_pool(pool_id).await {
+        Ok(Some(pool)) => {
             println!("✅ Pool Details:");
-            println!("   ID: {}", pool["pool_id"].as_str().unwrap_or("N/A"));
-            println!("   Name: {}", pool["name"].as_str().unwrap_or("N/A"));
-            println!("   Investor: {}", pool["investor_id"].as_str().unwrap_or("N/A"));
-            println!("   Status: {}", pool["status"].as_str().unwrap_or("N/A"));
+            println!("   ID: {}", pool.pool_id);
+            println!("   Name: {}", pool.name);
+            println!("   Investor: {}", pool.investor_id);
+            println!("   Status: {}", pool.status);
             println!();
             println!("   Liquidity:");
-            println!("      Total Deposits: ${:.2}", pool["total_deposits"].as_f64().unwrap_or(0.0));
-            println!("      Available: ${:.2}", pool["available_liquidity"].as_f64().unwrap_or(0.0));
-            println!("      Utilized: ${:.2}", pool["utilized_liquidity"].as_f64().unwrap_or(0.0));
+            println!("      Total Deposits: ${:.2}", pool.total_deposits);
+            println!("      Available: ${:.2}", pool.available_liquidity);
+            println!("      Utilized: ${:.2}", pool.utilized_liquidity);
             println!();
             println!("   Deployment Terms:");
-            println!("      Max LTV Ratio: {:.1}%", pool["max_ltv_ratio"].as_f64().unwrap_or(0.0) * 100.0);
-            println!("      Max Interest Rate: {:.1}%", pool["max_interest_rate"].as_f64().unwrap_or(0.0) * 100.0);
-            println!("      Repayment Period: {} days", pool["repayment_period_days"].as_i64().unwrap_or(0));
+            println!("      Max LTV Ratio: {:.1}%", pool.max_ltv_ratio * 100.0);
+            println!(
+                "      Max Interest Rate: {:.1}%",
+                pool.max_interest_rate * 100.0
+            );
+            println!(
+                "      Repayment Period: {} days",
+                pool.repayment_period_days
+            );
             println!();
-            println!("   Created: {}", pool["created_at"].as_str().unwrap_or("N/A"));
-            println!("   Updated: {}", pool["updated_at"].as_str().unwrap_or("N/A"));
+            println!("   Created: {}", pool.created_at);
+            println!("   Updated: {}", pool.updated_at);
 
             if verbose {
                 println!("Full Response: {:#?}", pool);
             }
         }
-        reqwest::StatusCode::NOT_FOUND => {
+        Ok(None) => {
             println!("❌ Pool not found: {}", pool_id);
         }
-        _ => {
-            let error_text = response.text().await?;
-            return Err(eyre::eyre!("Failed to get pool: {}", error_text));
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to get pool: {}", e));
         }
     }
 
@@ -4896,34 +4869,18 @@ async fn update_pool_status(
 ) -> Result<()> {
     println!("🔄 Updating pool status: {} -> {}", pool_id, status);
 
-    let request = serde_json::json!({
-        "status": status
-    });
-
-    let response = client
-        .http_client
-        .put(&format!("{}/api/pools/{}/status", client.base_url, pool_id))
-        .json(&request)
-        .send()
-        .await?;
-
-    match response.status() {
-        reqwest::StatusCode::OK => {
-            let pool: serde_json::Value = response.json().await?;
+    match client.update_pool_status(pool_id, status).await {
+        Ok(pool) => {
             println!("✅ Pool status updated successfully!");
-            println!("   Pool: {} ({})", pool["name"].as_str().unwrap_or("N/A"), pool_id);
-            println!("   New Status: {}", pool["status"].as_str().unwrap_or("N/A"));
+            println!("   Pool: {} ({})", pool.name, pool_id);
+            println!("   New Status: {}", pool.status);
 
             if verbose {
                 println!("Full Response: {:#?}", pool);
             }
         }
-        reqwest::StatusCode::NOT_FOUND => {
-            println!("❌ Pool not found: {}", pool_id);
-        }
-        _ => {
-            let error_text = response.text().await?;
-            return Err(eyre::eyre!("Failed to update pool status: {}", error_text));
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to update pool status: {}", e));
         }
     }
 
@@ -4946,44 +4903,31 @@ async fn find_matching_pools(
     println!("   Min Days: {}", min_repayment_days);
     println!();
 
-    let request = serde_json::json!({
-        "required_liquidity": required_liquidity,
-        "max_ltv": max_ltv,
-        "max_rate": max_rate,
-        "min_repayment_days": min_repayment_days
-    });
-
-    let response = client
-        .http_client
-        .post(&format!("{}/api/pools/match", client.base_url))
-        .json(&request)
-        .send()
-        .await?;
-
-    match response.status() {
-        reqwest::StatusCode::OK => {
-            let pools_response: serde_json::Value = response.json().await?;
-            let pools = pools_response["pools"].as_array().unwrap_or(&vec![]);
-
-            if pools.is_empty() {
+    match client
+        .find_matching_pools(required_liquidity, max_ltv, max_rate, min_repayment_days)
+        .await
+    {
+        Ok(pools_response) => {
+            if pools_response.pools.is_empty() {
                 println!("📭 No matching pools found");
                 return Ok(());
             }
 
-            println!("✅ Found {} matching pools (sorted by best terms):", pools.len());
+            println!(
+                "✅ Found {} matching pools (sorted by best terms):",
+                pools_response.pools.len()
+            );
             println!();
 
-            for (index, pool) in pools.iter().enumerate() {
-                let pool_id = pool["pool_id"].as_str().unwrap_or("N/A");
-                let name = pool["name"].as_str().unwrap_or("N/A");
-                let available = pool["available_liquidity"].as_f64().unwrap_or(0.0);
-                let ltv = pool["max_ltv_ratio"].as_f64().unwrap_or(0.0) * 100.0;
-                let rate = pool["max_interest_rate"].as_f64().unwrap_or(0.0) * 100.0;
-                let days = pool["repayment_period_days"].as_i64().unwrap_or(0);
-
-                println!("   {}. {} ({})", index + 1, name, pool_id);
-                println!("      Available: ${:.2}", available);
-                println!("      Terms: {:.1}% LTV, {:.1}% rate, {} days", ltv, rate, days);
+            for (index, pool) in pools_response.pools.iter().enumerate() {
+                println!("   {}. {} ({})", index + 1, pool.name, pool.pool_id);
+                println!("      Available: ${:.2}", pool.available_liquidity);
+                println!(
+                    "      Terms: {:.1}% LTV, {:.1}% rate, {} days",
+                    pool.max_ltv_ratio * 100.0,
+                    pool.max_interest_rate * 100.0,
+                    pool.repayment_period_days
+                );
                 println!();
             }
 
@@ -4991,15 +4935,13 @@ async fn find_matching_pools(
                 println!("Full Response: {:#?}", pools_response);
             }
         }
-        _ => {
-            let error_text = response.text().await?;
-            return Err(eyre::eyre!("Failed to find matching pools: {}", error_text));
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to find matching pools: {}", e));
         }
     }
 
     Ok(())
 }
-*/
 
 // ============================================================================
 // INVESTOR MANAGEMENT FUNCTIONS

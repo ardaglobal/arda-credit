@@ -225,6 +225,54 @@ pub struct DepositTransactionInfo {
     pub processed_at: Option<String>,
 }
 
+/// Pool creation request
+#[derive(Debug, Serialize)]
+pub struct CreatePoolRequest {
+    pub name: String,
+    pub max_ltv_ratio: f64,
+    pub max_interest_rate: f64,
+    pub repayment_period_days: i32,
+}
+
+/// Pool response
+#[derive(Debug, Deserialize)]
+pub struct PoolResponse {
+    pub pool_id: String,
+    pub name: String,
+    pub investor_id: String,
+    pub max_ltv_ratio: f64,
+    pub max_interest_rate: f64,
+    pub repayment_period_days: i32,
+    pub total_deposits: f64,
+    pub available_liquidity: f64,
+    pub utilized_liquidity: f64,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Pools list response
+#[derive(Debug, Deserialize)]
+pub struct PoolsListResponse {
+    pub pools: Vec<PoolResponse>,
+    pub total_count: usize,
+}
+
+/// Pool status update request
+#[derive(Debug, Serialize)]
+pub struct UpdatePoolStatusRequest {
+    pub status: String,
+}
+
+/// Pool matching request
+#[derive(Debug, Serialize)]
+pub struct FindMatchingPoolsRequest {
+    pub required_liquidity: f64,
+    pub max_ltv: f64,
+    pub max_rate: f64,
+    pub min_repayment_days: i32,
+}
+
 /// Transaction status response
 #[derive(Debug, Deserialize)]
 pub struct TransactionStatusResponse {
@@ -696,6 +744,91 @@ impl BatchApiClient {
             .json(&request)
             .send()
             .await?;
+        self.handle_response(response).await
+    }
+
+    // ============================================================================
+    // LIQUIDITY POOL METHODS
+    // ============================================================================
+
+    /// Create a new liquidity pool
+    pub async fn create_pool(
+        &self,
+        name: &str,
+        max_ltv_ratio: f64,
+        max_interest_rate: f64,
+        repayment_period_days: i32,
+    ) -> Result<PoolResponse, ApiClientError> {
+        let url = format!("{}/api/pool", self.base_url);
+        let request = CreatePoolRequest {
+            name: name.to_string(),
+            max_ltv_ratio,
+            max_interest_rate,
+            repayment_period_days,
+        };
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// List liquidity pools with optional status filter
+    pub async fn list_pools(
+        &self,
+        status_filter: Option<&str>,
+    ) -> Result<PoolsListResponse, ApiClientError> {
+        let mut url = format!("{}/api/pools", self.base_url);
+        if let Some(status) = status_filter {
+            url.push_str(&format!("?status={}", status));
+        }
+
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get specific pool details
+    pub async fn get_pool(&self, pool_id: &str) -> Result<Option<PoolResponse>, ApiClientError> {
+        let url = format!("{}/api/pools/{}", self.base_url, pool_id);
+        let response = self.client.get(&url).send().await?;
+
+        match response.status().as_u16() {
+            200 => Ok(Some(self.handle_response(response).await?)),
+            404 => Ok(None),
+            _ => Err(self.handle_error_response(response).await),
+        }
+    }
+
+    /// Update pool status
+    pub async fn update_pool_status(
+        &self,
+        pool_id: &str,
+        status: &str,
+    ) -> Result<PoolResponse, ApiClientError> {
+        let url = format!("{}/api/pools/{}/status", self.base_url, pool_id);
+        let request = UpdatePoolStatusRequest {
+            status: status.to_string(),
+        };
+
+        let response = self.client.put(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Find matching pools for auto-deployment
+    pub async fn find_matching_pools(
+        &self,
+        required_liquidity: f64,
+        max_ltv: f64,
+        max_rate: f64,
+        min_repayment_days: i32,
+    ) -> Result<PoolsListResponse, ApiClientError> {
+        let url = format!("{}/api/pools/match", self.base_url);
+        let request = FindMatchingPoolsRequest {
+            required_liquidity,
+            max_ltv,
+            max_rate,
+            min_repayment_days,
+        };
+
+        let response = self.client.post(&url).json(&request).send().await?;
         self.handle_response(response).await
     }
 
