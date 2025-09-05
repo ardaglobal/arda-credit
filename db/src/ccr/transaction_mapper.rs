@@ -557,6 +557,7 @@ mod tests {
             kyc_status: "approved".to_string(),
             kyc_submitted_at: Some(Utc::now()),
             kyc_verified_at: Some(Utc::now()),
+            kyc_investor_type: Some(crate::KycInvestorType::AI),
             created_at: Utc::now(),
             updated_at: Utc::now(),
             // Authentication fields

@@ -79,6 +79,16 @@ pub const USER_TRANSACTIONS_BY_ID: &str = api_path!("/user/{user_id}/transaction
 pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
 
 // ============================================================================
+// INVESTOR MANAGEMENT PATHS
+// ============================================================================
+
+/// Investor registration
+pub const REGISTER_INVESTOR: &str = api_path!("/auth/register/investor");
+
+/// Investor profile operations
+pub const INVESTOR_PROFILE: &str = api_path!("/investor/profile");
+
+// ============================================================================
 // WITHDRAWAL MANAGEMENT PATHS
 // ============================================================================
 

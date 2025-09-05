@@ -128,6 +128,7 @@ mod tests {
             "passport", // document_type
             "hash123",  // document_hash
             Some("US"), // jurisdiction
+            Some("AI"), // kyc_investor_type
         )
         .await
         .unwrap();

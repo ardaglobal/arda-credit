@@ -253,6 +253,9 @@ enum Commands {
         /// Jurisdiction (optional)
         #[arg(long)]
         jurisdiction: Option<String>,
+        /// KYC investor type (QIB, QP, AI - required for investors)
+        #[arg(long)]
+        kyc_investor_type: Option<String>,
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -291,6 +294,72 @@ enum Commands {
         /// Clean up created users after test
         #[arg(long)]
         cleanup: bool,
+    },
+
+    // ============================================================================
+    // INVESTOR MANAGEMENT COMMANDS
+    // ============================================================================
+    /// Register a new investor with profile
+    RegisterInvestor {
+        /// Investor email address
+        #[arg(long)]
+        email: String,
+        /// Investor password
+        #[arg(long)]
+        password: String,
+        /// First name (optional)
+        #[arg(long)]
+        first_name: Option<String>,
+        /// Last name (optional)
+        #[arg(long)]
+        last_name: Option<String>,
+        /// Jurisdiction (optional, defaults to US)
+        #[arg(long)]
+        jurisdiction: Option<String>,
+        /// Whether the investor is accredited (optional, defaults to false)
+        #[arg(long)]
+        accredited_investor: Option<bool>,
+        /// Maximum investment capacity in USDC (optional)
+        #[arg(long)]
+        investment_capacity: Option<String>,
+        /// Regulatory jurisdiction (optional, defaults to US)
+        #[arg(long)]
+        regulatory_jurisdiction: Option<String>,
+        /// Invite code (optional)
+        #[arg(long)]
+        invite_code: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get investor profile details
+    GetInvestorProfile {
+        /// User ID of the investor
+        #[arg(long)]
+        user_id: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Update investor profile settings
+    UpdateInvestorProfile {
+        /// User ID of the investor
+        #[arg(long)]
+        user_id: String,
+        /// Whether the investor is accredited
+        #[arg(long)]
+        accredited_investor: Option<bool>,
+        /// Maximum investment capacity in USDC
+        #[arg(long)]
+        investment_capacity: Option<String>,
+        /// Regulatory jurisdiction
+        #[arg(long)]
+        regulatory_jurisdiction: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
     },
 
     // ============================================================================
@@ -1103,6 +1172,7 @@ async fn main() -> Result<()> {
             document_type,
             document_hash,
             jurisdiction,
+            kyc_investor_type,
             verbose,
         } => {
             submit_kyc(
@@ -1111,6 +1181,7 @@ async fn main() -> Result<()> {
                 &document_type,
                 &document_hash,
                 jurisdiction.as_deref(),
+                kyc_investor_type.as_deref(),
                 verbose,
             )
             .await?;
@@ -1123,6 +1194,58 @@ async fn main() -> Result<()> {
         } => {
             update_kyc_status(&client, &user_id, &status, notes.as_deref(), verbose).await?;
         }
+
+        // ============================================================================
+        // INVESTOR MANAGEMENT COMMANDS
+        // ============================================================================
+        Commands::RegisterInvestor {
+            email,
+            password,
+            first_name,
+            last_name,
+            jurisdiction,
+            accredited_investor,
+            investment_capacity,
+            regulatory_jurisdiction,
+            invite_code,
+            verbose,
+        } => {
+            register_investor(
+                &client,
+                &email,
+                &password,
+                first_name.as_deref(),
+                last_name.as_deref(),
+                jurisdiction.as_deref(),
+                accredited_investor,
+                investment_capacity.as_deref(),
+                regulatory_jurisdiction.as_deref(),
+                invite_code.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+        Commands::GetInvestorProfile { user_id, verbose } => {
+            get_investor_profile(&client, &user_id, verbose).await?;
+        }
+        Commands::UpdateInvestorProfile {
+            user_id,
+            accredited_investor,
+            investment_capacity,
+            regulatory_jurisdiction,
+            verbose,
+        } => {
+            update_investor_profile(
+                &client,
+                &user_id,
+                accredited_investor,
+                investment_capacity.as_deref(),
+                regulatory_jurisdiction.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+
         Commands::TestUserOperations {
             user_count,
             test_kyc,
@@ -3373,16 +3496,26 @@ async fn submit_kyc(
     document_type: &str,
     document_hash: &str,
     jurisdiction: Option<&str>,
+    kyc_investor_type: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
         println!("📄 Submitting KYC for user: {}", user_id);
         println!("   Document type: {}", document_type);
         println!("   Document hash: {}", document_hash);
+        if let Some(kyc_type) = kyc_investor_type {
+            println!("   KYC Investor Type: {}", kyc_type);
+        }
     }
 
     match client
-        .submit_kyc(user_id, document_type, document_hash, jurisdiction)
+        .submit_kyc(
+            user_id,
+            document_type,
+            document_hash,
+            jurisdiction,
+            kyc_investor_type,
+        )
         .await
     {
         Ok(result) => {
@@ -3536,6 +3669,7 @@ async fn test_user_operations(
                 "passport",
                 &document_hash,
                 Some("US"),
+                None, // kyc_investor_type
                 false,
             )
             .await
@@ -4866,3 +5000,233 @@ async fn find_matching_pools(
     Ok(())
 }
 */
+
+// ============================================================================
+// INVESTOR MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Register a new investor with profile
+async fn register_investor(
+    client: &BatchApiClient,
+    email: &str,
+    password: &str,
+    first_name: Option<&str>,
+    last_name: Option<&str>,
+    jurisdiction: Option<&str>,
+    accredited_investor: Option<bool>,
+    investment_capacity: Option<&str>,
+    regulatory_jurisdiction: Option<&str>,
+    invite_code: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("🏗️ Registering investor: {}", email);
+        if let Some(name) = first_name {
+            println!("   First Name: {}", name);
+        }
+        if let Some(name) = last_name {
+            println!("   Last Name: {}", name);
+        }
+        if let Some(accredited) = accredited_investor {
+            println!("   Accredited: {}", accredited);
+        }
+        if let Some(capacity) = investment_capacity {
+            println!("   Investment Capacity: ${}", capacity);
+        }
+        if let Some(jurisdiction) = regulatory_jurisdiction {
+            println!("   Regulatory Jurisdiction: {}", jurisdiction);
+        }
+    }
+
+    // Parse investment capacity as decimal
+    let capacity_decimal = if let Some(capacity_str) = investment_capacity {
+        match capacity_str.parse::<f64>() {
+            Ok(val) => Some(val),
+            Err(_) => {
+                return Err(eyre::eyre!("Invalid investment capacity: {}", capacity_str));
+            }
+        }
+    } else {
+        None
+    };
+
+    // Use the client's register_investor method
+    match client
+        .register_investor(
+            email,
+            password,
+            first_name,
+            last_name,
+            jurisdiction,
+            accredited_investor,
+            capacity_decimal,
+            regulatory_jurisdiction,
+            invite_code,
+        )
+        .await
+    {
+        Ok(result) => {
+            println!("✅ Investor registered successfully:");
+            println!(
+                "   User ID: {}",
+                result["user_id"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   Profile ID: {}",
+                result["profile_id"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   KYC Status: {}",
+                result["kyc_status"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   Accredited: {}",
+                result["accredited_investor"].as_bool().unwrap_or(false)
+            );
+            println!(
+                "   Regulatory Jurisdiction: {}",
+                result["regulatory_jurisdiction"].as_str().unwrap_or("N/A")
+            );
+
+            if verbose {
+                println!("Full Response: {:#?}", result);
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to register investor: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get investor profile details
+async fn get_investor_profile(client: &BatchApiClient, user_id: &str, verbose: bool) -> Result<()> {
+    if verbose {
+        println!("🔍 Getting investor profile for user: {}", user_id);
+    }
+
+    match client.get_investor_profile(user_id).await {
+        Ok(profile) => {
+            println!("✅ Investor Profile:");
+            println!(
+                "   User ID: {}",
+                profile["user_id"].as_str().unwrap_or("N/A")
+            );
+            println!("   Profile ID: {}", profile["id"].as_str().unwrap_or("N/A"));
+            println!(
+                "   Accredited: {}",
+                profile["accredited_investor"].as_bool().unwrap_or(false)
+            );
+            let investment_capacity = if let Some(s) = profile["investment_capacity"].as_str() {
+                s.to_string()
+            } else if let Some(f) = profile["investment_capacity"].as_f64() {
+                f.to_string()
+            } else {
+                "N/A".to_string()
+            };
+            println!("   Investment Capacity: ${}", investment_capacity);
+            println!(
+                "   Regulatory Jurisdiction: {}",
+                profile["regulatory_jurisdiction"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   Created: {}",
+                profile["created_at"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   Updated: {}",
+                profile["updated_at"].as_str().unwrap_or("N/A")
+            );
+
+            if verbose {
+                println!("Full Profile: {:#?}", profile);
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to get investor profile: {}", e);
+            println!("💡 Note: This endpoint requires proper authentication");
+        }
+    }
+
+    Ok(())
+}
+
+/// Update investor profile settings
+async fn update_investor_profile(
+    client: &BatchApiClient,
+    user_id: &str,
+    accredited_investor: Option<bool>,
+    investment_capacity: Option<&str>,
+    regulatory_jurisdiction: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("📝 Updating investor profile for user: {}", user_id);
+        if let Some(accredited) = accredited_investor {
+            println!("   Setting accredited status: {}", accredited);
+        }
+        if let Some(capacity) = investment_capacity {
+            println!("   Setting investment capacity: ${}", capacity);
+        }
+        if let Some(jurisdiction) = regulatory_jurisdiction {
+            println!("   Setting regulatory jurisdiction: {}", jurisdiction);
+        }
+    }
+
+    // Parse investment capacity if provided
+    let capacity_decimal = if let Some(capacity_str) = investment_capacity {
+        match capacity_str.parse::<f64>() {
+            Ok(val) => Some(val),
+            Err(_) => {
+                return Err(eyre::eyre!("Invalid investment capacity: {}", capacity_str));
+            }
+        }
+    } else {
+        None
+    };
+
+    match client
+        .update_investor_profile(
+            user_id,
+            accredited_investor,
+            capacity_decimal,
+            regulatory_jurisdiction,
+        )
+        .await
+    {
+        Ok(profile) => {
+            println!("✅ Investor profile updated successfully:");
+            println!(
+                "   User ID: {}",
+                profile["user_id"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   Accredited: {}",
+                profile["accredited_investor"].as_bool().unwrap_or(false)
+            );
+            let investment_capacity = if let Some(s) = profile["investment_capacity"].as_str() {
+                s.to_string()
+            } else if let Some(f) = profile["investment_capacity"].as_f64() {
+                f.to_string()
+            } else {
+                "N/A".to_string()
+            };
+            println!("   Investment Capacity: ${}", investment_capacity);
+            println!(
+                "   Regulatory Jurisdiction: {}",
+                profile["regulatory_jurisdiction"].as_str().unwrap_or("N/A")
+            );
+
+            if verbose {
+                println!("Full Updated Profile: {:#?}", profile);
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to update investor profile: {}", e);
+            println!("💡 Note: This endpoint requires proper authentication");
+        }
+    }
+
+    Ok(())
+}
