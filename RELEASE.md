@@ -1,11 +1,11 @@
-# Release Management Strategy (WIP)
+# Release Management Strategy
 
 This document outlines the comprehensive release management strategy for the arda-credit repository, which contains three distinct but interconnected components that require coordinated versioning.
 
 ## Component Overview
 
 ### 1. Smart Contracts (`contracts/`)
-- **Location**: `contracts/src/Arithmetic.sol` and related contracts
+- **Location**: `contracts/src/Loan.sol` and related contracts
 - **Dependencies**: SP1 contracts, OpenZeppelin libraries
 - **Deployment Target**: Ethereum networks (mainnet, testnets)
 - **Versioning Strategy**: Independent semantic versioning
@@ -21,9 +21,9 @@ This document outlines the comprehensive release management strategy for the ard
 ### 3. Web Server Application (Main Repository)
 - **Location**: Root workspace with `api/`, `db/`, `cli/`, etc.
 - **Dependencies**: Both smart contracts and ZKVM program
-- **Deployment Target**: Docker containers via `docker-compose.yml`
+- **Deployment Target**: K8s via helm chats `helm`
 - **Versioning Strategy**: Main repository version that references specific versions of contracts and ZKVM program
-- **Release Artifacts**: Docker images, deployment configurations
+- **Release Artifacts**: Docker images, helm charts, deployment configurations
 
 ## Semantic Versioning Strategy
 
@@ -38,6 +38,8 @@ This document outlines the comprehensive release management strategy for the ard
 - **MAJOR**: Changes to program logic that affect verification key or public inputs/outputs
 - **MINOR**: Performance improvements, additional features that don't change verification
 - **PATCH**: Bug fixes, optimizations that don't affect verification
+
+**Circuit Versioning**: Each program release automatically creates a corresponding Sindri circuit with matching tag (e.g., `program-v2.1.0` → circuit tag `program-v2.1.0`). This ensures circuit deployments are version-locked with program releases.
 
 #### Main Application (`vX.Y.Z`)
 - **MAJOR**: Breaking changes to API, database schema, or deployment requirements
@@ -56,12 +58,12 @@ This document outlines the comprehensive release management strategy for the ard
 - [ ] Update deployment documentation
 
 #### Release Steps
-1. **Tag the release**: `git tag contracts-v1.2.3`
-2. **Deploy to testnet**: Use GitHub Actions or manual deployment
-3. **Verify contracts**: Ensure Etherscan verification
-4. **Update deployment records**: Record addresses in `contracts/deployments/`
-5. **Generate ABI artifacts**: Store in release assets
-6. **Create GitHub release**: Include deployment addresses and ABI files
+1. **Create RC tag**: `git tag contracts-v1.2.3-rc0`
+2. **Push RC tag**: `git push origin contracts-v1.2.3-rc0`
+3. **Automated deployment**: GitHub Actions deploys and captures address in `contracts/deployments/contracts-v1.2.3-rc0.json`, merge PR from GHA.
+4. **Verify deployment**: Ensure Etherscan verification and test functionality
+5. **Create final tag**: `git tag contracts-v1.2.3` (references RC deployment)
+6. **Create GitHub release**: Include deployment addresses and ABI files from RC deployment
 
 #### Post-Release
 - Update dependent services with new contract addresses
@@ -77,75 +79,196 @@ This document outlines the comprehensive release management strategy for the ard
 - [ ] Update program documentation
 
 #### Release Steps
-1. **Tag the release**: `git tag program-v2.1.0`
-2. **Build ELF binary**: Automated via CI/CD
-3. **Generate verification key**: Store in release assets
-4. **Test with current contracts**: Ensure compatibility
-5. **Create GitHub release**: Include vkey and performance metrics
+1. **Create program tag**: `git tag program-v2.1.0`
+2. **Push program tag**: `git push origin program-v2.1.0`
+3. **Automated circuit deployment**: GitHub Actions builds and deploys to Sindri with tag `program-v2.1.0`
+4. **Circuit testing**: Automated testing with deployed circuit
+5. **Generate verification key**: Extract vkey from deployed circuit
+6. **Test compatibility**: Ensure circuit works with current contracts
+7. **Create GitHub release**: Include circuit tag and performance metrics
 
 #### Post-Release
 - Update contract deployments if vkey changed (major version)
 - Update web server configuration to use new program version
+- Update Sindri circuit references in dependent services
+
+#### ZK Program Dependencies
+The ZK program circuit depends on changes in these directories:
+- **`program/`**: Core ZKVM program logic
+- **`lib/`**: Business logic, transaction processing, ADS operations
+- **`script/`**: CLI tools and testing infrastructure
+- **`api/`**: Proof generation/verification (affects integration)
+- **`ethereum-client/`**: On-chain proof submission
+- **`db/`**: Proof storage and verification tracking
+
+**Circuit Versioning Impact**: Changes to any of these can affect the verification key and require a new circuit deployment.
 
 ### 3. Main Application Releases
 
 #### Pre-Release Checklist
 - [ ] Specify contract and program versions in release notes
-- [ ] Update Docker images: `docker build -t arda-credit:vX.Y.Z .`
-- [ ] Database migration testing
+- [ ] Ensure Docker images are built: Check GitHub Actions docker workflow
+- [ ] Database migration testing with Helm chart
 - [ ] Integration testing with specified contract/program versions
-- [ ] Load testing
+- [ ] Load testing with Helm deployment
 - [ ] Update documentation and API specs
+- [ ] Test Helm chart deployment in staging environment
 
 #### Release Steps
-1. **Update version references**:
-   ```toml
-   # In api/Cargo.toml or environment configuration
-   CONTRACT_VERSION = "contracts-v1.2.3"
-   PROGRAM_VERSION = "program-v2.1.0"
-   ```
-
-2. **Tag the release**: `git tag v3.4.5`
-
-3. **Build and push Docker images**:
-   ```bash
-   docker build -t ghcr.io/ardaglobal/arda-credit:v3.4.5 .
-   docker push ghcr.io/ardaglobal/arda-credit:v3.4.5
-   ```
-
-4. **Update docker-compose.yml**:
+1. **Update version references in Helm chart**:
    ```yaml
-   services:
-     server:
-       image: ghcr.io/ardaglobal/arda-credit:v3.4.5
+   # In helm/charts/arda-credit/values.yaml
+   server:
+     image:
+       tag: "v3.4.5"
+     config:
+       sindriCircuitTag: "program-v2.1.0"  # Lock to specific circuit version
+
+   app:
+     image:
+       tag: "v3.4.5"
+
+   secrets:
+     app:
+       ethereumContractAddress: "0x1234567890123456789012345678901234567890"  # From RC deployment
    ```
 
-5. **Create GitHub release** with comprehensive release notes
+2. **Update Helm chart version**:
+   ```yaml
+   # In helm/charts/arda-credit/Chart.yaml
+   version: 0.4.3  # Increment chart version
+   appVersion: "v3.4.5"  # Lock to app version
+   ```
+
+3. **Tag the release**: `git tag v3.4.5`
+
+4. **Push tag to trigger Docker builds**:
+   ```bash
+   git push origin v3.4.5
+   ```
+
+5. **Automated Docker builds**: GitHub Actions automatically builds and pushes:
+   - `ghcr.io/ardaglobal/arda-credit:v3.4.5`
+   - `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
+
+6. **Test Helm deployment**:
+   ```bash
+   # Update Helm dependencies
+   make helm-deps
+
+   # Test deployment in staging
+   helm upgrade --install arda-credit ./helm/charts/arda-credit \
+     --namespace arda-staging \
+     --values helm/charts/arda-credit/values-staging.yaml \
+     --set server.image.tag=v3.4.5 \
+     --set app.image.tag=v3.4.5
+   ```
+
+7. **Create GitHub release** with comprehensive release notes
+
+### 4. Helm Chart Releases
+
+#### Pre-Release Checklist
+- [ ] Update Helm chart dependencies: `make helm-deps`
+- [ ] Test chart rendering: `helm template ./helm/charts/arda-credit`
+- [ ] Validate with kubeconform or similar tools
+- [ ] Update chart documentation and README
+- [ ] Test deployment in development environment
+
+#### Release Steps
+1. **Update Chart.yaml version**:
+   ```yaml
+   # Increment chart version for new features
+   version: 0.5.0  # Major chart changes
+   # or
+   version: 0.4.4  # Minor chart changes
+   ```
+
+2. **Tag Helm chart release**: `git tag helm-v0.5.0`
+
+3. **Push tag**: `git push origin helm-v0.5.0`
+
+4. **Create GitHub release** for Helm chart with:
+   - Chart version changes
+   - New features added
+   - Breaking changes
+   - Migration instructions
+
+#### Chart Versioning Strategy
+- **Chart Version**: Independent from app version, follows SemVer
+- **App Version**: References the main application version
+- **Tag Format**: `helm-vX.Y.Z`
+- **Release Cadence**: As needed when chart features change
 
 ## Version Compatibility Matrix
 
+> [!NOTE] Contract versions reference RC deployments. The final version tag points to the last successful RC deployment.
 > [!NOTE] this is a placeholder for the version compatibility matrix.
 
-| Main App Version | Contract Version | Program Version | SP1 SDK Version |
-|------------------|------------------|-----------------|-----------------|
-| v1.0.0           | contracts-v1.0.0 | program-v1.0.0  | 5.2.1          |
-| v1.1.0           | contracts-v1.0.0 | program-v1.1.0  | 5.2.1          |
-| v1.2.0           | contracts-v1.1.0 | program-v1.1.0  | 5.2.1          |
-| v2.0.0           | contracts-v2.0.0 | program-v2.0.0  | 5.3.0          |
+| Main App Version | Contract Version | Program Version | SP1 SDK Version | Helm Chart |
+|------------------|------------------|-----------------|-----------------|------------|
+| v1.0.0           | contracts-v1.0.0-rc2 | program-v1.0.0  | 5.2.1          | 0.1.0     |
+| v1.1.0           | contracts-v1.0.0-rc2 | program-v1.1.0  | 5.2.1          | 0.2.0     |
+| v1.2.0           | contracts-v1.1.0-rc1 | program-v1.1.0  | 5.2.1          | 0.3.0     |
+| v2.0.0           | contracts-v2.0.0-rc0 | program-v2.0.0  | 5.3.0          | 0.4.0     |
+
+**Program Circuit Tags**: Each program version corresponds to a Sindri circuit tag (e.g., `program-v1.0.0` → circuit `program-v1.0.0`).
+
+**Helm Chart Compatibility**: Each main app version includes a compatible Helm chart version for deployment.
 
 ## Configuration Management
 
-### Environment Variables
+### Contract Deployment Integration
+
+#### vkey.json Updates
+The `vk.json` file in the repository root is automatically updated during program releases:
+- **Location**: `vk.json` (committed to repository)
+- **Update Trigger**: Program tag pushes (`program-v*`)
+- **Source**: Extracted from deployed Sindri circuit after successful deployment
+- **Usage**: Used by contract deployments to ensure vkey consistency
+
+#### Contract Address Capture
+Contract deployments automatically capture and store deployment information:
+- **Deployment Records**: `contracts/deployments/contracts-v1.2.3-rc0.json`
+- **Captured Data**: Contract address, transaction hash, block number, network
+- **Git Integration**: Records are committed back to repository
+- **Helm Integration**: Addresses are injected into Helm chart values
+
+### Environment Variables in Helm
+
+#### Helm Chart Configuration
+Environment variables are managed through Helm chart values and Kubernetes secrets:
+
+**Non-sensitive Configuration** (ConfigMap):
+```yaml
+# helm/charts/arda-credit/values.yaml
+server:
+  config:
+    rustLog: "debug"
+    serverPort: "8080"
+    sindriCircuitTag: "program-v2.1.0"  # Locked to specific circuit
+```
+
+**Sensitive Configuration** (Secrets):
+```yaml
+# helm/charts/arda-credit/values.yaml
+secrets:
+  app:
+    sindriApiKey: "your-sindri-api-key"
+    ethereumRpcUrl: "https://eth-mainnet.alchemyapi.io/v2/demo"
+    ethereumContractAddress: "0x1234567890123456789012345678901234567890"  # From RC deployment
+    ethereumWalletPrivateKey: "0x..."
+    ethereumDeployerAddress: "0x..."
+```
+
+#### Runtime Environment Variables
+The Helm chart automatically constructs these environment variables:
+
 ```bash
-# Contract Configuration
+# Automatically constructed by Helm
+DATABASE_URL=postgresql://user:password@host:5432/db
 CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
-CONTRACT_VERSION=contracts-v1.2.3
-
-# Program Configuration  
 PROGRAM_VKEY=0x00620892344c310c32a74bf0807a5c043964264e4f37c96a10ad12b5c9214e0e
-PROGRAM_VERSION=program-v2.1.0
-
-# Application Configuration
 APP_VERSION=v3.4.5
 ```
 
@@ -166,9 +289,9 @@ impl Default for VersionConfig {
     fn default() -> Self {
         Self {
             app_version: env!("CARGO_PKG_VERSION"),
-            contract_version: env!("CONTRACT_VERSION"),
+            contract_version: env!("CONTRACT_VERSION"), // e.g., "contracts-v1.2.3-rc0"
             contract_address: std::env::var("CONTRACT_ADDRESS")
-                .expect("CONTRACT_ADDRESS must be set"),
+                .expect("CONTRACT_ADDRESS must be set"), // From RC deployment
             program_version: env!("PROGRAM_VERSION"),
             program_vkey: std::env::var("PROGRAM_VKEY")
                 .expect("PROGRAM_VKEY must be set"),
@@ -177,98 +300,47 @@ impl Default for VersionConfig {
 }
 ```
 
-## Automated Release Pipeline
+## Docker Build Automation
 
-### GitHub Actions Workflow Structure
+### GitHub Actions Docker Workflow
+Docker images are automatically built and published via GitHub Actions:
 
+#### Trigger Conditions
+- **Main Branch**: Pushes to `main` build `latest` tags
+- **Release Tags**: Tags like `v3.4.5` build versioned tags
+- **Manual Dispatch**: Manual trigger for testing
+
+#### Image Registry
+- **Server Image**: `ghcr.io/ardaglobal/arda-credit:v3.4.5`
+- **Frontend Image**: `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
+- **Multi-Platform**: `linux/amd64`, `linux/arm64` for releases
+
+#### Build Configuration
 ```yaml
-name: Multi-Component Release
-
-on:
-  push:
-    tags:
-      - 'contracts-v*'
-      - 'program-v*' 
-      - 'v*'
-
-jobs:
-  detect-component:
-    runs-on: ubuntu-latest
-    outputs:
-      component: ${{ steps.detect.outputs.component }}
-      version: ${{ steps.detect.outputs.version }}
-    steps:
-      - id: detect
-        run: |
-          if [[ $GITHUB_REF == refs/tags/contracts-v* ]]; then
-            echo "component=contracts" >> $GITHUB_OUTPUT
-            echo "version=${GITHUB_REF#refs/tags/contracts-v}" >> $GITHUB_OUTPUT
-          elif [[ $GITHUB_REF == refs/tags/program-v* ]]; then
-            echo "component=program" >> $GITHUB_OUTPUT
-            echo "version=${GITHUB_REF#refs/tags/program-v}" >> $GITHUB_OUTPUT
-          else
-            echo "component=app" >> $GITHUB_OUTPUT
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-          fi
-
-  release-contracts:
-    if: needs.detect-component.outputs.component == 'contracts'
-    # ... contract deployment steps
-
-  release-program:
-    if: needs.detect-component.outputs.component == 'program'
-    # ... program build and vkey generation steps
-
-  release-app:
-    if: needs.detect-component.outputs.component == 'app'
-    # ... Docker build and deployment steps
+# .github/workflows/docker.yml key settings:
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ardaglobal/arda-credit
+  PLATFORM: linux/amd64,linux/arm64  # Multi-platform for releases
 ```
 
-## Development Workflow
-
-### Feature Development
-1. **Create feature branch**: `git checkout -b feature/new-feature`
-2. **Develop with current versions**: Use latest stable versions of all components
-3. **Test integration**: Ensure compatibility across all components
-4. **Update version references**: If component versions changed during development
-
-### Release Preparation
-1. **Version bump decision**: Determine which components need version bumps
-2. **Dependency updates**: Update SP1 SDK or other dependencies if needed
-3. **Integration testing**: Test all components together
-4. **Documentation updates**: Update README, API docs, deployment guides
-
-### Hotfix Process
-1. **Identify scope**: Determine which component(s) need fixes
-2. **Create hotfix branch**: `git checkout -b hotfix/critical-fix`
-3. **Apply minimal fix**: Keep changes as small as possible
-4. **Fast-track testing**: Focused testing on affected component
-5. **Expedited release**: Follow abbreviated release process
-
-## Monitoring and Rollback
-
-### Version Monitoring
-- **Health checks**: Each component exposes version information
-- **Compatibility alerts**: Monitor for version mismatches
-- **Performance tracking**: Track performance across version changes
-
-### Rollback Strategy
-1. **Application rollback**: Revert Docker image in docker-compose.yml
-2. **Program rollback**: Revert to previous vkey (requires contract support)
-3. **Contract rollback**: Deploy new contract with previous logic (complex)
-
-### Emergency Procedures
-- **Circuit breaker**: Ability to pause system during critical issues
-- **Rollback automation**: Scripts to quickly revert to known-good versions
-- **Communication plan**: Notify stakeholders of version changes and issues
+#### Cache Strategy
+- **S3 Cache**: `codebuild-s3-cache-arda` bucket
+- **Prefix**: `output/arda-credit`
+- **Mode**: `max` (maximize cache reuse)
 
 ## Release Notes Template
 
 ### Main Application Release (v3.4.5)
 **Component Versions:**
-- Smart Contracts: contracts-v1.2.3 (0x1234...7890)
-- ZKVM Program: program-v2.1.0 (vkey: 0x0062...4e0e)
+- Smart Contracts: contracts-v1.2.3-rc0 (0x1234...7890)
+- ZKVM Program: program-v2.1.0 (circuit: program-v2.1.0, vkey: 0x0062...4e0e)
 - SP1 SDK: 5.2.1
+- Helm Chart: 0.4.3
+
+**Docker Images:**
+- Server: `ghcr.io/ardaglobal/arda-credit:v3.4.5`
+- Frontend: `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
 
 **Changes:**
 - **Added**: New API endpoints for batch operations
@@ -278,34 +350,15 @@ jobs:
 
 **Migration Notes:**
 - Database migration required: `sqlx migrate run`
+- Helm chart values updated for new image tags
 - Environment variable changes: Added `NEW_CONFIG_VAR`
 - API breaking changes: `/v1/old-endpoint` deprecated
 
-**Deployment:**
+**Deployment Instructions:**
 ```bash
-docker-compose down
-docker-compose pull
-docker-compose up -d
+# Update Helm chart
+helm upgrade --install arda-credit ./helm/charts/arda-credit \
+  --set server.image.tag=v3.4.5 \
+  --set app.image.tag=v3.4.5 \
+  --set secrets.app.ethereumContractAddress=0x1234...7890
 ```
-
-## Best Practices
-
-### Version Management
-- **Pin exact versions**: Never use floating versions in production
-- **Test compatibility**: Always test component version combinations
-- **Document dependencies**: Maintain clear dependency graphs
-- **Automate verification**: Use CI/CD to verify version compatibility
-
-### Release Coordination
-- **Staged rollouts**: Deploy to staging before production
-- **Feature flags**: Use flags to enable/disable features across versions
-- **Monitoring**: Monitor metrics across version deployments
-- **Communication**: Keep stakeholders informed of release schedules
-
-### Security Considerations
-- **Audit trail**: Maintain complete history of version deployments
-- **Access control**: Restrict who can create releases
-- **Verification**: Verify signatures and checksums for all artifacts
-- **Incident response**: Have procedures for security-related rollbacks
-
-This release strategy ensures coordinated, traceable, and reliable deployments across all components of the arda-credit ecosystem while maintaining the flexibility to release components independently when appropriate.

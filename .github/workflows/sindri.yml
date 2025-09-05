@@ -1,32 +1,53 @@
-name: Sindri Zero-Knowledge Circuit CI
+name: Sindri Circuit CI/CD
 
 on:
   push:
     branches: [main]
+    tags:
+      - 'program-v*'
 
 env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: true
 
 concurrency:
-  # One lane per PR or branch. New runs cancel older ones in that lane.
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # One lane per workflow run
+  group: ${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  lint-compile-deploy:
+  circuit-ci-cd:
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
       - instance-size=small
     env:
       SINDRI_API_KEY: ${{ secrets.SINDRI_API_KEY }}
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
 
+      - name: Detect Component Type
+        id: detect
+        run: |
+          if [[ $GITHUB_REF == refs/tags/program-v* ]]; then
+            {
+              echo "component=program"
+              echo "version=${GITHUB_REF#refs/tags/program-v}"
+              echo "circuit_tag=program-${GITHUB_REF#refs/tags/program-v}"
+              echo "is_program_release=true"
+            } >> $GITHUB_OUTPUT
+          else
+            {
+              echo "component=circuit"
+              echo "version=main"
+              echo "circuit_tag=main-$(echo $GITHUB_SHA | cut -c1-7)"
+              echo "is_program_release=false"
+            } >> $GITHUB_OUTPUT
+          fi
+
       - name: Setup Node.js
-        id: setup-node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -68,24 +89,11 @@ jobs:
           cd program
           ~/.sp1/bin/cargo-prove prove build --output-directory ../build
 
-      - name: Get Branch Name
-        id: branch-name
-        env:
-          PR_NUMBER: ${{ github.event.number }}
-          SHA: ${{ github.sha }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            echo "tag=pr-$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=$(echo "$SHA" | cut -c1-7)" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Deploy Circuit to Sindri
         run: |
-          sindri deploy --tag "${{ steps.branch-name.outputs.tag }}"
+          sindri deploy --tag "${{ steps.detect.outputs.circuit_tag }}"
 
       - name: Test Circuit
         env:
-          SINDRI_TAG: ${{ steps.branch-name.outputs.tag }}
+          SINDRI_TAG: ${{ steps.detect.outputs.circuit_tag }}
         run: cargo run --release -- --sindri
