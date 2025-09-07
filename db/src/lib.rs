@@ -58,6 +58,9 @@ pub use db::{
     // Liquidity pool functions
     create_liquidity_pool,
     create_loan,
+    // Merchant functions
+    create_merchant,
+    create_merchant_profile,
     create_payment,
     create_state_snapshot,
     // USDC Deposit functions
@@ -94,6 +97,11 @@ pub use db::{
     get_liquidity_pools_by_investor,
     get_loan_by_id,
     get_market_overview_metrics,
+    // Merchant query functions
+    get_merchant_by_id,
+    get_merchant_by_user_id,
+    get_merchant_profile_by_merchant_id,
+    get_merchant_with_profile_by_user_id,
     get_payments_by_loan,
     get_pending_transactions,
 
@@ -143,6 +151,8 @@ pub use db::{
     update_last_login,
     update_liquidity_pool_status,
     update_loan,
+    // Merchant update functions
+    update_merchant_profile,
     update_user_balance_from_deposit,
     update_user_balance_from_deposit_tx,
     update_user_balance_from_withdrawal,
@@ -160,6 +170,7 @@ pub use db::{
     // Types
     AdsStateCommit,
     Balance,
+    BusinessType,
     ContractPrivateData,
     ContractPublicData,
     ContractSubmissionData,
@@ -167,6 +178,8 @@ pub use db::{
     // Investor profile types
     CreateInvestorProfileRequest,
     CreateLiquidityPoolRequest,
+    CreateMerchantProfileRequest,
+    CreateMerchantRequest,
     // CCR Domain types
     Identity,
     IncomingTransaction,
@@ -180,6 +193,9 @@ pub use db::{
     Loan,
     LoanTransactionDb,
     MarketOverviewMetrics,
+    // Merchant types
+    Merchant,
+    MerchantProfile,
     Payment,
     PoolMatchingCriteria,
     // Pool query types
@@ -191,6 +207,7 @@ pub use db::{
     RegisterResult,
     StateSnapshot,
     UpdateInvestorProfileRequest,
+    UpdateMerchantProfileRequest,
     UsdcDeposit,
     UsdcWithdrawal,
     UserDepositBalance,

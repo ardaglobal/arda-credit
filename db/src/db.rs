@@ -168,6 +168,114 @@ pub struct UpdateInvestorProfileRequest {
     pub regulatory_jurisdiction: Option<String>,
 }
 
+// ============================================================================
+// MERCHANT TYPES
+// ============================================================================
+
+/// Merchant account for business credit applications
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Merchant {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub legal_name: String,
+    pub dba: Option<String>, // Doing Business As name
+    pub tax_id: Option<String>,
+    pub mcc: Option<String>, // Merchant Category Code
+    pub country: String,
+    pub kyc_status: String, // NOT_SUBMITTED, PENDING, APPROVED, REJECTED
+    pub business_type: Option<String>, // LLC, CORP, SOLE_PROP, PARTNERSHIP, OTHER
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Merchant profile for business details and credit assessment
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct MerchantProfile {
+    pub id: uuid::Uuid,
+    pub merchant_id: uuid::Uuid,
+    pub industry: Option<String>,
+    pub years_in_business: Option<i32>,
+    pub employee_count: Option<i32>,
+    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
+    pub business_description: Option<String>,
+    pub profile_completed: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Business type enumeration for merchants
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BusinessType {
+    LLC,
+    CORP,
+    SoleProp,
+    Partnership,
+    Other,
+}
+
+impl std::fmt::Display for BusinessType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LLC => write!(f, "LLC"),
+            Self::CORP => write!(f, "CORP"),
+            Self::SoleProp => write!(f, "SOLE_PROP"),
+            Self::Partnership => write!(f, "PARTNERSHIP"),
+            Self::Other => write!(f, "OTHER"),
+        }
+    }
+}
+
+impl std::str::FromStr for BusinessType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_uppercase().as_str() {
+            "LLC" => Ok(Self::LLC),
+            "CORP" => Ok(Self::CORP),
+            "SOLE_PROP" => Ok(Self::SoleProp),
+            "PARTNERSHIP" => Ok(Self::Partnership),
+            "OTHER" => Ok(Self::Other),
+            _ => Err(format!("Invalid business type: {}", s)),
+        }
+    }
+}
+
+/// Request to register a new merchant account
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateMerchantRequest {
+    pub legal_name: String,
+    pub dba: Option<String>,
+    pub tax_id: Option<String>,
+    pub mcc: Option<String>,
+    pub country: String,
+    pub business_type: Option<String>,
+}
+
+/// Request to create merchant profile
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateMerchantProfileRequest {
+    pub industry: Option<String>,
+    pub years_in_business: Option<i32>,
+    pub employee_count: Option<i32>,
+    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
+    pub business_description: Option<String>,
+}
+
+/// Request to update merchant profile
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateMerchantProfileRequest {
+    pub legal_name: Option<String>,
+    pub dba: Option<String>,
+    pub mcc: Option<String>,
+    pub country: Option<String>,
+    pub business_type: Option<String>,
+    pub industry: Option<String>,
+    pub years_in_business: Option<i32>,
+    pub employee_count: Option<i32>,
+    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
+    pub business_description: Option<String>,
+}
+
 /// Loan record with borrower/lender relationship
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Loan {
@@ -3985,4 +4093,338 @@ pub async fn get_market_overview_metrics(
     .await?;
 
     Ok(metrics)
+}
+
+// ============================================================================
+// MERCHANT FUNCTIONS
+// ============================================================================
+
+/// Create a new merchant account  
+pub async fn create_merchant(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    request: &CreateMerchantRequest,
+) -> Result<Merchant, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO merchants (id, user_id, legal_name, dba, tax_id, mcc, country, kyc_status, business_type, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        RETURNING 
+            id, user_id, legal_name, dba, tax_id, mcc, 
+            country as "country!: String", 
+            kyc_status as "kyc_status!: String", 
+            business_type,
+            created_at, updated_at
+        "#,
+        id,
+        user_id,
+        request.legal_name,
+        request.dba,
+        request.tax_id,
+        request.mcc,
+        request.country,
+        "NOT_SUBMITTED", // Default KYC status
+        request.business_type,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Merchant {
+        id: result.id,
+        user_id: result.user_id,
+        legal_name: result.legal_name,
+        dba: result.dba,
+        tax_id: result.tax_id,
+        mcc: result.mcc,
+        country: result.country,
+        kyc_status: result.kyc_status,
+        business_type: result.business_type,
+        created_at: result
+            .created_at
+            .expect("created_at should not be null")
+            .and_utc(),
+        updated_at: result
+            .updated_at
+            .expect("updated_at should not be null")
+            .and_utc(),
+    })
+}
+
+/// Get merchant by user ID
+pub async fn get_merchant_by_user_id(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+) -> Result<Option<Merchant>, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        SELECT 
+            id, user_id, legal_name, dba, tax_id, mcc, 
+            country as "country!: String", 
+            kyc_status as "kyc_status!: String", 
+            business_type,
+            created_at, updated_at
+        FROM merchants
+        WHERE user_id = $1
+        "#,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(row) = result {
+        Ok(Some(Merchant {
+            id: row.id,
+            user_id: row.user_id,
+            legal_name: row.legal_name,
+            dba: row.dba,
+            tax_id: row.tax_id,
+            mcc: row.mcc,
+            country: row.country,
+            kyc_status: row.kyc_status,
+            business_type: row.business_type,
+            created_at: row
+                .created_at
+                .expect("created_at should not be null")
+                .and_utc(),
+            updated_at: row
+                .updated_at
+                .expect("updated_at should not be null")
+                .and_utc(),
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Get merchant by ID
+pub async fn get_merchant_by_id(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+) -> Result<Option<Merchant>, sqlx::Error> {
+    // For now, use a simpler approach - just implement the basic functionality
+    let result = sqlx::query!(
+        r#"
+        SELECT 
+            id, user_id, legal_name, dba, tax_id, mcc, 
+            country as "country!: String", 
+            kyc_status as "kyc_status!: String", 
+            business_type,
+            created_at, updated_at
+        FROM merchants
+        WHERE id = $1
+        "#,
+        merchant_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(row) = result {
+        Ok(Some(Merchant {
+            id: row.id,
+            user_id: row.user_id,
+            legal_name: row.legal_name,
+            dba: row.dba,
+            tax_id: row.tax_id,
+            mcc: row.mcc,
+            country: row.country,
+            kyc_status: row.kyc_status,
+            business_type: row.business_type,
+            created_at: row
+                .created_at
+                .expect("created_at should not be null")
+                .and_utc(),
+            updated_at: row
+                .updated_at
+                .expect("updated_at should not be null")
+                .and_utc(),
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Create merchant profile - simplified implementation
+pub async fn create_merchant_profile(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+    request: &CreateMerchantProfileRequest,
+) -> Result<MerchantProfile, sqlx::Error> {
+    let id = uuid::Uuid::new_v4();
+
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO merchant_profiles (id, merchant_id, industry, years_in_business, employee_count, monthly_revenue_estimate, business_description, profile_completed, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, false, NOW(), NOW())
+        RETURNING 
+            id, merchant_id, industry, years_in_business, employee_count, monthly_revenue_estimate, business_description, profile_completed, created_at, updated_at
+        "#,
+        id,
+        merchant_id,
+        request.industry,
+        request.years_in_business,
+        request.employee_count,
+        request.monthly_revenue_estimate,
+        request.business_description,
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(MerchantProfile {
+        id: result.id,
+        merchant_id: result.merchant_id,
+        industry: result.industry,
+        years_in_business: result.years_in_business,
+        employee_count: result.employee_count,
+        monthly_revenue_estimate: result.monthly_revenue_estimate,
+        business_description: result.business_description,
+        profile_completed: result.profile_completed.unwrap_or_default(),
+        created_at: result
+            .created_at
+            .expect("created_at should not be null")
+            .and_utc(),
+        updated_at: result
+            .updated_at
+            .expect("updated_at should not be null")
+            .and_utc(),
+    })
+}
+
+/// Get merchant profile by merchant ID - simplified
+pub async fn get_merchant_profile_by_merchant_id(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+) -> Result<Option<MerchantProfile>, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        SELECT 
+            id, merchant_id, industry, years_in_business, employee_count, 
+            monthly_revenue_estimate, business_description, profile_completed,
+            created_at, updated_at
+        FROM merchant_profiles
+        WHERE merchant_id = $1
+        "#,
+        merchant_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(row) = result {
+        Ok(Some(MerchantProfile {
+            id: row.id,
+            merchant_id: row.merchant_id,
+            industry: row.industry,
+            years_in_business: row.years_in_business,
+            employee_count: row.employee_count,
+            monthly_revenue_estimate: row.monthly_revenue_estimate,
+            business_description: row.business_description,
+            profile_completed: row.profile_completed.unwrap_or_default(),
+            created_at: row
+                .created_at
+                .expect("created_at should not be null")
+                .and_utc(),
+            updated_at: row
+                .updated_at
+                .expect("updated_at should not be null")
+                .and_utc(),
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Update merchant profile
+pub async fn update_merchant_profile(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+    request: &UpdateMerchantProfileRequest,
+) -> Result<Option<MerchantProfile>, sqlx::Error> {
+    // First update the merchant basic info if provided
+    if request.legal_name.is_some()
+        || request.dba.is_some()
+        || request.mcc.is_some()
+        || request.country.is_some()
+        || request.business_type.is_some()
+    {
+        sqlx::query!(
+            r#"
+            UPDATE merchants
+            SET 
+                legal_name = COALESCE($2, legal_name),
+                dba = COALESCE($3, dba),
+                mcc = COALESCE($4, mcc),
+                country = COALESCE($5, country),
+                business_type = COALESCE($6, business_type),
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+            merchant_id,
+            request.legal_name,
+            request.dba,
+            request.mcc,
+            request.country,
+            request.business_type
+        )
+        .execute(pool)
+        .await?;
+    }
+
+    // Then update the merchant profile if it exists
+    let profile = sqlx::query_as!(
+        MerchantProfile,
+        r#"
+        UPDATE merchant_profiles
+        SET 
+            industry = COALESCE($2, industry),
+            years_in_business = COALESCE($3, years_in_business),
+            employee_count = COALESCE($4, employee_count),
+            monthly_revenue_estimate = COALESCE($5, monthly_revenue_estimate),
+            business_description = COALESCE($6, business_description),
+            profile_completed = CASE 
+                WHEN $2 IS NOT NULL OR $3 IS NOT NULL OR $4 IS NOT NULL OR $5 IS NOT NULL OR $6 IS NOT NULL 
+                THEN true 
+                ELSE profile_completed 
+            END,
+            updated_at = NOW()
+        WHERE merchant_id = $1
+        RETURNING
+            id, merchant_id, 
+            industry,
+            years_in_business, 
+            employee_count, 
+            monthly_revenue_estimate, 
+            business_description, 
+            profile_completed as "profile_completed!: bool",
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        "#,
+        merchant_id,
+        request.industry,
+        request.years_in_business,
+        request.employee_count,
+        request.monthly_revenue_estimate,
+        request.business_description
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(profile)
+}
+
+/// Get merchant with profile by user ID
+pub async fn get_merchant_with_profile_by_user_id(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+) -> Result<Option<(Merchant, Option<MerchantProfile>)>, sqlx::Error> {
+    // First get the merchant
+    let merchant_opt = get_merchant_by_user_id(pool, user_id).await?;
+
+    if let Some(merchant) = merchant_opt {
+        // Then get the profile if it exists
+        let profile_opt = get_merchant_profile_by_merchant_id(pool, merchant.id).await?;
+        Ok(Some((merchant, profile_opt)))
+    } else {
+        Ok(None)
+    }
 }

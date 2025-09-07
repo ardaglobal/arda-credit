@@ -233,6 +233,16 @@ impl TransactionMapper {
                 Ok(vec![])
             }
 
+            TransactionType::MerchantRegistration
+            | TransactionType::MerchantProfileUpdate
+            | TransactionType::CreditLineRequest => {
+                // Merchant operations don't generate CCR operations
+                // They are handled by the merchant state management system
+                // Credit line requests will eventually trigger loan originations
+                // which will then generate the appropriate CCR operations
+                Ok(vec![])
+            }
+
             _ => Err(MappingError::UnsupportedTransactionType {
                 transaction_type: transaction.transaction_type,
             }),

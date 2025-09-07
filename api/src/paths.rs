@@ -85,8 +85,14 @@ pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
 /// Investor registration
 pub const REGISTER_INVESTOR: &str = api_path!("/auth/register/investor");
 
+/// Merchant registration  
+pub const REGISTER_MERCHANT: &str = api_path!("/auth/register/merchant");
+
 /// Investor profile operations
 pub const INVESTOR_PROFILE: &str = api_path!("/investor/profile");
+
+/// Merchant profile operations
+pub const MERCHANT_PROFILE: &str = api_path!("/merchant/profile");
 
 // ============================================================================
 // WITHDRAWAL MANAGEMENT PATHS

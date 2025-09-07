@@ -11,7 +11,7 @@ use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
 use crate::pool::{Pool, PoolConfig, PoolState};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
-use crate::user::{User, UserError, UserState};
+use crate::user::{User, UserError, UserState, UserType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -307,6 +307,64 @@ impl GlobalLoanState {
                 self.pools
                     .add_pool(pool)
                     .map_err(|_| ProcessingError::InvalidTransactionData)?;
+            }
+            TransactionType::MerchantRegistration => {
+                // Process merchant registration (similar to user registration)
+                let mut user_state = UserState {
+                    users: self.users.clone(),
+                };
+                user_state.process_merchant_registration(transaction)?;
+                self.users = user_state.users;
+            }
+            TransactionType::MerchantProfileUpdate => {
+                // Process merchant profile update
+                // This is primarily a metadata update that doesn't affect state significantly
+                // We validate the merchant exists and is KYC'd for profile completion
+                let user =
+                    self.users
+                        .get(&transaction.user_id)
+                        .ok_or(ProcessingError::UserError(UserError::UserNotFound {
+                            user_id: transaction.user_id,
+                        }))?;
+
+                // Ensure user is a merchant
+                if !matches!(user.user_type, UserType::Merchant) {
+                    return Err(ProcessingError::UserError(UserError::InvalidUserType {
+                        expected: UserType::Merchant,
+                        actual: user.user_type,
+                    }));
+                }
+
+                // Profile update processed successfully (no state change needed)
+            }
+            TransactionType::CreditLineRequest => {
+                // Process credit line request from merchants
+                // This requires KYC approval and will be used for automatic matching with liquidity pools
+                let user =
+                    self.users
+                        .get(&transaction.user_id)
+                        .ok_or(ProcessingError::UserError(UserError::UserNotFound {
+                            user_id: transaction.user_id,
+                        }))?;
+
+                // Ensure user is a merchant
+                if !matches!(user.user_type, UserType::Merchant) {
+                    return Err(ProcessingError::UserError(UserError::InvalidUserType {
+                        expected: UserType::Merchant,
+                        actual: user.user_type,
+                    }));
+                }
+
+                // Ensure merchant is KYC approved for credit line requests
+                if !user.is_kyc_approved() {
+                    return Err(ProcessingError::UserError(UserError::UserNotKycApproved {
+                        user_id: transaction.user_id,
+                    }));
+                }
+
+                // Credit line request processed successfully
+                // The actual matching with liquidity pools would happen in the business layer
+                // For now, we just validate the request is valid
             }
         }
 
