@@ -1,0 +1,90 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO merchants (id, user_id, legal_name, dba, tax_id, mcc, country, kyc_status, business_type, created_at, updated_at)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())\n        RETURNING \n            id, user_id, legal_name, dba, tax_id, mcc, \n            country as \"country!: String\", \n            kyc_status as \"kyc_status!: String\", \n            business_type,\n            created_at, updated_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "legal_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "dba",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "tax_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "mcc",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "country!: String",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "kyc_status!: String",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "business_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "8aabcaa2b6185c5953e4e3a83e3c53f6cf35c1f78a02fa3ec80e58059922de51"
+}

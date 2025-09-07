@@ -14,6 +14,7 @@ use thiserror::Error;
 pub enum UserType {
     Investor = 1,
     Lender = 2,
+    Merchant = 3,
 }
 
 /// KYC status for compliance tracking
@@ -59,6 +60,15 @@ pub enum UserError {
 
     #[error("Invalid transaction type for user operation")]
     InvalidTransactionType,
+
+    #[error("Invalid user type: expected {expected:?}, got {actual:?}")]
+    InvalidUserType {
+        expected: UserType,
+        actual: UserType,
+    },
+
+    #[error("User not KYC approved: {user_id:?}")]
+    UserNotKycApproved { user_id: [u8; 32] },
 }
 
 /// User state management
@@ -99,6 +109,7 @@ impl UserState {
         let user_type = match transaction.metadata.as_bytes()[0] {
             1 => UserType::Investor,
             2 => UserType::Lender,
+            3 => UserType::Merchant,
             _ => return Err(UserError::InvalidTransactionType),
         };
 
@@ -190,6 +201,38 @@ impl UserState {
             .get(user_id)
             .ok_or(UserError::UserNotFound { user_id: *user_id })?;
         Ok(user.is_kyc_approved())
+    }
+
+    /// Process merchant registration transaction (alias for user registration with merchant type)
+    ///
+    /// # Errors
+    /// Returns `UserError` if transaction type is invalid or user already exists.
+    pub fn process_merchant_registration(
+        &mut self,
+        transaction: &LoanTransaction,
+    ) -> Result<(), UserError> {
+        if transaction.transaction_type != TransactionType::MerchantRegistration {
+            return Err(UserError::InvalidTransactionType);
+        }
+
+        // Validate user doesn't already exist
+        let user_id = transaction.user_id;
+        if self.users.contains_key(&user_id) {
+            return Err(UserError::DuplicateUser { user_id });
+        }
+
+        // For merchant registration, we explicitly set the user type to Merchant
+        let user = User {
+            user_id,
+            user_type: UserType::Merchant,
+            kyc_status: KycStatus::NotSubmitted,
+            kyc_submitted_at: 0,
+            kyc_verified_at: 0,
+            created_at: transaction.created_at,
+        };
+
+        self.users.insert(user_id, user);
+        Ok(())
     }
 }
 

@@ -25,19 +25,22 @@ use crate::pool_handlers::{
 };
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
-    create_investor_profile, create_liquidity_pool, create_loan, find_matching_liquidity_pools,
-    generate_invite_code, get_all_batches, get_batch_by_id, get_contract_submission_data,
-    get_current_state, get_deposit_by_tx_hash, get_deposits_by_user_address, get_identity_by_email,
-    get_identity_by_id, get_investor_profile_by_user_id, get_investor_profile_with_identity,
-    get_invite_code_info, get_kyc_statistics, get_liquidity_pool_by_id,
-    get_liquidity_pools_by_investor, get_loan_by_id, get_pending_transactions,
+    create_investor_profile, create_liquidity_pool, create_loan, create_merchant,
+    find_matching_liquidity_pools, generate_invite_code, get_all_batches, get_batch_by_id,
+    get_contract_submission_data, get_current_state, get_deposit_by_tx_hash,
+    get_deposits_by_user_address, get_identity_by_email, get_identity_by_id,
+    get_investor_profile_by_user_id, get_investor_profile_with_identity, get_invite_code_info,
+    get_kyc_statistics, get_liquidity_pool_by_id, get_liquidity_pools_by_investor, get_loan_by_id,
+    get_merchant_by_user_id, get_merchant_profile_by_merchant_id, get_pending_transactions,
     get_user_balance_by_address, get_user_balance_by_id, list_loans, list_pending_kyc_applications,
     register_or_reregister_user, store_ads_state_commit, submit_kyc_data, submit_transaction,
     update_batch_proof, update_identity_profile, update_investor_profile, update_kyc_status,
-    update_last_login, update_liquidity_pool_status, update_loan, use_invite_code, AuditEvent,
-    CreateInvestorProfileRequest, CreateLiquidityPoolRequest, Identity, IndexedMerkleTreeADS,
-    InvestorProfile, LoanInclusionProof, LoanLifecycleSummary, PoolMatchingCriteria,
-    RegisterResult, UpdateInvestorProfileRequest as DbUpdateInvestorProfileRequest,
+    update_last_login, update_liquidity_pool_status, update_loan, update_merchant_profile,
+    use_invite_code, AuditEvent, CreateInvestorProfileRequest, CreateLiquidityPoolRequest,
+    CreateMerchantRequest, Identity, IndexedMerkleTreeADS, InvestorProfile, LoanInclusionProof,
+    LoanLifecycleSummary, Merchant, MerchantProfile, PoolMatchingCriteria, RegisterResult,
+    UpdateInvestorProfileRequest as DbUpdateInvestorProfileRequest,
+    UpdateMerchantProfileRequest as DbUpdateMerchantProfileRequest,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -301,6 +304,7 @@ pub enum UserType {
     Investor,
     Originator,
     Admin,
+    Merchant,
 }
 
 impl std::fmt::Display for UserType {
@@ -310,6 +314,7 @@ impl std::fmt::Display for UserType {
             Self::Investor => write!(f, "investor"),
             Self::Originator => write!(f, "originator"),
             Self::Admin => write!(f, "admin"),
+            Self::Merchant => write!(f, "merchant"),
         }
     }
 }
@@ -429,6 +434,66 @@ pub struct RegisterUserResponse {
     pub created_at: DateTime<Utc>,
 }
 
+/// Request to register a new merchant with business information
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterMerchantRequest {
+    #[schema(example = "merchant@example.com")]
+    pub email: String,
+    #[schema(example = "SecureP@ssw0rd123")]
+    pub password: String,
+    #[schema(example = "MyBusiness LLC")]
+    pub legal_name: String,
+    #[schema(example = "MyBusiness Store")]
+    pub dba: Option<String>, // Doing Business As name
+    #[schema(example = "12-3456789")]
+    pub tax_id: Option<String>,
+    #[schema(example = "5999")]
+    pub mcc: Option<String>, // Merchant Category Code
+    #[schema(example = "USA")]
+    pub country: String,
+    #[schema(example = "LLC")]
+    pub business_type: Option<String>, // LLC, CORP, SOLE_PROP, PARTNERSHIP, OTHER
+    pub jurisdiction: Option<String>, // Optional, defaults to "US"
+    #[schema(example = "ABC123DEF456")]
+    pub invite_code: Option<String>, // Optional invite code for registration
+}
+
+/// Request to update merchant profile information
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateMerchantProfileRequest {
+    #[schema(example = "Updated Business LLC")]
+    pub legal_name: Option<String>,
+    #[schema(example = "Updated Store")]
+    pub dba: Option<String>,
+    #[schema(example = "5912")]
+    pub mcc: Option<String>,
+    #[schema(example = "CAN")]
+    pub country: Option<String>,
+    #[schema(example = "CORP")]
+    pub business_type: Option<String>,
+    #[schema(example = "Retail")]
+    pub industry: Option<String>,
+    #[schema(example = 5)]
+    pub years_in_business: Option<i32>,
+    #[schema(example = 25)]
+    pub employee_count: Option<i32>,
+    #[schema(example = "150000.00", value_type = Option<String>)]
+    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
+    #[schema(example = "We provide high-quality retail services to customers.")]
+    pub business_description: Option<String>,
+}
+
+/// Response from merchant registration
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterMerchantResponse {
+    pub user_id: String,     // UUID as string
+    pub merchant_id: String, // UUID as string
+    pub user_type: UserType,
+    pub legal_name: String,
+    pub kyc_status: String,
+    pub created_at: DateTime<Utc>,
+}
+
 /// Request to register a new investor with profile
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterInvestorRequest {
@@ -480,6 +545,53 @@ pub struct InvestorProfileResponse {
     pub last_name: Option<String>,
     pub jurisdiction: Option<String>,
     pub wallet_address: Option<String>,
+}
+
+/// Merchant profile response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct MerchantProfileResponse {
+    pub profile_id: String,
+    pub merchant_id: String,
+    pub user_id: String,
+    pub email: String,
+    pub user_type: UserType,
+    pub kyc_status: String,
+    pub kyc_submitted_at: Option<DateTime<Utc>>,
+    pub kyc_verified_at: Option<DateTime<Utc>>,
+    pub legal_name: String,
+    pub dba: Option<String>,
+    pub tax_id: Option<String>,
+    pub mcc: Option<String>,
+    pub country: String,
+    pub business_type: Option<String>,
+    pub industry: Option<String>,
+    pub years_in_business: Option<i32>,
+    pub employee_count: Option<i32>,
+    #[schema(value_type = Option<String>, example = "50000.00")]
+    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
+    pub business_description: Option<String>,
+    pub profile_completed: bool,
+    pub merchant_created_at: DateTime<Utc>,
+    pub merchant_updated_at: DateTime<Utc>,
+    pub profile_created_at: Option<DateTime<Utc>>,
+    pub profile_updated_at: Option<DateTime<Utc>>,
+    pub jurisdiction: Option<String>,
+}
+
+/// Request to update merchant profile
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateMerchantRequest {
+    pub legal_name: Option<String>,
+    pub dba: Option<String>,
+    pub mcc: Option<String>,
+    pub country: Option<String>,
+    pub business_type: Option<String>,
+    pub industry: Option<String>,
+    pub years_in_business: Option<i32>,
+    pub employee_count: Option<i32>,
+    #[schema(value_type = Option<String>, example = "60000.00")]
+    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
+    pub business_description: Option<String>,
 }
 
 /// Request to update investor profile
@@ -1064,6 +1176,12 @@ pub fn create_router(state: ApiState) -> Router {
         // Investor Management endpoints
         .route(paths::REGISTER_INVESTOR, post(register_investor_endpoint))
         .route(paths::INVESTOR_PROFILE, get(get_investor_profile_endpoint))
+        // Merchant Management endpoints
+        .route(paths::REGISTER_MERCHANT, post(register_merchant_endpoint))
+        .route(
+            paths::MERCHANT_PROFILE,
+            get(get_merchant_profile_endpoint).put(update_merchant_profile_endpoint),
+        )
         .route(
             paths::INVESTOR_PROFILE,
             put(update_investor_profile_endpoint),
@@ -3207,6 +3325,421 @@ async fn register_investor_endpoint(
     }
 }
 
+/// Register a new merchant with business information
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/register/merchant",
+    request_body = RegisterMerchantRequest,
+    responses(
+        (status = 200, description = "Merchant registered successfully", body = RegisterMerchantResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status =409, description = "Email already exists"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Merchants"
+)]
+#[instrument(skip(state), level = "info")]
+async fn register_merchant_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<RegisterMerchantRequest>,
+) -> Result<Json<RegisterMerchantResponse>, (StatusCode, String)> {
+    info!("🏪 API: Registering merchant: {}", request.email);
+
+    // Validate email and password using AuthService
+    if let Err(e) = state.auth_service.validate_email(&request.email) {
+        warn!("❌ API: Invalid email format for merchant: {}", e);
+        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    }
+
+    if let Err(e) = state.auth_service.validate_password(&request.password) {
+        warn!("❌ API: Invalid password format for merchant: {}", e);
+        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    }
+
+    // Register the user first as merchant
+    match register_or_reregister_user(&state.pool, "merchant", &request.email, &request.password)
+        .await
+    {
+        Ok(result) => {
+            let identity = match result {
+                RegisterResult::Created(identity) => identity,
+                RegisterResult::Reregistered(identity) => identity,
+                RegisterResult::AlreadyExists => {
+                    return Err((StatusCode::CONFLICT, "Email already exists".to_string()));
+                }
+            };
+
+            // Update additional profile fields if provided
+            if request.jurisdiction.is_some() {
+                let update_request = UpdateUserRequest {
+                    email: None,
+                    user_type: None,
+                    first_name: None,
+                    last_name: None,
+                    jurisdiction: request.jurisdiction.clone(),
+                    wallet_address: None,
+                };
+
+                let user_type_str = update_request.user_type.as_ref().map(|t| t.to_string());
+                if let Err(e) = update_identity_profile(
+                    &state.pool,
+                    identity.id,
+                    update_request.email.as_deref(),
+                    user_type_str.as_deref(),
+                    update_request.jurisdiction.as_deref(),
+                    update_request.first_name.as_deref(),
+                    update_request.last_name.as_deref(),
+                    update_request.wallet_address.as_deref(),
+                )
+                .await
+                {
+                    warn!("Failed to update merchant profile fields: {}", e);
+                }
+            }
+
+            // Create merchant account with business information
+            let merchant_request = CreateMerchantRequest {
+                legal_name: request.legal_name.clone(),
+                dba: request.dba.clone(),
+                tax_id: request.tax_id.clone(),
+                mcc: request.mcc.clone(),
+                country: request.country.clone(),
+                business_type: request.business_type.clone(),
+            };
+
+            match create_merchant(&state.pool, identity.id, &merchant_request).await {
+                Ok(merchant) => {
+                    info!(
+                        "✅ API: Merchant registered successfully: user_id={}, merchant_id={}, legal_name={}",
+                        identity.id, merchant.id, merchant.legal_name
+                    );
+
+                    Ok(Json(RegisterMerchantResponse {
+                        user_id: identity.id.to_string(),
+                        merchant_id: merchant.id.to_string(),
+                        user_type: UserType::Merchant,
+                        legal_name: merchant.legal_name,
+                        kyc_status: identity.kyc_status,
+                        created_at: identity.created_at,
+                    }))
+                }
+                Err(e) => {
+                    error!("❌ API: Failed to create merchant account: {}", e);
+                    Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to create merchant account".to_string(),
+                    ))
+                }
+            }
+        }
+        Err(e) => {
+            error!("❌ API: Failed to register merchant user: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to register merchant".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get merchant profile
+#[utoipa::path(
+    get,
+    path = "/api/v1/merchant/profile",
+    responses(
+        (status = 200, description = "Merchant profile retrieved successfully", body = MerchantProfileResponse),
+        (status = 404, description = "Merchant profile not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Merchants"
+)]
+#[instrument(skip(state), level = "info")]
+async fn get_merchant_profile_endpoint(
+    State(state): State<ApiState>,
+) -> Result<Json<MerchantProfileResponse>, (StatusCode, String)> {
+    // For this implementation, we'll use a hardcoded user_id for testing
+    // In a real implementation, this would come from authentication middleware
+    let test_user_id =
+        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Invalid UUID".to_string(),
+            )
+        })?;
+
+    info!(
+        "🔍 API: Getting merchant profile for test user: {}",
+        test_user_id
+    );
+
+    // Get the merchant by user ID
+    match get_merchant_by_user_id(&state.pool, test_user_id).await {
+        Ok(Some(merchant)) => {
+            // Get the user identity for additional info
+            let identity = match get_identity_by_id(&state.pool, merchant.user_id).await {
+                Ok(Some(identity)) => identity,
+                Ok(None) => {
+                    warn!(
+                        "❌ API: Identity not found for merchant user: {}",
+                        merchant.user_id
+                    );
+                    return Err((StatusCode::NOT_FOUND, "User identity not found".to_string()));
+                }
+                Err(e) => {
+                    error!("❌ API: Failed to get identity for merchant: {}", e);
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to get user identity".to_string(),
+                    ));
+                }
+            };
+
+            // Try to get the merchant profile (optional)
+            let profile = match get_merchant_profile_by_merchant_id(&state.pool, merchant.id).await
+            {
+                Ok(profile_opt) => profile_opt,
+                Err(e) => {
+                    warn!(
+                        "⚠️ API: Failed to get merchant profile (continuing without): {}",
+                        e
+                    );
+                    None
+                }
+            };
+
+            let response = MerchantProfileResponse {
+                profile_id: profile
+                    .as_ref()
+                    .map(|p| p.id.to_string())
+                    .unwrap_or_else(|| "N/A".to_string()),
+                merchant_id: merchant.id.to_string(),
+                user_id: merchant.user_id.to_string(),
+                email: identity.email,
+                user_type: UserType::Merchant,
+                kyc_status: identity.kyc_status,
+                kyc_submitted_at: identity.kyc_submitted_at,
+                kyc_verified_at: identity.kyc_verified_at,
+                legal_name: merchant.legal_name,
+                dba: merchant.dba,
+                tax_id: merchant.tax_id,
+                mcc: merchant.mcc,
+                country: merchant.country,
+                business_type: merchant.business_type,
+                industry: profile.as_ref().and_then(|p| p.industry.clone()),
+                years_in_business: profile.as_ref().and_then(|p| p.years_in_business),
+                employee_count: profile.as_ref().and_then(|p| p.employee_count),
+                monthly_revenue_estimate: profile.as_ref().and_then(|p| p.monthly_revenue_estimate),
+                business_description: profile
+                    .as_ref()
+                    .and_then(|p| p.business_description.clone()),
+                profile_completed: profile
+                    .as_ref()
+                    .map(|p| p.profile_completed)
+                    .unwrap_or(false),
+                merchant_created_at: merchant.created_at,
+                merchant_updated_at: merchant.updated_at,
+                profile_created_at: profile.as_ref().map(|p| p.created_at),
+                profile_updated_at: profile.as_ref().map(|p| p.updated_at),
+                jurisdiction: None, // This would come from identity if needed
+            };
+
+            info!(
+                "✅ API: Merchant profile retrieved successfully: {}",
+                merchant.id
+            );
+            Ok(Json(response))
+        }
+        Ok(None) => {
+            warn!("❌ API: Merchant not found for user: {}", test_user_id);
+            Err((
+                StatusCode::NOT_FOUND,
+                "Merchant profile not found".to_string(),
+            ))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get merchant: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve merchant profile".to_string(),
+            ))
+        }
+    }
+}
+
+/// Update merchant profile
+#[utoipa::path(
+    put,
+    path = "/api/v1/merchant/profile",
+    request_body = UpdateMerchantProfileRequest,
+    responses(
+        (status = 200, description = "Merchant profile updated successfully", body = MerchantProfileResponse),
+        (status = 404, description = "Merchant profile not found"),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Merchants"
+)]
+#[instrument(skip(state), level = "info")]
+async fn update_merchant_profile_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<UpdateMerchantProfileRequest>,
+) -> Result<Json<MerchantProfileResponse>, (StatusCode, String)> {
+    // For this implementation, we'll use a hardcoded user_id for testing
+    // In a real implementation, this would come from authentication middleware
+    let test_user_id =
+        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Invalid UUID".to_string(),
+            )
+        })?;
+
+    info!(
+        "🔄 API: Updating merchant profile for test user: {}",
+        test_user_id
+    );
+
+    // Get the merchant by user ID first to ensure it exists
+    let merchant = match get_merchant_by_user_id(&state.pool, test_user_id).await {
+        Ok(Some(merchant)) => merchant,
+        Ok(None) => {
+            warn!("❌ API: Merchant not found for user: {}", test_user_id);
+            return Err((StatusCode::NOT_FOUND, "Merchant not found".to_string()));
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get merchant: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get merchant".to_string(),
+            ));
+        }
+    };
+
+    // Convert API request to database request
+    let db_request = DbUpdateMerchantProfileRequest {
+        legal_name: request.legal_name,
+        dba: request.dba,
+        mcc: request.mcc,
+        country: request.country,
+        business_type: request.business_type,
+        industry: request.industry,
+        years_in_business: request.years_in_business,
+        employee_count: request.employee_count,
+        monthly_revenue_estimate: request.monthly_revenue_estimate,
+        business_description: request.business_description,
+    };
+
+    // Update the merchant profile
+    match update_merchant_profile(&state.pool, merchant.id, &db_request).await {
+        Ok(_) => {
+            info!(
+                "✅ API: Merchant profile updated successfully: {}",
+                merchant.id
+            );
+
+            // Return the updated profile by calling the get endpoint
+            // Get the user identity for additional info
+            let identity = match get_identity_by_id(&state.pool, merchant.user_id).await {
+                Ok(Some(identity)) => identity,
+                Ok(None) => {
+                    warn!(
+                        "❌ API: Identity not found for merchant user: {}",
+                        merchant.user_id
+                    );
+                    return Err((StatusCode::NOT_FOUND, "User identity not found".to_string()));
+                }
+                Err(e) => {
+                    error!("❌ API: Failed to get identity for merchant: {}", e);
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to get user identity".to_string(),
+                    ));
+                }
+            };
+
+            // Get the updated merchant (refetch from database)
+            let updated_merchant = match get_merchant_by_user_id(&state.pool, test_user_id).await {
+                Ok(Some(merchant)) => merchant,
+                Ok(None) => {
+                    warn!(
+                        "❌ API: Updated merchant not found for user: {}",
+                        test_user_id
+                    );
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        "Updated merchant not found".to_string(),
+                    ));
+                }
+                Err(e) => {
+                    error!("❌ API: Failed to get updated merchant: {}", e);
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to get updated merchant".to_string(),
+                    ));
+                }
+            };
+
+            // Get the updated merchant profile (optional)
+            let profile =
+                match get_merchant_profile_by_merchant_id(&state.pool, updated_merchant.id).await {
+                    Ok(profile_opt) => profile_opt,
+                    Err(e) => {
+                        warn!(
+                        "⚠️ API: Failed to get updated merchant profile (continuing without): {}",
+                        e
+                    );
+                        None
+                    }
+                };
+
+            let response = MerchantProfileResponse {
+                profile_id: profile
+                    .as_ref()
+                    .map(|p| p.id.to_string())
+                    .unwrap_or_else(|| "N/A".to_string()),
+                merchant_id: updated_merchant.id.to_string(),
+                user_id: updated_merchant.user_id.to_string(),
+                email: identity.email,
+                user_type: UserType::Merchant,
+                kyc_status: identity.kyc_status,
+                kyc_submitted_at: identity.kyc_submitted_at,
+                kyc_verified_at: identity.kyc_verified_at,
+                legal_name: updated_merchant.legal_name,
+                dba: updated_merchant.dba,
+                tax_id: updated_merchant.tax_id,
+                mcc: updated_merchant.mcc,
+                country: updated_merchant.country,
+                business_type: updated_merchant.business_type,
+                industry: profile.as_ref().and_then(|p| p.industry.clone()),
+                years_in_business: profile.as_ref().and_then(|p| p.years_in_business),
+                employee_count: profile.as_ref().and_then(|p| p.employee_count),
+                monthly_revenue_estimate: profile.as_ref().and_then(|p| p.monthly_revenue_estimate),
+                business_description: profile
+                    .as_ref()
+                    .and_then(|p| p.business_description.clone()),
+                profile_completed: profile
+                    .as_ref()
+                    .map(|p| p.profile_completed)
+                    .unwrap_or(false),
+                merchant_created_at: updated_merchant.created_at,
+                merchant_updated_at: updated_merchant.updated_at,
+                profile_created_at: profile.as_ref().map(|p| p.created_at),
+                profile_updated_at: profile.as_ref().map(|p| p.updated_at),
+                jurisdiction: None,
+            };
+
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to update merchant profile: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update merchant profile".to_string(),
+            ))
+        }
+    }
+}
+
 /// Get investor profile
 #[utoipa::path(
     get,
@@ -4907,6 +5440,11 @@ async fn get_pending_withdrawals_endpoint(
         get_investor_profile_endpoint,
         update_investor_profile_endpoint,
 
+        // Merchant Management endpoints
+        register_merchant_endpoint,
+        get_merchant_profile_endpoint,
+        update_merchant_profile_endpoint,
+
         // Loan Management endpoints
         create_loan_endpoint,
         list_loans_endpoint,
@@ -4977,6 +5515,12 @@ async fn get_pending_withdrawals_endpoint(
             RegisterInvestorResponse,
             InvestorProfileResponse,
             UpdateInvestorProfileRequest,
+
+            // Merchant Management
+            RegisterMerchantRequest,
+            RegisterMerchantResponse,
+            MerchantProfileResponse,
+            UpdateMerchantProfileRequest,
 
             // Loan Management
             CreateLoanRequest,

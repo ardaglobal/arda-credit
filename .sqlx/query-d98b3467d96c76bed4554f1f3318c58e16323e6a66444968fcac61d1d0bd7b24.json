@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            id, user_id, legal_name, dba, tax_id, mcc, \n            country as \"country!: String\", \n            kyc_status as \"kyc_status!: String\", \n            business_type,\n            created_at, updated_at\n        FROM merchants\n        WHERE user_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "legal_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "dba",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "tax_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "mcc",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "country!: String",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "kyc_status!: String",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "business_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d98b3467d96c76bed4554f1f3318c58e16323e6a66444968fcac61d1d0bd7b24"
+}

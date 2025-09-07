@@ -363,6 +363,46 @@ enum Commands {
     },
 
     // ============================================================================
+    // MERCHANT MANAGEMENT COMMANDS
+    // ============================================================================
+    /// Register a new merchant with business information
+    RegisterMerchant {
+        /// Merchant email address
+        #[arg(long)]
+        email: String,
+        /// Merchant password
+        #[arg(long)]
+        password: String,
+        /// Legal business name
+        #[arg(long)]
+        legal_name: String,
+        /// Doing Business As name (optional)
+        #[arg(long)]
+        dba: Option<String>,
+        /// Tax ID (optional)
+        #[arg(long)]
+        tax_id: Option<String>,
+        /// Merchant Category Code (optional)
+        #[arg(long)]
+        mcc: Option<String>,
+        /// Country (defaults to USA)
+        #[arg(long, default_value = "USA")]
+        country: String,
+        /// Business type (LLC, CORP, SOLE_PROP, PARTNERSHIP, OTHER)
+        #[arg(long)]
+        business_type: Option<String>,
+        /// Jurisdiction (optional, defaults to US)
+        #[arg(long)]
+        jurisdiction: Option<String>,
+        /// Invite code (optional)
+        #[arg(long)]
+        invite_code: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    // ============================================================================
     // INVITE CODE MANAGEMENT COMMANDS
     // ============================================================================
     /// Generate a new invite code for user registration
@@ -1236,6 +1276,35 @@ async fn main() -> Result<()> {
                 accredited_investor,
                 investment_capacity.as_deref(),
                 regulatory_jurisdiction.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+        Commands::RegisterMerchant {
+            email,
+            password,
+            legal_name,
+            dba,
+            tax_id,
+            mcc,
+            country,
+            business_type,
+            jurisdiction,
+            invite_code,
+            verbose,
+        } => {
+            register_merchant(
+                &client,
+                &email,
+                &password,
+                &legal_name,
+                dba.as_deref(),
+                tax_id.as_deref(),
+                mcc.as_deref(),
+                &country,
+                business_type.as_deref(),
+                jurisdiction.as_deref(),
+                invite_code.as_deref(),
                 verbose,
             )
             .await?;
@@ -5036,6 +5105,98 @@ async fn register_investor(
         }
         Err(e) => {
             return Err(eyre::eyre!("Failed to register investor: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Register a new merchant with business information
+async fn register_merchant(
+    client: &BatchApiClient,
+    email: &str,
+    password: &str,
+    legal_name: &str,
+    dba: Option<&str>,
+    tax_id: Option<&str>,
+    mcc: Option<&str>,
+    country: &str,
+    business_type: Option<&str>,
+    jurisdiction: Option<&str>,
+    invite_code: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("🏪 Registering merchant: {}", email);
+        println!("   Legal Name: {}", legal_name);
+        if let Some(dba_name) = dba {
+            println!("   DBA: {}", dba_name);
+        }
+        if let Some(id) = tax_id {
+            println!("   Tax ID: {}", id);
+        }
+        if let Some(code) = mcc {
+            println!("   MCC: {}", code);
+        }
+        println!("   Country: {}", country);
+        if let Some(biz_type) = business_type {
+            println!("   Business Type: {}", biz_type);
+        }
+    }
+
+    // Use the client's register_merchant method (we'll need to add this to BatchApiClient)
+    let request_body = serde_json::json!({
+        "email": email,
+        "password": password,
+        "legal_name": legal_name,
+        "dba": dba,
+        "tax_id": tax_id,
+        "mcc": mcc,
+        "country": country,
+        "business_type": business_type,
+        "jurisdiction": jurisdiction,
+        "invite_code": invite_code,
+    });
+
+    // For now, we'll make a direct HTTP request until we add the method to BatchApiClient
+    let url = format!("{}/api/v1/auth/register/merchant", client.base_url());
+    let client_http = client.http_client().clone();
+
+    match client_http.post(&url).json(&request_body).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                println!("✅ Merchant registered successfully:");
+                println!(
+                    "   User ID: {}",
+                    result["user_id"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "   Merchant ID: {}",
+                    result["merchant_id"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "   Legal Name: {}",
+                    result["legal_name"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "   KYC Status: {}",
+                    result["kyc_status"].as_str().unwrap_or("N/A")
+                );
+
+                if verbose {
+                    println!("Full Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!("Failed to register merchant: {}", error_text));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to register merchant: {}", e));
         }
     }
 
