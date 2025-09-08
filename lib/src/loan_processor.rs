@@ -519,7 +519,6 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
         | TransactionType::UserDeposit
         | TransactionType::UserWithdrawal
         | TransactionType::InvestorRegistration
-        | TransactionType::PoolCreation
         | TransactionType::MerchantRegistration
         | TransactionType::MerchantProfileUpdate
         | TransactionType::CreditLineRequest
@@ -529,6 +528,8 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
                 return Err(ProcessingError::InvalidTransactionType);
             }
         }
+        // PoolCreation uses loan_id field as the pool_id, so it can be non-zero
+        TransactionType::PoolCreation => {}
         _ => {}
     }
 
