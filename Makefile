@@ -28,7 +28,11 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 
 ## lint: Lint code
 .PHONY: lint
-lint: yamllint actionlint docker-lint deny
+lint: yamllint actionlint docker-lint deny lint-rust
+
+## lint-rust: Lint only Rust code
+.PHONY: lint-rust
+lint-rust:
 	SQLX_OFFLINE=true cargo clippy --all-targets -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
 
 ## env: Copy .env.example to .env
@@ -483,20 +487,27 @@ kind-status:
 		echo "💡 Run 'make kind-setup' to create the cluster"; \
 	fi
 
-## kind-logs: Show logs from Kind cluster services
-# Display logs from Arda Credit services for debugging
-.PHONY: kind-logs
-kind-logs:
-	@echo "📋 Arda Credit Service Logs:"
-	@echo ""
+## kind-logs-server: Show logs from Arda Credit server
+.PHONY: kind-logs-server
+kind-logs-server:
 	@echo "=== Server Logs ==="
 	@kubectl logs --context=kind-arda-credit-e2e -n arda-credit -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=server --tail=50 2>/dev/null || echo "❌ No server logs available"
-	@echo ""
+
+## kind-logs-app: Show logs from Arda Credit app
+.PHONY: kind-logs-app
+kind-logs-app:
 	@echo "=== App Logs ==="
 	@kubectl logs --context=kind-arda-credit-e2e -n arda-credit -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app --tail=50 2>/dev/null || echo "❌ No app logs available"
-	@echo ""
+
+## kind-logs-postgres: Show logs from PostgreSQL
+.PHONY: kind-logs-postgres
+kind-logs-postgres:
 	@echo "=== PostgreSQL Logs ==="
 	@kubectl logs --context=kind-arda-credit-e2e -n arda-credit -l app.kubernetes.io/name=postgresql --tail=20 2>/dev/null || echo "❌ No PostgreSQL logs available"
+
+## kind-logs: Show logs from all Kind cluster services
+.PHONY: kind-logs
+kind-logs: kind-logs-server kind-logs-app kind-logs-postgres
 
 ## kind-restart: Restart Kind cluster services
 # Restart Arda Credit deployments (keeps cluster and data)

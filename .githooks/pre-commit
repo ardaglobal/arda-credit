@@ -88,8 +88,59 @@ fi
 
 echo "✅ Code formatting is up to date"
 
-echo "🔍 Running linting checks..."
-make lint
+# Get list of staged files for linting decisions
+STAGED_FILES=$(git diff --cached --name-only)
+
+echo "🔍 Checking which files need linting..."
+
+# Check if we have files that need linting
+HAS_RUST_FILES=$(echo "$STAGED_FILES" | grep -E '\.rs$' || true)
+HAS_YAML_FILES=$(echo "$STAGED_FILES" | grep -E '\.(yml|yaml)$' || true)
+HAS_GITHUB_ACTIONS=$(echo "$STAGED_FILES" | grep -E '\.github/workflows/.*\.yml$' || true)
+HAS_DOCKERFILES=$(echo "$STAGED_FILES" | grep -E '^Dockerfile' || true)
+HAS_CARGO_FILES=$(echo "$STAGED_FILES" | grep -E '(Cargo\.toml|Cargo\.lock)$' || true)
+
+# Only run linting if we have files that need it
+if [ -n "$HAS_RUST_FILES" ] || [ -n "$HAS_YAML_FILES" ] || [ -n "$HAS_GITHUB_ACTIONS" ] || [ -n "$HAS_DOCKERFILES" ] || [ -n "$HAS_CARGO_FILES" ]; then
+    echo "📋 Files requiring linting found:"
+    [ -n "$HAS_RUST_FILES" ] && echo "  🦀 Rust files: $(echo "$HAS_RUST_FILES" | wc -l | tr -d ' ')"
+    [ -n "$HAS_YAML_FILES" ] && echo "  📄 YAML files: $(echo "$HAS_YAML_FILES" | wc -l | tr -d ' ')"
+    [ -n "$HAS_GITHUB_ACTIONS" ] && echo "  🤖 GitHub Actions: $(echo "$HAS_GITHUB_ACTIONS" | wc -l | tr -d ' ')"
+    [ -n "$HAS_DOCKERFILES" ] && echo "  🐳 Docker files: $(echo "$HAS_DOCKERFILES" | wc -l | tr -d ' ')"
+    [ -n "$HAS_CARGO_FILES" ] && echo "  📦 Cargo files: $(echo "$HAS_CARGO_FILES" | wc -l | tr -d ' ')"
+
+    echo ""
+    echo "🔍 Running linting checks..."
+
+    # Run specific linting commands based on file types
+    LINT_CMD="make"
+
+    if [ -n "$HAS_YAML_FILES" ] || [ -n "$HAS_GITHUB_ACTIONS" ]; then
+        LINT_CMD="$LINT_CMD yamllint"
+    fi
+
+    if [ -n "$HAS_GITHUB_ACTIONS" ]; then
+        LINT_CMD="$LINT_CMD actionlint"
+    fi
+
+    if [ -n "$HAS_DOCKERFILES" ]; then
+        LINT_CMD="$LINT_CMD docker-lint"
+    fi
+
+    if [ -n "$HAS_RUST_FILES" ] || [ -n "$HAS_CARGO_FILES" ]; then
+        LINT_CMD="$LINT_CMD deny"
+    fi
+
+    # Always include clippy if there are Rust files
+    if [ -n "$HAS_RUST_FILES" ]; then
+        LINT_CMD="$LINT_CMD lint-rust"
+    fi
+
+    eval $LINT_CMD
+else
+    echo "ℹ️  No files requiring linting found. Skipping lint checks."
+    echo "   (Only Makefile, .md, documentation, or other non-linted files detected)"
+fi
 
 echo ""
 echo "✅ All pre-commit checks passed! 🎉"
