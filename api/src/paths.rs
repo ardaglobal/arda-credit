@@ -94,6 +94,18 @@ pub const INVESTOR_PROFILE: &str = api_path!("/investor/profile");
 /// Merchant profile operations
 pub const MERCHANT_PROFILE: &str = api_path!("/merchant/profile");
 
+/// Merchant turnover operations
+pub const MERCHANT_TURNOVER: &str = api_path!("/merchant/turnover");
+
+/// Merchant turnover by date
+pub const MERCHANT_TURNOVER_BY_DATE: &str = api_path!("/merchant/turnover/{date}");
+
+/// Merchant turnover analytics
+pub const MERCHANT_TURNOVER_ANALYTICS: &str = api_path!("/merchant/turnover/analytics");
+
+/// Merchant profile completion
+pub const MERCHANT_PROFILE_COMPLETION: &str = api_path!("/merchant/profile/completion");
+
 // ============================================================================
 // WITHDRAWAL MANAGEMENT PATHS
 // ============================================================================
@@ -150,6 +162,22 @@ pub const LOAN_AUDIT_TRAIL: &str = api_path!("/loan/{loan_id}/audit-trail");
 
 /// Loan lifecycle summary
 pub const LOAN_LIFECYCLE_SUMMARY: &str = api_path!("/loan/{loan_id}/lifecycle-summary");
+
+// ============================================================================
+// POOL MANAGEMENT PATHS
+// ============================================================================
+
+/// Pool collection (list pools)
+pub const POOLS: &str = api_path!("/pools");
+
+/// Individual pool operations
+pub const POOL_BY_ID: &str = api_path!("/pools/{pool_id}");
+
+/// Pool utilization
+pub const POOL_UTILIZATION: &str = api_path!("/pools/{pool_id}/utilization");
+
+/// Pool transactions
+pub const POOL_TRANSACTIONS: &str = api_path!("/pools/{pool_id}/transactions");
 
 // ============================================================================
 // STATE MANAGEMENT PATHS (transactions, batches, proofs)
