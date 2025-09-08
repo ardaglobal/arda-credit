@@ -474,6 +474,76 @@ enum Commands {
     },
 
     // ============================================================================
+    // CREDIT LINE MANAGEMENT COMMANDS
+    // ============================================================================
+    /// Check merchant eligibility for credit line
+    CheckCreditEligibility {
+        /// Merchant ID to check eligibility for
+        #[arg(long)]
+        merchant_id: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Submit a credit line request
+    SubmitCreditLineRequest {
+        /// Merchant ID requesting credit
+        #[arg(long)]
+        merchant_id: String,
+        /// Requested credit amount in USD cents
+        #[arg(long)]
+        requested_amount: u64,
+        /// Requested rate in basis points (optional)
+        #[arg(long)]
+        requested_rate_bps: Option<u64>,
+        /// Requested tenor in days
+        #[arg(long)]
+        requested_tenor_days: u32,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Browse available liquidity pools for credit matching
+    BrowseAvailablePools {
+        /// Required liquidity amount in USD cents
+        #[arg(long)]
+        required_liquidity: u64,
+        /// Maximum LTV ratio in basis points
+        #[arg(long)]
+        max_ltv_bps: u64,
+        /// Maximum interest rate in basis points
+        #[arg(long)]
+        max_rate_bps: u64,
+        /// Minimum repayment days
+        #[arg(long)]
+        min_repayment_days: u32,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// List credit line requests for a merchant
+    ListCreditLineRequests {
+        /// Merchant ID to list requests for
+        #[arg(long)]
+        merchant_id: String,
+        /// Filter by status (submitted, evaluating, approved, rejected, expired)
+        #[arg(long)]
+        status: Option<String>,
+        /// Limit results
+        #[arg(long, default_value = "10")]
+        limit: u32,
+        /// Offset for pagination
+        #[arg(long, default_value = "0")]
+        offset: u32,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    // ============================================================================
     // INVITE CODE MANAGEMENT COMMANDS
     // ============================================================================
     /// Generate a new invite code for user registration
@@ -1441,6 +1511,60 @@ async fn main() -> Result<()> {
 
         Commands::GetProfileCompletion { verbose } => {
             get_profile_completion(&client, verbose).await?;
+        }
+
+        Commands::CheckCreditEligibility {
+            merchant_id,
+            verbose,
+        } => {
+            check_credit_eligibility(&client, &merchant_id, verbose).await?;
+        }
+
+        Commands::SubmitCreditLineRequest {
+            merchant_id,
+            requested_amount,
+            requested_rate_bps,
+            requested_tenor_days,
+            verbose,
+        } => {
+            submit_credit_line_request(
+                &client,
+                &merchant_id,
+                requested_amount,
+                requested_rate_bps,
+                requested_tenor_days,
+                verbose,
+            )
+            .await?;
+        }
+
+        Commands::BrowseAvailablePools {
+            required_liquidity,
+            max_ltv_bps,
+            max_rate_bps,
+            min_repayment_days,
+            verbose,
+        } => {
+            browse_available_pools(
+                &client,
+                required_liquidity,
+                max_ltv_bps,
+                max_rate_bps,
+                min_repayment_days,
+                verbose,
+            )
+            .await?;
+        }
+
+        Commands::ListCreditLineRequests {
+            merchant_id,
+            status,
+            limit,
+            offset,
+            verbose,
+        } => {
+            list_credit_line_requests(&client, &merchant_id, status, limit, offset, verbose)
+                .await?;
         }
 
         Commands::TestUserOperations {
@@ -5751,6 +5875,328 @@ async fn get_profile_completion(client: &BatchApiClient, verbose: bool) -> Resul
         }
         Err(e) => {
             return Err(eyre::eyre!("Failed to get profile completion: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// CREDIT LINE MANAGEMENT FUNCTIONS
+// ============================================================================
+
+/// Check merchant eligibility for credit line
+async fn check_credit_eligibility(
+    client: &BatchApiClient,
+    merchant_id: &str,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!(
+            "🔍 Checking credit eligibility for merchant: {}",
+            merchant_id
+        );
+    }
+
+    let url = format!(
+        "{}/api/credit-lines/eligibility/{}",
+        client.base_url(),
+        merchant_id
+    );
+    let client_http = client.http_client().clone();
+
+    match client_http.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                println!("✅ Credit Eligibility Check:");
+                println!(
+                    "   Eligible: {}",
+                    if result["eligible"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   Credit Score: {}/100",
+                    result["credit_score"].as_u64().unwrap_or(0)
+                );
+                println!(
+                    "   Max Loan Amount: ${:.2}",
+                    result["max_loan_amount"].as_f64().unwrap_or(0.0) / 100.0
+                );
+                println!(
+                    "   Recommended LTV: {:.2}%",
+                    result["recommended_ltv"].as_f64().unwrap_or(0.0) / 100.0
+                );
+
+                if let Some(reasons) = result["reasons"].as_array() {
+                    if !reasons.is_empty() {
+                        println!("\n   Reasons:");
+                        for reason in reasons {
+                            println!("   - {}", reason.as_str().unwrap_or("Unknown"));
+                        }
+                    }
+                }
+
+                if verbose {
+                    println!("\nFull Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!(
+                    "Failed to check credit eligibility: {}",
+                    error_text
+                ));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to check credit eligibility: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Submit a credit line request
+async fn submit_credit_line_request(
+    client: &BatchApiClient,
+    merchant_id: &str,
+    requested_amount: u64,
+    requested_rate_bps: Option<u64>,
+    requested_tenor_days: u32,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!(
+            "📝 Submitting credit line request for merchant: {}",
+            merchant_id
+        );
+        println!("   Amount: ${:.2}", requested_amount as f64 / 100.0);
+        if let Some(rate) = requested_rate_bps {
+            println!("   Rate: {:.2}%", rate as f64 / 100.0);
+        }
+        println!("   Tenor: {} days", requested_tenor_days);
+    }
+
+    let url = format!("{}/api/credit-lines/request", client.base_url());
+    let client_http = client.http_client().clone();
+
+    let mut request_body = serde_json::json!({
+        "merchant_id": merchant_id,
+        "requested_amount": requested_amount,
+        "requested_tenor_days": requested_tenor_days
+    });
+
+    if let Some(rate) = requested_rate_bps {
+        request_body["requested_rate_bps"] = serde_json::json!(rate);
+    }
+
+    match client_http.post(&url).json(&request_body).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                println!("✅ Credit Line Request Submitted:");
+                println!(
+                    "   Request ID: {}",
+                    result["request_id"].as_str().unwrap_or("N/A")
+                );
+                println!("   Status: {}", result["status"].as_str().unwrap_or("N/A"));
+                println!(
+                    "   Evaluation Score: {}/100",
+                    result["evaluation_score"].as_u64().unwrap_or(0)
+                );
+
+                if verbose {
+                    println!("\nFull Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!(
+                    "Failed to submit credit line request: {}",
+                    error_text
+                ));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to submit credit line request: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Browse available liquidity pools for credit matching
+async fn browse_available_pools(
+    client: &BatchApiClient,
+    required_liquidity: u64,
+    max_ltv_bps: u64,
+    max_rate_bps: u64,
+    min_repayment_days: u32,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("🏊 Browsing available pools:");
+        println!(
+            "   Required Liquidity: ${:.2}",
+            required_liquidity as f64 / 100.0
+        );
+        println!("   Max LTV: {:.2}%", max_ltv_bps as f64 / 100.0);
+        println!("   Max Rate: {:.2}%", max_rate_bps as f64 / 100.0);
+        println!("   Min Repayment: {} days", min_repayment_days);
+    }
+
+    let url = format!(
+        "{}/api/credit-lines/browse-pools?required_liquidity={}&max_ltv_bps={}&max_rate_bps={}&min_repayment_days={}",
+        client.base_url(),
+        required_liquidity,
+        max_ltv_bps,
+        max_rate_bps,
+        min_repayment_days
+    );
+    let client_http = client.http_client().clone();
+
+    match client_http.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+
+                if let Some(pools) = result["available_pools"].as_array() {
+                    println!("✅ Found {} matching pools:", pools.len());
+                    for (i, pool) in pools.iter().enumerate() {
+                        println!("\n   Pool {}:", i + 1);
+                        println!("     ID: {}", pool["pool_id"].as_str().unwrap_or("N/A"));
+                        println!("     Name: {}", pool["pool_name"].as_str().unwrap_or("N/A"));
+                        println!(
+                            "     Available: ${:.2}",
+                            pool["available_liquidity"].as_f64().unwrap_or(0.0) / 100.0
+                        );
+                        println!(
+                            "     Max LTV: {:.2}%",
+                            pool["max_ltv_ratio"].as_f64().unwrap_or(0.0) / 100.0
+                        );
+                        println!(
+                            "     Max Rate: {:.2}%",
+                            pool["max_interest_rate"].as_f64().unwrap_or(0.0) / 100.0
+                        );
+                    }
+                } else {
+                    println!("❌ No matching pools found");
+                }
+
+                if verbose {
+                    println!("\nFull Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!("Failed to browse pools: {}", error_text));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to browse pools: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// List credit line requests for a merchant
+async fn list_credit_line_requests(
+    client: &BatchApiClient,
+    merchant_id: &str,
+    status: Option<String>,
+    limit: u32,
+    offset: u32,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!(
+            "📋 Listing credit line requests for merchant: {}",
+            merchant_id
+        );
+        if let Some(ref status_filter) = status {
+            println!("   Filter by status: {}", status_filter);
+        }
+    }
+
+    let mut url = format!(
+        "{}/api/credit-lines/requests?merchant_id={}&limit={}&offset={}",
+        client.base_url(),
+        merchant_id,
+        limit,
+        offset
+    );
+
+    if let Some(status_filter) = status {
+        url.push_str(&format!("&status={}", status_filter));
+    }
+
+    let client_http = client.http_client().clone();
+
+    match client_http.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+
+                if let Some(requests) = result["requests"].as_array() {
+                    println!("✅ Found {} credit line requests:", requests.len());
+
+                    for (i, request) in requests.iter().enumerate() {
+                        println!("\n   Request {}:", i + 1);
+                        println!(
+                            "     ID: {}",
+                            request["request_id"].as_str().unwrap_or("N/A")
+                        );
+                        println!(
+                            "     Status: {}",
+                            request["status"].as_str().unwrap_or("N/A")
+                        );
+                        println!(
+                            "     Amount: ${:.2}",
+                            request["requested_amount"].as_f64().unwrap_or(0.0) / 100.0
+                        );
+                        println!(
+                            "     LTV: {:.2}%",
+                            request["ltv_ratio"].as_f64().unwrap_or(0.0) / 100.0
+                        );
+                        println!(
+                            "     Tenor: {} days",
+                            request["requested_tenor_days"].as_u64().unwrap_or(0)
+                        );
+                        if let Some(created_at) = request["created_at"].as_str() {
+                            println!("     Created: {}", created_at);
+                        }
+                    }
+                } else {
+                    println!("❌ No credit line requests found");
+                }
+
+                if verbose {
+                    println!("\nFull Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!(
+                    "Failed to list credit line requests: {}",
+                    error_text
+                ));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to list credit line requests: {}", e));
         }
     }
 

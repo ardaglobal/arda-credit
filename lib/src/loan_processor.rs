@@ -7,6 +7,7 @@
 #[cfg(test)]
 use crate::balance::BalanceUpdateType;
 use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
+use crate::credit_line::{CreditLineError, CreditLineState};
 use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
 use crate::merchant::{MerchantError, MerchantState};
@@ -31,6 +32,9 @@ pub enum ProcessingError {
 
     #[error("Merchant error: {0}")]
     MerchantError(#[from] MerchantError),
+
+    #[error("Credit line error: {0}")]
+    CreditLineError(#[from] CreditLineError),
 
     #[error("Invalid transaction type for operation")]
     InvalidTransactionType,
@@ -70,6 +74,9 @@ pub struct GlobalLoanState {
     /// Merchant state tracking
     pub merchant_state: MerchantState,
 
+    /// Credit line state tracking
+    pub credit_line_state: CreditLineState,
+
     /// User balance tracking state
     pub balance_state: BalanceState,
 
@@ -90,6 +97,7 @@ impl Default for GlobalLoanState {
             loans: HashMap::new(),
             pools: PoolState::new(),
             merchant_state: MerchantState::new(),
+            credit_line_state: CreditLineState::new(),
             balance_state: BalanceState::new(),
             loan_terms: LoanTerms::default(),
             transaction_count: 0,
@@ -114,6 +122,7 @@ impl GlobalLoanState {
             pools: PoolState::new(),
             merchant_state: MerchantState::new(),
             balance_state: BalanceState::new(),
+            credit_line_state: CreditLineState::new(),
             loan_terms,
             transaction_count: 0,
             last_updated: 0,
@@ -358,9 +367,169 @@ impl GlobalLoanState {
                     }));
                 }
 
-                // Credit line request processed successfully
-                // The actual matching with liquidity pools would happen in the business layer
-                // For now, we just validate the request is valid
+                // Create credit line request
+                // Metadata contains: [requested_amount(8)] + [requested_rate_apr(8)] + [requested_tenor_days(4)] + [remaining_44_bytes_unused]
+                let metadata = transaction.metadata.as_bytes();
+                let requested_amount = u64::from_le_bytes([
+                    metadata[0],
+                    metadata[1],
+                    metadata[2],
+                    metadata[3],
+                    metadata[4],
+                    metadata[5],
+                    metadata[6],
+                    metadata[7],
+                ]);
+                let requested_rate_apr = u64::from_le_bytes([
+                    metadata[8],
+                    metadata[9],
+                    metadata[10],
+                    metadata[11],
+                    metadata[12],
+                    metadata[13],
+                    metadata[14],
+                    metadata[15],
+                ]);
+                let requested_tenor_days =
+                    u32::from_le_bytes([metadata[16], metadata[17], metadata[18], metadata[19]]);
+
+                // Create credit line request
+                let request = crate::credit_line::CreditLineRequest::new(
+                    transaction.transaction_id,
+                    transaction.user_id,
+                    requested_amount,
+                    if requested_rate_apr > 0 {
+                        Some(requested_rate_apr)
+                    } else {
+                        None
+                    },
+                    requested_tenor_days,
+                    transaction.created_at,
+                );
+
+                self.credit_line_state.add_request(request);
+            }
+            TransactionType::CreditLineApproval => {
+                // Process credit line approval
+                // Metadata contains: [request_id(32)] + [approved_amount(8)] + [approved_rate(8)] + [pool_id(32)] + [repayment_days(4)] + [remaining_unused]
+                let metadata = transaction.metadata.as_bytes();
+                let mut request_id = [0u8; 32];
+                request_id.copy_from_slice(&metadata[0..32]);
+
+                let approved_amount = u64::from_le_bytes([
+                    metadata[32],
+                    metadata[33],
+                    metadata[34],
+                    metadata[35],
+                    metadata[36],
+                    metadata[37],
+                    metadata[38],
+                    metadata[39],
+                ]);
+                let approved_rate = u64::from_le_bytes([
+                    metadata[40],
+                    metadata[41],
+                    metadata[42],
+                    metadata[43],
+                    metadata[44],
+                    metadata[45],
+                    metadata[46],
+                    metadata[47],
+                ]);
+                let mut pool_id = [0u8; 32];
+                pool_id.copy_from_slice(&metadata[48..80]);
+                let repayment_window_days =
+                    u32::from_le_bytes([metadata[80], metadata[81], metadata[82], metadata[83]]);
+
+                // Approve the credit line request and create active credit line
+                self.credit_line_state.approve_request(
+                    request_id,
+                    transaction.transaction_id, // Use transaction ID as credit line ID
+                    approved_amount,
+                    approved_rate,
+                    pool_id,
+                    repayment_window_days,
+                    transaction.created_at,
+                )?;
+            }
+            TransactionType::CreditLineRejection => {
+                // Process credit line rejection
+                // Metadata contains: [request_id(32)] + [rejection_reason...] (remaining bytes as string)
+                let metadata = transaction.metadata.as_bytes();
+                let mut request_id = [0u8; 32];
+                request_id.copy_from_slice(&metadata[0..32]);
+
+                // Extract rejection reason from remaining metadata
+                let reason_bytes = &metadata[32..];
+                let reason_end = reason_bytes
+                    .iter()
+                    .position(|&b| b == 0)
+                    .unwrap_or(reason_bytes.len());
+                let rejection_reason =
+                    String::from_utf8_lossy(&reason_bytes[..reason_end]).into_owned();
+
+                // Reject the credit line request
+                self.credit_line_state.reject_request(
+                    request_id,
+                    rejection_reason,
+                    transaction.created_at,
+                )?;
+            }
+            TransactionType::CreditLineDrawdown => {
+                // Process credit line drawdown (utilizing available credit)
+                // Metadata contains: [credit_line_id(32)] + [recipient_address(32)]
+                let metadata = transaction.metadata.as_bytes();
+                let mut credit_line_id = [0u8; 32];
+                credit_line_id.copy_from_slice(&metadata[0..32]);
+                let mut recipient_address = [0u8; 32];
+                recipient_address.copy_from_slice(&metadata[32..64]);
+
+                // Process drawdown in credit line state
+                self.credit_line_state.process_drawdown(
+                    credit_line_id,
+                    transaction.amount,
+                    recipient_address,
+                    transaction.created_at,
+                )?;
+
+                // Create corresponding balance update for the drawdown
+                let balance_update = self.balance_state.create_credit_drawdown_update(
+                    transaction.transaction_id,
+                    transaction.user_id,
+                    recipient_address,
+                    u128::from(transaction.amount),
+                    transaction.created_at,
+                )?;
+
+                // Apply balance update to state
+                self.balance_state.apply_update(balance_update)?;
+            }
+            TransactionType::CreditLineRepayment => {
+                // Process credit line repayment
+                // Metadata contains: [credit_line_id(32)] + [payment_type(1)] + [remaining_31_bytes_unused]
+                let metadata = transaction.metadata.as_bytes();
+                let mut credit_line_id = [0u8; 32];
+                credit_line_id.copy_from_slice(&metadata[0..32]);
+                let payment_type = metadata[32]; // 0 = principal, 1 = interest, 2 = both
+
+                // Process repayment in credit line state
+                self.credit_line_state.process_repayment(
+                    credit_line_id,
+                    transaction.amount,
+                    payment_type,
+                    transaction.created_at,
+                )?;
+
+                // Create corresponding balance update for the repayment
+                let balance_update = self.balance_state.create_credit_repayment_update(
+                    transaction.transaction_id,
+                    transaction.user_id,
+                    u128::from(transaction.amount),
+                    transaction.created_at,
+                )?;
+
+                // Apply balance update to state
+                self.balance_state.apply_update(balance_update)?;
             }
             TransactionType::SubmitTurnover => {
                 // Process turnover submission in merchant state
@@ -523,6 +692,8 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
         | TransactionType::MerchantRegistration
         | TransactionType::MerchantProfileUpdate
         | TransactionType::CreditLineRequest
+        | TransactionType::CreditLineApproval
+        | TransactionType::CreditLineRejection
         | TransactionType::SubmitTurnover
         | TransactionType::VerifyDocument => {
             if transaction.loan_id != zero_loan_id {
