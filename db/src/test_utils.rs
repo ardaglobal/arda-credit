@@ -83,9 +83,14 @@ pub async fn setup_test_db() -> PgPool {
 
 /// Create a test merchant for testing
 pub async fn create_test_merchant(pool: &PgPool) -> Result<Merchant, sqlx::Error> {
-    use crate::CreateMerchantRequest;
+    use crate::{create_identity_with_password, CreateMerchantRequest};
+    use chrono::Utc;
 
-    let user_id = Uuid::new_v4();
+    // First create a test identity (required for foreign key constraint)
+    let test_email = format!("test-merchant-{}.example.com", Utc::now().timestamp());
+    let identity =
+        create_identity_with_password(pool, "merchant", &test_email, "test_password_hash").await?;
+
     let request = CreateMerchantRequest {
         legal_name: "Test Merchant LLC".to_string(),
         dba: Some("Test Store".to_string()),
@@ -95,5 +100,5 @@ pub async fn create_test_merchant(pool: &PgPool) -> Result<Merchant, sqlx::Error
         business_type: Some("LLC".to_string()),
     };
 
-    create_merchant(pool, user_id, &request).await
+    create_merchant(pool, identity.id, &request).await
 }
