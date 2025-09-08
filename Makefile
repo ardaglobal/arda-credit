@@ -146,7 +146,7 @@ test:
 	docker compose up postgres -d
 	@sleep 2
 	DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?sslmode=disable" sqlx migrate run --source db/migrations
-	DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?sslmode=disable" cargo test
+	DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db?sslmode=disable" cargo test -- --test-threads=1
 	docker compose down -v
 
 ## cover: Generate code coverage report
