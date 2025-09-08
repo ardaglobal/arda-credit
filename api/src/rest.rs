@@ -18,11 +18,11 @@ use uuid;
 
 use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
-// Credit line handlers - temporarily commented out
-// use crate::credit_line_handlers::{
-//     browse_available_pools, check_credit_eligibility, list_credit_line_requests,
-//     submit_credit_line_request,
-// };
+// Credit line handlers
+use crate::credit_line_handlers::{
+    browse_available_pools, check_credit_eligibility, list_credit_line_requests,
+    submit_credit_line_request,
+};
 use crate::paths;
 use crate::pool_handlers::{
     get_investor_dashboard, get_investor_pool_summaries, get_market_overview, get_pool_details,
@@ -1377,11 +1377,13 @@ pub fn create_router(state: ApiState) -> Router {
         //     "/api/v2/credit-lines/request",
         //     post(submit_credit_line_request),
         // )
-        // .route(
-        //     "/api/v2/credit-lines/requests",
-        //     get(list_credit_line_requests),
-        // )
-        // .route("/api/v2/pools/available", get(browse_available_pools))
+        // ========================================================================
+        // CREDIT LINE REQUEST ENDPOINTS
+        // ========================================================================
+        .route(
+            "/api/credit-lines/request",
+            post(create_credit_line_request_endpoint),
+        )
         .with_state(state)
 }
 
@@ -5248,6 +5250,105 @@ async fn get_loan_lifecycle_summary_endpoint(
         summary.total_operations, summary.total_payments
     );
     Ok(Json(summary))
+}
+
+// ============================================================================
+// CREDIT LINE REQUEST ENDPOINT HANDLERS
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreateCreditLineRequestBody {
+    pub merchant_id: String,
+    pub requested_amount: u64,     // Amount in cents
+    pub requested_rate_bps: u64,   // Rate in basis points
+    pub requested_tenor_days: u32, // Term in days
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CreditLineRequestResponse {
+    pub request_id: String,
+    pub merchant_id: String,
+    pub requested_amount: String,
+    pub requested_rate_apr: String,
+    pub requested_tenor_days: u32,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Create a credit line request
+#[utoipa::path(
+    post,
+    path = "/api/credit-lines/request",
+    request_body = CreateCreditLineRequestBody,
+    responses(
+        (status = 200, description = "Credit line request created successfully", body = CreditLineRequestResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Credit Lines"
+)]
+#[instrument(skip(state), level = "info")]
+async fn create_credit_line_request_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<CreateCreditLineRequestBody>,
+) -> Result<Json<CreditLineRequestResponse>, (StatusCode, String)> {
+    info!(
+        "📝 API: Creating credit line request for merchant: {}",
+        request.merchant_id
+    );
+
+    // Parse merchant ID
+    let merchant_id = uuid::Uuid::parse_str(&request.merchant_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid merchant ID format".to_string(),
+        )
+    })?;
+
+    // Convert values to database format
+    let amount_decimal =
+        rust_decimal::Decimal::from(request.requested_amount) / rust_decimal::Decimal::from(100); // cents to dollars
+    let rate_decimal = rust_decimal::Decimal::from(request.requested_rate_bps)
+        / rust_decimal::Decimal::from(10000); // bps to decimal
+
+    // Create the request data
+    let request_data = arda_credit_db::CreateCreditLineRequestData {
+        merchant_id,
+        requested_amount: amount_decimal,
+        requested_rate_apr: Some(rate_decimal),
+        requested_tenor_days: request.requested_tenor_days as i32,
+        request_description: Some("Credit line request via API".to_string()),
+    };
+
+    // Create credit line request
+    match arda_credit_db::create_credit_line_request(&state.pool, request_data).await {
+        Ok(credit_request) => {
+            info!("✅ API: Credit line request created: {}", credit_request.id);
+            Ok(Json(CreditLineRequestResponse {
+                request_id: credit_request.id.to_string(),
+                merchant_id: credit_request.merchant_id.to_string(),
+                requested_amount: credit_request.requested_amount.to_string(),
+                requested_rate_apr: credit_request
+                    .requested_rate_apr
+                    .unwrap_or_default()
+                    .to_string(),
+                requested_tenor_days: credit_request.requested_tenor_days.unwrap_or_default()
+                    as u32,
+                status: credit_request.status.unwrap_or_default(),
+                created_at: credit_request
+                    .created_at
+                    .map(|dt| dt.and_utc())
+                    .unwrap_or_else(chrono::Utc::now),
+            }))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to create credit line request: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to create credit line request".to_string(),
+            ))
+        }
+    }
 }
 
 // ============================================================================
