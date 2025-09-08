@@ -9,6 +9,7 @@ use crate::balance::BalanceUpdateType;
 use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
 use crate::loan::LoanTerms;
 use crate::loan::{Loan, LoanError};
+use crate::merchant::{MerchantError, MerchantState};
 use crate::pool::{Pool, PoolConfig, PoolState};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
 use crate::user::{User, UserError, UserState, UserType};
@@ -27,6 +28,9 @@ pub enum ProcessingError {
 
     #[error("Balance error: {0}")]
     BalanceError(#[from] BalanceError),
+
+    #[error("Merchant error: {0}")]
+    MerchantError(#[from] MerchantError),
 
     #[error("Invalid transaction type for operation")]
     InvalidTransactionType,
@@ -63,6 +67,9 @@ pub struct GlobalLoanState {
     /// All liquidity pools in the system
     pub pools: PoolState,
 
+    /// Merchant state tracking
+    pub merchant_state: MerchantState,
+
     /// User balance tracking state
     pub balance_state: BalanceState,
 
@@ -82,6 +89,7 @@ impl Default for GlobalLoanState {
             users: HashMap::new(),
             loans: HashMap::new(),
             pools: PoolState::new(),
+            merchant_state: MerchantState::new(),
             balance_state: BalanceState::new(),
             loan_terms: LoanTerms::default(),
             transaction_count: 0,
@@ -104,6 +112,7 @@ impl GlobalLoanState {
             users: HashMap::new(),
             loans: HashMap::new(),
             pools: PoolState::new(),
+            merchant_state: MerchantState::new(),
             balance_state: BalanceState::new(),
             loan_terms,
             transaction_count: 0,
@@ -309,33 +318,20 @@ impl GlobalLoanState {
                     .map_err(|_| ProcessingError::InvalidTransactionData)?;
             }
             TransactionType::MerchantRegistration => {
-                // Process merchant registration (similar to user registration)
+                // Process merchant registration in both user and merchant state
                 let mut user_state = UserState {
                     users: self.users.clone(),
                 };
                 user_state.process_merchant_registration(transaction)?;
                 self.users = user_state.users;
+
+                // Also register in merchant state
+                self.merchant_state
+                    .process_merchant_registration(transaction)?;
             }
             TransactionType::MerchantProfileUpdate => {
-                // Process merchant profile update
-                // This is primarily a metadata update that doesn't affect state significantly
-                // We validate the merchant exists and is KYC'd for profile completion
-                let user =
-                    self.users
-                        .get(&transaction.user_id)
-                        .ok_or(ProcessingError::UserError(UserError::UserNotFound {
-                            user_id: transaction.user_id,
-                        }))?;
-
-                // Ensure user is a merchant
-                if !matches!(user.user_type, UserType::Merchant) {
-                    return Err(ProcessingError::UserError(UserError::InvalidUserType {
-                        expected: UserType::Merchant,
-                        actual: user.user_type,
-                    }));
-                }
-
-                // Profile update processed successfully (no state change needed)
+                // Process merchant profile update in merchant state
+                self.merchant_state.process_profile_update(transaction)?;
             }
             TransactionType::CreditLineRequest => {
                 // Process credit line request from merchants
@@ -365,6 +361,16 @@ impl GlobalLoanState {
                 // Credit line request processed successfully
                 // The actual matching with liquidity pools would happen in the business layer
                 // For now, we just validate the request is valid
+            }
+            TransactionType::SubmitTurnover => {
+                // Process turnover submission in merchant state
+                self.merchant_state
+                    .process_turnover_submission(transaction)?;
+            }
+            TransactionType::VerifyDocument => {
+                // Process document verification in merchant state
+                self.merchant_state
+                    .process_document_verification(transaction)?;
             }
         }
 
@@ -511,7 +517,14 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
         | TransactionType::KycSubmission
         | TransactionType::KycVerification
         | TransactionType::UserDeposit
-        | TransactionType::UserWithdrawal => {
+        | TransactionType::UserWithdrawal
+        | TransactionType::InvestorRegistration
+        | TransactionType::PoolCreation
+        | TransactionType::MerchantRegistration
+        | TransactionType::MerchantProfileUpdate
+        | TransactionType::CreditLineRequest
+        | TransactionType::SubmitTurnover
+        | TransactionType::VerifyDocument => {
             if transaction.loan_id != zero_loan_id {
                 return Err(ProcessingError::InvalidTransactionType);
             }

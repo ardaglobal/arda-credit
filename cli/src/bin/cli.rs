@@ -402,6 +402,77 @@ enum Commands {
         verbose: bool,
     },
 
+    /// Submit daily turnover data for a merchant
+    SubmitTurnover {
+        /// Date for the turnover record (YYYY-MM-DD format)
+        #[arg(long)]
+        date: String,
+        /// Gross receipts amount
+        #[arg(long)]
+        gross_receipts: String,
+        /// Refunds amount (optional)
+        #[arg(long)]
+        refunds: Option<String>,
+        /// Data source (MANUAL, API, BANK_INTEGRATION)
+        #[arg(long, default_value = "MANUAL")]
+        source: String,
+        /// Verification method (optional)
+        #[arg(long)]
+        verification_method: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get merchant turnover data
+    GetTurnover {
+        /// Start date filter (YYYY-MM-DD format, optional)
+        #[arg(long)]
+        start_date: Option<String>,
+        /// End date filter (YYYY-MM-DD format, optional)
+        #[arg(long)]
+        end_date: Option<String>,
+        /// Limit number of records returned
+        #[arg(long)]
+        limit: Option<i32>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Update existing turnover record
+    UpdateTurnover {
+        /// Date of the turnover record to update (YYYY-MM-DD format)
+        #[arg(long)]
+        date: String,
+        /// Updated gross receipts amount (optional)
+        #[arg(long)]
+        gross_receipts: Option<String>,
+        /// Updated refunds amount (optional)
+        #[arg(long)]
+        refunds: Option<String>,
+        /// Updated verification method (optional)
+        #[arg(long)]
+        verification_method: Option<String>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get merchant turnover analytics
+    GetTurnoverAnalytics {
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Get merchant profile completion status
+    GetProfileCompletion {
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
     // ============================================================================
     // INVITE CODE MANAGEMENT COMMANDS
     // ============================================================================
@@ -1308,6 +1379,68 @@ async fn main() -> Result<()> {
                 verbose,
             )
             .await?;
+        }
+
+        Commands::SubmitTurnover {
+            date,
+            gross_receipts,
+            refunds,
+            source,
+            verification_method,
+            verbose,
+        } => {
+            submit_turnover(
+                &client,
+                &date,
+                &gross_receipts,
+                refunds.as_deref(),
+                &source,
+                verification_method.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+
+        Commands::GetTurnover {
+            start_date,
+            end_date,
+            limit,
+            verbose,
+        } => {
+            get_turnover(
+                &client,
+                start_date.as_deref(),
+                end_date.as_deref(),
+                limit,
+                verbose,
+            )
+            .await?;
+        }
+
+        Commands::UpdateTurnover {
+            date,
+            gross_receipts,
+            refunds,
+            verification_method,
+            verbose,
+        } => {
+            update_turnover(
+                &client,
+                &date,
+                gross_receipts.as_deref(),
+                refunds.as_deref(),
+                verification_method.as_deref(),
+                verbose,
+            )
+            .await?;
+        }
+
+        Commands::GetTurnoverAnalytics { verbose } => {
+            get_turnover_analytics(&client, verbose).await?;
+        }
+
+        Commands::GetProfileCompletion { verbose } => {
+            get_profile_completion(&client, verbose).await?;
         }
 
         Commands::TestUserOperations {
@@ -5197,6 +5330,427 @@ async fn register_merchant(
         }
         Err(e) => {
             return Err(eyre::eyre!("Failed to register merchant: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Submit daily turnover data for a merchant
+async fn submit_turnover(
+    client: &BatchApiClient,
+    date: &str,
+    gross_receipts: &str,
+    refunds: Option<&str>,
+    source: &str,
+    verification_method: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("💰 Submitting turnover data:");
+        println!("   Date: {}", date);
+        println!("   Gross Receipts: ${}", gross_receipts);
+        if let Some(refund_amount) = refunds {
+            println!("   Refunds: ${}", refund_amount);
+        }
+        println!("   Source: {}", source);
+        if let Some(method) = verification_method {
+            println!("   Verification Method: {}", method);
+        }
+    }
+
+    let request_body = serde_json::json!({
+        "date": date,
+        "gross_receipts": gross_receipts,
+        "refunds": refunds,
+        "source": source,
+        "verification_method": verification_method,
+    });
+
+    let url = format!("{}/api/merchant/turnover", client.base_url());
+    let client_http = client.http_client().clone();
+
+    match client_http.post(&url).json(&request_body).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                println!("✅ Turnover data submitted successfully:");
+                println!("   Record ID: {}", result["id"].as_str().unwrap_or("N/A"));
+                println!("   Date: {}", result["date"].as_str().unwrap_or("N/A"));
+                println!(
+                    "   Net Receipts: ${}",
+                    result["net_receipts"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "   Verified: {}",
+                    result["verified"].as_bool().unwrap_or(false)
+                );
+
+                if verbose {
+                    println!("Full Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!("Failed to submit turnover: {}", error_text));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to submit turnover: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get merchant turnover data
+async fn get_turnover(
+    client: &BatchApiClient,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+    limit: Option<i32>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("📊 Fetching turnover data:");
+        if let Some(start) = start_date {
+            println!("   Start Date: {}", start);
+        }
+        if let Some(end) = end_date {
+            println!("   End Date: {}", end);
+        }
+        if let Some(lim) = limit {
+            println!("   Limit: {}", lim);
+        }
+    }
+
+    let mut url = format!("{}/api/merchant/turnover", client.base_url());
+    let mut query_params = Vec::new();
+
+    if let Some(start) = start_date {
+        query_params.push(format!("start_date={}", start));
+    }
+    if let Some(end) = end_date {
+        query_params.push(format!("end_date={}", end));
+    }
+    if let Some(lim) = limit {
+        query_params.push(format!("limit={}", lim));
+    }
+
+    if !query_params.is_empty() {
+        url = format!("{}?{}", url, query_params.join("&"));
+    }
+
+    let client_http = client.http_client().clone();
+
+    match client_http.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let results: serde_json::Value = response.json().await?;
+                let empty_vec = vec![];
+                let records = results.as_array().unwrap_or(&empty_vec);
+
+                println!("✅ Found {} turnover records:", records.len());
+                for record in records {
+                    println!(
+                        "   📅 {}: ${} (Net: ${}{})",
+                        record["date"].as_str().unwrap_or("N/A"),
+                        record["gross_receipts"].as_str().unwrap_or("N/A"),
+                        record["net_receipts"].as_str().unwrap_or("N/A"),
+                        if record["verified"].as_bool().unwrap_or(false) {
+                            " ✓"
+                        } else {
+                            ""
+                        }
+                    );
+                }
+
+                if verbose && !records.is_empty() {
+                    println!("\nFull Response: {:#?}", results);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!("Failed to get turnover data: {}", error_text));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to get turnover data: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Update existing turnover record
+async fn update_turnover(
+    client: &BatchApiClient,
+    date: &str,
+    gross_receipts: Option<&str>,
+    refunds: Option<&str>,
+    verification_method: Option<&str>,
+    verbose: bool,
+) -> Result<()> {
+    if verbose {
+        println!("📝 Updating turnover data for date: {}", date);
+        if let Some(gross) = gross_receipts {
+            println!("   New Gross Receipts: ${}", gross);
+        }
+        if let Some(refund_amount) = refunds {
+            println!("   New Refunds: ${}", refund_amount);
+        }
+        if let Some(method) = verification_method {
+            println!("   New Verification Method: {}", method);
+        }
+    }
+
+    let request_body = serde_json::json!({
+        "gross_receipts": gross_receipts,
+        "refunds": refunds,
+        "verification_method": verification_method,
+    });
+
+    let url = format!("{}/api/merchant/turnover/{}", client.base_url(), date);
+    let client_http = client.http_client().clone();
+
+    match client_http.put(&url).json(&request_body).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                println!("✅ Turnover record updated successfully:");
+                println!("   Date: {}", result["date"].as_str().unwrap_or("N/A"));
+                println!(
+                    "   Net Receipts: ${}",
+                    result["net_receipts"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "   Verified: {}",
+                    result["verified"].as_bool().unwrap_or(false)
+                );
+
+                if verbose {
+                    println!("Full Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!("Failed to update turnover: {}", error_text));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to update turnover: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get merchant turnover analytics
+async fn get_turnover_analytics(client: &BatchApiClient, verbose: bool) -> Result<()> {
+    if verbose {
+        println!("📈 Fetching turnover analytics...");
+    }
+
+    let url = format!("{}/api/merchant/turnover/analytics", client.base_url());
+    let client_http = client.http_client().clone();
+
+    match client_http.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                println!("✅ Turnover Analytics:");
+                println!(
+                    "   Merchant: {}",
+                    result["legal_name"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "   Total Days Recorded: {}",
+                    result["total_days_recorded"].as_i64().unwrap_or(0)
+                );
+                println!(
+                    "   Verified Days: {}",
+                    result["verified_days"].as_i64().unwrap_or(0)
+                );
+                println!(
+                    "   Data Quality Score: {}%",
+                    result["data_quality_score"].as_i64().unwrap_or(0)
+                );
+
+                if let Some(total_receipts) = result["total_net_receipts"].as_str() {
+                    println!("   Total Net Receipts: ${}", total_receipts);
+                }
+                if let Some(avg_receipts) = result["avg_daily_receipts"].as_str() {
+                    println!("   Average Daily Receipts: ${}", avg_receipts);
+                }
+                if let Some(monthly_est) = result["monthly_estimate"].as_str() {
+                    println!("   Monthly Estimate: ${}", monthly_est);
+                }
+
+                if verbose {
+                    println!("\nFull Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!("Failed to get analytics: {}", error_text));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to get analytics: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Get merchant profile completion status
+async fn get_profile_completion(client: &BatchApiClient, verbose: bool) -> Result<()> {
+    if verbose {
+        println!("🎯 Fetching profile completion status...");
+    }
+
+    let url = format!("{}/api/merchant/profile/completion", client.base_url());
+    let client_http = client.http_client().clone();
+
+    match client_http.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                println!("✅ Profile Completion Status:");
+                println!(
+                    "   Merchant: {}",
+                    result["legal_name"].as_str().unwrap_or("N/A")
+                );
+                println!(
+                    "   Overall Score: {}%",
+                    result["completion_score"].as_i64().unwrap_or(0)
+                );
+                println!(
+                    "   KYC Status: {}",
+                    result["kyc_status"].as_str().unwrap_or("N/A")
+                );
+
+                println!("\n📋 Requirements Checklist:");
+                println!(
+                    "   ✅ Legal Name: {}",
+                    if result["has_legal_name"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ Tax ID: {}",
+                    if result["has_tax_id"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ MCC Code: {}",
+                    if result["has_mcc"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ Industry: {}",
+                    if result["has_industry"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ Years in Business: {}",
+                    if result["has_years_in_business"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ Revenue Estimate: {}",
+                    if result["has_revenue_estimate"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ KYC Approved: {}",
+                    if result["kyc_approved"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ Turnover History (30+ days): {}",
+                    if result["has_sufficient_turnover_history"]
+                        .as_bool()
+                        .unwrap_or(false)
+                    {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ Verified Turnover Data: {}",
+                    if result["has_verified_turnover_data"]
+                        .as_bool()
+                        .unwrap_or(false)
+                    {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+                println!(
+                    "   ✅ Bank Statement: {}",
+                    if result["has_bank_statement"].as_bool().unwrap_or(false) {
+                        "✓"
+                    } else {
+                        "✗"
+                    }
+                );
+
+                let completion_score = result["completion_score"].as_i64().unwrap_or(0);
+                if completion_score >= 80 {
+                    println!("\n🎉 Profile is ready for credit line assessment!");
+                } else if completion_score >= 60 {
+                    println!("\n⚠️  Profile is partially complete. Additional information needed.");
+                } else {
+                    println!("\n❌ Profile needs significant completion before credit assessment.");
+                }
+
+                if verbose {
+                    println!("\nFull Response: {:#?}", result);
+                }
+            } else {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(eyre::eyre!(
+                    "Failed to get profile completion: {}",
+                    error_text
+                ));
+            }
+        }
+        Err(e) => {
+            return Err(eyre::eyre!("Failed to get profile completion: {}", e));
         }
     }
 

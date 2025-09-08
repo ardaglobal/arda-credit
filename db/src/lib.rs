@@ -60,7 +60,9 @@ pub use db::{
     create_loan,
     // Merchant functions
     create_merchant,
+    create_merchant_document,
     create_merchant_profile,
+    create_or_update_turnover,
     create_payment,
     create_state_snapshot,
     // USDC Deposit functions
@@ -100,7 +102,11 @@ pub use db::{
     // Merchant query functions
     get_merchant_by_id,
     get_merchant_by_user_id,
+    get_merchant_documents,
     get_merchant_profile_by_merchant_id,
+    get_merchant_profile_completion,
+    get_merchant_turnover,
+    get_merchant_turnover_analytics,
     get_merchant_with_profile_by_user_id,
     get_payments_by_loan,
     get_pending_transactions,
@@ -145,14 +151,16 @@ pub use db::{
     update_batch_proof,
     update_deposit_status,
     update_deposit_status_tx,
+    // Merchant update functions
+    update_document_status,
     update_identity_profile,
     update_investor_profile,
     update_kyc_status,
     update_last_login,
     update_liquidity_pool_status,
     update_loan,
-    // Merchant update functions
     update_merchant_profile,
+    update_turnover,
     update_user_balance_from_deposit,
     update_user_balance_from_deposit_tx,
     update_user_balance_from_withdrawal,
@@ -175,11 +183,14 @@ pub use db::{
     ContractPublicData,
     ContractSubmissionData,
     CounterState,
+    // Merchant turnover and document types
+    CreateDocumentRequest,
     // Investor profile types
     CreateInvestorProfileRequest,
     CreateLiquidityPoolRequest,
     CreateMerchantProfileRequest,
     CreateMerchantRequest,
+    CreateTurnoverRequest,
     // CCR Domain types
     Identity,
     IncomingTransaction,
@@ -195,7 +206,11 @@ pub use db::{
     MarketOverviewMetrics,
     // Merchant types
     Merchant,
+    MerchantDocument,
     MerchantProfile,
+    MerchantProfileCompletion,
+    MerchantTurnoverAnalytics,
+    MerchantTurnoverDaily,
     Payment,
     PoolMatchingCriteria,
     // Pool query types
@@ -208,6 +223,7 @@ pub use db::{
     StateSnapshot,
     UpdateInvestorProfileRequest,
     UpdateMerchantProfileRequest,
+    UpdateTurnoverRequest,
     UsdcDeposit,
     UsdcWithdrawal,
     UserDepositBalance,

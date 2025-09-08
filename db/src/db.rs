@@ -4428,3 +4428,471 @@ pub async fn get_merchant_with_profile_by_user_id(
         Ok(None)
     }
 }
+
+// ============================================================================
+// MERCHANT TURNOVER TRACKING
+// ============================================================================
+
+/// Daily turnover record for merchant business activity
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize)]
+pub struct MerchantTurnoverDaily {
+    pub id: uuid::Uuid,
+    pub merchant_id: uuid::Uuid,
+    pub date: chrono::NaiveDate,
+    pub gross_receipts: rust_decimal::Decimal,
+    pub refunds: rust_decimal::Decimal,
+    pub net_receipts: rust_decimal::Decimal,
+    pub source: String,
+    pub verified: bool,
+    pub verification_method: Option<String>,
+    pub currency: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to create/update daily turnover data
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct CreateTurnoverRequest {
+    pub date: chrono::NaiveDate,
+    pub gross_receipts: rust_decimal::Decimal,
+    pub refunds: Option<rust_decimal::Decimal>,
+    pub source: Option<String>,
+    pub verification_method: Option<String>,
+}
+
+/// Request to update existing turnover data
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct UpdateTurnoverRequest {
+    pub gross_receipts: Option<rust_decimal::Decimal>,
+    pub refunds: Option<rust_decimal::Decimal>,
+    pub verification_method: Option<String>,
+}
+
+/// Turnover analytics summary
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize)]
+pub struct MerchantTurnoverAnalytics {
+    pub merchant_id: uuid::Uuid,
+    pub legal_name: String,
+    pub total_days_recorded: i64,
+    pub verified_days: i64,
+    pub total_net_receipts: Option<rust_decimal::Decimal>,
+    pub avg_daily_receipts: Option<rust_decimal::Decimal>,
+    pub last_turnover_date: Option<chrono::NaiveDate>,
+    pub first_turnover_date: Option<chrono::NaiveDate>,
+    pub monthly_estimate: Option<rust_decimal::Decimal>,
+    pub data_quality_score: i32,
+}
+
+/// Profile completion status for merchant eligibility assessment
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize)]
+pub struct MerchantProfileCompletion {
+    pub merchant_id: uuid::Uuid,
+    pub legal_name: String,
+    pub kyc_status: String,
+    pub has_legal_name: bool,
+    pub has_tax_id: bool,
+    pub has_mcc: bool,
+    pub has_industry: bool,
+    pub has_years_in_business: bool,
+    pub has_revenue_estimate: bool,
+    pub kyc_approved: bool,
+    pub has_sufficient_turnover_history: bool,
+    pub has_verified_turnover_data: bool,
+    pub has_bank_statement: bool,
+    pub completion_score: i32,
+}
+
+/// Business document record
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize)]
+pub struct MerchantDocument {
+    pub id: uuid::Uuid,
+    pub merchant_id: uuid::Uuid,
+    pub document_type: String,
+    pub document_url: Option<String>,
+    pub document_hash: Option<String>,
+    pub file_size_bytes: Option<i32>,
+    pub original_filename: Option<String>,
+    pub mime_type: Option<String>,
+    pub uploaded_at: DateTime<Utc>,
+    pub verified_at: Option<DateTime<Utc>>,
+    pub status: String,
+    pub verification_notes: Option<String>,
+    pub created_by: Option<uuid::Uuid>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request to create a document record
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct CreateDocumentRequest {
+    pub document_type: String,
+    pub document_url: Option<String>,
+    pub document_hash: Option<String>,
+    pub file_size_bytes: Option<i32>,
+    pub original_filename: Option<String>,
+    pub mime_type: Option<String>,
+}
+
+/// Create or update daily turnover record
+pub async fn create_or_update_turnover(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+    request: &CreateTurnoverRequest,
+) -> Result<MerchantTurnoverDaily, sqlx::Error> {
+    let refunds = request
+        .refunds
+        .unwrap_or_else(|| rust_decimal::Decimal::ZERO);
+    let net_receipts = request.gross_receipts - refunds;
+    let source = request
+        .source
+        .clone()
+        .unwrap_or_else(|| "MANUAL".to_string());
+
+    let turnover = sqlx::query_as!(
+        MerchantTurnoverDaily,
+        r#"
+        INSERT INTO merchant_turnover_daily (
+            merchant_id, date, gross_receipts, refunds, net_receipts, source, verification_method
+        ) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (merchant_id, date) 
+        DO UPDATE SET
+            gross_receipts = EXCLUDED.gross_receipts,
+            refunds = EXCLUDED.refunds,
+            net_receipts = EXCLUDED.net_receipts,
+            source = EXCLUDED.source,
+            verification_method = EXCLUDED.verification_method,
+            updated_at = NOW()
+        RETURNING 
+            id, merchant_id, date, 
+            gross_receipts as "gross_receipts!: rust_decimal::Decimal", 
+            refunds as "refunds!: rust_decimal::Decimal", 
+            net_receipts as "net_receipts!: rust_decimal::Decimal", 
+            source as "source!: String", 
+            verified as "verified!: bool", 
+            verification_method, 
+            currency as "currency!: String",
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        "#,
+        merchant_id,
+        request.date,
+        request.gross_receipts,
+        refunds,
+        net_receipts,
+        source,
+        request.verification_method
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(turnover)
+}
+
+/// Update existing turnover record
+pub async fn update_turnover(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+    date: chrono::NaiveDate,
+    request: &UpdateTurnoverRequest,
+) -> Result<Option<MerchantTurnoverDaily>, sqlx::Error> {
+    let turnover = sqlx::query_as!(
+        MerchantTurnoverDaily,
+        r#"
+        UPDATE merchant_turnover_daily 
+        SET 
+            gross_receipts = COALESCE($3, gross_receipts),
+            refunds = COALESCE($4, refunds),
+            net_receipts = COALESCE($3, gross_receipts) - COALESCE($4, refunds),
+            verification_method = COALESCE($5, verification_method),
+            updated_at = NOW()
+        WHERE merchant_id = $1 AND date = $2
+        RETURNING 
+            id, merchant_id, date, 
+            gross_receipts as "gross_receipts!: rust_decimal::Decimal", 
+            refunds as "refunds!: rust_decimal::Decimal", 
+            net_receipts as "net_receipts!: rust_decimal::Decimal", 
+            source as "source!: String", 
+            verified as "verified!: bool", 
+            verification_method, 
+            currency as "currency!: String",
+            created_at as "created_at!: DateTime<Utc>",
+            updated_at as "updated_at!: DateTime<Utc>"
+        "#,
+        merchant_id,
+        date,
+        request.gross_receipts,
+        request.refunds,
+        request.verification_method
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(turnover)
+}
+
+/// Get turnover records for a merchant with optional filtering
+pub async fn get_merchant_turnover(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+    date_from: Option<chrono::NaiveDate>,
+    date_to: Option<chrono::NaiveDate>,
+    verified_only: Option<bool>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<MerchantTurnoverDaily>, sqlx::Error> {
+    let mut query = sqlx::QueryBuilder::new(
+        r#"
+        SELECT id, merchant_id, date, gross_receipts, refunds, net_receipts, source, 
+               verified, verification_method, currency, created_at, updated_at
+        FROM merchant_turnover_daily 
+        WHERE merchant_id = 
+        "#,
+    );
+
+    query.push_bind(merchant_id);
+
+    if let Some(from_date) = date_from {
+        query.push(" AND date >= ");
+        query.push_bind(from_date);
+    }
+
+    if let Some(to_date) = date_to {
+        query.push(" AND date <= ");
+        query.push_bind(to_date);
+    }
+
+    if let Some(verified) = verified_only {
+        query.push(" AND verified = ");
+        query.push_bind(verified);
+    }
+
+    query.push(" ORDER BY date DESC");
+
+    if let Some(limit_val) = limit {
+        query.push(" LIMIT ");
+        query.push_bind(limit_val);
+    }
+
+    if let Some(offset_val) = offset {
+        query.push(" OFFSET ");
+        query.push_bind(offset_val);
+    }
+
+    let turnover = query
+        .build_query_as::<MerchantTurnoverDaily>()
+        .fetch_all(pool)
+        .await?;
+
+    Ok(turnover)
+}
+
+/// Get turnover analytics for a merchant
+pub async fn get_merchant_turnover_analytics(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+) -> Result<Option<MerchantTurnoverAnalytics>, sqlx::Error> {
+    let analytics = sqlx::query_as!(
+        MerchantTurnoverAnalytics,
+        r#"
+        SELECT 
+            merchant_id as "merchant_id!: uuid::Uuid",
+            legal_name as "legal_name!: String",
+            total_days_recorded as "total_days_recorded!: i64",
+            verified_days as "verified_days!: i64",
+            total_net_receipts,
+            avg_daily_receipts,
+            last_turnover_date,
+            first_turnover_date,
+            monthly_estimate,
+            data_quality_score as "data_quality_score!: i32"
+        FROM merchant_turnover_analytics
+        WHERE merchant_id = $1
+        "#,
+        merchant_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(analytics)
+}
+
+/// Get profile completion status for a merchant
+pub async fn get_merchant_profile_completion(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+) -> Result<Option<MerchantProfileCompletion>, sqlx::Error> {
+    let completion = sqlx::query_as!(
+        MerchantProfileCompletion,
+        r#"
+        SELECT 
+            merchant_id as "merchant_id!: uuid::Uuid",
+            legal_name as "legal_name!: String",
+            kyc_status as "kyc_status!: String",
+            has_legal_name as "has_legal_name!: bool",
+            has_tax_id as "has_tax_id!: bool", 
+            has_mcc as "has_mcc!: bool",
+            has_industry as "has_industry!: bool",
+            has_years_in_business as "has_years_in_business!: bool",
+            has_revenue_estimate as "has_revenue_estimate!: bool",
+            kyc_approved as "kyc_approved!: bool",
+            has_sufficient_turnover_history as "has_sufficient_turnover_history!: bool",
+            has_verified_turnover_data as "has_verified_turnover_data!: bool",
+            has_bank_statement as "has_bank_statement!: bool",
+            completion_score as "completion_score!: i32"
+        FROM merchant_profile_completion
+        WHERE merchant_id = $1
+        "#,
+        merchant_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(completion)
+}
+
+/// Create a new document record
+pub async fn create_merchant_document(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+    request: &CreateDocumentRequest,
+    created_by: Option<uuid::Uuid>,
+) -> Result<MerchantDocument, sqlx::Error> {
+    let document = sqlx::query_as!(
+        MerchantDocument,
+        r#"
+        INSERT INTO merchant_documents (
+            merchant_id, document_type, document_url, document_hash, 
+            file_size_bytes, original_filename, mime_type, created_by
+        ) 
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING 
+            id, merchant_id, 
+            document_type as "document_type!: String", 
+            document_url, document_hash,
+            file_size_bytes, original_filename, mime_type,
+            uploaded_at as "uploaded_at!: DateTime<Utc>",
+            verified_at as "verified_at?: DateTime<Utc>", 
+            status as "status!: String", 
+            verification_notes, created_by,
+            updated_at as "updated_at!: DateTime<Utc>"
+        "#,
+        merchant_id,
+        request.document_type,
+        request.document_url,
+        request.document_hash,
+        request.file_size_bytes,
+        request.original_filename,
+        request.mime_type,
+        created_by
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(document)
+}
+
+/// Get documents for a merchant
+pub async fn get_merchant_documents(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+    document_type: Option<String>,
+    status: Option<String>,
+) -> Result<Vec<MerchantDocument>, sqlx::Error> {
+    let mut query = sqlx::QueryBuilder::new(
+        r#"
+        SELECT id, merchant_id, document_type, document_url, document_hash,
+               file_size_bytes, original_filename, mime_type, uploaded_at,
+               verified_at, status, verification_notes, created_by, updated_at
+        FROM merchant_documents 
+        WHERE merchant_id = 
+        "#,
+    );
+
+    query.push_bind(merchant_id);
+
+    if let Some(doc_type) = document_type {
+        query.push(" AND document_type = ");
+        query.push_bind(doc_type);
+    }
+
+    if let Some(doc_status) = status {
+        query.push(" AND status = ");
+        query.push_bind(doc_status);
+    }
+
+    query.push(" ORDER BY uploaded_at DESC");
+
+    let documents = query
+        .build_query_as::<MerchantDocument>()
+        .fetch_all(pool)
+        .await?;
+
+    Ok(documents)
+}
+
+/// Update document verification status
+pub async fn update_document_status(
+    pool: &PgPool,
+    document_id: uuid::Uuid,
+    status: String,
+    verification_notes: Option<String>,
+) -> Result<Option<MerchantDocument>, sqlx::Error> {
+    let document = if status == "VERIFIED" {
+        sqlx::query_as!(
+            MerchantDocument,
+            r#"
+            UPDATE merchant_documents 
+            SET 
+                status = $2,
+                verification_notes = $3,
+                verified_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING 
+                id, merchant_id, 
+                document_type as "document_type!: String", 
+                document_url, document_hash,
+                file_size_bytes, original_filename, mime_type,
+                uploaded_at as "uploaded_at!: DateTime<Utc>",
+                verified_at as "verified_at?: DateTime<Utc>", 
+                status as "status!: String", 
+                verification_notes, created_by,
+                updated_at as "updated_at!: DateTime<Utc>"
+            "#,
+            document_id,
+            status,
+            verification_notes
+        )
+        .fetch_optional(pool)
+        .await?
+    } else {
+        sqlx::query_as!(
+            MerchantDocument,
+            r#"
+            UPDATE merchant_documents 
+            SET 
+                status = $2,
+                verification_notes = $3,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING 
+                id, merchant_id, 
+                document_type as "document_type!: String", 
+                document_url, document_hash,
+                file_size_bytes, original_filename, mime_type,
+                uploaded_at as "uploaded_at!: DateTime<Utc>",
+                verified_at as "verified_at?: DateTime<Utc>", 
+                status as "status!: String", 
+                verification_notes, created_by,
+                updated_at as "updated_at!: DateTime<Utc>"
+            "#,
+            document_id,
+            status,
+            verification_notes
+        )
+        .fetch_optional(pool)
+        .await?
+    };
+
+    Ok(document)
+}
