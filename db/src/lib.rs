@@ -36,6 +36,7 @@
 // Core modules for batch processing functionality
 pub mod ads_service;
 pub mod background_processor;
+pub mod credit_line_operations;
 pub mod merkle_tree;
 pub mod merkle_tree_32;
 pub mod vapp_integration;
@@ -43,6 +44,16 @@ pub mod vapp_integration;
 pub mod ccr;
 pub mod db;
 pub mod error;
+
+// Re-export credit line operations
+pub use credit_line_operations::{
+    approve_credit_line_request, close_credit_line, create_credit_line, create_credit_line_request,
+    get_credit_line_by_id, get_credit_line_request_by_id, get_credit_line_requests_by_merchant,
+    get_merchant_credit_line_stats, list_active_credit_lines, list_credit_lines_by_merchant,
+    update_credit_line_request_evaluation, update_credit_line_request_status,
+    update_credit_line_utilization, CreateCreditLineRequestData, CreditLine, CreditLineRequest,
+    CreditLineStatus, MerchantCreditLineStats,
+};
 
 // Re-export batch processing types and functions
 pub use db::{

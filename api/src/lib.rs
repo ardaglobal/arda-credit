@@ -37,6 +37,7 @@ pub mod auth;
 pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
+pub mod credit_line_handlers;
 pub mod kyc_service;
 pub mod middleware;
 pub mod paths;
@@ -117,30 +118,51 @@ pub use pool_handlers::{
     get_pool_transactions as handler_get_pool_transactions, get_pool_utilization, list_pools,
 };
 
+pub use credit_line_handlers::{
+    browse_available_pools, check_credit_eligibility, list_credit_line_requests,
+    submit_credit_line_request, AvailablePoolResponse, CreditLineErrorResponse,
+    CreditLineRequestListResponse, CreditLineRequestQuery, CreditLineRequestResponse,
+    EligibilityCheckResponse, PoolBrowsingQuery, SubmitCreditLineRequestBody,
+};
+
 // Re-export database types that the API uses
 pub use arda_credit_db::{
+    // Credit line operations
+    approve_credit_line_request,
+    close_credit_line,
     create_batch,
+    create_credit_line,
+    create_credit_line_request,
     create_loan,
     get_all_batches,
     get_all_liquidity_pools,
     get_batch_by_id,
     get_contract_submission_data,
+    get_credit_line_by_id,
+    get_credit_line_request_by_id,
+    get_credit_line_requests_by_merchant,
     get_current_state,
     get_investor_dashboard_metrics,
     get_investor_pool_summaries as db_get_investor_pool_summaries,
     get_liquidity_pool_by_id,
     get_loan_by_id,
     get_market_overview_metrics,
+    get_merchant_credit_line_stats,
     get_pending_transactions,
     get_pool_summary,
     get_pool_transactions as db_get_pool_transactions,
     get_pool_utilization_history,
     // Database functions
     init_db,
+    list_active_credit_lines,
+    list_credit_lines_by_merchant,
     list_loans,
     store_ads_state_commit,
     submit_transaction,
     update_batch_proof,
+    update_credit_line_request_evaluation,
+    update_credit_line_request_status,
+    update_credit_line_utilization,
     update_loan,
 
     AdsStateCommit,
@@ -149,6 +171,10 @@ pub use arda_credit_db::{
     ContractPublicData,
     ContractSubmissionData as DbContractSubmissionData,
     CounterState,
+    CreateCreditLineRequestData,
+    CreditLine as DbCreditLine,
+    CreditLineRequest as DbCreditLineRequest,
+    CreditLineStatus as DbCreditLineStatus,
     // Essential error handling
     DbError,
     DbResult,
@@ -156,6 +182,8 @@ pub use arda_credit_db::{
     IncomingTransaction,
     InvestorDashboardMetrics,
     MarketOverviewMetrics,
+    MerchantCreditLineStats,
+
     PoolSummary,
     PoolTransaction,
     PoolUtilizationData,

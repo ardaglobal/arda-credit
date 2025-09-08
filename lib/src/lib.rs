@@ -2,6 +2,8 @@ use alloy_sol_types::sol;
 
 // Separated modules for better maintainability
 pub mod balance;
+pub mod credit_evaluation;
+pub mod credit_line;
 pub mod loan;
 pub mod loan_processor;
 pub mod merchant;
@@ -42,6 +44,16 @@ pub use loan_processor::{
 pub use balance::{
     BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType,
     UserBalance,
+};
+pub use credit_evaluation::{
+    calculate_30_day_average, evaluate_credit_request, get_required_documents_for_mcc,
+    is_restricted_mcc, validate_required_documents, CreditEvaluator, DailyTurnover,
+    DocumentVerification, MerchantProfile,
+};
+pub use credit_line::{
+    CreditLine, CreditLineError, CreditLineRequest, CreditLineRequestStatus, CreditLineState,
+    CreditLineStatus, CreditUtilization, CreditUtilizationType, EligibilityResult,
+    PoolMatchingResult,
 };
 pub use loan::{
     LiquidityPool, Loan, LoanError, LoanStatus, LoanTerms, PoolDeploymentTerms, PoolError,
