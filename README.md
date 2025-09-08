@@ -1,4 +1,10 @@
 # Arda Credit - Privacy-Preserving Loan vApp
+[![Sindri Circuit CI/CD](https://github.com/ardaglobal/arda-credit/actions/workflows/sindri.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/sindri.yml)
+[![Build and Push Docker Image](https://github.com/ardaglobal/arda-credit/actions/workflows/docker.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/docker.yml)
+[![Build Program](https://github.com/ardaglobal/arda-credit/actions/workflows/prove.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/prove.yml)
+[![Deploy Smart Contracts](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry-deploy.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry-deploy.yml)
+[![Foundry Test](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry-test.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry-test.yml)
+[![Test](https://github.com/ardaglobal/arda-credit/actions/workflows/test.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/test.yml)
 
 A privacy-preserving loan platform built on SP1 zero-knowledge proofs, enabling secure loan origination, payments, and closeouts with KYC verification while maintaining transaction privacy through batch processing.
 
