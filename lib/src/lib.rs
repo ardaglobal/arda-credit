@@ -4,6 +4,7 @@ use alloy_sol_types::sol;
 pub mod balance;
 pub mod loan;
 pub mod loan_processor;
+pub mod merchant;
 pub mod pool;
 pub mod transactions;
 pub mod user;

@@ -60,6 +60,8 @@ pub enum TransactionType {
     MerchantRegistration = 11,
     MerchantProfileUpdate = 12,
     CreditLineRequest = 13,
+    SubmitTurnover = 14,
+    VerifyDocument = 15,
 }
 
 impl TransactionType {
@@ -74,6 +76,8 @@ impl TransactionType {
                 | Self::UserWithdrawal
                 | Self::PoolCreation
                 | Self::CreditLineRequest
+                | Self::SubmitTurnover
+                | Self::VerifyDocument
         )
     }
 
