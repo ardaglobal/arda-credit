@@ -87,14 +87,15 @@ pub async fn create_test_merchant(pool: &PgPool) -> Result<Merchant, sqlx::Error
     use chrono::Utc;
 
     // First create a test identity (required for foreign key constraint)
-    let test_email = format!("test-merchant-{}.example.com", Utc::now().timestamp());
+    let timestamp = Utc::now().timestamp();
+    let test_email = format!("test-merchant-{}.example.com", timestamp);
     let identity =
         create_identity_with_password(pool, "merchant", &test_email, "test_password_hash").await?;
 
     let request = CreateMerchantRequest {
         legal_name: "Test Merchant LLC".to_string(),
         dba: Some("Test Store".to_string()),
-        tax_id: Some("12-3456789".to_string()),
+        tax_id: Some(format!("12-{}", timestamp)),
         mcc: Some("5411".to_string()),
         country: "US".to_string(),
         business_type: Some("LLC".to_string()),

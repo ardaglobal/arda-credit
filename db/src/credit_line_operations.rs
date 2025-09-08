@@ -602,7 +602,7 @@ mod tests {
         let request_data = CreateCreditLineRequestData {
             merchant_id: merchant.id,
             requested_amount: rust_decimal::Decimal::from(5000000), // $50,000
-            requested_rate_apr: Some(rust_decimal::Decimal::from(1200)), // 12%
+            requested_rate_apr: Some(rust_decimal::Decimal::new(1200, 4)), // 0.1200 = 12%
             requested_tenor_days: 90,
             request_description: Some("Test credit line request".to_string()),
         };
@@ -623,7 +623,7 @@ mod tests {
             &pool,
             request.id,
             rust_decimal::Decimal::from(10000000), // $100,000 collateral basis
-            rust_decimal::Decimal::from(5000),     // 50% LTV
+            rust_decimal::Decimal::new(5000, 4),   // 0.5000 = 50% LTV
             None,
             Some(serde_json::json!({"eligibility_score": 85})),
         )
@@ -637,7 +637,7 @@ mod tests {
         );
         assert_eq!(
             updated_request.ltv_ratio,
-            Some(rust_decimal::Decimal::from(5000))
+            Some(rust_decimal::Decimal::new(5000, 4)) // 0.5000 = 50%
         );
 
         // Get request by ID
