@@ -58,7 +58,7 @@ tower-http = { version = "0.6", features = [
 ] }
 
 # Server binary dependencies
-clap               = { version = "4.0", features = [ "derive" ] }
+clap               = { version = "4.5", features = [ "derive" ] }
 dotenv             = "0.15"
 tokio-util         = "0.7"
 tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
@@ -87,7 +87,7 @@ utoipa-swagger-ui = { version = "9.0", features = [ "axum" ] }
 
 [dev-dependencies]
 
-axum-test          = "18.0.0"
+axum-test          = "18.1.0"
 tempfile           = "3.21"
 tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
