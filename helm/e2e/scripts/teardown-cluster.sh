@@ -6,6 +6,7 @@ set -euo pipefail
 
 # Configuration
 CLUSTER_NAME="arda-credit-e2e"
+REGISTRY_NAME="kind-registry"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Colors for output
@@ -73,23 +74,38 @@ delete_cluster() {
     fi
 }
 
+# Clean up local registry container
+cleanup_registry() {
+    log_info "Cleaning up local container registry..."
+
+    # Check if registry container exists (running or stopped)
+    if docker ps -a --format "table {{.Names}}" | grep -q "^${REGISTRY_NAME}$"; then
+        log_info "Removing registry container: ${REGISTRY_NAME}"
+        docker stop "${REGISTRY_NAME}" 2>/dev/null || log_warning "Registry container was not running"
+        docker rm "${REGISTRY_NAME}" 2>/dev/null || log_warning "Could not remove registry container: ${REGISTRY_NAME}"
+        log_success "Registry container removed"
+    else
+        log_info "Registry container '${REGISTRY_NAME}' not found"
+    fi
+}
+
 # Clean up Docker images (optional)
 cleanup_docker_images() {
     log_info "Cleaning up local Docker images..."
-    
+
     # Remove local development images
     local images_to_remove=(
         "localhost/arda-credit:local-dev"
         "localhost/arda-credit-app:local-dev"
     )
-    
+
     for image in "${images_to_remove[@]}"; do
         if docker images --format "table {{.Repository}}:{{.Tag}}" | grep -q "$image"; then
             log_info "Removing image: $image"
             docker rmi "$image" 2>/dev/null || log_warning "Could not remove image: $image"
         fi
     done
-    
+
     log_success "Docker image cleanup completed"
 }
 
@@ -100,6 +116,7 @@ display_summary() {
     log_info "Cleaned up resources:"
     echo "  ✓ Kind cluster '${CLUSTER_NAME}' deleted"
     echo "  ✓ Helm release 'arda-credit' uninstalled"
+    echo "  ✓ Local container registry removed"
     echo "  ✓ Local Docker images removed"
     echo "  ✓ Kubectl context cleaned up"
     echo
@@ -126,13 +143,14 @@ confirm_deletion() {
 main() {
     log_info "Tearing down Arda Credit e2e environment..."
     echo
-    
+
     check_cluster_exists
     confirm_deletion "$@"
     uninstall_helm_release
     delete_cluster
+    cleanup_registry
     cleanup_docker_images
-    
+
     echo
     display_summary
 }

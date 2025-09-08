@@ -533,6 +533,57 @@ EOF
   esac
 }
 
+# kind (Kubernetes in Docker)
+function ensure_kind() {
+  check_cmd kind && return
+
+  say "Installing kind..."
+  case $OS in
+  Linux)
+    local cmd=$(
+      cat <<-EOF
+    curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.24.0/kind-linux-amd64 &&
+    chmod +x ./kind &&
+    mv ./kind /usr/local/bin/kind
+EOF
+    )
+    try_sudo "$cmd"
+    ;;
+  Darwin)
+    ensure_brew
+    brew install kind
+    ;;
+  *)
+    ;;
+  esac
+}
+
+# helm (Kubernetes package manager)
+function ensure_helm() {
+  check_cmd helm && return
+
+  say "Installing Helm..."
+  case $OS in
+  Linux)
+    local cmd=$(
+      cat <<-EOF
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 &&
+    chmod 700 get_helm.sh &&
+    ./get_helm.sh &&
+    rm get_helm.sh
+EOF
+    )
+    try_sudo "$cmd"
+    ;;
+  Darwin)
+    ensure_brew
+    brew install helm
+    ;;
+  *)
+    ;;
+  esac
+}
+
 function ensure_profile() {
   local PROFILE=$(get_profile_path)
 
@@ -656,6 +707,8 @@ function ensure_tools() {
   ensure_sp1
   ensure_gh
   ensure_hadolint
+  ensure_kind
+  ensure_helm
 }
 
 function install_on_macos() {

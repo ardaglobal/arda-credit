@@ -91,29 +91,31 @@ check_existing_cluster() {
 # Setup local container registry
 setup_local_registry() {
     log_info "Setting up local container registry..."
-    
-    # Check if registry is already running
-    if docker ps | grep -q "${REGISTRY_NAME}"; then
-        log_info "Registry '${REGISTRY_NAME}' is already running"
-        return 0
+
+    # Always clean up any existing registry container first
+    if docker ps -a --format "table {{.Names}}" | grep -q "^${REGISTRY_NAME}$"; then
+        log_info "Removing existing registry container '${REGISTRY_NAME}'..."
+        docker stop "${REGISTRY_NAME}" 2>/dev/null || log_warning "Registry container was not running"
+        docker rm -f "${REGISTRY_NAME}" 2>/dev/null || log_error "Failed to remove existing registry container"
     fi
-    
-    # Remove stopped registry container if it exists
-    if docker ps -a | grep -q "${REGISTRY_NAME}"; then
-        log_info "Removing stopped registry container..."
-        docker rm -f "${REGISTRY_NAME}"
-    fi
-    
+
     # Start local registry
     log_info "Starting local registry on port ${REGISTRY_PORT}..."
     docker run -d --restart=always -p "127.0.0.1:${REGISTRY_PORT}:5000" --name "${REGISTRY_NAME}" registry:2
-    
+
     # Wait for registry to be ready
     log_info "Waiting for registry to be ready..."
+    local attempts=0
+    local max_attempts=30
     until curl -s "http://localhost:${REGISTRY_PORT}/v2/" > /dev/null; do
+        attempts=$((attempts + 1))
+        if [ $attempts -ge $max_attempts ]; then
+            log_error "Registry failed to start after ${max_attempts} attempts"
+            exit 1
+        fi
         sleep 1
     done
-    
+
     log_success "Local registry is running at localhost:${REGISTRY_PORT}"
 }
 

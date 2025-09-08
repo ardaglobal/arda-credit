@@ -1335,13 +1335,10 @@ pub fn create_router(state: ApiState) -> Router {
         // LIQUIDITY POOL QUERY ENDPOINTS
         // ========================================================================
         // Pool Query Endpoints
-        .route("/api/pools", get(list_pools))
-        .route("/api/pools/:pool_id", get(get_pool_details))
-        .route("/api/pools/:pool_id/utilization", get(get_pool_utilization))
-        .route(
-            "/api/pools/:pool_id/transactions",
-            get(get_pool_transactions),
-        )
+        .route(paths::POOLS, get(list_pools))
+        .route(paths::POOL_BY_ID, get(get_pool_details))
+        .route(paths::POOL_UTILIZATION, get(get_pool_utilization))
+        .route(paths::POOL_TRANSACTIONS, get(get_pool_transactions))
         // Investor Query Endpoints
         .route("/api/investor/dashboard", get(get_investor_dashboard))
         .route(
@@ -1354,18 +1351,18 @@ pub fn create_router(state: ApiState) -> Router {
         // ========================================================================
         // MERCHANT TURNOVER ENDPOINTS
         // ========================================================================
-        .route("/api/merchant/turnover", post(create_turnover_endpoint))
-        .route("/api/merchant/turnover", get(get_turnover_endpoint))
+        .route(paths::MERCHANT_TURNOVER, post(create_turnover_endpoint))
+        .route(paths::MERCHANT_TURNOVER, get(get_turnover_endpoint))
         .route(
-            "/api/merchant/turnover/:date",
+            paths::MERCHANT_TURNOVER_BY_DATE,
             put(update_turnover_endpoint),
         )
         .route(
-            "/api/merchant/turnover/analytics",
+            paths::MERCHANT_TURNOVER_ANALYTICS,
             get(get_turnover_analytics_endpoint),
         )
         .route(
-            "/api/merchant/profile/completion",
+            paths::MERCHANT_PROFILE_COMPLETION,
             get(get_profile_completion_endpoint),
         )
         // ========================================================================
