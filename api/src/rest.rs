@@ -18,6 +18,11 @@ use uuid;
 
 use crate::auth::AuthService;
 use crate::batch_processor::BatchProcessorHandle;
+// Credit line handlers - temporarily commented out
+// use crate::credit_line_handlers::{
+//     browse_available_pools, check_credit_eligibility, list_credit_line_requests,
+//     submit_credit_line_request,
+// };
 use crate::paths;
 use crate::pool_handlers::{
     get_investor_dashboard, get_investor_pool_summaries, get_market_overview, get_pool_details,
@@ -41,7 +46,7 @@ use arda_credit_db::{
     get_deposits_by_user_address,
     get_identity_by_email,
     get_identity_by_id,
-    get_investor_profile_by_user_id,
+    // get_investor_profile_by_user_id, // unused
     get_investor_profile_with_identity,
     get_invite_code_info,
     get_kyc_statistics,
@@ -79,11 +84,11 @@ use arda_credit_db::{
     CreateTurnoverRequest,
     Identity,
     IndexedMerkleTreeADS,
-    InvestorProfile,
+    // InvestorProfile, // unused
     LoanInclusionProof,
     LoanLifecycleSummary,
-    Merchant,
-    MerchantProfile,
+    // Merchant, // unused
+    // MerchantProfile, // unused
     MerchantProfileCompletion,
     MerchantTurnoverAnalytics,
     MerchantTurnoverDaily,
@@ -1363,6 +1368,23 @@ pub fn create_router(state: ApiState) -> Router {
             "/api/merchant/profile/completion",
             get(get_profile_completion_endpoint),
         )
+        // ========================================================================
+        // CREDIT LINE ENDPOINTS
+        // ========================================================================
+        // Credit line routes temporarily commented out due to handler issues
+        // .route(
+        //     "/api/v2/credit-lines/eligibility",
+        //     get(check_credit_eligibility),
+        // )
+        // .route(
+        //     "/api/v2/credit-lines/request",
+        //     post(submit_credit_line_request),
+        // )
+        // .route(
+        //     "/api/v2/credit-lines/requests",
+        //     get(list_credit_line_requests),
+        // )
+        // .route("/api/v2/pools/available", get(browse_available_pools))
         .with_state(state)
 }
 
