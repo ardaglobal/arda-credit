@@ -42,6 +42,10 @@ pub enum BalanceUpdateType {
     CreditFromDeposit = 6,
     /// Debit from user withdrawal
     DebitFromWithdrawal = 7,
+    /// Debit from credit line drawdown
+    DebitFromCreditDrawdown = 8,
+    /// Credit from credit line repayment
+    CreditFromRepayment = 9,
 }
 
 impl BalanceUpdateType {
@@ -56,6 +60,8 @@ impl BalanceUpdateType {
             Self::ManualAdjustment => "manual_adjustment",
             Self::CreditFromDeposit => "credit_from_deposit",
             Self::DebitFromWithdrawal => "debit_from_withdrawal",
+            Self::DebitFromCreditDrawdown => "debit_from_credit_drawdown",
+            Self::CreditFromRepayment => "credit_from_repayment",
         }
     }
 
@@ -68,13 +74,17 @@ impl BalanceUpdateType {
                 | Self::CreditFromOrigination
                 | Self::InterestAccrual
                 | Self::CreditFromDeposit
+                | Self::CreditFromRepayment
         )
     }
 
     /// Check if this update type decreases balance
     #[must_use]
     pub const fn is_debit(&self) -> bool {
-        matches!(self, Self::DebitFromOrigination | Self::DebitFromWithdrawal)
+        matches!(
+            self,
+            Self::DebitFromOrigination | Self::DebitFromWithdrawal | Self::DebitFromCreditDrawdown
+        )
     }
 }
 
@@ -163,10 +173,11 @@ impl BalanceUpdate {
             | BalanceUpdateType::CreditFromOrigination
             | BalanceUpdateType::InterestAccrual
             | BalanceUpdateType::ManualAdjustment
-            | BalanceUpdateType::CreditFromDeposit => amount, // Assume positive for manual
-            BalanceUpdateType::DebitFromOrigination | BalanceUpdateType::DebitFromWithdrawal => {
-                -amount
-            }
+            | BalanceUpdateType::CreditFromDeposit
+            | BalanceUpdateType::CreditFromRepayment => amount, // Assume positive for manual
+            BalanceUpdateType::DebitFromOrigination
+            | BalanceUpdateType::DebitFromWithdrawal
+            | BalanceUpdateType::DebitFromCreditDrawdown => -amount,
         }
     }
 
@@ -527,6 +538,62 @@ impl BalanceState {
     #[must_use]
     pub fn compute_total_balance(&self) -> u128 {
         self.balances.values().map(|b| b.balance).sum()
+    }
+
+    /// Create balance update for credit drawdown
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
+    pub fn create_credit_drawdown_update(
+        &self,
+        drawdown_transaction_id: [u8; 32],
+        user_id: [u8; 32],
+        recipient_address: [u8; 32],
+        amount: u128,
+        timestamp: u64,
+    ) -> Result<BalanceUpdate, BalanceError> {
+        let current_balance = self.get_balance(&user_id);
+
+        BalanceUpdate::new(
+            self.generate_update_id(drawdown_transaction_id, 1),
+            user_id,
+            None, // No loan ID for credit line operations
+            Some(drawdown_transaction_id),
+            BalanceUpdateType::DebitFromCreditDrawdown,
+            amount,
+            current_balance,
+            timestamp,
+            Some(format!(
+                "Credit drawdown to 0x{}",
+                hex::encode(recipient_address)
+            )),
+        )
+    }
+
+    /// Create balance update for credit repayment
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
+    pub fn create_credit_repayment_update(
+        &self,
+        repayment_transaction_id: [u8; 32],
+        user_id: [u8; 32],
+        amount: u128,
+        timestamp: u64,
+    ) -> Result<BalanceUpdate, BalanceError> {
+        let current_balance = self.get_balance(&user_id);
+
+        BalanceUpdate::new(
+            self.generate_update_id(repayment_transaction_id, 1),
+            user_id,
+            None, // No loan ID for credit line operations
+            Some(repayment_transaction_id),
+            BalanceUpdateType::CreditFromRepayment,
+            amount,
+            current_balance,
+            timestamp,
+            Some("Credit line repayment".to_string()),
+        )
     }
 
     /// Generate a unique update ID based on transaction ID and sequence
