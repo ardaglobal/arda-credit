@@ -95,5 +95,5 @@ jobs:
 
       - name: Test Circuit
         env:
-          SINDRI_TAG: ${{ steps.detect.outputs.circuit_tag }}
+          SINDRI_CIRCUIT_TAG: ${{ steps.detect.outputs.circuit_tag }}
         run: cargo run --release -- --sindri
