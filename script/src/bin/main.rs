@@ -168,20 +168,19 @@ async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result
 
     stdin.write(&zkvm_input);
 
-    info!("📝 Getting raw buffer from SP1Stdin for Sindri");
-    // Get the raw buffer data that SP1 expects to read directly
-    // Flatten the Vec<Vec<u8>> into a single Vec<u8>
-    let buffer_data: Vec<u8> = stdin.buffer.clone().into_iter().flatten().collect();
+    info!("📝 Serializing SP1 stdin to JSON for Sindri");
+    let stdin_json = serde_json::to_string(&stdin).map_err(|e| {
+        error!("❌ Failed to serialize SP1 stdin: {}", e);
+        eyre::eyre!("Failed to serialize SP1 stdin: {}", e)
+    })?;
 
     info!(
-        "✅ SP1Stdin buffer extracted and flattened, length: {} bytes",
-        buffer_data.len()
+        "✅ SP1 stdin serialized, JSON length: {} chars",
+        stdin_json.len()
     );
 
-    // Convert buffer to hex string for Sindri (this is what Sindri expects for raw input)
-    let input_hex = hex::encode(&buffer_data);
-    let proof_input = ProofInput::from(input_hex.clone());
-    info!("✅ ProofInput created from hex buffer");
+    let proof_input = ProofInput::from(stdin_json.clone());
+    info!("✅ ProofInput created from JSON");
 
     // Get circuit name with configurable tag from environment
     let circuit_tag = env::var("SINDRI_CIRCUIT_TAG").unwrap_or_else(|_| "latest".to_string());
@@ -199,8 +198,8 @@ async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result
     );
     info!("🔐 Sindri will generate the zero-knowledge proof (no local proving)");
     info!(
-        "📊 Request details: buffer preview: {}...",
-        &input_hex[..std::cmp::min(100, input_hex.len())]
+        "📊 Request details: stdin_json preview: {}...",
+        &stdin_json[..std::cmp::min(100, stdin_json.len())]
     );
 
     let proof_info = client
