@@ -1,1 +1,0 @@
-trying to follow the rules
