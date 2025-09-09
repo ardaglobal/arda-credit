@@ -144,7 +144,7 @@ jobs:
       - name: Create Pull Request with deployment record
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.CREATE_PR_PAT }}
           base: main
           commit-message: |
             Add deployment record for ${GITHUB_REF#refs/tags/}
