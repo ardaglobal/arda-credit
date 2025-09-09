@@ -13,6 +13,13 @@ use sqlx::{Error as SqlxError, PgPool};
 use std::str::FromStr;
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, OpenApi, ToSchema};
+
+// OpenTelemetry imports
+use opentelemetry::{
+    global,
+    trace::{TraceContextExt, Tracer},
+    Context, KeyValue,
+};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
@@ -1391,7 +1398,7 @@ pub fn create_router(state: ApiState) -> Router {
 // ENDPOINT HANDLERS
 // ============================================================================
 
-/// Health check endpoint
+/// Health check endpoint with OpenTelemetry tracing
 #[utoipa::path(
     get,
     path = "/api/v1/health",
@@ -1405,14 +1412,66 @@ pub fn create_router(state: ApiState) -> Router {
 async fn health_check(
     State(state): State<ApiState>,
 ) -> Result<Json<HealthResponse>, (StatusCode, String)> {
+    // Get the global tracer
+    let tracer = global::tracer("arda-credit-api");
+
+    // Create a span for the health check operation
+    let span = tracer.start("health_check");
+    let cx = Context::current_with_span(span);
+
+    // Set attributes on the span
+    cx.span().set_attributes(vec![
+        KeyValue::new("endpoint", "/api/v1/health"),
+        KeyValue::new("operation", "health_check"),
+        KeyValue::new("component", "api"),
+    ]);
+
     info!("🔍 API: Health check requested");
 
-    // Test database connection
-    let db_connected = match sqlx::query("SELECT 1").fetch_one(&state.pool).await {
-        Ok(_) => true,
-        Err(e) => {
-            error!("Database health check failed: {}", e);
-            false
+    // Add event for the start of health check
+    cx.span().add_event(
+        "health_check_started",
+        vec![KeyValue::new("timestamp", Utc::now().to_rfc3339())],
+    );
+
+    // Test database connection with tracing
+    let db_connected = {
+        let db_span = tracer.start("database_health_check");
+        let db_cx = cx.with_span(db_span);
+
+        db_cx.span().set_attributes(vec![
+            KeyValue::new("db.system", "postgresql"),
+            KeyValue::new("db.operation", "health_check"),
+            KeyValue::new("db.statement", "SELECT 1"),
+        ]);
+
+        match sqlx::query("SELECT 1").fetch_one(&state.pool).await {
+            Ok(_) => {
+                db_cx
+                    .span()
+                    .set_attribute(KeyValue::new("db.success", true));
+                db_cx.span().add_event(
+                    "database_connection_success",
+                    vec![KeyValue::new("query", "SELECT 1")],
+                );
+                true
+            }
+            Err(e) => {
+                db_cx.span().set_attributes(vec![
+                    KeyValue::new("db.success", false),
+                    KeyValue::new("error.message", e.to_string()),
+                    KeyValue::new("error.type", "database_connection_error"),
+                ]);
+                db_cx.span().add_event(
+                    "database_connection_failed",
+                    vec![
+                        KeyValue::new("error", e.to_string()),
+                        KeyValue::new("query", "SELECT 1"),
+                    ],
+                );
+                error!("Database health check failed: {}", e);
+                false
+            }
         }
     };
 
@@ -1431,11 +1490,30 @@ async fn health_check(
         git_dirty: env!("GIT_DIRTY").parse().unwrap_or(false),
     };
 
+    // Final span attributes
+    cx.span().set_attributes(vec![
+        KeyValue::new("health.status", response.status.clone()),
+        KeyValue::new("database.connected", db_connected),
+        KeyValue::new("api.version", response.api_version.clone()),
+    ]);
+
     if db_connected {
         info!("✅ API: Health check passed");
+        cx.span().add_event(
+            "health_check_completed",
+            vec![KeyValue::new("result", "success")],
+        );
         Ok(Json(response))
     } else {
         error!("❌ API: Health check failed - database not connected");
+        cx.span().set_attributes(vec![
+            KeyValue::new("error", true),
+            KeyValue::new("error.message", "Database not available"),
+        ]);
+        cx.span().add_event(
+            "health_check_completed",
+            vec![KeyValue::new("result", "failure")],
+        );
         Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "Database not available".to_string(),

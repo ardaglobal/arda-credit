@@ -303,6 +303,29 @@ EOF
   esac
 }
 
+# protobuf compiler (required for OpenTelemetry)
+function ensure_protobuf() {
+  check_cmd protoc && return
+
+  case $OS in
+  Linux)
+    local cmd=$(
+      cat <<-EOF
+    apt-get update &&
+    apt-get install -y --no-install-recommends protobuf-compiler
+EOF
+    )
+    try_sudo "$cmd"
+    ;;
+  Darwin)
+    ensure_brew
+    brew install protobuf
+    ;;
+  *)
+    ;;
+  esac
+}
+
 # nodejs and npm
 function ensure_nodejs() {
   check_cmd node && check_cmd npm && return
@@ -698,6 +721,7 @@ function ensure_tools() {
   ensure_docker
   ensure_docker_compose
   ensure_postgresql_client
+  ensure_protobuf
   ensure_nodejs
   ensure_sindri
   ensure_taplo
