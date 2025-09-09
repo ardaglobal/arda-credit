@@ -18,42 +18,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  detect-component:
+  detect-version:
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
       - instance-size=small
     outputs:
-      component: ${{ steps.detect.outputs.component }}
       version: ${{ steps.detect.outputs.version }}
-      is_rc: ${{ steps.detect.outputs.is_rc }}
     steps:
       - id: detect
         run: |
           if [[ $GITHUB_REF == refs/tags/contracts-v*-rc* ]]; then
             {
-              echo "component=contracts"
               echo "version=${GITHUB_REF#refs/tags/contracts-v}"
-              echo "is_rc=true"
-            } >> $GITHUB_OUTPUT
-          elif [[ $GITHUB_REF == refs/tags/contracts-v* ]]; then
-            {
-              echo "component=contracts"
-              echo "version=${GITHUB_REF#refs/tags/contracts-v}"
-              echo "is_rc=false"
             } >> $GITHUB_OUTPUT
           else
             {
-              echo "component=contracts"
               echo "version=main"
-              echo "is_rc=false"
             } >> $GITHUB_OUTPUT
           fi
 
   deploy:
     name: Deploy Contracts
-    needs: detect-component
-    if: needs.detect-component.outputs.component == 'contracts'
+    needs: detect-version
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
@@ -126,7 +113,7 @@ jobs:
         run: |
           # Create deployment record
           mkdir -p deployments
-          cat > deployments/${{ needs.detect-component.outputs.version }}.json << EOF
+          cat > deployments/${{ needs.detect-version.outputs.version }}.json << EOF
           {
             "contractAddress": "$CONTRACT_ADDRESS",
             "deploymentTx": "$TX_HASH",
@@ -141,6 +128,7 @@ jobs:
           EOF
 
       - name: Create Pull Request with deployment record
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.CREATE_PR_PAT }}
@@ -151,7 +139,7 @@ jobs:
             Contract: ${{ env.CONTRACT_ADDRESS }}
             Transaction: ${{ env.TX_HASH }}
             Network: Sepolia
-          title: "build: Deploy contract ${{ env.CONTRACT_ADDRESS }} (${{ needs.detect-component.outputs.version }})"
+          title: "build: Deploy contract ${{ env.CONTRACT_ADDRESS }} (${{ needs.detect-version.outputs.version }})"
           body: |
             ## 🚀 Contract Deployment
 
@@ -162,13 +150,13 @@ jobs:
             **Commit:** `${GITHUB_SHA}`
 
             ### Files Changed:
-            - `contracts/deployments/${{ needs.detect-component.outputs.version }}.json` - Deployment record
+            - `contracts/deployments/${{ needs.detect-version.outputs.version }}.json` - Deployment record
 
             ### Next Steps:
             1. Review the deployment record
             2. Test the deployed contract if needed
             3. Merge this PR to add the deployment record to the repository
-          branch: deploy/${{ needs.detect-component.outputs.version }}
+          branch: deploy/${{ needs.detect-version.outputs.version }}
           delete-branch: true
           draft: false
 
