@@ -129,14 +129,6 @@ async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result
     info!("🔄 Submitting loan batch directly to Sindri for proving...");
 
     // Submit directly to Sindri for proving (no local proof generation)
-    submit_to_sindri_for_proving(initial_state, batch).await?;
-
-    info!("🎉 SP1 loan processing test with Sindri integration completed successfully!");
-    Ok(())
-}
-
-/// Submit loan batch directly to Sindri for proving (no local proof generation)
-async fn submit_to_sindri_for_proving(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
     use std::env;
 
     // Get Sindri API key from environment
@@ -218,6 +210,50 @@ async fn submit_to_sindri_for_proving(initial_state: &LoanState, batch: &LoanBat
             eyre::eyre!("Sindri API error: {}", e)
         })?;
 
+    // Check if the proof submission failed immediately
+    let status_str = proof_info.status.to_string().to_lowercase();
+    if status_str.contains("failed") || status_str.contains("error") {
+        let error_details = if let Some(error) = &proof_info.error {
+            format!("Error details: {:?}", error)
+        } else {
+            "No additional error details available".to_string()
+        };
+
+        error!(
+            "❌ Sindri proof submission failed with status: {:?}",
+            proof_info.status
+        );
+        error!("📋 {}", error_details);
+
+        return Err(eyre::eyre!(
+            "Sindri proof submission failed with status: {:?}. {}. \
+             Check the Sindri dashboard for more details or try again.",
+            proof_info.status,
+            error_details
+        ));
+    }
+    // Also warn if status indicates issues
+    if status_str.contains("invalid") || status_str.contains("rejected") {
+        let error_details = if let Some(error) = &proof_info.error {
+            format!("Error details: {:?}", error)
+        } else {
+            "No additional error details available".to_string()
+        };
+
+        error!(
+            "⚠️  Sindri proof submission has issues with status: {:?}",
+            proof_info.status
+        );
+        error!("📋 {}", error_details);
+
+        return Err(eyre::eyre!(
+            "Sindri proof submission has issues with status: {:?}. {}. \
+             Please check your input data and circuit configuration.",
+            proof_info.status,
+            error_details
+        ));
+    }
+
     info!(
         "✅ Sindri proving request submitted successfully! Proof ID: {}, Status: {:?}",
         proof_info.proof_id, proof_info.status
@@ -229,7 +265,18 @@ async fn submit_to_sindri_for_proving(initial_state: &LoanState, batch: &LoanBat
     info!("  - Circuit: {}", circuit_name);
     info!("  - Batch transactions: {}", batch.transactions.len());
     info!("  - Batch timestamp: {}", batch.created_at);
-    info!("  - Processing: Sindri is now generating the zero-knowledge proof");
+
+    // Provide helpful next steps based on status
+    let status_str = proof_info.status.to_string().to_lowercase();
+    if status_str.contains("queued") {
+        info!("  - Processing: ✅ Proof queued successfully - Sindri will process it shortly");
+    } else if status_str.contains("running") {
+        info!("  - Processing: 🔄 Proof is currently running on Sindri");
+    } else if status_str.contains("completed") {
+        info!("  - Processing: 🎉 Proof completed successfully!");
+    } else {
+        info!("  - Processing: Status '{}'", proof_info.status);
+    }
 
     let verification_command = format!(
         "sindri proof get {} # Check proof status and download when ready",
@@ -240,6 +287,7 @@ async fn submit_to_sindri_for_proving(initial_state: &LoanState, batch: &LoanBat
     info!("🔗 Loan batch successfully submitted to Sindri for zero-knowledge proof generation");
     info!("⏱️  Sindri will handle the proving process - no local computation required!");
 
+    info!("🎉 SP1 loan processing test with Sindri integration completed successfully!");
     Ok(())
 }
 

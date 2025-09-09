@@ -21,15 +21,18 @@ pgo-data.profdata
 script/ADS
 ADS/
 
-# DB
-/db
+# Non Circuit related files
+db
 .sqlx
-
-# Contracts
 contracts
-
-# Eth Client
 ethereum-client
-
-# Local Utils
 utils
+helm
+api
+.github
+.githooks
+cli
+script
+scripts
+**/*.md
+**/*.sh
