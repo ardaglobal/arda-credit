@@ -1,0 +1,204 @@
+{
+  "$schema": "https://cursor.com/schemas/environment.schema.json",
+  "name": "Arda Credit Development Environment",
+  "description": "Development environment for Arda Credit project with Rust, PostgreSQL, and smart contract tooling",
+  "install": {
+    "command": "make install",
+    "description": "Install all project dependencies including Rust tools, Docker, and development utilities"
+  },
+  "start": {
+    "command": "sudo service docker start",
+    "description": "Start Docker Desktop daemon required for database and testing operations"
+  },
+  "setup": [
+    {
+      "command": "make setup-hooks",
+      "description": "Set up git hooks for pre-commit linting and pre-push testing"
+    }
+  ],
+  "tools": [
+    {
+      "name": "make",
+      "description": "Build system for running development commands"
+    },
+    {
+      "name": "cargo",
+      "description": "Rust package manager and build tool"
+    },
+    {
+      "name": "docker",
+      "description": "Container runtime for database and services"
+    },
+    {
+      "name": "kubectl",
+      "description": "Kubernetes command-line tool for cluster management"
+    },
+    {
+      "name": "helm",
+      "description": "Kubernetes package manager for deployments"
+    },
+    {
+      "name": "foundry",
+      "description": "Ethereum development toolkit for smart contracts"
+    },
+    {
+      "name": "kind",
+      "description": "Kubernetes in Docker for local testing"
+    },
+    {
+      "name": "yamllint",
+      "description": "YAML linter for configuration files"
+    },
+    {
+      "name": "actionlint",
+      "description": "GitHub Actions workflow linter"
+    },
+    {
+      "name": "hadolint",
+      "description": "Dockerfile linter"
+    }
+  ],
+  "environment_variables": [
+    {
+      "name": "DATABASE_URL",
+      "description": "PostgreSQL connection string for database operations",
+      "required": false,
+      "default": "postgresql://postgres:password@localhost:5432/arda_credit_db"
+    },
+    {
+      "name": "SINDRI_API_KEY",
+      "description": "API key for Sindri proof generation service",
+      "required": false
+    },
+    {
+      "name": "ETHEREUM_RPC_URL",
+      "description": "Ethereum RPC endpoint for smart contract deployment",
+      "required": false
+    },
+    {
+      "name": "ETHEREUM_WALLET_PRIVATE_KEY",
+      "description": "Private key for Ethereum wallet operations",
+      "required": false
+    },
+    {
+      "name": "VERIFIER_CONTRACT_ADDRESS",
+      "description": "SP1 verifier contract address on Ethereum",
+      "required": false
+    },
+    {
+      "name": "PROGRAM_VKEY",
+      "description": "Program verification key for contract deployment",
+      "required": false
+    }
+  ],
+  "pre_commit": {
+    "command": "make lint",
+    "description": "Run linting checks before committing code changes"
+  },
+  "pre_push": {
+    "command": "make test",
+    "description": "Run test suite before pushing code changes"
+  },
+  "commands": [
+    {
+      "name": "lint",
+      "command": "make lint",
+      "description": "Run all linting checks (YAML, GitHub Actions, Docker, Rust)"
+    },
+    {
+      "name": "test",
+      "command": "make test",
+      "description": "Run test suite with database setup"
+    },
+    {
+      "name": "fmt",
+      "command": "make fmt",
+      "description": "Format code (Rust, YAML)"
+    },
+    {
+      "name": "initDB",
+      "command": "make initDB",
+      "description": "Initialize database and generate SQLx cache for offline mode"
+    },
+    {
+      "name": "up",
+      "command": "make up",
+      "description": "Start services using pre-built Docker images"
+    },
+    {
+      "name": "up-dev",
+      "command": "make up-dev",
+      "description": "Start services with local Docker build"
+    },
+    {
+      "name": "down",
+      "command": "make down",
+      "description": "Stop all services and clean up"
+    },
+    {
+      "name": "server",
+      "command": "make server",
+      "description": "Start API server locally"
+    },
+    {
+      "name": "forge-build",
+      "command": "make forge-build",
+      "description": "Build smart contracts using Foundry"
+    },
+    {
+      "name": "forge-test",
+      "command": "make forge-test",
+      "description": "Run smart contract tests"
+    },
+    {
+      "name": "deploy",
+      "command": "make deploy",
+      "description": "Deploy circuit to Sindri"
+    },
+    {
+      "name": "cover",
+      "command": "make cover",
+      "description": "Generate code coverage reports"
+    },
+    {
+      "name": "kind-setup",
+      "command": "make kind-setup",
+      "description": "Set up local Kind cluster for e2e testing"
+    },
+    {
+      "name": "kind-test",
+      "command": "make kind-test",
+      "description": "Run deployment validation tests on Kind cluster"
+    }
+  ],
+  "file_patterns": [
+    {
+      "pattern": "*.rs",
+      "language": "rust"
+    },
+    {
+      "pattern": "*.sol",
+      "language": "solidity"
+    },
+    {
+      "pattern": "*.yml",
+      "language": "yaml"
+    },
+    {
+      "pattern": "*.yaml",
+      "language": "yaml"
+    },
+    {
+      "pattern": "Dockerfile*",
+      "language": "dockerfile"
+    },
+    {
+      "pattern": "*.toml",
+      "language": "toml"
+    },
+    {
+      "pattern": "*.md",
+      "language": "markdown"
+    }
+  ]
+}
