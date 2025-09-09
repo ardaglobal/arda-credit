@@ -45,6 +45,7 @@ pub mod pool_api;
 pub mod pool_handlers;
 pub mod rest;
 pub mod server;
+pub mod telemetry;
 pub mod unified_batch_service;
 pub mod withdrawal_service;
 
@@ -124,6 +125,8 @@ pub use credit_line_handlers::{
     CreditLineRequestListResponse, CreditLineRequestQuery, CreditLineRequestResponse,
     EligibilityCheckResponse, PoolBrowsingQuery, SubmitCreditLineRequestBody,
 };
+
+pub use telemetry::{init_tracer, init_tracing, shutdown_telemetry};
 
 // Re-export database types that the API uses
 pub use arda_credit_db::{

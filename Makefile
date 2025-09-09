@@ -50,17 +50,7 @@ deploy:
 .PHONY: up
 up:
 	docker compose up -d
-	@echo "✅ Services started using pre-built image"
-	@echo "🌐 Server: http://localhost:8080"
-	@echo "🗄️  Database: localhost:5432"
-
-## up-dev: Start services (builds locally)
-.PHONY: up-dev
-up-dev:
-	docker compose -f docker compose.yml -f docker compose.dev.yml up --build -d
-	@echo "✅ Services started with local build"
-	@echo "🌐 Server: http://localhost:8080"
-	@echo "🗄️  Database: localhost:5432"
+	@echo "✅ Backgrond Services starting"
 
 ## down: Stop all services
 .PHONY: down
@@ -195,13 +185,10 @@ cli:
 
 ## server: Start API server locally
 .PHONY: server
-server:
-	@echo "Starting PostgreSQL database..."
-	docker compose up postgres -d
+server: up
 	@sleep 2
+	@echo "Running database migrations..."
 	sqlx migrate run --source db/migrations
-	@echo "Starting API server locally (requires database)..."
-	@echo "💡 Tip: Run 'make up postgres' in another terminal first"
 	cargo run --bin server --release
 
 ## forge-build: Build smart contracts

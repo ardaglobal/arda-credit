@@ -71,6 +71,14 @@ argon2       = "0.5"                                         # Password hashing
 jsonwebtoken = "9.3"                                         # JWT token generation/validation
 validator    = { version = "0.20", features = [ "derive" ] } # Email/password validation
 
+# OpenTelemetry dependencies (compatible versions)
+opentelemetry                      = { version = "0.20.0", features = [ "metrics", "rt-tokio", "trace" ] }
+opentelemetry-otlp                 = { version = "0.13.0", features = [ "metrics", "trace" ] }
+opentelemetry-proto                = { version = "0.3.0" }
+opentelemetry-semantic-conventions = { version = "0.12.0" }
+tonic                              = { version = "0.9.0", features = [ "tls-roots" ] }
+tracing-opentelemetry              = { version = "0.20.0" }
+
 # Middleware dependencies
 blake3 = "1"
 rand   = "0.9"

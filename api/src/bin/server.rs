@@ -8,7 +8,7 @@
 //! cd api && cargo run --bin server
 //! ```
 
-use api::{ApiConfig, ApiServer, ApiServerConfig};
+use api::{init_tracing, shutdown_telemetry, ApiConfig, ApiServer, ApiServerConfig};
 use arda_credit_db::init_db;
 use clap::Parser;
 use tracing::{error, info};
@@ -49,19 +49,20 @@ struct Args {
 #[tokio::main]
 #[allow(clippy::too_many_lines)]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    // Load environment variables from .env file if present
+    dotenv::dotenv().ok();
+
+    // Initialize complete tracing setup with OpenTelemetry integration
+    let _tracer = init_tracing().map_err(|e| {
+        error!("Failed to initialize tracing: {}", e);
+        e
+    })?;
 
     // Parse command line arguments
     let args = Args::parse();
 
     info!("🚀 Starting Batch Processing API Server");
     info!("📍 Server will bind to {}:{}", args.host, args.port);
-
-    // Load environment variables from .env file if present
-    dotenv::dotenv().ok();
 
     // Initialize database connection
     info!("📊 Initializing database connection...");
@@ -193,9 +194,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("🎊 Server ready for requests!");
     println!();
 
-    // Start server
-    if let Err(e) = axum::serve(listener, app).await {
+    // Setup graceful shutdown
+    let shutdown_signal = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install CTRL+C signal handler");
+        info!("Shutdown signal received");
+        shutdown_telemetry().await;
+    };
+
+    // Start server with graceful shutdown
+    info!("🚀 Starting server on {}", bind_address);
+    if let Err(e) = axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal)
+        .await
+    {
         error!("❌ Server error: {e}");
+        shutdown_telemetry().await;
         std::process::exit(1);
     }
 
