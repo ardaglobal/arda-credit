@@ -1,0 +1,424 @@
+# PostgreSQL Exporter Custom Queries for Arda Credit
+# These queries provide comprehensive database monitoring while preserving privacy
+# constraints defined in ARCHITECTURE.md
+
+# Database size and growth metrics
+pg_database_size:
+  query: "SELECT pg_database.datname, pg_database_size(pg_database.datname) as size FROM pg_database WHERE datname = 'arda_credit_db'"
+  master: true
+  cache_seconds: 30
+  metrics:
+    - datname:
+        usage: "LABEL"
+        description: "Name of the database"
+    - size:
+        usage: "GAUGE"
+        description: "Size of the database in bytes"
+
+# Connection and transaction statistics
+pg_stat_database:
+  query: |
+    SELECT 
+      datname,
+      numbackends as active_connections,
+      xact_commit as transactions_committed,
+      xact_rollback as transactions_rolled_back,
+      blks_read as blocks_read,
+      blks_hit as blocks_hit,
+      tup_returned as tuples_returned,
+      tup_fetched as tuples_fetched,
+      tup_inserted as tuples_inserted,
+      tup_updated as tuples_updated,
+      tup_deleted as tuples_deleted,
+      conflicts as conflicts,
+      temp_files as temp_files,
+      temp_bytes as temp_bytes,
+      deadlocks as deadlocks
+    FROM pg_stat_database 
+    WHERE datname = 'arda_credit_db'
+  master: true
+  cache_seconds: 30
+  metrics:
+    - datname:
+        usage: "LABEL"
+        description: "Database name"
+    - active_connections:
+        usage: "GAUGE"
+        description: "Number of active connections to this database"
+    - transactions_committed:
+        usage: "COUNTER"
+        description: "Number of transactions committed in this database"
+    - transactions_rolled_back:
+        usage: "COUNTER"
+        description: "Number of transactions rolled back in this database"
+    - blocks_read:
+        usage: "COUNTER"
+        description: "Number of disk blocks read in this database"
+    - blocks_hit:
+        usage: "COUNTER"
+        description: "Number of buffer hits in this database"
+    - tuples_returned:
+        usage: "COUNTER"
+        description: "Number of tuples returned by queries in this database"
+    - tuples_fetched:
+        usage: "COUNTER"
+        description: "Number of tuples fetched by queries in this database"
+    - tuples_inserted:
+        usage: "COUNTER"
+        description: "Number of tuples inserted by queries in this database"
+    - tuples_updated:
+        usage: "COUNTER"
+        description: "Number of tuples updated by queries in this database"
+    - tuples_deleted:
+        usage: "COUNTER"
+        description: "Number of tuples deleted by queries in this database"
+    - conflicts:
+        usage: "COUNTER"
+        description: "Number of queries canceled due to conflicts with recovery"
+    - temp_files:
+        usage: "COUNTER"
+        description: "Number of temporary files created by queries"
+    - temp_bytes:
+        usage: "COUNTER"
+        description: "Total amount of data written to temporary files"
+    - deadlocks:
+        usage: "COUNTER"
+        description: "Number of deadlocks detected in this database"
+
+# Table statistics summary (aggregate metrics, no table names to avoid data leakage)
+pg_stat_user_tables_summary:
+  query: |
+    SELECT 
+      'arda_credit_summary' as summary_name,
+      COUNT(*) as total_tables,
+      SUM(n_tup_ins) as total_inserts,
+      SUM(n_tup_upd) as total_updates,
+      SUM(n_tup_del) as total_deletes,
+      SUM(n_tup_hot_upd) as total_hot_updates,
+      SUM(seq_scan) as total_sequential_scans,
+      SUM(seq_tup_read) as total_sequential_tuples_read,
+      SUM(idx_scan) as total_index_scans,
+      SUM(idx_tup_fetch) as total_index_tuples_fetched,
+      SUM(n_live_tup) as total_live_tuples,
+      SUM(n_dead_tup) as total_dead_tuples
+    FROM pg_stat_user_tables
+  master: true
+  cache_seconds: 60
+  metrics:
+    - summary_name:
+        usage: "LABEL"
+        description: "Summary identifier"
+    - total_tables:
+        usage: "GAUGE"
+        description: "Total number of user tables"
+    - total_inserts:
+        usage: "COUNTER"
+        description: "Total number of tuples inserted across all tables"
+    - total_updates:
+        usage: "COUNTER"
+        description: "Total number of tuples updated across all tables"
+    - total_deletes:
+        usage: "COUNTER"
+        description: "Total number of tuples deleted across all tables"
+    - total_hot_updates:
+        usage: "COUNTER"
+        description: "Total number of tuples HOT updated across all tables"
+    - total_sequential_scans:
+        usage: "COUNTER"
+        description: "Total number of sequential scans across all tables"
+    - total_sequential_tuples_read:
+        usage: "COUNTER"
+        description: "Total number of live tuples fetched by sequential scans"
+    - total_index_scans:
+        usage: "COUNTER"
+        description: "Total number of index scans across all tables"
+    - total_index_tuples_fetched:
+        usage: "COUNTER"
+        description: "Total number of live tuples fetched by index scans"
+    - total_live_tuples:
+        usage: "GAUGE"
+        description: "Estimated number of live tuples across all tables"
+    - total_dead_tuples:
+        usage: "GAUGE"
+        description: "Estimated number of dead tuples across all tables"
+
+# Index usage efficiency summary
+pg_stat_user_indexes_summary:
+  query: |
+    SELECT 
+      'index_efficiency' as metric_name,
+      COUNT(*) as total_indexes,
+      SUM(idx_scan) as total_index_scans,
+      SUM(idx_tup_read) as total_index_tuples_read,
+      SUM(idx_tup_fetch) as total_index_tuples_fetched,
+      CASE 
+        WHEN SUM(idx_scan + seq_scan) = 0 THEN 0
+        ELSE (SUM(idx_scan)::float / SUM(idx_scan + seq_scan) * 100)
+      END as index_usage_ratio_percent
+    FROM pg_stat_user_indexes 
+    JOIN pg_stat_user_tables USING (relid)
+  master: true
+  cache_seconds: 60
+  metrics:
+    - metric_name:
+        usage: "LABEL"
+        description: "Metric identifier"
+    - total_indexes:
+        usage: "GAUGE"
+        description: "Total number of user indexes"
+    - total_index_scans:
+        usage: "COUNTER"
+        description: "Total number of index scans"
+    - total_index_tuples_read:
+        usage: "COUNTER"
+        description: "Total number of index entries returned by scans"
+    - total_index_tuples_fetched:
+        usage: "COUNTER"
+        description: "Total number of live table rows fetched by index scans"
+    - index_usage_ratio_percent:
+        usage: "GAUGE"
+        description: "Percentage of scans that used indexes vs sequential scans"
+
+# Lock statistics (critical for performance monitoring)
+pg_locks_summary:
+  query: |
+    SELECT 
+      mode,
+      COUNT(*) as lock_count
+    FROM pg_locks 
+    WHERE database = (SELECT oid FROM pg_database WHERE datname = 'arda_credit_db')
+    GROUP BY mode
+  master: true
+  cache_seconds: 10
+  metrics:
+    - mode:
+        usage: "LABEL"
+        description: "Lock mode"
+    - lock_count:
+        usage: "GAUGE"
+        description: "Number of locks in this mode"
+
+# Query performance statistics (aggregate only, no query content)
+pg_stat_statements_summary:
+  query: |
+    SELECT 
+      'query_performance' as metric_name,
+      COUNT(*) as total_unique_queries,
+      SUM(calls) as total_calls,
+      SUM(total_exec_time) as total_execution_time_ms,
+      CASE 
+        WHEN SUM(calls) = 0 THEN 0
+        ELSE (SUM(total_exec_time) / SUM(calls))
+      END as average_execution_time_ms,
+      SUM(rows) as total_rows_processed,
+      SUM(shared_blks_hit) as total_shared_blocks_hit,
+      SUM(shared_blks_read) as total_shared_blocks_read,
+      SUM(shared_blks_dirtied) as total_shared_blocks_dirtied,
+      SUM(shared_blks_written) as total_shared_blocks_written,
+      SUM(temp_blks_read) as total_temp_blocks_read,
+      SUM(temp_blks_written) as total_temp_blocks_written
+    FROM pg_stat_statements
+    WHERE dbid = (SELECT oid FROM pg_database WHERE datname = 'arda_credit_db')
+  master: true
+  cache_seconds: 60
+  metrics:
+    - metric_name:
+        usage: "LABEL"
+        description: "Metric identifier"
+    - total_unique_queries:
+        usage: "GAUGE"
+        description: "Total number of unique normalized queries"
+    - total_calls:
+        usage: "COUNTER"
+        description: "Total number of query executions"
+    - total_execution_time_ms:
+        usage: "COUNTER"
+        description: "Total execution time in milliseconds"
+    - average_execution_time_ms:
+        usage: "GAUGE"
+        description: "Average execution time in milliseconds"
+    - total_rows_processed:
+        usage: "COUNTER"
+        description: "Total number of rows processed by all queries"
+    - total_shared_blocks_hit:
+        usage: "COUNTER"
+        description: "Total shared block cache hits"
+    - total_shared_blocks_read:
+        usage: "COUNTER"
+        description: "Total shared blocks read from disk"
+    - total_shared_blocks_dirtied:
+        usage: "COUNTER"
+        description: "Total shared blocks dirtied"
+    - total_shared_blocks_written:
+        usage: "COUNTER"
+        description: "Total shared blocks written to disk"
+    - total_temp_blocks_read:
+        usage: "COUNTER"
+        description: "Total temporary blocks read"
+    - total_temp_blocks_written:
+        usage: "COUNTER"
+        description: "Total temporary blocks written"
+
+# Buffer cache hit ratio (critical performance metric)
+pg_buffer_cache_hit_ratio:
+  query: |
+    SELECT 
+      'buffer_cache' as metric_name,
+      CASE 
+        WHEN (blks_hit + blks_read) = 0 THEN 100
+        ELSE (blks_hit::float / (blks_hit + blks_read) * 100)
+      END as hit_ratio_percent,
+      blks_hit as cache_hits,
+      blks_read as disk_reads,
+      (blks_hit + blks_read) as total_reads
+    FROM pg_stat_database 
+    WHERE datname = 'arda_credit_db'
+  master: true
+  cache_seconds: 30
+  metrics:
+    - metric_name:
+        usage: "LABEL"
+        description: "Metric identifier"
+    - hit_ratio_percent:
+        usage: "GAUGE"
+        description: "Buffer cache hit ratio as percentage"
+    - cache_hits:
+        usage: "COUNTER"
+        description: "Number of buffer cache hits"
+    - disk_reads:
+        usage: "COUNTER"
+        description: "Number of disk reads"
+    - total_reads:
+        usage: "COUNTER"
+        description: "Total number of read operations"
+
+# Checkpoint and WAL statistics
+pg_stat_bgwriter:
+  query: |
+    SELECT 
+      'background_writer' as metric_name,
+      checkpoints_timed,
+      checkpoints_req as checkpoints_requested,
+      checkpoint_write_time,
+      checkpoint_sync_time,
+      buffers_checkpoint,
+      buffers_clean,
+      maxwritten_clean,
+      buffers_backend,
+      buffers_backend_fsync,
+      buffers_alloc as buffers_allocated
+    FROM pg_stat_bgwriter
+  master: true
+  cache_seconds: 60
+  metrics:
+    - metric_name:
+        usage: "LABEL"
+        description: "Metric identifier"
+    - checkpoints_timed:
+        usage: "COUNTER"
+        description: "Number of scheduled checkpoints"
+    - checkpoints_requested:
+        usage: "COUNTER"
+        description: "Number of requested checkpoints"
+    - checkpoint_write_time:
+        usage: "COUNTER"
+        description: "Time spent writing files to disk during checkpoints (ms)"
+    - checkpoint_sync_time:
+        usage: "COUNTER"
+        description: "Time spent synchronizing files to disk during checkpoints (ms)"
+    - buffers_checkpoint:
+        usage: "COUNTER"
+        description: "Number of buffers written during checkpoints"
+    - buffers_clean:
+        usage: "COUNTER"
+        description: "Number of buffers written by background writer"
+    - maxwritten_clean:
+        usage: "COUNTER"
+        description: "Number of times background writer stopped due to too many buffers"
+    - buffers_backend:
+        usage: "COUNTER"
+        description: "Number of buffers written directly by backends"
+    - buffers_backend_fsync:
+        usage: "COUNTER"
+        description: "Number of times backends executed fsync calls"
+    - buffers_allocated:
+        usage: "COUNTER"
+        description: "Number of buffers allocated"
+
+# Replication statistics (if replication is configured)
+pg_stat_replication:
+  query: |
+    SELECT 
+      COALESCE(application_name, 'unknown') as application_name,
+      COALESCE(state, 'unknown') as state,
+      EXTRACT(EPOCH FROM (now() - backend_start))::int as connection_age_seconds,
+      CASE 
+        WHEN pg_last_wal_receive_lsn() IS NULL OR pg_last_wal_replay_lsn() IS NULL THEN 0
+        WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
+        ELSE GREATEST(0, EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())::int)
+      END as lag_seconds
+    FROM pg_stat_replication
+  master: true
+  cache_seconds: 10
+  metrics:
+    - application_name:
+        usage: "LABEL"
+        description: "Name of the application connected to this WAL sender"
+    - state:
+        usage: "LABEL"
+        description: "Current WAL sender state"
+    - connection_age_seconds:
+        usage: "GAUGE"
+        description: "Age of the replication connection in seconds"
+    - lag_seconds:
+        usage: "GAUGE"
+        description: "Replication lag in seconds"
+
+# Vacuum and analyze statistics
+pg_stat_user_tables_maintenance:
+  query: |
+    SELECT 
+      'maintenance_summary' as metric_name,
+      COUNT(*) as total_tables,
+      SUM(vacuum_count) as total_vacuums,
+      SUM(autovacuum_count) as total_autovacuums,
+      SUM(analyze_count) as total_analyzes,
+      SUM(autoanalyze_count) as total_autoanalyzes,
+      EXTRACT(EPOCH FROM (now() - MIN(last_vacuum)))::int as seconds_since_last_vacuum,
+      EXTRACT(EPOCH FROM (now() - MIN(last_autovacuum)))::int as seconds_since_last_autovacuum,
+      EXTRACT(EPOCH FROM (now() - MIN(last_analyze)))::int as seconds_since_last_analyze,
+      EXTRACT(EPOCH FROM (now() - MIN(last_autoanalyze)))::int as seconds_since_last_autoanalyze
+    FROM pg_stat_user_tables
+  master: true
+  cache_seconds: 300
+  metrics:
+    - metric_name:
+        usage: "LABEL"
+        description: "Metric identifier"
+    - total_tables:
+        usage: "GAUGE"
+        description: "Total number of user tables"
+    - total_vacuums:
+        usage: "COUNTER"
+        description: "Total number of manual vacuum operations"
+    - total_autovacuums:
+        usage: "COUNTER"
+        description: "Total number of autovacuum operations"
+    - total_analyzes:
+        usage: "COUNTER"
+        description: "Total number of manual analyze operations"
+    - total_autoanalyzes:
+        usage: "COUNTER"
+        description: "Total number of autoanalyze operations"
+    - seconds_since_last_vacuum:
+        usage: "GAUGE"
+        description: "Seconds since last manual vacuum operation"
+    - seconds_since_last_autovacuum:
+        usage: "GAUGE"
+        description: "Seconds since last autovacuum operation"
+    - seconds_since_last_analyze:
+        usage: "GAUGE"
+        description: "Seconds since last manual analyze operation"
+    - seconds_since_last_autoanalyze:
+        usage: "GAUGE"
+        description: "Seconds since last autoanalyze operation"

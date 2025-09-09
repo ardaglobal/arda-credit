@@ -50,7 +50,8 @@ deploy:
 .PHONY: up
 up:
 	docker compose up -d
-	@echo "✅ Backgrond Services starting"
+	@echo "✅ Background Services starting"
+	@echo "📊 PostgreSQL metrics available at: http://localhost:9187/metrics"
 
 ## down: Stop all services
 .PHONY: down
@@ -422,8 +423,9 @@ setup: install env initDB setup-hooks
 	@echo "🎉 Setup complete! Next steps:"
 	@echo "1. Edit .env and add your SINDRI_API_KEY"
 	@echo "2. Run: make deploy                    # Deploy circuit to Sindri"
-	@echo "3. Run: make up                        # Start services"
-	@echo "4. Run: make deploy-contract-help      # For smart contract deployment"
+	@echo "3. Run: make up                        # Start services (includes PostgreSQL monitoring)"
+	@echo "4. Run: make monitoring-status         # Check monitoring setup"
+	@echo "5. Run: make deploy-contract-help      # For smart contract deployment"
 
 ## deny: Run deny
 .PHONY: deny
@@ -529,3 +531,96 @@ kind-rebuild:
 kind-test:
 	@echo "🧪 Running deployment validation tests..."
 	cd helm/e2e && ./tests/test-deployment.sh
+
+## monitoring-status: Check PostgreSQL exporter status
+.PHONY: monitoring-status
+monitoring-status:
+	@echo "📊 PostgreSQL Monitoring Status:"
+	@echo ""
+	@echo "🐳 Docker Compose Services:"
+	@if docker ps --filter "name=arda_credit_postgres" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -q arda_credit_postgres; then \
+		docker ps --filter "name=arda_credit_postgres" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"; \
+	else \
+		echo "❌ PostgreSQL services not running. Run 'make up' to start."; \
+	fi
+	@echo ""
+	@echo "📈 Metrics Endpoints:"
+	@if curl -s http://localhost:9187/metrics > /dev/null 2>&1; then \
+		echo "✅ PostgreSQL Exporter: http://localhost:9187/metrics"; \
+		echo "📊 Available metrics: $$(curl -s http://localhost:9187/metrics | grep -c '^# HELP')"; \
+	else \
+		echo "❌ PostgreSQL Exporter: http://localhost:9187/metrics (not accessible)"; \
+	fi
+	@echo ""
+	@echo "☸️  Kubernetes Services (if Kind cluster is running):"
+	@if kind get clusters | grep -q "arda-credit-e2e" 2>/dev/null; then \
+		kubectl get pods -n arda-credit -l app.kubernetes.io/component=postgres-exporter --context=kind-arda-credit-e2e 2>/dev/null || echo "❌ No postgres-exporter pods in Kind cluster"; \
+	else \
+		echo "ℹ️  Kind cluster not running"; \
+	fi
+
+## monitoring-metrics: Show sample PostgreSQL metrics
+.PHONY: monitoring-metrics
+monitoring-metrics:
+	@echo "📊 PostgreSQL Metrics Sample:"
+	@echo ""
+	@if curl -s http://localhost:9187/metrics > /dev/null 2>&1; then \
+		echo "🔗 Full metrics: http://localhost:9187/metrics"; \
+		echo ""; \
+		echo "📈 Key Database Metrics:"; \
+		curl -s http://localhost:9187/metrics | grep -E "(pg_database_size|pg_stat_database_numbackends|pg_stat_database_xact_commit)" | head -10; \
+		echo ""; \
+		echo "💾 Buffer Cache Metrics:"; \
+		curl -s http://localhost:9187/metrics | grep -E "(pg_buffer_cache_hit_ratio|pg_stat_database_blks)" | head -5; \
+		echo ""; \
+		echo "🔒 Connection Metrics:"; \
+		curl -s http://localhost:9187/metrics | grep -E "pg_stat_database_numbackends" | head -3; \
+	else \
+		echo "❌ PostgreSQL Exporter not accessible at http://localhost:9187/metrics"; \
+		echo "💡 Run 'make up' to start the monitoring services"; \
+	fi
+
+## monitoring-test: Test PostgreSQL exporter configuration
+.PHONY: monitoring-test
+monitoring-test:
+	@echo "🧪 Testing PostgreSQL Exporter Configuration..."
+	@echo ""
+	@echo "1. Checking Docker services..."
+	@if docker ps --filter "name=arda_credit_postgres_exporter" --format "{{.Names}}" | grep -q arda_credit_postgres_exporter; then \
+		echo "✅ PostgreSQL Exporter container is running"; \
+	else \
+		echo "❌ PostgreSQL Exporter container not found"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "2. Testing metrics endpoint..."
+	@if curl -s -f http://localhost:9187/metrics > /dev/null; then \
+		echo "✅ Metrics endpoint is accessible"; \
+	else \
+		echo "❌ Metrics endpoint is not accessible"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "3. Checking custom queries..."
+	@if curl -s http://localhost:9187/metrics | grep -q "pg_database_size"; then \
+		echo "✅ Custom database size metrics found"; \
+	else \
+		echo "❌ Custom database size metrics missing"; \
+		exit 1; \
+	fi
+	@if curl -s http://localhost:9187/metrics | grep -q "pg_buffer_cache_hit_ratio"; then \
+		echo "✅ Custom buffer cache metrics found"; \
+	else \
+		echo "❌ Custom buffer cache metrics missing"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "4. Privacy compliance check..."
+	@if curl -s http://localhost:9187/metrics | grep -qE "(loan_amount|user_id|kyc_status|borrower|lender)"; then \
+		echo "❌ PRIVACY VIOLATION: Sensitive data found in metrics!"; \
+		exit 1; \
+	else \
+		echo "✅ Privacy compliance: No sensitive data detected in metrics"; \
+	fi
+	@echo ""
+	@echo "✅ PostgreSQL Exporter configuration test passed!"

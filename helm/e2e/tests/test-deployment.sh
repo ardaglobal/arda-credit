@@ -333,6 +333,77 @@ display_summary() {
     fi
 }
 
+## test_postgres_exporter: Test PostgreSQL Exporter deployment
+test_postgres_exporter() {
+    log_info "Testing PostgreSQL Exporter deployment..."
+    
+    # Check if postgres-exporter is enabled in values
+    if ! kubectl get deployment --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" 2>/dev/null | grep -q "postgres-exporter"; then
+        test_skipped "PostgreSQL Exporter not enabled"
+        return
+    fi
+    
+    # Check postgres-exporter pod is running
+    if kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/component=postgres-exporter --field-selector=status.phase=Running --no-headers 2>/dev/null | grep -q postgres-exporter; then
+        test_passed "PostgreSQL Exporter pod is running"
+    else
+        test_failed "PostgreSQL Exporter pod is not running"
+        kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/component=postgres-exporter 2>/dev/null || true
+        kubectl logs --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/component=postgres-exporter --tail=10 2>/dev/null || true
+        return
+    fi
+    
+    # Check postgres-exporter service
+    if kubectl get service --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" 2>/dev/null | grep -q "postgres-exporter"; then
+        test_passed "PostgreSQL Exporter service exists"
+    else
+        test_failed "PostgreSQL Exporter service not found"
+        return
+    fi
+    
+    # Test metrics endpoint accessibility
+    log_info "Testing PostgreSQL Exporter metrics endpoint..."
+    local port_forward_pid
+    kubectl port-forward --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" service/arda-credit-postgres-exporter 9187:9187 >/dev/null 2>&1 &
+    port_forward_pid=$!
+    
+    # Wait for port-forward
+    sleep 3
+    
+    # Test metrics endpoint
+    if curl -s -f "http://localhost:9187/metrics" >/dev/null 2>&1; then
+        test_passed "PostgreSQL Exporter metrics endpoint accessible"
+        
+        # Test for specific metrics
+        local metrics_response
+        metrics_response=$(curl -s "http://localhost:9187/metrics" 2>/dev/null || echo "")
+        
+        if echo "${metrics_response}" | grep -q "pg_up 1"; then
+            test_passed "PostgreSQL connection confirmed"
+        else
+            test_failed "PostgreSQL connection failed"
+        fi
+        
+        if echo "${metrics_response}" | grep -q "pg_database_size"; then
+            test_passed "Custom database metrics available"
+        else
+            test_warning "Custom database metrics not found"
+        fi
+        
+        # Privacy compliance check
+        if echo "${metrics_response}" | grep -qE "(loan_amount|user_id|kyc_status|borrower|lender)"; then
+            test_failed "PRIVACY VIOLATION: Sensitive data found in metrics!"
+        else
+            test_passed "Privacy compliance verified"
+        fi
+    else
+        test_failed "PostgreSQL Exporter metrics endpoint not accessible"
+    fi
+    
+    # Clean up port-forward
+    kill ${port_forward_pid} 2>/dev/null || true
+}
+
 # Main test execution
 main() {
     log_info "Starting Arda Credit deployment validation tests..."
@@ -343,6 +414,7 @@ main() {
     # Run all tests
     test_cluster_health
     test_postgresql
+    test_postgres_exporter
     test_server
     test_app
     test_api_health

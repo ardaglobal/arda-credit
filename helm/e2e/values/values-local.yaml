@@ -60,6 +60,32 @@ postgresql:
           -- Create test database with proper permissions
           CREATE DATABASE arda_credit_db_local;
           GRANT ALL PRIVILEGES ON DATABASE arda_credit_db_local TO postgres;
+          
+          -- Enable pg_stat_statements extension for query performance monitoring
+          -- This is safe and provides aggregate query metrics without exposing sensitive data
+          CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
+  # PostgreSQL Exporter configuration for local development
+  exporter:
+    enabled: true
+    
+    # Use minimal resources for local development
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    
+    # Expose via NodePort for easy access during development
+    service:
+      type: NodePort
+      port: 9187
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: "/metrics"
 
 # API Server configuration - use local registry image
 server:

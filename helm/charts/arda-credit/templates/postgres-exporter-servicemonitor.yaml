@@ -1,0 +1,37 @@
+{{- if and .Values.postgresql.exporter.enabled .Values.postgresql.exporter.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-postgres-exporter
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+    {{- with .Values.postgresql.exporter.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.postgresql.exporter.serviceMonitor.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "arda-credit.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres-exporter
+  endpoints:
+  - port: http-metrics
+    interval: {{ .Values.postgresql.exporter.serviceMonitor.interval | default "30s" }}
+    path: /metrics
+    scrapeTimeout: {{ .Values.postgresql.exporter.serviceMonitor.scrapeTimeout | default "10s" }}
+    {{- with .Values.postgresql.exporter.serviceMonitor.relabelings }}
+    relabelings:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.postgresql.exporter.serviceMonitor.metricRelabelings }}
+    metricRelabelings:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+{{- end }}

@@ -61,6 +61,56 @@ postgresql:
     existingSecret: "external-postgres-secret"
     secretPasswordKey: "password"
 
+  # PostgreSQL Exporter configuration for Prometheus monitoring
+  exporter:
+    # Enable PostgreSQL metrics exporter
+    enabled: true
+    
+    image:
+      registry: quay.io
+      repository: prometheuscommunity/postgres-exporter
+      tag: "v0.15.0"
+      pullPolicy: IfNotPresent
+    
+    # Service configuration
+    service:
+      type: ClusterIP
+      port: 9187
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: "/metrics"
+    
+    # ServiceMonitor for Prometheus Operator
+    serviceMonitor:
+      enabled: false  # Enable if using Prometheus Operator
+      interval: "30s"
+      scrapeTimeout: "10s"
+      labels: {}
+      annotations: {}
+      relabelings: []
+      metricRelabelings: []
+    
+    # Exporter configuration
+    disableDefaultMetrics: false
+    disableSettingsMetrics: false
+    autoDiscoverDatabases: true
+    excludeDatabases: "template0,template1"
+    
+    # Resource limits
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    
+    # Node placement configuration
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
 # API Server configuration
 server:
   enabled: true

@@ -1,0 +1,23 @@
+{{- if .Values.postgresql.exporter.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-postgres-exporter
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+  {{- with .Values.postgresql.exporter.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.postgresql.exporter.service.type }}
+  ports:
+    - port: {{ .Values.postgresql.exporter.service.port }}
+      targetPort: http-metrics
+      protocol: TCP
+      name: http-metrics
+  selector:
+    {{- include "arda-credit.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+{{- end }}

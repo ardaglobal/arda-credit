@@ -1,0 +1,252 @@
+{{- if .Values.postgresql.exporter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-postgres-exporter-queries
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+data:
+  queries.yaml: |
+    # Custom PostgreSQL queries for Arda Credit monitoring
+    # These queries are designed to preserve privacy while providing essential monitoring metrics
+    
+    # Database size and growth metrics
+    pg_database_size:
+      query: "SELECT pg_database.datname, pg_database_size(pg_database.datname) as size FROM pg_database"
+      master: true
+      cache_seconds: 30
+      metrics:
+        - datname:
+            usage: "LABEL"
+            description: "Name of the database"
+        - size:
+            usage: "GAUGE"
+            description: "Size of the database in bytes"
+    
+    # Connection statistics (aggregate only, no user details)
+    pg_stat_database:
+      query: |
+        SELECT 
+          datname,
+          numbackends as active_connections,
+          xact_commit as transactions_committed,
+          xact_rollback as transactions_rolled_back,
+          blks_read as blocks_read,
+          blks_hit as blocks_hit,
+          tup_returned as tuples_returned,
+          tup_fetched as tuples_fetched,
+          tup_inserted as tuples_inserted,
+          tup_updated as tuples_updated,
+          tup_deleted as tuples_deleted
+        FROM pg_stat_database 
+        WHERE datname = '{{ .Values.postgresql.auth.database }}'
+      master: true
+      cache_seconds: 30
+      metrics:
+        - datname:
+            usage: "LABEL"
+            description: "Database name"
+        - active_connections:
+            usage: "GAUGE"
+            description: "Number of active connections to this database"
+        - transactions_committed:
+            usage: "COUNTER"
+            description: "Number of transactions committed in this database"
+        - transactions_rolled_back:
+            usage: "COUNTER"
+            description: "Number of transactions rolled back in this database"
+        - blocks_read:
+            usage: "COUNTER"
+            description: "Number of disk blocks read in this database"
+        - blocks_hit:
+            usage: "COUNTER"
+            description: "Number of buffer hits in this database"
+        - tuples_returned:
+            usage: "COUNTER"
+            description: "Number of tuples returned by queries in this database"
+        - tuples_fetched:
+            usage: "COUNTER"
+            description: "Number of tuples fetched by queries in this database"
+        - tuples_inserted:
+            usage: "COUNTER"
+            description: "Number of tuples inserted by queries in this database"
+        - tuples_updated:
+            usage: "COUNTER"
+            description: "Number of tuples updated by queries in this database"
+        - tuples_deleted:
+            usage: "COUNTER"
+            description: "Number of tuples deleted by queries in this database"
+    
+    # Table statistics (aggregate metrics only, no sensitive data)
+    pg_stat_user_tables_summary:
+      query: |
+        SELECT 
+          'arda_credit_summary' as summary_name,
+          COUNT(*) as total_tables,
+          SUM(n_tup_ins) as total_inserts,
+          SUM(n_tup_upd) as total_updates,
+          SUM(n_tup_del) as total_deletes,
+          SUM(n_tup_hot_upd) as total_hot_updates,
+          SUM(seq_scan) as total_sequential_scans,
+          SUM(idx_scan) as total_index_scans
+        FROM pg_stat_user_tables
+      master: true
+      cache_seconds: 60
+      metrics:
+        - summary_name:
+            usage: "LABEL"
+            description: "Summary identifier"
+        - total_tables:
+            usage: "GAUGE"
+            description: "Total number of user tables"
+        - total_inserts:
+            usage: "COUNTER"
+            description: "Total number of tuples inserted across all tables"
+        - total_updates:
+            usage: "COUNTER"
+            description: "Total number of tuples updated across all tables"
+        - total_deletes:
+            usage: "COUNTER"
+            description: "Total number of tuples deleted across all tables"
+        - total_hot_updates:
+            usage: "COUNTER"
+            description: "Total number of tuples HOT updated across all tables"
+        - total_sequential_scans:
+            usage: "COUNTER"
+            description: "Total number of sequential scans across all tables"
+        - total_index_scans:
+            usage: "COUNTER"
+            description: "Total number of index scans across all tables"
+    
+    # Index usage efficiency (no sensitive data)
+    pg_stat_user_indexes_summary:
+      query: |
+        SELECT 
+          'index_efficiency' as metric_name,
+          COUNT(*) as total_indexes,
+          SUM(idx_scan) as total_index_scans,
+          SUM(idx_tup_read) as total_index_tuples_read,
+          SUM(idx_tup_fetch) as total_index_tuples_fetched
+        FROM pg_stat_user_indexes
+      master: true
+      cache_seconds: 60
+      metrics:
+        - metric_name:
+            usage: "LABEL"
+            description: "Metric identifier"
+        - total_indexes:
+            usage: "GAUGE"
+            description: "Total number of user indexes"
+        - total_index_scans:
+            usage: "COUNTER"
+            description: "Total number of index scans"
+        - total_index_tuples_read:
+            usage: "COUNTER"
+            description: "Total number of index entries returned by scans"
+        - total_index_tuples_fetched:
+            usage: "COUNTER"
+            description: "Total number of live table rows fetched by index scans"
+    
+    # Lock statistics (important for performance monitoring)
+    pg_locks_summary:
+      query: |
+        SELECT 
+          mode,
+          COUNT(*) as lock_count
+        FROM pg_locks 
+        WHERE database = (SELECT oid FROM pg_database WHERE datname = '{{ .Values.postgresql.auth.database }}')
+        GROUP BY mode
+      master: true
+      cache_seconds: 10
+      metrics:
+        - mode:
+            usage: "LABEL"
+            description: "Lock mode"
+        - lock_count:
+            usage: "GAUGE"
+            description: "Number of locks in this mode"
+    
+    # Query performance (aggregate timing only, no query content)
+    pg_stat_statements_summary:
+      query: |
+        SELECT 
+          'query_performance' as metric_name,
+          COUNT(*) as total_queries,
+          SUM(calls) as total_calls,
+          SUM(total_exec_time) as total_execution_time_ms,
+          AVG(mean_exec_time) as average_execution_time_ms,
+          SUM(rows) as total_rows_processed
+        FROM pg_stat_statements
+        WHERE dbid = (SELECT oid FROM pg_database WHERE datname = '{{ .Values.postgresql.auth.database }}')
+      master: true
+      cache_seconds: 60
+      metrics:
+        - metric_name:
+            usage: "LABEL"
+            description: "Metric identifier"
+        - total_queries:
+            usage: "GAUGE"
+            description: "Total number of unique queries"
+        - total_calls:
+            usage: "COUNTER"
+            description: "Total number of query executions"
+        - total_execution_time_ms:
+            usage: "COUNTER"
+            description: "Total execution time in milliseconds"
+        - average_execution_time_ms:
+            usage: "GAUGE"
+            description: "Average execution time in milliseconds"
+        - total_rows_processed:
+            usage: "COUNTER"
+            description: "Total number of rows processed by all queries"
+    
+    # Replication lag (if applicable)
+    pg_stat_replication:
+      query: |
+        SELECT 
+          application_name,
+          state,
+          EXTRACT(EPOCH FROM (now() - backend_start)) as connection_age_seconds,
+          CASE 
+            WHEN pg_last_wal_receive_lsn() = pg_last_wal_replay_lsn() THEN 0
+            ELSE EXTRACT(EPOCH FROM now() - pg_last_xact_replay_timestamp())
+          END as lag_seconds
+        FROM pg_stat_replication
+      master: true
+      cache_seconds: 10
+      metrics:
+        - application_name:
+            usage: "LABEL"
+            description: "Name of the application connected to this WAL sender"
+        - state:
+            usage: "LABEL"
+            description: "Current WAL sender state"
+        - connection_age_seconds:
+            usage: "GAUGE"
+            description: "Age of the connection in seconds"
+        - lag_seconds:
+            usage: "GAUGE"
+            description: "Replication lag in seconds"
+    
+    # Buffer cache hit ratio (important for performance)
+    pg_buffer_cache_hit_ratio:
+      query: |
+        SELECT 
+          'buffer_cache' as metric_name,
+          CASE 
+            WHEN (blks_hit + blks_read) = 0 THEN 100
+            ELSE (blks_hit::float / (blks_hit + blks_read) * 100)
+          END as hit_ratio_percent
+        FROM pg_stat_database 
+        WHERE datname = '{{ .Values.postgresql.auth.database }}'
+      master: true
+      cache_seconds: 30
+      metrics:
+        - metric_name:
+            usage: "LABEL"
+            description: "Metric identifier"
+        - hit_ratio_percent:
+            usage: "GAUGE"
+            description: "Buffer cache hit ratio as percentage"
+{{- end }}
