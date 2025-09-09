@@ -331,7 +331,16 @@ function ensure_sindri() {
   check_cmd sindri && return
   
   ensure_nodejs
-  npm install -g sindri@latest
+  
+  # Try global install first, fallback to user install if permissions fail
+  if ! npm install -g sindri@latest 2>/dev/null; then
+    warn "Global npm install failed, trying user install"
+    npm install --prefix="$HOME/.local" sindri@latest
+    # Add local npm bin to PATH if not already there
+    if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+      export PATH="$HOME/.local/bin:$PATH"
+    fi
+  fi
 }
 
 # taplo (TOML formatter)
@@ -364,11 +373,11 @@ function ensure_yamllint() {
   
   case $OS in
   Linux)
+    # Use system package manager to avoid pip externally-managed-environment issues
     local cmd=$(
       cat <<-EOF
     apt-get update &&
-    apt-get install -y --no-install-recommends python3 python3-pip &&
-    pip3 install yamllint
+    apt-get install -y --no-install-recommends yamllint
 EOF
     )
     try_sudo "$cmd"
@@ -388,9 +397,10 @@ function ensure_actionlint() {
 
   case $OS in
   Linux)
+    # Fixed repository URL (rhysd not rhymond) and updated to latest version
     local cmd=$(
       cat <<-EOF
-    curl -Ls "https://github.com/rhymond/actionlint/releases/download/v1.6.26/actionlint_1.6.26_linux_amd64.tar.gz" | \
+    curl -Ls "https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz" | \
     tar -xz -C /tmp && \
     mv /tmp/actionlint /usr/local/bin/actionlint && \
     chmod +x /usr/local/bin/actionlint
