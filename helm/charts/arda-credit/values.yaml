@@ -61,6 +61,42 @@ postgresql:
     existingSecret: "external-postgres-secret"
     secretPasswordKey: "password"
 
+  # PostgreSQL Exporter for monitoring
+  metrics:
+    enabled: true
+    image:
+      registry: docker.io
+      repository: prometheuscommunity/postgres-exporter
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    
+    service:
+      type: ClusterIP
+      port: 9187
+      targetPort: 9187
+      annotations: {}
+    
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
+    
+    # ServiceMonitor configuration for Prometheus scraping
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+      scrapeTimeout: 10s
+      labels: {}
+      annotations: {}
+    
+    # Node placement configuration for postgres-exporter
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
 # API Server configuration
 server:
   enabled: true

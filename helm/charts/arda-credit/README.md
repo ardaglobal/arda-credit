@@ -76,6 +76,42 @@ helm install arda-credit ./helm/charts/arda-credit \
   --namespace arda-credit
 ```
 
+## PostgreSQL Monitoring
+
+The chart includes PostgreSQL monitoring via `postgres_exporter`:
+
+- **Automatic Setup**: When `postgresql.enabled=true` and `postgresql.metrics.enabled=true`
+- **Metrics Endpoint**: Exposes PostgreSQL metrics on port 9187
+- **Prometheus Integration**: ServiceMonitor automatically configured for scraping
+- **Key Metrics**: Connection counts, query performance, database size, replication lag
+
+### Monitoring Configuration
+
+```bash
+# Enable PostgreSQL monitoring (default: enabled)
+helm install arda-credit ./helm/charts/arda-credit \
+  --set postgresql.metrics.enabled=true \
+  --set postgresql.metrics.serviceMonitor.enabled=true \
+  --set postgresql.metrics.serviceMonitor.interval=30s
+
+# Disable PostgreSQL monitoring
+helm install arda-credit ./helm/charts/arda-credit \
+  --set postgresql.metrics.enabled=false
+```
+
+### Available Metrics
+
+The postgres-exporter provides comprehensive database metrics including:
+
+- `pg_up` - Database server availability
+- `pg_database_size_bytes` - Database size in bytes
+- `pg_stat_database_*` - Database activity statistics
+- `pg_stat_bgwriter_*` - Background writer statistics
+- `pg_locks_*` - Lock information
+- `pg_stat_replication_*` - Replication statistics (if applicable)
+
+Access metrics at: `http://<service-name>:9187/metrics`
+
 ## Configuration
 
 Key configuration options in `values.yaml`:
@@ -106,6 +142,8 @@ Key configuration options in `values.yaml`:
 | **Database** |
 | `postgresql.enabled` | Use bundled PostgreSQL | `true` |
 | `postgresql.auth.password` | PostgreSQL password | `"change-me-in-production"` |
+| `postgresql.metrics.enabled` | Enable PostgreSQL metrics exporter | `true` |
+| `postgresql.metrics.serviceMonitor.enabled` | Enable Prometheus ServiceMonitor | `true` |
 | **Ingress** |
 | `ingress.enabled` | Enable ingress | `true` |
 | `ingress.className` | Ingress class (nginx/alb) | `"nginx"` |

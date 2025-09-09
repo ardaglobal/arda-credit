@@ -67,6 +67,30 @@ Public Data (Verifiable):
 - [Docker](https://docs.docker.com/get-docker/) for database
 - [Node.js](https://nodejs.org/) for Sindri CLI
 
+## Monitoring & Telemetry
+
+The system includes comprehensive monitoring capabilities:
+
+- **PostgreSQL Metrics**: Automatically enabled via `postgres-exporter`
+  - Database performance metrics (connections, queries, locks)
+  - Storage utilization and growth tracking
+  - Replication status and lag monitoring
+- **Application Metrics**: Prometheus-compatible metrics on port 9090
+- **Health Endpoints**: `/api/v1/health` for service monitoring
+- **Distributed Tracing**: Jaeger integration for request tracing
+
+### Local Development
+```bash
+# Start with postgres-exporter enabled
+docker-compose up -d
+
+# Access PostgreSQL metrics
+curl http://localhost:9187/metrics
+```
+
+### Production (Kubernetes)
+PostgreSQL monitoring is enabled by default in Helm deployments with ServiceMonitor for Prometheus scraping.
+
 ## Quick Start
 
 **🚀 Complete Setup**
