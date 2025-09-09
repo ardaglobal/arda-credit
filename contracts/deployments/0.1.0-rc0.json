@@ -1,0 +1,11 @@
+{
+  "contractAddress": "0x86Da7D0DaF3E456818fACDD919302c50363e1890",
+  "deploymentTx": "0x9bec1a25e2838f05dc09edb73a2d4eed5e23790c891e5c29014c5bbe87499dd4",
+  "blockNumber": "9167548",
+  "network": "sepolia",
+  "timestamp": "2025-09-09T13:59:49+00:00",
+  "tag": "contracts-v0.1.0-rc0",
+  "commit": "247857108258b700e360560ca010fdcc052cd019",
+  "verifier": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+  "programVKey": "0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b"
+}
