@@ -110,7 +110,7 @@ make test-e2e-teardown    # Cleanup
 ### 🛠️ Architecture-Aware Workflow Design
 **WORKFLOW**: Before designing any developer workflow, consult the architecture:
 
-1. **Read Workflow Interconnections**: `grep -A 10 "workflow.*interconnection" .claude/agents/ARCHITECTURE.md`
+1. **Read Workflow Interconnections**: `grep -A 10 "Developer Workflow Interconnections" .claude/agents/ARCHITECTURE.md`
 2. **Map Command Cascades**: Understand which CLI commands trigger multi-system interactions
 3. **Design Abstraction Layers**: Hide architectural complexity while preserving essential visibility  
 4. **Plan Error Handling**: Use failure cascade patterns to design helpful error messages

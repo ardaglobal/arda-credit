@@ -40,7 +40,7 @@ You exist because **someone needs to see the big picture and coordinate the piec
 ### 🎭 Architecture-Informed Coordination Process  
 **WORKFLOW**: Before orchestrating any multi-domain work, consult the architecture:
 
-1. **Read Feature Mapping**: `grep -A 15 "multi.*domain.*feature" .claude/agents/ARCHITECTURE.md`
+1. **Read Feature Mapping**: `grep -A 10 "Component Knowledge Graph" .claude/agents/ARCHITECTURE.md`
 2. **Analyze System Dependencies**: Use the component knowledge graph to identify coordination requirements
 3. **Plan Agent Coordination**: Map feature requirements to Systems Architect vs Developer Experience domains  
 4. **Assess Risk & Complexity**: Use failure cascade patterns to identify high-risk integration points
