@@ -224,6 +224,85 @@ This command will:
 
 **If tests fail, the push will be blocked.** Agents should fix any test failures before proceeding.
 
+### Semantic Commit Requirements
+
+**All commits MUST follow the Conventional Commits specification** as defined at [https://www.conventionalcommits.org/en/v1.0.0/](https://www.conventionalcommits.org/en/v1.0.0/).
+
+#### Commit Message Format
+```
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+#### Commit Types
+- **`feat`**: A new feature (correlates with MINOR in Semantic Versioning)
+- **`fix`**: A bug fix (correlates with PATCH in Semantic Versioning)
+- **`docs`**: Documentation only changes
+- **`style`**: Changes that do not affect the meaning of the code (white-space, formatting, etc.)
+- **`refactor`**: A code change that neither fixes a bug nor adds a feature
+- **`perf`**: A code change that improves performance
+- **`test`**: Adding missing tests or correcting existing tests
+- **`build`**: Changes that affect the build system or external dependencies
+- **`ci`**: Changes to CI configuration files and scripts
+- **`chore`**: Other changes that don't modify src or test files
+
+#### Breaking Changes
+- Use `!` after type/scope: `feat(api)!: remove deprecated endpoint`
+- Or add `BREAKING CHANGE:` footer with description
+
+#### Examples
+
+**Feature commit:**
+```
+feat: add liquidity pool creation endpoint
+
+Add new API endpoint for investors to create yield-bearing liquidity pools
+with configurable LTV ratios and interest rates.
+```
+
+**Bug fix with scope:**
+```
+fix(api): handle null pointer in withdrawal validation
+
+Prevent panic when validating withdrawal requests with missing metadata.
+Added null checks before processing withdrawal transactions.
+```
+
+**Breaking change:**
+```
+feat!: migrate to new ZK proof format
+
+BREAKING CHANGE: Old proof verification contracts are no longer compatible
+and must be redeployed with the new verification key.
+```
+
+**Documentation update:**
+```
+docs: update withdrawal API documentation
+
+Add examples for the new withdrawal flow with ZK proof integration.
+```
+
+#### Benefits for Arda Credit
+
+1. **Automated Versioning**: Commit types automatically determine semantic version bumps
+2. **Clear Change History**: Easy to understand what changed and why
+3. **Release Automation**: Generate changelogs and releases automatically
+4. **Team Coordination**: Consistent commit messages across all contributors
+5. **Audit Trail**: Clear history of feature additions, bug fixes, and breaking changes
+
+#### Scope Usage
+Use scopes to indicate which part of the codebase is affected:
+- `api`: API server changes
+- `db`: Database schema/migrations
+- `cli`: CLI tool changes
+- `zk`: Zero-knowledge proof logic
+- `contracts`: Smart contract changes
+- `test`: Test-related changes
+
 ### Development Environment Setup
 
 Agents should ensure the following setup is in place:
