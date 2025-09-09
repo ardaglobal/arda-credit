@@ -76,16 +76,19 @@ async fn test_partial_user_profile_updates() {
     assert_eq!(update_result.email, test_email); // Should remain unchanged
 
     // Test 3: Update only wallet_address
-    let wallet_addr = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5";
+    let wallet_addr = format!(
+        "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5{:04x}",
+        Utc::now().timestamp() as u16
+    );
     let update_result = update_identity_profile(
         &pool,
         user.id,
-        None,              // email
-        None,              // user_type
-        None,              // jurisdiction
-        None,              // first_name
-        None,              // last_name
-        Some(wallet_addr), // wallet_address
+        None,               // email
+        None,               // user_type
+        None,               // jurisdiction
+        None,               // first_name
+        None,               // last_name
+        Some(&wallet_addr), // wallet_address
     )
     .await
     .expect("Failed to update wallet address");
