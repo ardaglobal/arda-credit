@@ -32,12 +32,30 @@ use crate::credit_line_handlers::{
 };
 // Financial transaction handlers
 use crate::financial_transaction_handlers::{
-    get_account_financial_transactions, get_credit_line_financial_transactions,
-    get_merchant_credit_line_financial_transactions, get_pool_financial_transactions,
-    get_user_financial_summary, get_user_financial_transactions,
-    get_user_pool_financial_transactions, record_account_deposit, record_account_withdrawal,
-    record_credit_line_draw, record_credit_line_payment, record_pool_funding,
+    get_account_financial_transactions,
+    get_credit_line_financial_transactions,
+    get_merchant_credit_line_financial_transactions,
+    get_pool_financial_transactions,
+    get_user_financial_summary,
+    get_user_financial_transactions,
+    get_user_pool_financial_transactions,
+    record_account_deposit,
+    record_account_withdrawal,
+    record_credit_line_draw,
+    record_credit_line_payment,
+    record_pool_funding,
     record_pool_withdrawal,
+
+    // Types for OpenAPI documentation
+    AccountFinancialTransactionResponse,
+    CreateAccountFinancialTransactionRequest,
+    CreateCreditLineFinancialTransactionRequest,
+    CreatePoolFinancialTransactionRequest,
+    CreditLineFinancialTransactionResponse,
+    FinancialSummaryResponse,
+    PaginatedFinancialTransactionsResponse,
+    PoolFinancialTransactionResponse,
+    UnifiedFinancialTransactionResponse,
 };
 use crate::paths;
 use crate::pool_handlers::{
@@ -5863,7 +5881,22 @@ async fn get_pending_withdrawals_endpoint(
         crate::credit_line_handlers::list_credit_line_requests,
         crate::credit_line_handlers::browse_available_pools,
         crate::credit_line_handlers::check_credit_eligibility,
-        crate::credit_line_handlers::submit_credit_line_request
+        crate::credit_line_handlers::submit_credit_line_request,
+
+        // Financial Transaction endpoints
+        crate::financial_transaction_handlers::record_account_deposit,
+        crate::financial_transaction_handlers::record_account_withdrawal,
+        crate::financial_transaction_handlers::get_account_financial_transactions,
+        crate::financial_transaction_handlers::record_pool_funding,
+        crate::financial_transaction_handlers::record_pool_withdrawal,
+        crate::financial_transaction_handlers::get_pool_financial_transactions,
+        crate::financial_transaction_handlers::record_credit_line_draw,
+        crate::financial_transaction_handlers::record_credit_line_payment,
+        crate::financial_transaction_handlers::get_credit_line_financial_transactions,
+        crate::financial_transaction_handlers::get_user_financial_transactions,
+        crate::financial_transaction_handlers::get_user_financial_summary,
+        crate::financial_transaction_handlers::get_user_pool_financial_transactions,
+        crate::financial_transaction_handlers::get_merchant_credit_line_financial_transactions
     ),
     components(
         schemas(
@@ -5979,7 +6012,21 @@ async fn get_pending_withdrawals_endpoint(
             PoolDetailsResponse,
             PoolListResponse,
             UpdatePoolStatusRequest,
-            PoolMatchRequest
+            PoolMatchRequest,
+
+            // Financial Transactions
+            CreateAccountFinancialTransactionRequest,
+            CreatePoolFinancialTransactionRequest,
+            CreateCreditLineFinancialTransactionRequest,
+            AccountFinancialTransactionResponse,
+            PoolFinancialTransactionResponse,
+            CreditLineFinancialTransactionResponse,
+            UnifiedFinancialTransactionResponse,
+            FinancialSummaryResponse,
+            PaginatedFinancialTransactionsResponse<AccountFinancialTransactionResponse>,
+            PaginatedFinancialTransactionsResponse<PoolFinancialTransactionResponse>,
+            PaginatedFinancialTransactionsResponse<CreditLineFinancialTransactionResponse>,
+            PaginatedFinancialTransactionsResponse<UnifiedFinancialTransactionResponse>
         )
     ),
     tags(
@@ -5992,6 +6039,7 @@ async fn get_pending_withdrawals_endpoint(
         (name = "Loans", description = "Loan creation and management"),
         (name = "Liquidity Pools", description = "Liquidity pool creation and management for auto-deployment"),
         (name = "Transactions", description = "Transaction submission and management"),
+        (name = "Financial Transactions", description = "Account, pool, and credit line financial transaction management"),
         (name = "Batches", description = "Batch processing and proof management"),
         (name = "State", description = "System state and proof verification"),
         (name = "Admin", description = "Administrative operations and management")
