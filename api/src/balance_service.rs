@@ -1,6 +1,5 @@
 use arda_credit_db::{
-    get_identity_by_id, get_user_balance_by_address, get_user_balance_by_id,
-    get_user_deposit_balance, DbResult, UserDepositBalance,
+    get_identity_by_id, get_user_balance_by_id, get_user_deposit_balance, DbResult,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};

@@ -1,17 +1,15 @@
 use crate::{BalanceVerificationService, KycValidationService};
 use arda_credit_db::{
-    create_withdrawal_request, get_pending_withdrawal_requests, get_user_id_by_wallet_address,
-    get_withdrawal_request_by_id, get_withdrawal_requests_by_user_address,
-    get_withdrawal_requests_by_user_id, update_withdrawal_request_confirmations,
+    create_withdrawal_request, get_pending_withdrawal_requests, get_withdrawal_request_by_id,
+    get_withdrawal_requests_by_user_address, update_withdrawal_request_confirmations,
     update_withdrawal_request_state, update_withdrawal_request_submitted,
-    update_withdrawal_request_validation, DbResult, WithdrawalRequest,
+    update_withdrawal_request_validation, WithdrawalRequest,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{error, info, instrument, warn};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 /// Withdrawal transaction management service
 #[derive(Debug, Clone)]
