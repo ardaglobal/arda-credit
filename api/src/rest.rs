@@ -532,8 +532,6 @@ pub struct RegisterUserResponse {
 pub struct RegisterMerchantRequest {
     #[schema(example = "merchant@example.com")]
     pub email: String,
-    #[schema(example = "SecureP@ssw0rd123")]
-    pub password: String,
     #[schema(example = "MyBusiness LLC")]
     pub legal_name: String,
     #[schema(example = "MyBusiness Store")]
@@ -621,6 +619,15 @@ pub struct InvestorProfileQuery {
     /// User ID (UUID)
     pub user_id: Option<String>,
     /// User email
+    pub email: Option<String>,
+}
+
+/// Query parameters for merchant profile endpoint
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct MerchantProfileQuery {
+    /// User ID (UUID) to query merchant profile
+    pub user_id: Option<String>,
+    /// User email to query merchant profile
     pub email: Option<String>,
 }
 
@@ -3615,28 +3622,14 @@ async fn register_merchant_endpoint(
 ) -> Result<Json<RegisterMerchantResponse>, (StatusCode, String)> {
     info!("🏪 API: Registering merchant: {}", request.email);
 
-    // Validate email and password using AuthService
+    // Validate email using AuthService
     if let Err(e) = state.auth_service.validate_email(&request.email) {
         warn!("❌ API: Invalid email format for merchant: {}", e);
         return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
     }
 
-    if let Err(e) = state.auth_service.validate_password(&request.password) {
-        warn!("❌ API: Invalid password format for merchant: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
-    }
-
-    // Hash the password
-    let password_hash = match state.auth_service.hash_password(&request.password) {
-        Ok(hash) => hash,
-        Err(e) => {
-            error!("❌ API: Failed to hash password for merchant: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                e.user_message().to_string(),
-            ));
-        }
-    };
+    // For merchants, use empty password (no authentication required)
+    let password_hash = String::new();
 
     // Register the user first as merchant
     match register_or_reregister_user(&state.pool, "merchant", &request.email, &password_hash).await
@@ -3646,7 +3639,58 @@ async fn register_merchant_endpoint(
                 RegisterResult::Created(identity) => identity,
                 RegisterResult::Reregistered(identity) => identity,
                 RegisterResult::AlreadyExists => {
-                    return Err((StatusCode::CONFLICT, "Email already exists".to_string()));
+                    // Email exists - get the existing identity and check if merchant record exists
+                    let existing_identity =
+                        match get_identity_by_email(&state.pool, &request.email).await {
+                            Ok(Some(identity)) => identity,
+                            Ok(None) => {
+                                return Err((
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    "Identity not found after registration check".to_string(),
+                                ));
+                            }
+                            Err(e) => {
+                                error!("❌ API: Failed to get existing identity: {}", e);
+                                return Err((
+                                    StatusCode::INTERNAL_SERVER_ERROR,
+                                    "Failed to retrieve existing identity".to_string(),
+                                ));
+                            }
+                        };
+
+                    // Check if merchant already exists for this user
+                    match get_merchant_by_user_id(&state.pool, existing_identity.id).await {
+                        Ok(Some(merchant)) => {
+                            // Merchant already exists - return success
+                            info!(
+                                "✅ API: Merchant already exists for user: user_id={}, merchant_id={}",
+                                existing_identity.id, merchant.id
+                            );
+                            return Ok(Json(RegisterMerchantResponse {
+                                user_id: existing_identity.id.to_string(),
+                                merchant_id: merchant.id.to_string(),
+                                user_type: UserType::Merchant,
+                                legal_name: merchant.legal_name,
+                                kyc_status: existing_identity.kyc_status,
+                                created_at: existing_identity.created_at,
+                            }));
+                        }
+                        Ok(None) => {
+                            // Identity exists but merchant doesn't - create merchant record
+                            info!(
+                                "🔄 API: Identity exists but merchant missing - creating merchant record for user: {}",
+                                existing_identity.id
+                            );
+                            existing_identity
+                        }
+                        Err(e) => {
+                            error!("❌ API: Failed to check existing merchant: {}", e);
+                            return Err((
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                "Failed to check existing merchant".to_string(),
+                            ));
+                        }
+                    }
                 }
             };
 
@@ -3727,8 +3771,10 @@ async fn register_merchant_endpoint(
 #[utoipa::path(
     get,
     path = "/api/v1/merchant/profile",
+    params(MerchantProfileQuery),
     responses(
         (status = 200, description = "Merchant profile retrieved successfully", body = MerchantProfileResponse),
+        (status = 400, description = "Bad request - invalid parameters"),
         (status = 404, description = "Merchant profile not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -3737,24 +3783,61 @@ async fn register_merchant_endpoint(
 #[instrument(skip(state), level = "info")]
 async fn get_merchant_profile_endpoint(
     State(state): State<ApiState>,
+    Query(query): Query<MerchantProfileQuery>,
 ) -> Result<Json<MerchantProfileResponse>, (StatusCode, String)> {
-    // For this implementation, we'll use a hardcoded user_id for testing
-    // In a real implementation, this would come from authentication middleware
-    let test_user_id =
-        uuid::Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Invalid UUID".to_string(),
-            )
-        })?;
+    // Validate query parameters - exactly one of user_id or email must be provided
+    let (user_id, search_type) = match (query.user_id, query.email) {
+        (Some(user_id_str), None) => {
+            // Parse user_id as UUID
+            let user_id = uuid::Uuid::parse_str(&user_id_str).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid user_id format - must be a valid UUID".to_string(),
+                )
+            })?;
+            (user_id, format!("user_id: {}", user_id_str))
+        }
+        (None, Some(email)) => {
+            // For email, we need to get the user_id from the identity first
+            let identity = match get_identity_by_email(&state.pool, &email).await {
+                Ok(Some(identity)) => identity,
+                Ok(None) => {
+                    return Err((
+                        StatusCode::NOT_FOUND,
+                        format!("No user found with email: {}", email),
+                    ));
+                }
+                Err(e) => {
+                    error!("❌ API: Failed to get identity by email: {}", e);
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to lookup user by email".to_string(),
+                    ));
+                }
+            };
+            (identity.id, format!("email: {}", email))
+        }
+        (Some(_), Some(_)) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Provide either user_id OR email, not both".to_string(),
+            ));
+        }
+        (None, None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Either user_id or email parameter is required".to_string(),
+            ));
+        }
+    };
 
     info!(
-        "🔍 API: Getting merchant profile for test user: {}",
-        test_user_id
+        "🔍 API: Getting merchant profile for {} ({})",
+        search_type, user_id
     );
 
     // Get the merchant by user ID
-    match get_merchant_by_user_id(&state.pool, test_user_id).await {
+    match get_merchant_by_user_id(&state.pool, user_id).await {
         Ok(Some(merchant)) => {
             // Get the user identity for additional info
             let identity = match get_identity_by_id(&state.pool, merchant.user_id).await {
@@ -3831,7 +3914,7 @@ async fn get_merchant_profile_endpoint(
             Ok(Json(response))
         }
         Ok(None) => {
-            warn!("❌ API: Merchant not found for user: {}", test_user_id);
+            warn!("❌ API: Merchant not found for user: {}", user_id);
             Err((
                 StatusCode::NOT_FOUND,
                 "Merchant profile not found".to_string(),

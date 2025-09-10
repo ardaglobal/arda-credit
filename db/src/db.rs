@@ -1192,12 +1192,13 @@ pub async fn register_or_reregister_user(
     email: &str,
     password_hash: &str,
 ) -> Result<RegisterResult, sqlx::Error> {
-    // For investors, allow empty password (will be stored as NULL)
-    let password_hash_value = if user_type == "investor" && password_hash.is_empty() {
-        None
-    } else {
-        Some(password_hash)
-    };
+    // For investors and merchants, allow empty password (will be stored as NULL)
+    let password_hash_value =
+        if (user_type == "investor" || user_type == "merchant") && password_hash.is_empty() {
+            None
+        } else {
+            Some(password_hash)
+        };
     // First, check if email already exists
     let existing_user = sqlx::query!(
         "SELECT id, deleted_at FROM identities WHERE email = $1",
@@ -4252,6 +4253,23 @@ pub async fn get_merchant_by_id(
         }))
     } else {
         Ok(None)
+    }
+}
+
+/// Get merchant by email - finds identity by email, then gets merchant by user_id
+pub async fn get_merchant_by_email(
+    pool: &PgPool,
+    email: &str,
+) -> Result<Option<Merchant>, sqlx::Error> {
+    // First get the identity by email
+    let identity_opt = get_identity_by_email(pool, email).await?;
+
+    match identity_opt {
+        Some(identity) => {
+            // Then get the merchant by user_id
+            get_merchant_by_user_id(pool, identity.id).await
+        }
+        None => Ok(None),
     }
 }
 
