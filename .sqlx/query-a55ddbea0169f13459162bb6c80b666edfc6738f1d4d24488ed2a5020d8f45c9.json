@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE identities\n        SET password_hash = $1, updated_at = $2\n        WHERE id = $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a55ddbea0169f13459162bb6c80b666edfc6738f1d4d24488ed2a5020d8f45c9"
+}

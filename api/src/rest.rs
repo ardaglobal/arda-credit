@@ -64,6 +64,7 @@ use arda_credit_db::{
     get_identity_by_email,
     get_identity_by_id,
     // get_investor_profile_by_user_id, // unused
+    get_investor_profile_by_user_id_or_email,
     get_investor_profile_with_identity,
     get_invite_code_info,
     get_kyc_statistics,
@@ -596,6 +597,15 @@ pub struct RegisterInvestorResponse {
     pub profile_id: String, // UUID as string of investor profile
     pub accredited_investor: bool,
     pub regulatory_jurisdiction: String,
+}
+
+/// Query parameters for getting investor profile
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct InvestorProfileQuery {
+    /// User ID (UUID)
+    pub user_id: Option<String>,
+    /// User email
+    pub email: Option<String>,
 }
 
 /// Investor profile response
@@ -4017,8 +4027,10 @@ async fn update_merchant_profile_endpoint(
 #[utoipa::path(
     get,
     path = "/api/v1/investor/profile",
+    params(InvestorProfileQuery),
     responses(
         (status = 200, description = "Investor profile retrieved successfully", body = InvestorProfileResponse),
+        (status = 400, description = "Invalid request parameters - exactly one of user_id or email must be provided"),
         (status = 404, description = "Investor profile not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -4030,33 +4042,46 @@ async fn update_merchant_profile_endpoint(
 #[instrument(skip(state), level = "info")]
 async fn get_investor_profile_endpoint(
     State(state): State<ApiState>,
-    headers: HeaderMap,
+    Query(query): Query<InvestorProfileQuery>,
 ) -> Result<Json<InvestorProfileResponse>, (StatusCode, String)> {
-    // Extract user ID from X-User-ID header (temporary until JWT middleware is implemented)
-    let user_id_str = headers
-        .get("X-User-ID")
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Missing user ID header".to_string(),
-        ))?
-        .to_str()
-        .map_err(|_| {
+    // Validate that exactly one of user_id or email is provided
+    match (&query.user_id, &query.email) {
+        (Some(_), Some(_)) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Exactly one of user_id or email must be provided, not both".to_string(),
+            ))
+        }
+        (None, None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Exactly one of user_id or email must be provided".to_string(),
+            ))
+        }
+        _ => {}
+    }
+
+    // Parse user_id if provided
+    let user_id_option = if let Some(user_id_str) = &query.user_id {
+        Some(uuid::Uuid::parse_str(user_id_str).map_err(|_| {
             (
                 StatusCode::BAD_REQUEST,
-                "Invalid user ID header".to_string(),
+                "Invalid user ID format".to_string(),
             )
-        })?;
+        })?)
+    } else {
+        None
+    };
 
-    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid user ID format".to_string(),
-        )
-    })?;
+    let email_option = query.email.as_deref();
 
-    info!("🔍 API: Getting investor profile for user: {}", user_id);
+    info!(
+        "🔍 API: Getting investor profile for user_id: {:?}, email: {:?}",
+        user_id_option, email_option
+    );
 
-    match get_investor_profile_with_identity(&state.pool, user_id).await {
+    match get_investor_profile_by_user_id_or_email(&state.pool, user_id_option, email_option).await
+    {
         Ok(Some((profile, identity))) => Ok(Json(InvestorProfileResponse {
             profile_id: profile.id.to_string(),
             user_id: profile.user_id.to_string(),

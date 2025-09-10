@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, merchant_id, industry, years_in_business, employee_count,\n            monthly_revenue_estimate, business_description, profile_completed,\n            created_at, updated_at\n        FROM merchant_profiles\n        WHERE merchant_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "merchant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "industry",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "years_in_business",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 4,
+        "name": "employee_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "monthly_revenue_estimate",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "business_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "profile_completed",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "d2c7fd33a46e348ab1add48b2facf6b47438c5624a89b3de96c4c65eb7eec578"
+}

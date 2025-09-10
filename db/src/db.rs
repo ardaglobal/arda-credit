@@ -631,9 +631,9 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
 
     let row = sqlx::query!(
         r"
-        SELECT id, previous_counter_value, final_counter_value, transaction_ids, 
+        SELECT id, previous_counter_value, final_counter_value, transaction_ids,
                sindri_proof_id, proof_status, created_at, proven_at
-        FROM proof_batches 
+        FROM proof_batches
         WHERE id = $1
         ",
         batch_id
@@ -674,8 +674,8 @@ pub async fn get_all_batches(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
                sindri_proof_id, proof_status, created_at, proven_at
-        FROM proof_batches 
-        ORDER BY id DESC 
+        FROM proof_batches
+        ORDER BY id DESC
         LIMIT $1
         ",
         limit_val as i64
@@ -721,7 +721,7 @@ pub async fn update_batch_proof(
 
     sqlx::query!(
         r"
-        UPDATE proof_batches 
+        UPDATE proof_batches
         SET sindri_proof_id = $1, proof_status = $2, proven_at = $3
         WHERE id = $4
         ",
@@ -936,7 +936,7 @@ pub async fn get_proven_unposted_batches(
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
                sindri_proof_id, proof_status, created_at, proven_at
         FROM proof_batches
-        WHERE proof_status = 'proven' 
+        WHERE proof_status = 'proven'
           AND posted_to_contract = FALSE
           AND sindri_proof_id IS NOT NULL
         ORDER BY id ASC
@@ -1046,7 +1046,7 @@ pub async fn get_potential_stuck_batches(
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
                sindri_proof_id, proof_status, created_at, proven_at
         FROM proof_batches
-        WHERE proof_status = 'proven' 
+        WHERE proof_status = 'proven'
           AND posted_to_contract = FALSE
           AND sindri_proof_id IS NOT NULL
           AND proven_at IS NOT NULL
@@ -1645,7 +1645,7 @@ pub async fn update_identity_profile(
     if let Some(e) = email {
         sqlx::query!(
             r#"
-            UPDATE identities 
+            UPDATE identities
             SET email = $2,
                 updated_at = $3
             WHERE id = $1
@@ -1740,7 +1740,7 @@ pub async fn update_identity_profile(
     // Always update timestamp
     sqlx::query!(
         r#"
-        UPDATE identities 
+        UPDATE identities
         SET updated_at = $2
         WHERE id = $1
         "#,
@@ -1820,7 +1820,7 @@ pub async fn create_loan(
 pub async fn get_loan_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Loan>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
-        SELECT 
+        SELECT
             id,
             borrower_id,
             lender_id,
@@ -1832,7 +1832,7 @@ pub async fn get_loan_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Loan
             maturity_date,
             created_at,
             updated_at
-        FROM loans 
+        FROM loans
         WHERE id = $1
         "#,
         id
@@ -1870,7 +1870,7 @@ pub async fn list_loans(
     // Use a unified query with optional filtering
     let rows = sqlx::query!(
         r#"
-        SELECT 
+        SELECT
             id,
             borrower_id,
             lender_id,
@@ -1946,8 +1946,8 @@ pub async fn update_loan(
 
     sqlx::query!(
         r#"
-        UPDATE loans 
-        SET 
+        UPDATE loans
+        SET
             principal_amount = $2,
             outstanding_balance = $3,
             interest_rate_bps = $4,
@@ -2094,7 +2094,7 @@ pub async fn update_last_login(pool: &PgPool, user_id: uuid::Uuid) -> Result<(),
 
     sqlx::query!(
         r#"
-        UPDATE identities 
+        UPDATE identities
         SET last_login_at = $1, updated_at = $1
         WHERE id = $2
         "#,
@@ -2117,7 +2117,7 @@ pub async fn update_user_password(
 
     sqlx::query!(
         r#"
-        UPDATE identities 
+        UPDATE identities
         SET password_hash = $1, updated_at = $2
         WHERE id = $3
         "#,
@@ -2141,7 +2141,7 @@ pub async fn set_email_verification_token(
 
     sqlx::query!(
         r#"
-        UPDATE identities 
+        UPDATE identities
         SET email_verification_token = $1, updated_at = $2
         WHERE id = $3
         "#,
@@ -2161,7 +2161,7 @@ pub async fn verify_email_with_token(pool: &PgPool, token: &str) -> Result<bool,
 
     let result = sqlx::query!(
         r#"
-        UPDATE identities 
+        UPDATE identities
         SET email_verified = true, email_verification_token = NULL, updated_at = $1
         WHERE email_verification_token = $2
           AND created_at > $3  -- Token expires after 7 days
@@ -2188,9 +2188,9 @@ pub async fn set_password_reset_token(
 
     let result = sqlx::query!(
         r#"
-        UPDATE identities 
-        SET password_reset_token = $1, 
-            password_reset_expires_at = $2, 
+        UPDATE identities
+        SET password_reset_token = $1,
+            password_reset_expires_at = $2,
             updated_at = $3
         WHERE email = $4
         "#,
@@ -2215,9 +2215,9 @@ pub async fn reset_password_with_token(
 
     let result = sqlx::query!(
         r#"
-        UPDATE identities 
-        SET password_hash = $1, 
-            password_reset_token = NULL, 
+        UPDATE identities
+        SET password_hash = $1,
+            password_reset_token = NULL,
             password_reset_expires_at = NULL,
             updated_at = $2
         WHERE password_reset_token = $3
@@ -2390,7 +2390,7 @@ pub async fn generate_invite_code(
 
     sqlx::query!(
         r#"
-        INSERT INTO invite_codes (code, created_by, max_uses, expires_at, is_active, user_type) 
+        INSERT INTO invite_codes (code, created_by, max_uses, expires_at, is_active, user_type)
         VALUES ($1, $2, $3, $4, true, $5)
         "#,
         code,
@@ -2446,7 +2446,7 @@ pub async fn create_usdc_deposit(
             block_number, event_timestamp, log_index, event_signature
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING 
+        RETURNING
             id, user_address, amount, deposit_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2480,12 +2480,12 @@ pub async fn update_deposit_status(
     let deposit = sqlx::query_as!(
         UsdcDeposit,
         r#"
-        UPDATE usdc_deposits 
+        UPDATE usdc_deposits
         SET status = $2, confirmation_count = $3, block_timestamp = $4,
             processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, user_address, amount, deposit_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2511,7 +2511,7 @@ pub async fn get_deposits_by_user_address(
     let deposits = sqlx::query_as!(
         UsdcDeposit,
         r#"
-        SELECT 
+        SELECT
             id, user_address, amount, deposit_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2536,7 +2536,7 @@ pub async fn get_deposit_by_tx_hash(
     let deposit = sqlx::query_as!(
         UsdcDeposit,
         r#"
-        SELECT 
+        SELECT
             id, user_address, amount, deposit_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2560,7 +2560,7 @@ pub async fn get_user_deposit_balance(
     let balance = sqlx::query_as!(
         UserDepositBalance,
         r#"
-        SELECT 
+        SELECT
             id, user_address, total_deposited, total_deposited_usdc,
             deposit_count, first_deposit_at, last_deposit_at, created_at, updated_at
         FROM user_deposit_balances
@@ -2621,7 +2621,7 @@ pub async fn update_user_balance_from_deposit(
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
-        UPDATE user_balances 
+        UPDATE user_balances
         SET available_balance = available_balance + $2,
             lifetime_earnings = lifetime_earnings + $2,
             last_updated_at = NOW()
@@ -2668,12 +2668,12 @@ pub async fn update_deposit_status_tx(
     let deposit = sqlx::query_as!(
         UsdcDeposit,
         r#"
-        UPDATE usdc_deposits 
+        UPDATE usdc_deposits
         SET status = $2, confirmation_count = $3, block_timestamp = $4,
             processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, user_address, amount, deposit_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2691,7 +2691,7 @@ pub async fn update_deposit_status_tx(
     Ok(deposit)
 }
 
-/// Transactional version: Update user balance from deposit within a transaction  
+/// Transactional version: Update user balance from deposit within a transaction
 pub async fn update_user_balance_from_deposit_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     user_id: uuid::Uuid,
@@ -2699,7 +2699,7 @@ pub async fn update_user_balance_from_deposit_tx(
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
-        UPDATE user_balances 
+        UPDATE user_balances
         SET available_balance = available_balance + $2,
             lifetime_earnings = lifetime_earnings + $2,
             last_updated_at = NOW()
@@ -2741,7 +2741,7 @@ pub async fn create_withdrawal(
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 0, NOW())
         ON CONFLICT (event_transaction_hash, log_index)
         DO UPDATE SET updated_at = NOW()
-        RETURNING 
+        RETURNING
             id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2776,12 +2776,12 @@ pub async fn update_withdrawal_status(
     let withdrawal = sqlx::query_as!(
         UsdcWithdrawal,
         r#"
-        UPDATE usdc_withdrawals 
+        UPDATE usdc_withdrawals
         SET status = $2, confirmation_count = $3, block_timestamp = $4,
             processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2812,12 +2812,12 @@ pub async fn update_withdrawal_status_tx(
     let withdrawal = sqlx::query_as!(
         UsdcWithdrawal,
         r#"
-        UPDATE usdc_withdrawals 
+        UPDATE usdc_withdrawals
         SET status = $2, confirmation_count = $3, block_timestamp = $4,
             processed_at = CASE WHEN $5 THEN NOW() ELSE processed_at END,
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2843,7 +2843,7 @@ pub async fn get_withdrawals_by_user_address(
     let withdrawals = sqlx::query_as!(
         UsdcWithdrawal,
         r#"
-        SELECT 
+        SELECT
             id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2868,7 +2868,7 @@ pub async fn get_withdrawal_by_tx_hash(
     let withdrawal = sqlx::query_as!(
         UsdcWithdrawal,
         r#"
-        SELECT 
+        SELECT
             id, user_address, recipient_address, amount, withdrawal_amount_usdc, transaction_hash,
             event_transaction_hash, block_number, event_timestamp, block_timestamp,
             log_index, event_signature, status, confirmation_count, required_confirmations,
@@ -2892,7 +2892,7 @@ pub async fn get_user_withdrawal_balance(
     let balance = sqlx::query_as!(
         UserWithdrawalBalance,
         r#"
-        SELECT 
+        SELECT
             id, user_address, total_withdrawn, total_withdrawn_usdc, withdrawal_count,
             first_withdrawal_at, last_withdrawal_at, created_at, updated_at
         FROM user_withdrawal_balances
@@ -2914,7 +2914,7 @@ pub async fn update_user_balance_from_withdrawal(
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
-        UPDATE user_balances 
+        UPDATE user_balances
         SET available_balance = available_balance - $2,
             last_updated_at = NOW()
         WHERE user_id = $1 AND currency = 'USDC'
@@ -2936,7 +2936,7 @@ pub async fn update_user_balance_from_withdrawal_tx(
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
         r#"
-        UPDATE user_balances 
+        UPDATE user_balances
         SET available_balance = available_balance - $2,
             last_updated_at = NOW()
         WHERE user_id = $1 AND currency = 'USDC'
@@ -2972,8 +2972,8 @@ pub async fn create_withdrawal_request(
             kyc_status_at_request, available_balance_at_request,
             created_at, updated_at
         ) VALUES ($1, $2, $3, $4, 'pending', $5, $6, NOW(), NOW())
-        RETURNING 
-            id, user_id, user_address, recipient_address, amount, amount_usdc, 
+        RETURNING
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
             confirmation_count, required_confirmations, error_message,
@@ -3001,7 +3001,7 @@ pub async fn get_withdrawal_request_by_id(
     let request = sqlx::query_as!(
         WithdrawalRequest,
         r#"
-        SELECT 
+        SELECT
             id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
@@ -3027,7 +3027,7 @@ pub async fn get_withdrawal_requests_by_user_address(
     let requests = sqlx::query_as!(
         WithdrawalRequest,
         r#"
-        SELECT 
+        SELECT
             id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
@@ -3054,7 +3054,7 @@ pub async fn get_withdrawal_requests_by_user_id(
     let requests = sqlx::query_as!(
         WithdrawalRequest,
         r#"
-        SELECT 
+        SELECT
             id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
@@ -3104,7 +3104,7 @@ pub async fn update_withdrawal_request_state(
             failed_at = COALESCE($5, failed_at),
             cancelled_at = COALESCE($6, cancelled_at)
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
@@ -3158,7 +3158,7 @@ pub async fn update_withdrawal_request_validation(
             updated_at = $6,
             failed_at = COALESCE($7, failed_at)
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
@@ -3199,7 +3199,7 @@ pub async fn update_withdrawal_request_submitted(
             submitted_at = $4,
             updated_at = $4
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
@@ -3245,7 +3245,7 @@ pub async fn update_withdrawal_request_confirmations(
             confirmed_at = COALESCE($4, confirmed_at),
             updated_at = $5
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
@@ -3275,7 +3275,7 @@ pub async fn get_pending_withdrawal_requests(
     let requests = sqlx::query_as!(
         WithdrawalRequest,
         r#"
-        SELECT 
+        SELECT
             id, user_id, user_address, recipient_address, amount, amount_usdc,
             state, kyc_validated, balance_validated, kyc_status_at_request,
             available_balance_at_request, transaction_hash, block_number,
@@ -3408,14 +3408,14 @@ pub async fn create_liquidity_pool(
         LiquidityPool,
         r#"
         INSERT INTO liquidity_pools (
-            investor_id, name, max_ltv_ratio, max_interest_rate, 
+            investor_id, name, max_ltv_ratio, max_interest_rate,
             repayment_period_days, status
         ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
-        RETURNING 
-            id, investor_id, name, total_deposits, available_liquidity, 
+        RETURNING
+            id, investor_id, name, total_deposits, available_liquidity,
             utilized_liquidity, max_ltv_ratio, max_interest_rate,
-            repayment_period_days, status, 
-            created_at as "created_at!: DateTime<Utc>", 
+            repayment_period_days, status,
+            created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>"
         "#,
         request.investor_id,
@@ -3438,7 +3438,7 @@ pub async fn get_liquidity_pool_by_id(
     let liquidity_pool = sqlx::query_as!(
         LiquidityPool,
         r#"
-        SELECT 
+        SELECT
             id, investor_id, name, total_deposits, available_liquidity,
             utilized_liquidity, max_ltv_ratio, max_interest_rate,
             repayment_period_days, status,
@@ -3463,7 +3463,7 @@ pub async fn get_liquidity_pools_by_investor(
     let pools = sqlx::query_as!(
         LiquidityPool,
         r#"
-        SELECT 
+        SELECT
             id, investor_id, name, total_deposits, available_liquidity,
             utilized_liquidity, max_ltv_ratio, max_interest_rate,
             repayment_period_days, status,
@@ -3489,7 +3489,7 @@ pub async fn find_matching_liquidity_pools(
     let pools = sqlx::query_as!(
         LiquidityPool,
         r#"
-        SELECT 
+        SELECT
             id, investor_id, name, total_deposits, available_liquidity,
             utilized_liquidity, max_ltv_ratio, max_interest_rate,
             repayment_period_days, status,
@@ -3526,7 +3526,7 @@ pub async fn update_liquidity_pool_status(
         UPDATE liquidity_pools
         SET status = $2, updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, investor_id, name, total_deposits, available_liquidity,
             utilized_liquidity, max_ltv_ratio, max_interest_rate,
             repayment_period_days, status,
@@ -3562,7 +3562,7 @@ pub async fn create_investor_profile(
         r#"
         INSERT INTO investor_profiles (id, user_id, accredited_investor, investment_capacity, regulatory_jurisdiction, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $6)
-        RETURNING 
+        RETURNING
             id, user_id, accredited_investor, investment_capacity, regulatory_jurisdiction,
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>"
@@ -3588,7 +3588,7 @@ pub async fn get_investor_profile_by_user_id(
     let profile = sqlx::query_as!(
         InvestorProfile,
         r#"
-        SELECT 
+        SELECT
             id, user_id, accredited_investor, investment_capacity, regulatory_jurisdiction,
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>"
@@ -3635,7 +3635,7 @@ pub async fn update_investor_profile(
         UPDATE investor_profiles
         SET {}
         WHERE user_id = $1
-        RETURNING 
+        RETURNING
             id, user_id, accredited_investor, investment_capacity, regulatory_jurisdiction,
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>"
@@ -3670,11 +3670,11 @@ pub async fn get_investor_profile_with_identity(
 ) -> Result<Option<(InvestorProfile, Identity)>, sqlx::Error> {
     let result = sqlx::query!(
         r#"
-        SELECT 
-            ip.id as profile_id, ip.user_id, ip.accredited_investor, 
+        SELECT
+            ip.id as profile_id, ip.user_id, ip.accredited_investor,
             ip.investment_capacity, ip.regulatory_jurisdiction,
             ip.created_at as "profile_created_at!", ip.updated_at as "profile_updated_at!",
-            i.id as identity_id, i.user_type, i.email, i.kyc_status, 
+            i.id as identity_id, i.user_type, i.email, i.kyc_status,
             i.kyc_submitted_at, i.kyc_verified_at, i.kyc_investor_type as "kyc_investor_type?: KycInvestorType",
             i.created_at as "identity_created_at!", i.updated_at as "identity_updated_at!",
             i.password_hash, i.last_login_at, i.email_verified, i.email_verification_token,
@@ -3756,7 +3756,7 @@ pub async fn get_all_liquidity_pools(
 
     let mut query = format!(
         r#"
-        SELECT 
+        SELECT
             id, investor_id, name, total_deposits, available_liquidity,
             utilized_liquidity, max_ltv_ratio, max_interest_rate,
             repayment_period_days, status,
@@ -3834,12 +3834,12 @@ pub async fn get_pool_summary(
     let summary = sqlx::query_as!(
         PoolSummary,
         r#"
-        SELECT 
+        SELECT
             lp.id, lp.investor_id, lp.name, lp.total_deposits, lp.available_liquidity,
-            lp.utilized_liquidity, 
-            CASE 
+            lp.utilized_liquidity,
+            CASE
                 WHEN lp.total_deposits > 0 THEN (lp.utilized_liquidity / lp.total_deposits)
-                ELSE NULL 
+                ELSE NULL
             END as "utilization_rate",
             lp.max_ltv_ratio, lp.max_interest_rate,
             lp.repayment_period_days, lp.status,
@@ -3872,12 +3872,12 @@ pub async fn get_investor_pool_summaries(
     let summaries = sqlx::query_as!(
         PoolSummary,
         r#"
-        SELECT 
+        SELECT
             lp.id, lp.investor_id, lp.name, lp.total_deposits, lp.available_liquidity,
             lp.utilized_liquidity,
-            CASE 
+            CASE
                 WHEN lp.total_deposits > 0 THEN (lp.utilized_liquidity / lp.total_deposits)
-                ELSE NULL 
+                ELSE NULL
             END as "utilization_rate",
             lp.max_ltv_ratio, lp.max_interest_rate,
             lp.repayment_period_days, lp.status,
@@ -3924,12 +3924,12 @@ pub async fn get_investor_dashboard_metrics(
     let metrics = sqlx::query_as!(
         InvestorDashboardMetrics,
         r#"
-        SELECT 
+        SELECT
             COUNT(*)::int8 as "total_pools!",
             COUNT(CASE WHEN status = 'active' THEN 1 END)::int8 as "active_pools!",
             COALESCE(SUM(total_deposits), 0) as "total_liquidity_provided!",
             COALESCE(SUM(utilized_liquidity), 0) as "total_utilized_liquidity!",
-            CASE 
+            CASE
                 WHEN SUM(total_deposits) > 0 THEN SUM(utilized_liquidity) / SUM(total_deposits)
                 ELSE 0
             END as "average_utilization_rate!",
@@ -3968,14 +3968,14 @@ pub async fn get_pool_utilization_history(
     let current_data = sqlx::query_as!(
         PoolUtilizationData,
         r#"
-        SELECT 
+        SELECT
             updated_at as "timestamp!: DateTime<Utc>",
             total_deposits,
             available_liquidity,
             utilized_liquidity,
-            CASE 
+            CASE
                 WHEN total_deposits > 0 THEN (utilized_liquidity / total_deposits)
-                ELSE NULL 
+                ELSE NULL
             END as "utilization_rate"
         FROM liquidity_pools
         WHERE id = $1
@@ -4014,7 +4014,7 @@ pub async fn get_pool_transactions(
     let offset = offset.unwrap_or(0);
 
     let mut query = r#"
-        SELECT 
+        SELECT
             id as transaction_id,
             pool_id,
             operation_type,
@@ -4075,12 +4075,12 @@ pub async fn get_market_overview_metrics(
     let metrics = sqlx::query_as!(
         MarketOverviewMetrics,
         r#"
-        SELECT 
+        SELECT
             COUNT(*)::int8 as "total_pools!",
             COUNT(CASE WHEN status = 'active' THEN 1 END)::int8 as "active_pools!",
             COALESCE(SUM(total_deposits), 0) as "total_liquidity!",
             COALESCE(SUM(utilized_liquidity), 0) as "total_utilized_liquidity!",
-            CASE 
+            CASE
                 WHEN SUM(total_deposits) > 0 THEN SUM(utilized_liquidity) / SUM(total_deposits)
                 ELSE 0
             END as "platform_utilization_rate!",
@@ -4103,7 +4103,7 @@ pub async fn get_market_overview_metrics(
 // MERCHANT FUNCTIONS
 // ============================================================================
 
-/// Create a new merchant account  
+/// Create a new merchant account
 pub async fn create_merchant(
     pool: &PgPool,
     user_id: uuid::Uuid,
@@ -4115,10 +4115,10 @@ pub async fn create_merchant(
         r#"
         INSERT INTO merchants (id, user_id, legal_name, dba, tax_id, mcc, country, kyc_status, business_type, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-        RETURNING 
-            id, user_id, legal_name, dba, tax_id, mcc, 
-            country as "country!: String", 
-            kyc_status as "kyc_status!: String", 
+        RETURNING
+            id, user_id, legal_name, dba, tax_id, mcc,
+            country as "country!: String",
+            kyc_status as "kyc_status!: String",
             business_type,
             created_at, updated_at
         "#,
@@ -4163,10 +4163,10 @@ pub async fn get_merchant_by_user_id(
 ) -> Result<Option<Merchant>, sqlx::Error> {
     let result = sqlx::query!(
         r#"
-        SELECT 
-            id, user_id, legal_name, dba, tax_id, mcc, 
-            country as "country!: String", 
-            kyc_status as "kyc_status!: String", 
+        SELECT
+            id, user_id, legal_name, dba, tax_id, mcc,
+            country as "country!: String",
+            kyc_status as "kyc_status!: String",
             business_type,
             created_at, updated_at
         FROM merchants
@@ -4210,10 +4210,10 @@ pub async fn get_merchant_by_id(
     // For now, use a simpler approach - just implement the basic functionality
     let result = sqlx::query!(
         r#"
-        SELECT 
-            id, user_id, legal_name, dba, tax_id, mcc, 
-            country as "country!: String", 
-            kyc_status as "kyc_status!: String", 
+        SELECT
+            id, user_id, legal_name, dba, tax_id, mcc,
+            country as "country!: String",
+            kyc_status as "kyc_status!: String",
             business_type,
             created_at, updated_at
         FROM merchants
@@ -4261,7 +4261,7 @@ pub async fn create_merchant_profile(
         r#"
         INSERT INTO merchant_profiles (id, merchant_id, industry, years_in_business, employee_count, monthly_revenue_estimate, business_description, profile_completed, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, false, NOW(), NOW())
-        RETURNING 
+        RETURNING
             id, merchant_id, industry, years_in_business, employee_count, monthly_revenue_estimate, business_description, profile_completed, created_at, updated_at
         "#,
         id,
@@ -4302,8 +4302,8 @@ pub async fn get_merchant_profile_by_merchant_id(
 ) -> Result<Option<MerchantProfile>, sqlx::Error> {
     let result = sqlx::query!(
         r#"
-        SELECT 
-            id, merchant_id, industry, years_in_business, employee_count, 
+        SELECT
+            id, merchant_id, industry, years_in_business, employee_count,
             monthly_revenue_estimate, business_description, profile_completed,
             created_at, updated_at
         FROM merchant_profiles
@@ -4354,7 +4354,7 @@ pub async fn update_merchant_profile(
         sqlx::query!(
             r#"
             UPDATE merchants
-            SET 
+            SET
                 legal_name = COALESCE($2, legal_name),
                 dba = COALESCE($3, dba),
                 mcc = COALESCE($4, mcc),
@@ -4379,26 +4379,26 @@ pub async fn update_merchant_profile(
         MerchantProfile,
         r#"
         UPDATE merchant_profiles
-        SET 
+        SET
             industry = COALESCE($2, industry),
             years_in_business = COALESCE($3, years_in_business),
             employee_count = COALESCE($4, employee_count),
             monthly_revenue_estimate = COALESCE($5, monthly_revenue_estimate),
             business_description = COALESCE($6, business_description),
-            profile_completed = CASE 
-                WHEN $2 IS NOT NULL OR $3 IS NOT NULL OR $4 IS NOT NULL OR $5 IS NOT NULL OR $6 IS NOT NULL 
-                THEN true 
-                ELSE profile_completed 
+            profile_completed = CASE
+                WHEN $2 IS NOT NULL OR $3 IS NOT NULL OR $4 IS NOT NULL OR $5 IS NOT NULL OR $6 IS NOT NULL
+                THEN true
+                ELSE profile_completed
             END,
             updated_at = NOW()
         WHERE merchant_id = $1
         RETURNING
-            id, merchant_id, 
+            id, merchant_id,
             industry,
-            years_in_business, 
-            employee_count, 
-            monthly_revenue_estimate, 
-            business_description, 
+            years_in_business,
+            employee_count,
+            monthly_revenue_estimate,
+            business_description,
             profile_completed as "profile_completed!: bool",
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>"
@@ -4556,9 +4556,9 @@ pub async fn create_or_update_turnover(
         r#"
         INSERT INTO merchant_turnover_daily (
             merchant_id, date, gross_receipts, refunds, net_receipts, source, verification_method
-        ) 
+        )
         VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (merchant_id, date) 
+        ON CONFLICT (merchant_id, date)
         DO UPDATE SET
             gross_receipts = EXCLUDED.gross_receipts,
             refunds = EXCLUDED.refunds,
@@ -4566,14 +4566,14 @@ pub async fn create_or_update_turnover(
             source = EXCLUDED.source,
             verification_method = EXCLUDED.verification_method,
             updated_at = NOW()
-        RETURNING 
-            id, merchant_id, date, 
-            gross_receipts as "gross_receipts!: rust_decimal::Decimal", 
-            refunds as "refunds!: rust_decimal::Decimal", 
-            net_receipts as "net_receipts!: rust_decimal::Decimal", 
-            source as "source!: String", 
-            verified as "verified!: bool", 
-            verification_method, 
+        RETURNING
+            id, merchant_id, date,
+            gross_receipts as "gross_receipts!: rust_decimal::Decimal",
+            refunds as "refunds!: rust_decimal::Decimal",
+            net_receipts as "net_receipts!: rust_decimal::Decimal",
+            source as "source!: String",
+            verified as "verified!: bool",
+            verification_method,
             currency as "currency!: String",
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>"
@@ -4602,22 +4602,22 @@ pub async fn update_turnover(
     let turnover = sqlx::query_as!(
         MerchantTurnoverDaily,
         r#"
-        UPDATE merchant_turnover_daily 
-        SET 
+        UPDATE merchant_turnover_daily
+        SET
             gross_receipts = COALESCE($3, gross_receipts),
             refunds = COALESCE($4, refunds),
             net_receipts = COALESCE($3, gross_receipts) - COALESCE($4, refunds),
             verification_method = COALESCE($5, verification_method),
             updated_at = NOW()
         WHERE merchant_id = $1 AND date = $2
-        RETURNING 
-            id, merchant_id, date, 
-            gross_receipts as "gross_receipts!: rust_decimal::Decimal", 
-            refunds as "refunds!: rust_decimal::Decimal", 
-            net_receipts as "net_receipts!: rust_decimal::Decimal", 
-            source as "source!: String", 
-            verified as "verified!: bool", 
-            verification_method, 
+        RETURNING
+            id, merchant_id, date,
+            gross_receipts as "gross_receipts!: rust_decimal::Decimal",
+            refunds as "refunds!: rust_decimal::Decimal",
+            net_receipts as "net_receipts!: rust_decimal::Decimal",
+            source as "source!: String",
+            verified as "verified!: bool",
+            verification_method,
             currency as "currency!: String",
             created_at as "created_at!: DateTime<Utc>",
             updated_at as "updated_at!: DateTime<Utc>"
@@ -4646,10 +4646,10 @@ pub async fn get_merchant_turnover(
 ) -> Result<Vec<MerchantTurnoverDaily>, sqlx::Error> {
     let mut query = sqlx::QueryBuilder::new(
         r#"
-        SELECT id, merchant_id, date, gross_receipts, refunds, net_receipts, source, 
+        SELECT id, merchant_id, date, gross_receipts, refunds, net_receipts, source,
                verified, verification_method, currency, created_at, updated_at
-        FROM merchant_turnover_daily 
-        WHERE merchant_id = 
+        FROM merchant_turnover_daily
+        WHERE merchant_id =
         "#,
     );
 
@@ -4698,7 +4698,7 @@ pub async fn get_merchant_turnover_analytics(
     let analytics = sqlx::query_as!(
         MerchantTurnoverAnalytics,
         r#"
-        SELECT 
+        SELECT
             merchant_id as "merchant_id!: uuid::Uuid",
             legal_name as "legal_name!: String",
             total_days_recorded as "total_days_recorded!: i64",
@@ -4728,12 +4728,12 @@ pub async fn get_merchant_profile_completion(
     let completion = sqlx::query_as!(
         MerchantProfileCompletion,
         r#"
-        SELECT 
+        SELECT
             merchant_id as "merchant_id!: uuid::Uuid",
             legal_name as "legal_name!: String",
             kyc_status as "kyc_status!: String",
             has_legal_name as "has_legal_name!: bool",
-            has_tax_id as "has_tax_id!: bool", 
+            has_tax_id as "has_tax_id!: bool",
             has_mcc as "has_mcc!: bool",
             has_industry as "has_industry!: bool",
             has_years_in_business as "has_years_in_business!: bool",
@@ -4765,18 +4765,18 @@ pub async fn create_merchant_document(
         MerchantDocument,
         r#"
         INSERT INTO merchant_documents (
-            merchant_id, document_type, document_url, document_hash, 
+            merchant_id, document_type, document_url, document_hash,
             file_size_bytes, original_filename, mime_type, created_by
-        ) 
+        )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING 
-            id, merchant_id, 
-            document_type as "document_type!: String", 
+        RETURNING
+            id, merchant_id,
+            document_type as "document_type!: String",
             document_url, document_hash,
             file_size_bytes, original_filename, mime_type,
             uploaded_at as "uploaded_at!: DateTime<Utc>",
-            verified_at as "verified_at?: DateTime<Utc>", 
-            status as "status!: String", 
+            verified_at as "verified_at?: DateTime<Utc>",
+            status as "status!: String",
             verification_notes, created_by,
             updated_at as "updated_at!: DateTime<Utc>"
         "#,
@@ -4807,8 +4807,8 @@ pub async fn get_merchant_documents(
         SELECT id, merchant_id, document_type, document_url, document_hash,
                file_size_bytes, original_filename, mime_type, uploaded_at,
                verified_at, status, verification_notes, created_by, updated_at
-        FROM merchant_documents 
-        WHERE merchant_id = 
+        FROM merchant_documents
+        WHERE merchant_id =
         "#,
     );
 
@@ -4899,6 +4899,77 @@ pub async fn update_document_status(
     };
 
     Ok(document)
+}
+
+/// Get investor profile with identity information by user ID or email
+pub async fn get_investor_profile_by_user_id_or_email(
+    pool: &PgPool,
+    user_id: Option<uuid::Uuid>,
+    email: Option<&str>,
+) -> Result<Option<(InvestorProfile, Identity)>, sqlx::Error> {
+    // Ensure exactly one parameter is provided
+    match (user_id, email) {
+        (Some(_), Some(_)) => return Err(sqlx::Error::RowNotFound),
+        (None, None) => return Err(sqlx::Error::RowNotFound),
+        _ => {}
+    }
+
+    let result = sqlx::query!(
+        r#"
+        SELECT
+            profile_id as "profile_id!", user_id as "user_id!", user_email as "user_email!",
+            user_type as "user_type!", kyc_status as "kyc_status!",
+            kyc_submitted_at, kyc_verified_at,
+            kyc_investor_type as "kyc_investor_type?: KycInvestorType",
+            accredited_investor, investment_capacity, regulatory_jurisdiction,
+            profile_created_at as "profile_created_at!", profile_updated_at as "profile_updated_at!",
+            first_name, last_name, jurisdiction, wallet_address
+        FROM get_investor_profile_by_user_id_or_email($1, $2)
+        "#,
+        user_id,
+        email
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    match result {
+        Some(row) => {
+            let profile = InvestorProfile {
+                id: row.profile_id,
+                user_id: row.user_id,
+                accredited_investor: row.accredited_investor.unwrap_or(false),
+                investment_capacity: row.investment_capacity,
+                regulatory_jurisdiction: row.regulatory_jurisdiction.unwrap_or_default(),
+                created_at: row.profile_created_at,
+                updated_at: row.profile_updated_at,
+            };
+
+            let identity = Identity {
+                id: row.user_id,
+                user_type: row.user_type,
+                email: row.user_email,
+                kyc_status: row.kyc_status,
+                kyc_submitted_at: row.kyc_submitted_at,
+                kyc_verified_at: row.kyc_verified_at,
+                kyc_investor_type: row.kyc_investor_type,
+                created_at: row.profile_created_at, // Using profile timestamps since this is joined data
+                updated_at: row.profile_updated_at,
+                password_hash: None, // Don't expose password hash
+                last_login_at: None,
+                email_verified: None,
+                email_verification_token: None,
+                password_reset_token: None,
+                password_reset_expires_at: None,
+                first_name: row.first_name,
+                last_name: row.last_name,
+                jurisdiction: row.jurisdiction,
+                wallet_address: row.wallet_address,
+            };
+
+            Ok(Some((profile, identity)))
+        }
+        None => Ok(None),
+    }
 }
 
 // ============================================================================

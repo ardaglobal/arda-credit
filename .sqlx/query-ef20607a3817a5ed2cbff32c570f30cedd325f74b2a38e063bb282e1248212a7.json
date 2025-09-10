@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            merchant_id as \"merchant_id!: uuid::Uuid\",\n            legal_name as \"legal_name!: String\",\n            kyc_status as \"kyc_status!: String\",\n            has_legal_name as \"has_legal_name!: bool\",\n            has_tax_id as \"has_tax_id!: bool\",\n            has_mcc as \"has_mcc!: bool\",\n            has_industry as \"has_industry!: bool\",\n            has_years_in_business as \"has_years_in_business!: bool\",\n            has_revenue_estimate as \"has_revenue_estimate!: bool\",\n            kyc_approved as \"kyc_approved!: bool\",\n            has_sufficient_turnover_history as \"has_sufficient_turnover_history!: bool\",\n            has_verified_turnover_data as \"has_verified_turnover_data!: bool\",\n            has_bank_statement as \"has_bank_statement!: bool\",\n            completion_score as \"completion_score!: i32\"\n        FROM merchant_profile_completion\n        WHERE merchant_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "merchant_id!: uuid::Uuid",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "legal_name!: String",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "kyc_status!: String",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "has_legal_name!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "has_tax_id!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "has_mcc!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "has_industry!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "has_years_in_business!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "has_revenue_estimate!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "kyc_approved!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "has_sufficient_turnover_history!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "has_verified_turnover_data!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 12,
+        "name": "has_bank_statement!: bool",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "completion_score!: i32",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ef20607a3817a5ed2cbff32c570f30cedd325f74b2a38e063bb282e1248212a7"
+}

@@ -108,6 +108,7 @@ pub use db::{
     get_investor_dashboard_metrics,
     get_investor_pool_summaries,
     get_investor_profile_by_user_id,
+    get_investor_profile_by_user_id_or_email,
     get_investor_profile_with_identity,
     get_invite_code_info,
     get_kyc_statistics,
