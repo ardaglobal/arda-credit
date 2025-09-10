@@ -607,31 +607,8 @@ fn extract_client_ip(request: &Request<Body>) -> Option<String> {
 // METRICS MIDDLEWARE
 // ============================================================================
 
-/// Metrics collection middleware
-#[instrument(skip(request, next), level = "debug")]
-pub async fn metrics_middleware(request: Request<Body>, next: Next) -> Response {
-    let start = Instant::now();
-    let method = request.method().clone();
-    let path = request.uri().path().to_string();
-
-    let response = next.run(request).await;
-
-    let duration = start.elapsed();
-    let status = response.status().as_u16();
-
-    // Record metrics (would integrate with actual metrics system like Prometheus)
-    debug!(
-        "📊 Metrics - Method: {}, Path: {}, Status: {}, Duration: {:?}",
-        method, path, status, duration
-    );
-
-    // In real implementation, would increment counters, histograms, etc.
-    // For example:
-    // - http_requests_total.with_label_values(&[method.as_str(), &status.to_string()]).inc();
-    // - http_request_duration_seconds.with_label_values(&[method.as_str(), &path]).observe(duration.as_secs_f64());
-
-    response
-}
+pub mod metrics;
+pub use metrics::metrics_middleware;
 
 // ============================================================================
 // MIDDLEWARE CONFIGURATION BUILDER

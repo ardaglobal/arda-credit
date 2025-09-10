@@ -1,4 +1,5 @@
 use axum::{
+    http::StatusCode,
     response::{Html, IntoResponse},
     routing::get,
     Router,
@@ -18,6 +19,7 @@ use tracing::{info, instrument};
 use crate::auth::AuthService;
 use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
 use crate::middleware::AuthConfig;
+use crate::metrics::{init_metrics, start_system_metrics_task};
 use crate::rest::{ApiConfig, ApiState};
 use arda_credit_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
 use std::sync::Arc;
@@ -98,6 +100,12 @@ impl ApiServer {
         config: ApiServerConfig,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         info!("🚀 Initializing batch processing API server");
+
+        // Initialize Prometheus metrics
+        init_metrics().await?;
+        
+        // Start system metrics collection task
+        let _metrics_task = start_system_metrics_task();
 
         // Initialize database connection
         let pool = if let Some(url) = database_url {
@@ -228,7 +236,8 @@ impl ApiServer {
                 .route("/health", get(health_check))
                 .route("/", get(api_info_handler))
                 .with_state(self.state.clone())
-        };
+        }
+        .route("/metrics", get(metrics_handler));
 
         // Configure authentication middleware
         let auth_config = AuthConfig {
@@ -238,6 +247,7 @@ impl ApiServer {
             allow_anonymous_endpoints: vec![
                 "/health".to_string(),
                 "/".to_string(),
+                "/metrics".to_string(),             // Allow Prometheus scraping
                 "/api/auth/login".to_string(),
                 "/api/v1/user".to_string(),         // Allow registration
                 "/api/v1/invite-code/".to_string(), // Allow invite code checking
@@ -250,6 +260,11 @@ impl ApiServer {
         let router = router.layer(axum::middleware::from_fn_with_state(
             auth_config,
             crate::middleware::auth_middleware,
+        ));
+
+        // Add metrics middleware
+        let router = router.layer(axum::middleware::from_fn(
+            crate::middleware::metrics_middleware,
         ));
 
         // Add other middleware layers
@@ -320,6 +335,33 @@ impl ApiServer {
 async fn health_check() -> impl IntoResponse {
     info!("Health check requested");
     "OK"
+}
+
+/// Prometheus metrics endpoint
+#[instrument(level = "info")]
+async fn metrics_handler() -> impl IntoResponse {
+    use crate::metrics::get_metrics;
+    
+    match get_metrics().await {
+        Some(collector) => match collector.get_metrics_text() {
+            Ok(metrics_text) => (
+                StatusCode::OK,
+                [("Content-Type", "text/plain; version=0.0.4; charset=utf-8")],
+                metrics_text,
+            )
+                .into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Error generating metrics: {}", e),
+            )
+                .into_response(),
+        },
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Metrics collector not initialized",
+        )
+            .into_response(),
+    }
 }
 
 /// API information handler

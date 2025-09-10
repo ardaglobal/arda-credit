@@ -302,6 +302,9 @@ impl EthereumClient {
         proof: Bytes,
         public_values: Bytes,
     ) -> Result<StateUpdate> {
+        let start_time = std::time::Instant::now();
+        let chain_id = self.config.network.chain_id.to_string();
+        
         // Create contract instance
         let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
@@ -316,6 +319,8 @@ impl EthereumClient {
             .send()
             .await
             .map_err(|e| {
+                let _duration = start_time.elapsed().as_secs_f64();
+                // TODO: Record smart contract error metrics
                 error!("Failed to send state update transaction: {e}");
                 EthereumError::from_contract_error(&format!("Transaction failed: {e}"))
             })?;
@@ -338,11 +343,22 @@ impl EthereumClient {
 
         let block_number = receipt.block_number.unwrap_or(0);
         let tx_hash = receipt.transaction_hash;
+        let gas_used = receipt.gas_used;
+        let duration = start_time.elapsed().as_secs_f64();
+        
+        // Calculate transaction cost (simplified - would need gas price from receipt in production)
+        let gas_price_gwei = 20.0; // Placeholder - should get from actual transaction
+        let tx_cost_eth = (gas_used as f64 * gas_price_gwei * 1e-9) / 1e18;
+        
+        // TODO: Record successful smart contract call metrics
 
         info!(
-            "State update confirmed successfully in block {}: {}",
+            "State update confirmed successfully in block {}: {} (gas: {}, cost: {:.6} ETH, duration: {:.3}s)",
             block_number,
-            hex::encode(tx_hash.as_slice())
+            hex::encode(tx_hash.as_slice()),
+            gas_used,
+            tx_cost_eth,
+            duration
         );
 
         let state_update = StateUpdate {

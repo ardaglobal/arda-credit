@@ -93,6 +93,11 @@ humantime = "2"
 utoipa            = { version = "5.4", features = [ "axum_extras", "chrono", "uuid" ] }
 utoipa-swagger-ui = { version = "9.0", features = [ "axum" ] }
 
+# Prometheus metrics dependencies
+prometheus           = { workspace = true }
+prometheus-hyper     = { workspace = true }
+once_cell            = { workspace = true }
+
 [dev-dependencies]
 
 axum-test          = "18.1.0"

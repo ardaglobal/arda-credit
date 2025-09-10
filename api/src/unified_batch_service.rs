@@ -13,6 +13,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
+use crate::metrics::{record_ads_operation, record_batch_processing};
+
 use arda_credit_db::{
     get_pending_transactions, store_ads_state_commit, AuthenticatedDataStructure,
     IncomingTransaction, IndexedMerkleTreeADS, LoanOperation, ProofBatch, StateTransition,
@@ -286,6 +288,9 @@ impl UnifiedBatchService {
             "📦 UNIFIED: Processing {} transactions through unified ADS integration",
             batch_size
         );
+        
+        // Record batch processing start metrics
+        record_batch_processing("start", trigger_source, 0.0, batch_size).await;
 
         // Step 3: Start atomic database transaction
         let db_tx = self
@@ -615,9 +620,13 @@ impl UnifiedBatchService {
             drop(ads_guard);
             (transitions, root)
         };
+        let merkle_duration = merkle_start.elapsed().as_secs_f64();
         metrics.merkleization_time = merkle_start.elapsed().as_millis() as f64;
         metrics.ads_processing_time = merkle_start.elapsed().as_millis() as f64;
         metrics.state_transitions = state_transitions.len();
+        
+        // Record ADS operation metrics
+        record_ads_operation("process_loan_batch", "indexed_merkle_tree", merkle_duration).await;
 
         // Step 5: Atomic database commit
         let db_start = Instant::now();
@@ -639,6 +648,10 @@ impl UnifiedBatchService {
         let total_time = total_start.elapsed().as_millis() as f64;
         metrics.total_processing_time = total_time;
         metrics.batch_completed_at = chrono::Utc::now();
+        
+        // Record final batch processing metrics
+        let total_time_seconds = total_time / 1000.0;
+        record_batch_processing("complete", trigger_source, total_time_seconds, batch_size).await;
 
         // Calculate throughput metrics
         let seconds_elapsed = total_time / 1000.0;

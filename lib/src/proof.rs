@@ -201,6 +201,7 @@ pub async fn generate_batch_proof(
         &stdin_json[..std::cmp::min(100, stdin_json.len())]
     );
 
+    let api_start = std::time::Instant::now();
     let proof_info = client
         .prove_circuit(&circuit_name, proof_input, None, None, None)
         .await
@@ -208,6 +209,9 @@ pub async fn generate_batch_proof(
             error!("❌ Sindri API call failed: {}", e);
             ProofError::SindriError(e.to_string())
         })?;
+    
+    // Record successful API call (would be implemented in the API layer)
+    let _api_duration = api_start.elapsed().as_secs_f64();
 
     info!(
         "✅ Sindri API call successful! Proof ID: {}, Status: {:?}",
@@ -219,6 +223,8 @@ pub async fn generate_batch_proof(
         JobStatus::Failed => "Failed".to_string(),
         _ => "Pending".to_string(),
     };
+    
+    // Record proof generation request metrics (would be implemented in the API layer)
 
     let verification_command = format!(
         "cargo run --release -- --verify --proof-id {} --initial-balance {} --transactions {:?}",
@@ -240,6 +246,9 @@ pub async fn generate_batch_proof(
         proof_info,
     };
 
+    // Record public values size for metrics (would be implemented in the API layer)
+    let _public_values_size = std::mem::size_of::<i32>() * 2; // initial_balance + final_balance
+    
     // Generate EVM fixture if requested
     if request.generate_fixtures {
         if let Err(e) = create_batch_evm_fixture(

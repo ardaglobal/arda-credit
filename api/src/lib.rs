@@ -38,7 +38,9 @@ pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
 pub mod credit_line_handlers;
+pub mod db_metrics;
 pub mod kyc_service;
+pub mod metrics;
 pub mod middleware;
 pub mod paths;
 pub mod pool_api;
@@ -127,6 +129,14 @@ pub use credit_line_handlers::{
 };
 
 pub use telemetry::{init_tracer, init_tracing, shutdown_telemetry};
+
+pub use metrics::{
+    get_metrics, init_metrics, record_ads_operation, record_batch_processing, record_db_operation,
+    record_http_request, record_sindri_api_call, record_sindri_proof_generation,
+    record_smart_contract_call, start_system_metrics_task, update_system_metrics, MetricsCollector,
+};
+
+pub use db_metrics::{instrument_db, instrument_db_operation};
 
 // Re-export database types that the API uses
 pub use arda_credit_db::{
