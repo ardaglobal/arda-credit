@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv::dotenv().ok();
 
     // Initialize complete tracing setup with OpenTelemetry integration
-    let _tracer = init_tracing().map_err(|e| {
+    init_tracing().map_err(|e| {
         error!("Failed to initialize tracing: {}", e);
         e
     })?;

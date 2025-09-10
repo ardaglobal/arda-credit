@@ -38,6 +38,33 @@ postgresql:
       enabled: true
       size: 8Gi
       # storageClass: ""  # Leave empty for default, or specify for cloud providers (e.g., "gp2", "gp3" for EKS)
+
+    # Initialize monitoring user for SigNoz integration
+    initdb:
+      scripts:
+        01-create-monitoring-user.sql: |
+          -- Create monitoring user with proper permissions for SigNoz PostgreSQL monitoring
+          -- This script runs during PostgreSQL initialization and survives pod restarts
+          
+          DO $$
+          BEGIN
+              -- Create monitoring user (ignore error if already exists)
+              BEGIN
+                  CREATE USER monitoring WITH PASSWORD 'monitoring-password';
+                  RAISE NOTICE 'Created monitoring user';
+              EXCEPTION WHEN duplicate_object THEN
+                  RAISE NOTICE 'Monitoring user already exists, updating password';
+                  ALTER USER monitoring PASSWORD 'monitoring-password';
+              END;
+          END
+          $$;
+          
+          -- Grant required permissions for PostgreSQL 10+ (per SigNoz documentation)
+          GRANT pg_monitor TO monitoring;
+          GRANT SELECT ON pg_stat_database TO monitoring;
+          
+          -- Log successful setup
+          \echo 'Monitoring user configured successfully for SigNoz integration'
     
     resources:
       limits:
@@ -257,6 +284,7 @@ secrets:
     ethereumContractAddress: "0x..."
     ethereumWalletPrivateKey: "0x..."
     ethereumDeployerAddress: "0x..."
+    signozIngestionKey: "your-signoz-ingestion-key"
 
 # Security Context
 podSecurityContext:
@@ -288,5 +316,228 @@ serviceAccount:
 rbac:
   # Specifies whether RBAC resources should be created
   create: true
+
+# Monitoring configuration
+monitoring:
+  # PostgreSQL Prometheus Exporter configuration
+  postgresExporter:
+    enabled: false
+    
+    # Configuration for the prometheus-postgres-exporter subchart
+    config:
+      # Data source configuration
+      datasource:
+        # Connection details - these will be templated to match PostgreSQL config
+        host: ""  # Will be templated from postgresql configuration
+        port: 5432
+        database: ""  # Will be templated from postgresql.auth.database
+        username: ""  # Will be templated from postgresql.auth.username
+        # Password will be sourced from the same secret as PostgreSQL
+        passwordSecret:
+          name: ""  # Will be templated to match PostgreSQL secret
+          key: "password"
+        sslmode: "disable"  # For internal cluster communication
+        
+      # Custom queries and collectors
+      collectors:
+        - "pg_stat_database"
+        - "pg_stat_bgwriter"
+        - "pg_stat_user_tables"
+        - "pg_locks"
+        - "pg_stat_replication"
+        - "arda_credit_metrics"  # Custom collector for loan transaction metrics
+      
+      # Custom queries for Arda Credit specific metrics
+      customQueries: |
+        arda_credit_metrics:
+          query: |
+            SELECT 
+              'loan_transactions_total' as metric,
+              COUNT(*) as value,
+              transaction_type as transaction_type
+            FROM loan_transactions 
+            GROUP BY transaction_type
+            UNION ALL
+            SELECT 
+              'batch_processing_total' as metric,
+              COUNT(*) as value,
+              'all' as transaction_type
+            FROM proof_batches
+            UNION ALL
+            SELECT
+              'user_balances_total' as metric,
+              COUNT(*) as value,
+              'all' as transaction_type
+            FROM user_balances
+          metrics:
+            - metric: "arda_credit_loan_transactions_total"
+              description: "Total number of loan transactions by type"
+              usage: "COUNTER"
+              labels:
+                - "transaction_type"
+            - metric: "arda_credit_batch_processing_total" 
+              description: "Total number of processed batches"
+              usage: "COUNTER"
+            - metric: "arda_credit_user_balances_total"
+              description: "Total number of user balance records"
+              usage: "GAUGE"
+    
+    # Service configuration  
+    service:
+      type: ClusterIP
+      port: 9187
+      targetPort: 9187
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: "/metrics"
+    
+    # Resource limits
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+    
+    # Service monitor for Prometheus operator
+    serviceMonitor:
+      enabled: false
+      interval: 30s
+      scrapeTimeout: 10s
+      labels: {}
+
+  # OpenTelemetry Collector configuration
+  otelCollector:
+    enabled: false
+    
+    # Configuration for collecting metrics from multiple sources
+    config:
+      # Environment variables for SigNoz integration
+      env:
+        # PostgreSQL connection details
+        POSTGRESQL_ENDPOINT: ""  # Will be templated from postgresql configuration
+        POSTGRESQL_USERNAME: ""  # Will be templated from postgresql.auth.username  
+        POSTGRESQL_PASSWORD: ""  # Will be templated from postgresql.auth.password
+        # SigNoz Cloud configuration
+        OTLP_DESTINATION_ENDPOINT: "ingest.us.signoz.cloud:443"
+        SIGNOZ_INGESTION_KEY: ""  # Must be provided via secrets
+      
+      # Collection pipelines configuration
+      receivers:
+        # Direct PostgreSQL metrics collection
+        postgresql:
+          endpoint: "${env:POSTGRESQL_ENDPOINT}"
+          collection_interval: 60s
+          username: "${env:POSTGRESQL_USERNAME}"
+          password: "${env:POSTGRESQL_PASSWORD}"
+          databases: []  # Collect from all non-template databases
+          tls:
+            insecure: true
+          metrics:
+            postgresql.database.locks:
+              enabled: true
+            postgresql.deadlocks:
+              enabled: true
+            postgresql.sequential_scans:
+              enabled: true
+        
+        # Scrape metrics from prometheus-postgres-exporter
+        prometheus/postgres-exporter:
+          config:
+            scrape_configs:
+              - job_name: 'postgres-exporter'
+                static_configs:
+                  - targets: ['arda-credit-prometheus-postgres-exporter:9187']
+                scrape_interval: 30s
+                metrics_path: /metrics
+      
+      processors:
+        # Enrich data with host information
+        resourcedetection/system:
+          detectors: ["system"]
+          system:
+            hostname_sources: ["os"]
+        
+        # Add resource attributes for better identification
+        resource:
+          attributes:
+            - key: service.name
+              value: "arda-credit-postgres"
+              action: upsert
+            - key: deployment.environment
+              value: "development"
+              action: upsert
+      
+      exporters:
+        # Export to SigNoz Cloud (PostgreSQL metrics)
+        otlp/signoz:
+          endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
+          tls:
+            insecure: false
+          headers:
+            "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
+        
+        # Export to SigNoz Cloud (Arda Credit traces)
+        otlp/arda-credit:
+          endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
+          tls:
+            insecure: false
+          headers:
+            "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
+          retry_on_failure:
+            enabled: true
+            initial_interval: 5s
+            max_interval: 30s
+            max_elapsed_time: 300s
+          sending_queue:
+            enabled: true
+            queue_size: 5000
+            num_consumers: 10
+        
+        # Debug exporter for local testing
+        debug:
+          verbosity: detailed
+      
+      service:
+        pipelines:
+          # PostgreSQL metrics pipeline
+          metrics/postgresql:
+            receivers: [postgresql, prometheus/postgres-exporter]
+            processors: [resourcedetection/system, resource]
+            exporters: [otlp/signoz]
+          
+          # Arda Credit traces pipeline
+          traces/arda-credit:
+            receivers: [otlp, jaeger, zipkin]
+            processors: [memory_limiter, batch]
+            exporters: [otlp/arda-credit, debug]
+          
+          # Debug pipeline for local development
+          metrics/debug:
+            receivers: [postgresql, prometheus/postgres-exporter]  
+            processors: [resourcedetection/system, resource]
+            exporters: [debug]
+    
+    # Service configuration
+    service:
+      type: ClusterIP
+      ports:
+        - name: otlp-grpc
+          port: 4317
+          targetPort: 4317
+        - name: otlp-http  
+          port: 4318
+          targetPort: 4318
+    
+    # Resource limits
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 200m
+        memory: 256Mi
 
 # Component-specific node selectors are defined within each component section above
