@@ -179,6 +179,28 @@ pub const POOL_UTILIZATION: &str = api_path!("/pools/{pool_id}/utilization");
 /// Pool transactions
 pub const POOL_TRANSACTIONS: &str = api_path!("/pools/{pool_id}/transactions");
 
+/// Pool matching endpoint for auto-deployment
+pub const POOL_MATCH: &str = api_path!("/pools/match");
+
+// ============================================================================
+// CREDIT LINE MANAGEMENT PATHS
+// ============================================================================
+
+/// Credit line requests collection
+pub const CREDIT_LINES: &str = api_path!("/credit-lines");
+
+/// Browse available pools for credit lines
+pub const CREDIT_LINES_AVAILABLE_POOLS: &str = api_path!("/credit-lines/available-pools");
+
+/// Check credit eligibility
+pub const CREDIT_LINES_ELIGIBILITY: &str = api_path!("/credit-lines/eligibility");
+
+/// Submit credit line request
+pub const CREDIT_LINES_REQUEST: &str = api_path!("/credit-lines/request");
+
+/// Submit credit line request (v2)
+pub const CREDIT_LINES_REQUEST_V2: &str = api_path!("/credit-lines/request-v2");
+
 // ============================================================================
 // STATE MANAGEMENT PATHS (transactions, batches, proofs)
 // ============================================================================

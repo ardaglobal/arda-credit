@@ -34,7 +34,7 @@ use crate::paths;
 use crate::pool_handlers::{
     create_pool, get_investor_dashboard, get_investor_pool_summaries, get_market_overview,
     get_pool_details, get_pool_performance, get_pool_transactions, get_pool_utilization,
-    list_pools,
+    list_pools, update_pool_status,
 };
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
@@ -1344,11 +1344,14 @@ pub fn create_router(state: ApiState) -> Router {
         // ========================================================================
         // LIQUIDITY POOL QUERY ENDPOINTS
         // ========================================================================
-        // Pool Query Endpoints
         .route(paths::POOLS, get(list_pools).post(create_pool))
-        .route(paths::POOL_BY_ID, get(get_pool_details))
+        .route(
+            paths::POOL_BY_ID,
+            get(get_pool_details).put(update_pool_status),
+        )
         .route(paths::POOL_UTILIZATION, get(get_pool_utilization))
         .route(paths::POOL_TRANSACTIONS, get(get_pool_transactions))
+        .route(paths::POOL_MATCH, post(find_matching_pools_endpoint))
         // Investor Query Endpoints
         .route("/api/investor/dashboard", get(get_investor_dashboard))
         .route(
@@ -1378,20 +1381,24 @@ pub fn create_router(state: ApiState) -> Router {
         // ========================================================================
         // CREDIT LINE ENDPOINTS
         // ========================================================================
-        // Credit line routes temporarily commented out due to handler issues
-        // .route(
-        //     "/api/v2/credit-lines/eligibility",
-        //     get(check_credit_eligibility),
-        // )
-        // .route(
-        //     "/api/v2/credit-lines/request",
-        //     post(submit_credit_line_request),
-        // )
+        .route(paths::CREDIT_LINES, get(list_credit_line_requests))
+        .route(
+            paths::CREDIT_LINES_AVAILABLE_POOLS,
+            get(browse_available_pools),
+        )
+        .route(
+            paths::CREDIT_LINES_ELIGIBILITY,
+            get(check_credit_eligibility),
+        )
+        .route(
+            paths::CREDIT_LINES_REQUEST,
+            post(submit_credit_line_request),
+        )
         // ========================================================================
-        // CREDIT LINE REQUEST ENDPOINTS
+        // CREDIT LINE REQUEST ENDPOINTS (V2)
         // ========================================================================
         .route(
-            "/api/credit-lines/request",
+            paths::CREDIT_LINES_REQUEST_V2,
             post(create_credit_line_request_endpoint),
         )
         .with_state(state)
@@ -2637,7 +2644,7 @@ fn extract_authenticated_user_id(
     parse_user_id(user_id_str)
 }
 
-fn extract_authenticated_user(
+pub fn extract_authenticated_user(
     request: &axum::extract::Request<axum::body::Body>,
 ) -> Result<AuthenticatedUser, String> {
     let user_id = extract_authenticated_user_id(request)?;
@@ -5754,9 +5761,21 @@ async fn get_pending_withdrawals_endpoint(
         update_loan_endpoint,
         delete_loan_endpoint,
         get_loan_stats_endpoint,
-        // Liquidity Pool endpoints  
+        // Liquidity Pool endpoints
         crate::pool_handlers::list_pools,
-        crate::pool_handlers::get_pool_details
+        crate::pool_handlers::get_pool_details,
+        crate::pool_handlers::create_pool,
+        crate::pool_handlers::update_pool_status,
+        list_pools_endpoint,
+        create_pool_endpoint,
+        get_pool_endpoint,
+        update_pool_status_endpoint,
+        find_matching_pools_endpoint,
+        // Credit Line endpoints
+        crate::credit_line_handlers::list_credit_line_requests,
+        crate::credit_line_handlers::browse_available_pools,
+        crate::credit_line_handlers::check_credit_eligibility,
+        crate::credit_line_handlers::submit_credit_line_request
     ),
     components(
         schemas(
@@ -6132,7 +6151,7 @@ async fn list_pools_endpoint(
     tag = "Liquidity Pools"
 )]
 #[instrument(skip(state), level = "info")]
-async fn get_pool_endpoint(
+pub async fn get_pool_endpoint(
     State(state): State<ApiState>,
     axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
     Path(pool_id_str): Path<String>,

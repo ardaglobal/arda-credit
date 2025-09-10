@@ -1,4 +1,4 @@
-use arda_credit_db::{get_identity_by_id, DbResult, Identity};
+use arda_credit_db::{get_identity_by_id, DbResult};
 use sqlx::PgPool;
 use uuid::Uuid;
 /// KYC validation service for withdrawal operations
@@ -57,7 +57,7 @@ impl KycValidationService {
         &self,
         wallet_address: &str,
     ) -> DbResult<Option<KycValidationResult>> {
-        /// First try to find user by wallet address
+        // First try to find user by wallet address
         let user_id_result =
             arda_credit_db::get_user_id_by_wallet_address(&self.pool, wallet_address).await;
         match user_id_result {
@@ -66,7 +66,7 @@ impl KycValidationService {
                 Ok(Some(result))
             }
             Ok(None) => {
-                /// No user linked to this address
+                // No user linked to this address
                 Ok(None)
             }
             Err(e) => Err(e.into()),

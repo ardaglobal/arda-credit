@@ -10,7 +10,9 @@ use utoipa;
 use uuid::Uuid;
 
 use crate::pool_api::*;
-use crate::rest::{ApiState, CreatePoolRequest, CreatePoolResponse};
+use crate::rest::{
+    ApiState, CreatePoolRequest, CreatePoolResponse, PoolDetailsResponse, UpdatePoolStatusRequest,
+};
 use arda_credit_db::{
     get_all_liquidity_pools, get_investor_dashboard_metrics,
     get_investor_pool_summaries as db_get_investor_pool_summaries, get_liquidity_pool_by_id,
@@ -138,8 +140,8 @@ pub async fn get_pool_details(
     };
 
     // Get pool summary
-    let summary = match get_pool_summary(&state.pool, pool_uuid).await {
-        Ok(Some(summary)) => PoolSummaryInfo::from(summary),
+    let _summary = match get_pool_summary(&state.pool, pool_uuid).await {
+        Ok(Some(_summary)) => PoolSummaryInfo::from(_summary),
         Ok(None) => {
             // Return default summary if none exists
             PoolSummaryInfo {
@@ -165,8 +167,18 @@ pub async fn get_pool_details(
     };
 
     Ok(Json(PoolDetailsResponse {
-        pool: StandardPoolObject::from(pool),
-        summary,
+        pool_id: pool.id.to_string(),
+        name: pool.name,
+        investor_id: pool.investor_id.to_string(),
+        total_deposits: "0".to_string(), // TODO: Calculate from database
+        available_liquidity: "0".to_string(), // TODO: Calculate from database
+        utilized_liquidity: "0".to_string(), // TODO: Calculate from database
+        max_ltv_ratio: pool.max_ltv_ratio.to_string(),
+        max_interest_rate: pool.max_interest_rate.to_string(),
+        repayment_period_days: pool.repayment_period_days,
+        status: pool.status,
+        created_at: pool.created_at,
+        updated_at: pool.updated_at,
     }))
 }
 
@@ -439,6 +451,91 @@ pub async fn create_pool(
                 Json(ErrorResponse::new(
                     "database_error",
                     "Failed to create liquidity pool",
+                )),
+            ))
+        }
+    }
+}
+
+/// PUT /api/pools/{pool_id} - Update pool status
+#[utoipa::path(
+    put,
+    path = "/api/v1/pools/{pool_id}",
+    params(
+        ("pool_id" = String, Path, description = "Pool ID")
+    ),
+    request_body = UpdatePoolStatusRequest,
+    responses(
+        (status = 200, description = "Pool updated successfully", body = PoolDetailsResponse),
+        (status = 400, description = "Invalid request parameters", body = ErrorResponse),
+        (status = 404, description = "Pool not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Liquidity Pools"
+)]
+#[instrument(skip(state))]
+pub async fn update_pool_status(
+    State(state): State<ApiState>,
+    Path(pool_id): Path<String>,
+    Json(request): Json<UpdatePoolStatusRequest>,
+) -> Result<Json<PoolDetailsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let pool_uuid = match Uuid::parse_str(&pool_id) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "invalid_pool_id",
+                    "Invalid pool ID format",
+                )),
+            ));
+        }
+    };
+
+    info!(
+        "🔄 Updating pool status: id={}, status={}",
+        pool_id, request.status
+    );
+
+    // Validate status
+    if !["ACTIVE", "PAUSED", "CLOSED"].contains(&request.status.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "invalid_status",
+                "Status must be ACTIVE, PAUSED, or CLOSED",
+            )),
+        ));
+    }
+
+    // Update pool status using database function
+    match arda_credit_db::update_liquidity_pool_status(&state.pool, pool_uuid, &request.status)
+        .await
+    {
+        Ok(pool) => {
+            info!("✅ Pool status updated successfully: id={}", pool.id);
+            Ok(Json(PoolDetailsResponse {
+                pool_id: pool.id.to_string(),
+                name: pool.name,
+                investor_id: pool.investor_id.to_string(),
+                total_deposits: "0".to_string(), // TODO: Calculate from database
+                available_liquidity: "0".to_string(), // TODO: Calculate from database
+                utilized_liquidity: "0".to_string(), // TODO: Calculate from database
+                max_ltv_ratio: pool.max_ltv_ratio.to_string(),
+                max_interest_rate: pool.max_interest_rate.to_string(),
+                repayment_period_days: pool.repayment_period_days,
+                status: pool.status,
+                created_at: pool.created_at,
+                updated_at: pool.updated_at,
+            }))
+        }
+        Err(e) => {
+            error!("❌ Database error updating pool status: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "database_error",
+                    "Failed to update pool status",
                 )),
             ))
         }
