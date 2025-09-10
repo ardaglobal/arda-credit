@@ -32,8 +32,9 @@ use crate::credit_line_handlers::{
 };
 use crate::paths;
 use crate::pool_handlers::{
-    get_investor_dashboard, get_investor_pool_summaries, get_market_overview, get_pool_details,
-    get_pool_performance, get_pool_transactions, get_pool_utilization, list_pools,
+    create_pool, get_investor_dashboard, get_investor_pool_summaries, get_market_overview,
+    get_pool_details, get_pool_performance, get_pool_transactions, get_pool_utilization,
+    list_pools,
 };
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
@@ -1110,6 +1111,8 @@ pub struct CreatePoolRequest {
     /// Maximum interest rate as a decimal string (e.g., "0.1200" for 12%)
     pub max_interest_rate: String,
     pub repayment_period_days: i32,
+    /// Investor ID (required for pool creation)
+    pub investor_id: Option<String>,
 }
 
 /// Response from pool creation
@@ -1342,7 +1345,7 @@ pub fn create_router(state: ApiState) -> Router {
         // LIQUIDITY POOL QUERY ENDPOINTS
         // ========================================================================
         // Pool Query Endpoints
-        .route(paths::POOLS, get(list_pools))
+        .route(paths::POOLS, get(list_pools).post(create_pool))
         .route(paths::POOL_BY_ID, get(get_pool_details))
         .route(paths::POOL_UTILIZATION, get(get_pool_utilization))
         .route(paths::POOL_TRANSACTIONS, get(get_pool_transactions))
@@ -3405,9 +3408,31 @@ async fn register_investor_endpoint(
 ) -> Result<Json<RegisterInvestorResponse>, (StatusCode, String)> {
     info!("🏗️ API: Registering investor: {}", request.email);
 
+    // Validate email and password using AuthService
+    if let Err(e) = state.auth_service.validate_email(&request.email) {
+        warn!("❌ API: Invalid email format for investor: {}", e);
+        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    }
+
+    if let Err(e) = state.auth_service.validate_password(&request.password) {
+        warn!("❌ API: Invalid password format for investor: {}", e);
+        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    }
+
+    // Hash the password
+    let password_hash = match state.auth_service.hash_password(&request.password) {
+        Ok(hash) => hash,
+        Err(e) => {
+            error!("❌ API: Failed to hash password for investor: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.user_message().to_string(),
+            ));
+        }
+    };
+
     // Register the user first as investor
-    match register_or_reregister_user(&state.pool, "investor", &request.email, &request.password)
-        .await
+    match register_or_reregister_user(&state.pool, "investor", &request.email, &password_hash).await
     {
         Ok(result) => {
             let identity = match result {
@@ -3523,9 +3548,20 @@ async fn register_merchant_endpoint(
         return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
     }
 
+    // Hash the password
+    let password_hash = match state.auth_service.hash_password(&request.password) {
+        Ok(hash) => hash,
+        Err(e) => {
+            error!("❌ API: Failed to hash password for merchant: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                e.user_message().to_string(),
+            ));
+        }
+    };
+
     // Register the user first as merchant
-    match register_or_reregister_user(&state.pool, "merchant", &request.email, &request.password)
-        .await
+    match register_or_reregister_user(&state.pool, "merchant", &request.email, &password_hash).await
     {
         Ok(result) => {
             let identity = match result {
@@ -5717,7 +5753,10 @@ async fn get_pending_withdrawals_endpoint(
         get_loan_details_endpoint,
         update_loan_endpoint,
         delete_loan_endpoint,
-        get_loan_stats_endpoint
+        get_loan_stats_endpoint,
+        // Liquidity Pool endpoints  
+        crate::pool_handlers::list_pools,
+        crate::pool_handlers::get_pool_details
     ),
     components(
         schemas(
