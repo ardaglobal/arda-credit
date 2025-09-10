@@ -38,6 +38,7 @@ pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
 pub mod credit_line_handlers;
+pub mod financial_transaction_handlers;
 pub mod kyc_service;
 pub mod middleware;
 pub mod paths;

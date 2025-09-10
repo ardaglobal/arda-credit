@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE merchant_documents \n            SET \n                status = $2,\n                verification_notes = $3,\n                updated_at = NOW()\n            WHERE id = $1\n            RETURNING \n                id, merchant_id, \n                document_type as \"document_type!: String\", \n                document_url, document_hash,\n                file_size_bytes, original_filename, mime_type,\n                uploaded_at as \"uploaded_at!: DateTime<Utc>\",\n                verified_at as \"verified_at?: DateTime<Utc>\", \n                status as \"status!: String\", \n                verification_notes, created_by,\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            ",
+  "query": "\n            UPDATE merchant_documents\n            SET\n                status = $2,\n                verification_notes = $3,\n                updated_at = NOW()\n            WHERE id = $1\n            RETURNING\n                id, merchant_id,\n                document_type as \"document_type!: String\",\n                document_url, document_hash,\n                file_size_bytes, original_filename, mime_type,\n                uploaded_at as \"uploaded_at!: DateTime<Utc>\",\n                verified_at as \"verified_at?: DateTime<Utc>\",\n                status as \"status!: String\",\n                verification_notes, created_by,\n                updated_at as \"updated_at!: DateTime<Utc>\"\n            ",
   "describe": {
     "columns": [
       {
@@ -98,5 +98,5 @@
       true
     ]
   },
-  "hash": "a1b37e98c12db927bdf09086c8066387486e003e73ffd2f18756c8e917ec8a7b"
+  "hash": "ba1ddb0a32e63e23286d70dea0cfe315053fa7d343767e27df55857df48a6858"
 }

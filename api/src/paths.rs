@@ -202,6 +202,55 @@ pub const CREDIT_LINES_REQUEST: &str = api_path!("/credit-lines/request");
 pub const CREDIT_LINES_REQUEST_V2: &str = api_path!("/credit-lines/request-v2");
 
 // ============================================================================
+// FINANCIAL TRANSACTION PATHS
+// ============================================================================
+
+/// Account financial transactions for user
+pub const USER_ACCOUNT_FINANCIAL: &str = api_path!("/user/{user_id}/financial/account");
+
+/// Account deposit recording
+pub const USER_ACCOUNT_FINANCIAL_DEPOSIT: &str =
+    api_path!("/user/{user_id}/financial/account/deposit");
+
+/// Account withdrawal recording
+pub const USER_ACCOUNT_FINANCIAL_WITHDRAWAL: &str =
+    api_path!("/user/{user_id}/financial/account/withdrawal");
+
+/// Pool funding recording
+pub const POOL_FINANCIAL_FUND: &str = api_path!("/pool/{pool_id}/financial/fund");
+
+/// Pool withdrawal recording
+pub const POOL_FINANCIAL_WITHDRAW: &str = api_path!("/pool/{pool_id}/financial/withdraw");
+
+/// Pool financial transactions
+pub const POOL_FINANCIAL_TRANSACTIONS: &str = api_path!("/pool/{pool_id}/financial/transactions");
+
+/// Credit line draw recording
+pub const CREDIT_LINE_FINANCIAL_DRAW: &str =
+    api_path!("/credit-line/{credit_line_id}/financial/draw");
+
+/// Credit line payment recording
+pub const CREDIT_LINE_FINANCIAL_PAYMENT: &str =
+    api_path!("/credit-line/{credit_line_id}/financial/payment");
+
+/// Credit line financial transactions
+pub const CREDIT_LINE_FINANCIAL_TRANSACTIONS: &str =
+    api_path!("/credit-line/{credit_line_id}/financial/transactions");
+
+/// User financial transactions (unified view)
+pub const USER_FINANCIAL_TRANSACTIONS: &str = api_path!("/user/{user_id}/financial/transactions");
+
+/// User financial summary
+pub const USER_FINANCIAL_SUMMARY: &str = api_path!("/user/{user_id}/financial/summary");
+
+/// User pool financial transactions
+pub const USER_POOL_FINANCIAL: &str = api_path!("/user/{user_id}/financial/pools");
+
+/// Merchant credit line financial transactions
+pub const MERCHANT_CREDIT_LINE_FINANCIAL: &str =
+    api_path!("/merchant/{merchant_id}/financial/credit-lines");
+
+// ============================================================================
 // STATE MANAGEMENT PATHS (transactions, batches, proofs)
 // ============================================================================
 
@@ -430,6 +479,83 @@ pub fn withdrawal_cancel_path(request_id: &str) -> String {
 /// Generate transaction by hash path
 pub fn transaction_by_hash_path(tx_hash: &str) -> String {
     replace_param(TRANSACTION_BY_HASH, "tx_hash", tx_hash)
+}
+
+// ============================================================================
+// FINANCIAL TRANSACTION PATH HELPERS
+// ============================================================================
+
+/// Build user account financial path with user_id parameter
+pub fn user_account_financial_path(user_id: &str) -> String {
+    replace_param(USER_ACCOUNT_FINANCIAL, "user_id", user_id)
+}
+
+/// Build user account deposit path with user_id parameter
+pub fn user_account_financial_deposit_path(user_id: &str) -> String {
+    replace_param(USER_ACCOUNT_FINANCIAL_DEPOSIT, "user_id", user_id)
+}
+
+/// Build user account withdrawal path with user_id parameter
+pub fn user_account_financial_withdrawal_path(user_id: &str) -> String {
+    replace_param(USER_ACCOUNT_FINANCIAL_WITHDRAWAL, "user_id", user_id)
+}
+
+/// Build pool funding path with pool_id parameter
+pub fn pool_financial_fund_path(pool_id: &str) -> String {
+    replace_param(POOL_FINANCIAL_FUND, "pool_id", pool_id)
+}
+
+/// Build pool withdrawal path with pool_id parameter
+pub fn pool_financial_withdraw_path(pool_id: &str) -> String {
+    replace_param(POOL_FINANCIAL_WITHDRAW, "pool_id", pool_id)
+}
+
+/// Build pool financial transactions path with pool_id parameter
+pub fn pool_financial_transactions_path(pool_id: &str) -> String {
+    replace_param(POOL_FINANCIAL_TRANSACTIONS, "pool_id", pool_id)
+}
+
+/// Build credit line draw path with credit_line_id parameter
+pub fn credit_line_financial_draw_path(credit_line_id: &str) -> String {
+    replace_param(CREDIT_LINE_FINANCIAL_DRAW, "credit_line_id", credit_line_id)
+}
+
+/// Build credit line payment path with credit_line_id parameter
+pub fn credit_line_financial_payment_path(credit_line_id: &str) -> String {
+    replace_param(
+        CREDIT_LINE_FINANCIAL_PAYMENT,
+        "credit_line_id",
+        credit_line_id,
+    )
+}
+
+/// Build credit line financial transactions path with credit_line_id parameter
+pub fn credit_line_financial_transactions_path(credit_line_id: &str) -> String {
+    replace_param(
+        CREDIT_LINE_FINANCIAL_TRANSACTIONS,
+        "credit_line_id",
+        credit_line_id,
+    )
+}
+
+/// Build user financial transactions path with user_id parameter
+pub fn user_financial_transactions_path(user_id: &str) -> String {
+    replace_param(USER_FINANCIAL_TRANSACTIONS, "user_id", user_id)
+}
+
+/// Build user financial summary path with user_id parameter
+pub fn user_financial_summary_path(user_id: &str) -> String {
+    replace_param(USER_FINANCIAL_SUMMARY, "user_id", user_id)
+}
+
+/// Build user pool financial path with user_id parameter
+pub fn user_pool_financial_path(user_id: &str) -> String {
+    replace_param(USER_POOL_FINANCIAL, "user_id", user_id)
+}
+
+/// Build merchant credit line financial path with merchant_id parameter
+pub fn merchant_credit_line_financial_path(merchant_id: &str) -> String {
+    replace_param(MERCHANT_CREDIT_LINE_FINANCIAL, "merchant_id", merchant_id)
 }
 
 // ============================================================================
@@ -663,6 +789,72 @@ pub fn get_all_endpoints() -> Vec<crate::rest::EndpointInfo> {
             method: "POST".to_string(),
             path: STATE_PROOFS_BATCH_VERIFY.to_string(),
             description: "Batch verify proofs".to_string(),
+        },
+        // Financial Transaction Endpoints
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: USER_ACCOUNT_FINANCIAL_DEPOSIT.to_string(),
+            description: "Record account deposit from smart contract".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: USER_ACCOUNT_FINANCIAL_WITHDRAWAL.to_string(),
+            description: "Record account withdrawal from smart contract".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: USER_ACCOUNT_FINANCIAL.to_string(),
+            description: "Get user's account financial transactions".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: POOL_FINANCIAL_FUND.to_string(),
+            description: "Record pool funding transaction".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: POOL_FINANCIAL_WITHDRAW.to_string(),
+            description: "Record pool withdrawal transaction".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: POOL_FINANCIAL_TRANSACTIONS.to_string(),
+            description: "Get pool financial transactions".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: USER_POOL_FINANCIAL.to_string(),
+            description: "Get user's pool financial transactions".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: CREDIT_LINE_FINANCIAL_DRAW.to_string(),
+            description: "Record credit line draw transaction".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "POST".to_string(),
+            path: CREDIT_LINE_FINANCIAL_PAYMENT.to_string(),
+            description: "Record credit line payment transaction".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: CREDIT_LINE_FINANCIAL_TRANSACTIONS.to_string(),
+            description: "Get credit line financial transactions".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: MERCHANT_CREDIT_LINE_FINANCIAL.to_string(),
+            description: "Get merchant's credit line financial transactions".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: USER_FINANCIAL_TRANSACTIONS.to_string(),
+            description: "Get user's unified financial transactions".to_string(),
+        },
+        crate::rest::EndpointInfo {
+            method: "GET".to_string(),
+            path: USER_FINANCIAL_SUMMARY.to_string(),
+            description: "Get user's financial summary".to_string(),
         },
     ]
 }

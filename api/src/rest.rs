@@ -30,6 +30,15 @@ use crate::credit_line_handlers::{
     browse_available_pools, check_credit_eligibility, list_credit_line_requests,
     submit_credit_line_request,
 };
+// Financial transaction handlers
+use crate::financial_transaction_handlers::{
+    get_account_financial_transactions, get_credit_line_financial_transactions,
+    get_merchant_credit_line_financial_transactions, get_pool_financial_transactions,
+    get_user_financial_summary, get_user_financial_transactions,
+    get_user_pool_financial_transactions, record_account_deposit, record_account_withdrawal,
+    record_credit_line_draw, record_credit_line_payment, record_pool_funding,
+    record_pool_withdrawal,
+};
 use crate::paths;
 use crate::pool_handlers::{
     create_pool, get_investor_dashboard, get_investor_pool_summaries, get_market_overview,
@@ -1287,6 +1296,59 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::ADMIN_PENDING_WITHDRAWALS,
             get(get_pending_withdrawals_endpoint),
+        )
+        // ========================================================================
+        // FINANCIAL TRANSACTION ENDPOINTS
+        // ========================================================================
+        // Account Financial Transactions
+        .route(
+            paths::USER_ACCOUNT_FINANCIAL_DEPOSIT,
+            post(record_account_deposit),
+        )
+        .route(
+            paths::USER_ACCOUNT_FINANCIAL_WITHDRAWAL,
+            post(record_account_withdrawal),
+        )
+        .route(
+            paths::USER_ACCOUNT_FINANCIAL,
+            get(get_account_financial_transactions),
+        )
+        // Pool Financial Transactions
+        .route(paths::POOL_FINANCIAL_FUND, post(record_pool_funding))
+        .route(paths::POOL_FINANCIAL_WITHDRAW, post(record_pool_withdrawal))
+        .route(
+            paths::POOL_FINANCIAL_TRANSACTIONS,
+            get(get_pool_financial_transactions),
+        )
+        .route(
+            paths::USER_POOL_FINANCIAL,
+            get(get_user_pool_financial_transactions),
+        )
+        // Credit Line Financial Transactions
+        .route(
+            paths::CREDIT_LINE_FINANCIAL_DRAW,
+            post(record_credit_line_draw),
+        )
+        .route(
+            paths::CREDIT_LINE_FINANCIAL_PAYMENT,
+            post(record_credit_line_payment),
+        )
+        .route(
+            paths::CREDIT_LINE_FINANCIAL_TRANSACTIONS,
+            get(get_credit_line_financial_transactions),
+        )
+        .route(
+            paths::MERCHANT_CREDIT_LINE_FINANCIAL,
+            get(get_merchant_credit_line_financial_transactions),
+        )
+        // Unified Financial Views
+        .route(
+            paths::USER_FINANCIAL_TRANSACTIONS,
+            get(get_user_financial_transactions),
+        )
+        .route(
+            paths::USER_FINANCIAL_SUMMARY,
+            get(get_user_financial_summary),
         )
         // ========================================================================
         // LOAN MANAGEMENT ENDPOINTS

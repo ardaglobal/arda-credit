@@ -3357,8 +3357,10 @@ pub fn validate_pool_parameters(
     use std::str::FromStr;
 
     // LTV ratio validation: 10% to 95%
-    let min_ltv = rust_decimal::Decimal::from_str("0.1000").unwrap();
-    let max_ltv = rust_decimal::Decimal::from_str("0.9500").unwrap();
+    let min_ltv = rust_decimal::Decimal::from_str("0.1000")
+        .map_err(|e| format!("Invalid LTV min value: {}", e))?;
+    let max_ltv = rust_decimal::Decimal::from_str("0.9500")
+        .map_err(|e| format!("Invalid LTV max value: {}", e))?;
     if max_ltv_ratio < min_ltv || max_ltv_ratio > max_ltv {
         return Err(format!(
             "LTV ratio must be between 10% and 95%, got: {}%",
@@ -3367,8 +3369,10 @@ pub fn validate_pool_parameters(
     }
 
     // Interest rate validation: 1% to 50%
-    let min_rate = rust_decimal::Decimal::from_str("0.0100").unwrap();
-    let max_rate = rust_decimal::Decimal::from_str("0.5000").unwrap();
+    let min_rate = rust_decimal::Decimal::from_str("0.0100")
+        .map_err(|e| format!("Invalid interest rate min value: {}", e))?;
+    let max_rate = rust_decimal::Decimal::from_str("0.5000")
+        .map_err(|e| format!("Invalid interest rate max value: {}", e))?;
     if max_interest_rate < min_rate || max_interest_rate > max_rate {
         return Err(format!(
             "Interest rate must be between 1% and 50%, got: {}%",
@@ -4841,21 +4845,21 @@ pub async fn update_document_status(
         sqlx::query_as!(
             MerchantDocument,
             r#"
-            UPDATE merchant_documents 
-            SET 
+            UPDATE merchant_documents
+            SET
                 status = $2,
                 verification_notes = $3,
                 verified_at = NOW(),
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING 
-                id, merchant_id, 
-                document_type as "document_type!: String", 
+            RETURNING
+                id, merchant_id,
+                document_type as "document_type!: String",
                 document_url, document_hash,
                 file_size_bytes, original_filename, mime_type,
                 uploaded_at as "uploaded_at!: DateTime<Utc>",
-                verified_at as "verified_at?: DateTime<Utc>", 
-                status as "status!: String", 
+                verified_at as "verified_at?: DateTime<Utc>",
+                status as "status!: String",
                 verification_notes, created_by,
                 updated_at as "updated_at!: DateTime<Utc>"
             "#,
@@ -4869,20 +4873,20 @@ pub async fn update_document_status(
         sqlx::query_as!(
             MerchantDocument,
             r#"
-            UPDATE merchant_documents 
-            SET 
+            UPDATE merchant_documents
+            SET
                 status = $2,
                 verification_notes = $3,
                 updated_at = NOW()
             WHERE id = $1
-            RETURNING 
-                id, merchant_id, 
-                document_type as "document_type!: String", 
+            RETURNING
+                id, merchant_id,
+                document_type as "document_type!: String",
                 document_url, document_hash,
                 file_size_bytes, original_filename, mime_type,
                 uploaded_at as "uploaded_at!: DateTime<Utc>",
-                verified_at as "verified_at?: DateTime<Utc>", 
-                status as "status!: String", 
+                verified_at as "verified_at?: DateTime<Utc>",
+                status as "status!: String",
                 verification_notes, created_by,
                 updated_at as "updated_at!: DateTime<Utc>"
             "#,
@@ -4895,4 +4899,593 @@ pub async fn update_document_status(
     };
 
     Ok(document)
+}
+
+// ============================================================================
+// FINANCIAL TRANSACTION TYPES AND FUNCTIONS
+// ============================================================================
+
+/// Account financial transaction (deposits/withdrawals from smart contract)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AccountFinancialTransaction {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub transaction_type: String, // DEPOSIT, WITHDRAWAL
+    pub amount: rust_decimal::Decimal,
+    pub currency: String,
+    pub transaction_hash: String,    // NOT NULL in database
+    pub blockchain_status: String,   // PENDING, CONFIRMED, FAILED
+    pub block_number: Option<i64>,   // NULL in database
+    pub processed_at: DateTime<Utc>, // NOT NULL (has default)
+}
+
+/// Pool financial transaction (funding/withdrawals from pools)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PoolFinancialTransaction {
+    pub id: uuid::Uuid,
+    pub pool_id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub transaction_type: String, // FUND, WITHDRAW, INTEREST, RETURN
+    pub amount: rust_decimal::Decimal,
+    pub currency: String,
+    pub state_transaction_id: Option<uuid::Uuid>, // Link to state transaction if applicable
+    pub transaction_hash: Option<String>,         // NULL in database
+    pub description: Option<String>,              // NULL in database
+    pub processed_at: DateTime<Utc>,              // NOT NULL (has default)
+}
+
+/// Credit line financial transaction (draws/payments from credit lines)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct CreditLineFinancialTransaction {
+    pub id: uuid::Uuid,
+    pub credit_line_id: uuid::Uuid,
+    pub merchant_id: uuid::Uuid,
+    pub transaction_type: String, // DRAW, PAYMENT, INTEREST, FEE, PENALTY
+    pub amount: rust_decimal::Decimal,
+    pub currency: String,
+    pub state_transaction_id: Option<uuid::Uuid>, // Link to state transaction if applicable
+    pub transaction_hash: Option<String>,         // NULL in database
+    pub description: Option<String>,              // NULL in database
+    pub processed_at: DateTime<Utc>,              // NOT NULL (has default)
+}
+
+/// Unified financial transaction view
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct UserFinancialTransaction {
+    pub transaction_category: String, // ACCOUNT, POOL, CREDIT_LINE
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub transaction_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub currency: String,
+    pub transaction_hash: Option<String>, // Can be NULL from view
+    pub processed_at: DateTime<Utc>,      // NOT NULL from view
+    pub pool_id: Option<uuid::Uuid>,      // Can be NULL from view
+    pub credit_line_id: Option<uuid::Uuid>, // Can be NULL from view
+    pub description: String,              // NOT NULL from view (has COALESCE)
+}
+
+/// Financial summary for a user
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserFinancialSummary {
+    pub total_deposits: rust_decimal::Decimal,
+    pub total_withdrawals: rust_decimal::Decimal,
+    pub net_account_flow: rust_decimal::Decimal,
+    pub total_pool_funding: rust_decimal::Decimal,
+    pub total_pool_withdrawals: rust_decimal::Decimal,
+    pub total_credit_line_payments: rust_decimal::Decimal,
+    pub total_credit_line_draws: rust_decimal::Decimal,
+}
+
+/// Request to create account financial transaction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAccountFinancialTransactionRequest {
+    pub user_id: uuid::Uuid,
+    pub transaction_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub currency: String,
+    pub transaction_hash: String,
+    pub blockchain_status: String,
+    pub block_number: Option<i64>,
+}
+
+/// Request to create pool financial transaction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreatePoolFinancialTransactionRequest {
+    pub pool_id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub transaction_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub currency: String,
+    pub state_transaction_id: Option<uuid::Uuid>,
+    pub transaction_hash: Option<String>,
+    pub description: Option<String>,
+}
+
+/// Request to create credit line financial transaction
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateCreditLineFinancialTransactionRequest {
+    pub credit_line_id: uuid::Uuid,
+    pub merchant_id: uuid::Uuid,
+    pub transaction_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub currency: String,
+    pub state_transaction_id: Option<uuid::Uuid>,
+    pub transaction_hash: Option<String>,
+    pub description: Option<String>,
+}
+
+// ============================================================================
+// FINANCIAL TRANSACTION FUNCTIONS
+// ============================================================================
+
+/// Create account financial transaction
+pub async fn create_account_financial_transaction(
+    pool: &PgPool,
+    request: &CreateAccountFinancialTransactionRequest,
+) -> Result<AccountFinancialTransaction, sqlx::Error> {
+    // Insert the transaction
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO account_financial_transactions (
+            user_id, transaction_type, amount, currency,
+            transaction_hash, blockchain_status, block_number, processed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING id
+        "#,
+        request.user_id,
+        request.transaction_type,
+        request.amount,
+        request.currency,
+        request.transaction_hash,
+        request.blockchain_status,
+        request.block_number
+    )
+    .fetch_one(pool)
+    .await?;
+
+    // Fetch the created transaction manually
+    let row = sqlx::query!(
+        r#"
+        SELECT id, user_id, transaction_type, amount, currency,
+               transaction_hash, blockchain_status, block_number, processed_at
+        FROM account_financial_transactions
+        WHERE id = $1
+        "#,
+        row.id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let transaction = AccountFinancialTransaction {
+        id: row.id,
+        user_id: row.user_id,
+        transaction_type: row.transaction_type,
+        amount: row.amount,
+        currency: row.currency.unwrap_or_default(),
+        transaction_hash: row.transaction_hash,
+        blockchain_status: row.blockchain_status.unwrap_or_default(),
+        block_number: row.block_number,
+        processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+    };
+
+    Ok(transaction)
+}
+
+/// Create pool financial transaction
+pub async fn create_pool_financial_transaction(
+    pool: &PgPool,
+    request: &CreatePoolFinancialTransactionRequest,
+) -> Result<PoolFinancialTransaction, sqlx::Error> {
+    // Insert the transaction
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO pool_financial_transactions (
+            pool_id, user_id, transaction_type, amount, currency,
+            state_transaction_id, transaction_hash, description, processed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        RETURNING id
+        "#,
+        request.pool_id,
+        request.user_id,
+        request.transaction_type,
+        request.amount,
+        request.currency,
+        request.state_transaction_id,
+        request.transaction_hash,
+        request.description
+    )
+    .fetch_one(pool)
+    .await?;
+
+    // Fetch the created transaction manually
+    let row = sqlx::query!(
+        r#"
+        SELECT id, pool_id, user_id, transaction_type, amount, currency,
+               state_transaction_id, transaction_hash, description, processed_at
+        FROM pool_financial_transactions
+        WHERE id = $1
+        "#,
+        row.id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let transaction = PoolFinancialTransaction {
+        id: row.id,
+        pool_id: row.pool_id,
+        user_id: row.user_id,
+        transaction_type: row.transaction_type,
+        amount: row.amount,
+        currency: row.currency.unwrap_or_default(),
+        state_transaction_id: row.state_transaction_id,
+        transaction_hash: row.transaction_hash,
+        description: row.description,
+        processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+    };
+
+    Ok(transaction)
+}
+
+/// Create credit line financial transaction
+pub async fn create_credit_line_financial_transaction(
+    pool: &PgPool,
+    request: &CreateCreditLineFinancialTransactionRequest,
+) -> Result<CreditLineFinancialTransaction, sqlx::Error> {
+    // Insert the transaction
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO credit_line_financial_transactions (
+            credit_line_id, merchant_id, transaction_type, amount, currency,
+            state_transaction_id, transaction_hash, description, processed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+        RETURNING id
+        "#,
+        request.credit_line_id,
+        request.merchant_id,
+        request.transaction_type,
+        request.amount,
+        request.currency,
+        request.state_transaction_id,
+        request.transaction_hash,
+        request.description
+    )
+    .fetch_one(pool)
+    .await?;
+
+    // Fetch the created transaction manually
+    let row = sqlx::query!(
+        r#"
+        SELECT id, credit_line_id, merchant_id, transaction_type, amount, currency,
+               state_transaction_id, transaction_hash, description, processed_at
+        FROM credit_line_financial_transactions
+        WHERE id = $1
+        "#,
+        row.id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let transaction = CreditLineFinancialTransaction {
+        id: row.id,
+        credit_line_id: row.credit_line_id,
+        merchant_id: row.merchant_id,
+        transaction_type: row.transaction_type,
+        amount: row.amount,
+        currency: row.currency.unwrap_or_default(),
+        state_transaction_id: row.state_transaction_id,
+        transaction_hash: row.transaction_hash,
+        description: row.description,
+        processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+    };
+
+    Ok(transaction)
+}
+
+/// Get account financial transactions for user
+pub async fn get_user_account_financial_transactions(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<AccountFinancialTransaction>, sqlx::Error> {
+    let limit_val = limit.unwrap_or(50);
+    let offset_val = offset.unwrap_or(0);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, user_id, transaction_type, amount, currency,
+               transaction_hash, blockchain_status, block_number, processed_at
+        FROM account_financial_transactions
+        WHERE user_id = $1
+        ORDER BY processed_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        user_id,
+        limit_val,
+        offset_val
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| AccountFinancialTransaction {
+            id: row.id,
+            user_id: row.user_id,
+            transaction_type: row.transaction_type,
+            amount: row.amount,
+            currency: row.currency.unwrap_or_default(),
+            transaction_hash: row.transaction_hash,
+            blockchain_status: row.blockchain_status.unwrap_or_default(),
+            block_number: row.block_number,
+            processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
+/// Get pool financial transactions for user
+pub async fn get_user_pool_financial_transactions(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<PoolFinancialTransaction>, sqlx::Error> {
+    let limit_val = limit.unwrap_or(50);
+    let offset_val = offset.unwrap_or(0);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, pool_id, user_id, transaction_type, amount, currency,
+               state_transaction_id, transaction_hash, description, processed_at
+        FROM pool_financial_transactions
+        WHERE user_id = $1
+        ORDER BY processed_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        user_id,
+        limit_val,
+        offset_val
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| PoolFinancialTransaction {
+            id: row.id,
+            pool_id: row.pool_id,
+            user_id: row.user_id,
+            transaction_type: row.transaction_type,
+            amount: row.amount,
+            currency: row.currency.unwrap_or_default(),
+            state_transaction_id: row.state_transaction_id,
+            transaction_hash: row.transaction_hash,
+            description: row.description,
+            processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
+/// Get credit line financial transactions for merchant
+pub async fn get_merchant_credit_line_financial_transactions(
+    pool: &PgPool,
+    merchant_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<CreditLineFinancialTransaction>, sqlx::Error> {
+    let limit_val = limit.unwrap_or(50);
+    let offset_val = offset.unwrap_or(0);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, credit_line_id, merchant_id, transaction_type, amount, currency,
+               state_transaction_id, transaction_hash, description, processed_at
+        FROM credit_line_financial_transactions
+        WHERE merchant_id = $1
+        ORDER BY processed_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        merchant_id,
+        limit_val,
+        offset_val
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| CreditLineFinancialTransaction {
+            id: row.id,
+            credit_line_id: row.credit_line_id,
+            merchant_id: row.merchant_id,
+            transaction_type: row.transaction_type,
+            amount: row.amount,
+            currency: row.currency.unwrap_or_default(),
+            state_transaction_id: row.state_transaction_id,
+            transaction_hash: row.transaction_hash,
+            description: row.description,
+            processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
+/// Get unified financial transactions for user
+pub async fn get_user_financial_transactions(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<UserFinancialTransaction>, sqlx::Error> {
+    let limit_val = limit.unwrap_or(50);
+    let offset_val = offset.unwrap_or(0);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT * FROM user_financial_transactions
+        WHERE user_id = $1
+        ORDER BY processed_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        user_id,
+        limit_val,
+        offset_val
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| UserFinancialTransaction {
+            transaction_category: row
+                .transaction_category
+                .expect("transaction_category should not be null"),
+            id: row.id.expect("id should not be null"),
+            user_id: row.user_id.expect("user_id should not be null"),
+            transaction_type: row
+                .transaction_type
+                .expect("transaction_type should not be null"),
+            amount: row.amount.expect("amount should not be null"),
+            currency: row.currency.expect("currency should not be null"),
+            transaction_hash: row.transaction_hash,
+            processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+            pool_id: row.pool_id,
+            credit_line_id: row.credit_line_id,
+            description: row.description.unwrap_or_default(),
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
+/// Get pool financial transactions
+pub async fn get_pool_financial_transactions(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<PoolFinancialTransaction>, sqlx::Error> {
+    let limit_val = limit.unwrap_or(50);
+    let offset_val = offset.unwrap_or(0);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, pool_id, user_id, transaction_type, amount, currency,
+               state_transaction_id, transaction_hash, description, processed_at
+        FROM pool_financial_transactions
+        WHERE pool_id = $1
+        ORDER BY processed_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        pool_id,
+        limit_val,
+        offset_val
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| PoolFinancialTransaction {
+            id: row.id,
+            pool_id: row.pool_id,
+            user_id: row.user_id,
+            transaction_type: row.transaction_type,
+            amount: row.amount,
+            currency: row.currency.unwrap_or_default(),
+            state_transaction_id: row.state_transaction_id,
+            transaction_hash: row.transaction_hash,
+            description: row.description,
+            processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
+/// Get credit line financial transactions
+pub async fn get_credit_line_financial_transactions(
+    pool: &PgPool,
+    credit_line_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<CreditLineFinancialTransaction>, sqlx::Error> {
+    let limit_val = limit.unwrap_or(50);
+    let offset_val = offset.unwrap_or(0);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT id, credit_line_id, merchant_id, transaction_type, amount, currency,
+               state_transaction_id, transaction_hash, description, processed_at
+        FROM credit_line_financial_transactions
+        WHERE credit_line_id = $1
+        ORDER BY processed_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        credit_line_id,
+        limit_val,
+        offset_val
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| CreditLineFinancialTransaction {
+            id: row.id,
+            credit_line_id: row.credit_line_id,
+            merchant_id: row.merchant_id,
+            transaction_type: row.transaction_type,
+            amount: row.amount,
+            currency: row.currency.unwrap_or_default(),
+            state_transaction_id: row.state_transaction_id,
+            transaction_hash: row.transaction_hash,
+            description: row.description,
+            processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
+/// Get user financial summary
+pub async fn get_user_financial_summary(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+) -> Result<UserFinancialSummary, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"
+        SELECT * FROM get_user_financial_summary($1)
+        "#,
+        user_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(UserFinancialSummary {
+        total_deposits: row.total_deposits.unwrap_or(rust_decimal::Decimal::ZERO),
+        total_withdrawals: row.total_withdrawals.unwrap_or(rust_decimal::Decimal::ZERO),
+        net_account_flow: row.net_account_flow.unwrap_or(rust_decimal::Decimal::ZERO),
+        total_pool_funding: row
+            .total_pool_funding
+            .unwrap_or(rust_decimal::Decimal::ZERO),
+        total_pool_withdrawals: row
+            .total_pool_withdrawals
+            .unwrap_or(rust_decimal::Decimal::ZERO),
+        total_credit_line_payments: row
+            .total_credit_line_payments
+            .unwrap_or(rust_decimal::Decimal::ZERO),
+        total_credit_line_draws: row
+            .total_credit_line_draws
+            .unwrap_or(rust_decimal::Decimal::ZERO),
+    })
 }
