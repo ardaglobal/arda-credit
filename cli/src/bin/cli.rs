@@ -304,9 +304,6 @@ enum Commands {
         /// Investor email address
         #[arg(long)]
         email: String,
-        /// Investor password
-        #[arg(long)]
-        password: String,
         /// First name (optional)
         #[arg(long)]
         first_name: Option<String>,
@@ -1376,7 +1373,6 @@ async fn main() -> Result<()> {
         // ============================================================================
         Commands::RegisterInvestor {
             email,
-            password,
             first_name,
             last_name,
             jurisdiction,
@@ -1389,7 +1385,6 @@ async fn main() -> Result<()> {
             register_investor(
                 &client,
                 &email,
-                &password,
                 first_name.as_deref(),
                 last_name.as_deref(),
                 jurisdiction.as_deref(),
@@ -5277,7 +5272,6 @@ async fn find_matching_pools(
 async fn register_investor(
     client: &BatchApiClient,
     email: &str,
-    password: &str,
     first_name: Option<&str>,
     last_name: Option<&str>,
     jurisdiction: Option<&str>,
@@ -5322,7 +5316,6 @@ async fn register_investor(
     match client
         .register_investor(
             email,
-            password,
             first_name,
             last_name,
             jurisdiction,

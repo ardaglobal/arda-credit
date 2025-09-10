@@ -1192,6 +1192,12 @@ pub async fn register_or_reregister_user(
     email: &str,
     password_hash: &str,
 ) -> Result<RegisterResult, sqlx::Error> {
+    // For investors, allow empty password (will be stored as NULL)
+    let password_hash_value = if user_type == "investor" && password_hash.is_empty() {
+        None
+    } else {
+        Some(password_hash)
+    };
     // First, check if email already exists
     let existing_user = sqlx::query!(
         "SELECT id, deleted_at FROM identities WHERE email = $1",
@@ -1219,7 +1225,7 @@ pub async fn register_or_reregister_user(
                 WHERE id = $5
                 "#,
                 user_type,
-                password_hash,
+                password_hash_value,
                 now,
                 false, // email_verified
                 user.id
@@ -1284,7 +1290,7 @@ pub async fn register_or_reregister_user(
                 id,
                 user_type,
                 email,
-                password_hash,
+                password_hash_value,
                 now,
                 false // email_verified starts as false
             )
@@ -1301,7 +1307,7 @@ pub async fn register_or_reregister_user(
                 kyc_investor_type: None,
                 created_at: now,
                 updated_at: now,
-                password_hash: Some(password_hash.to_string()),
+                password_hash: password_hash_value.map(|s| s.to_string()),
                 last_login_at: None,
                 email_verified: Some(false),
                 email_verification_token: None,
