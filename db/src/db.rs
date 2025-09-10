@@ -4896,3 +4896,74 @@ pub async fn update_document_status(
 
     Ok(document)
 }
+
+/// Get investor profile with identity information by user ID or email
+pub async fn get_investor_profile_by_user_id_or_email(
+    pool: &PgPool,
+    user_id: Option<uuid::Uuid>,
+    email: Option<&str>,
+) -> Result<Option<(InvestorProfile, Identity)>, sqlx::Error> {
+    // Ensure exactly one parameter is provided
+    match (user_id, email) {
+        (Some(_), Some(_)) => return Err(sqlx::Error::RowNotFound),
+        (None, None) => return Err(sqlx::Error::RowNotFound),
+        _ => {}
+    }
+
+    let result = sqlx::query!(
+        r#"
+        SELECT 
+            profile_id as "profile_id!", user_id as "user_id!", user_email as "user_email!", 
+            user_type as "user_type!", kyc_status as "kyc_status!",
+            kyc_submitted_at, kyc_verified_at, 
+            kyc_investor_type as "kyc_investor_type?: KycInvestorType",
+            accredited_investor, investment_capacity, regulatory_jurisdiction,
+            profile_created_at as "profile_created_at!", profile_updated_at as "profile_updated_at!",
+            first_name, last_name, jurisdiction, wallet_address
+        FROM get_investor_profile_by_user_id_or_email($1, $2)
+        "#,
+        user_id,
+        email
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    match result {
+        Some(row) => {
+            let profile = InvestorProfile {
+                id: row.profile_id,
+                user_id: row.user_id,
+                accredited_investor: row.accredited_investor.unwrap_or(false),
+                investment_capacity: row.investment_capacity,
+                regulatory_jurisdiction: row.regulatory_jurisdiction.unwrap_or_default(),
+                created_at: row.profile_created_at,
+                updated_at: row.profile_updated_at,
+            };
+
+            let identity = Identity {
+                id: row.user_id,
+                user_type: row.user_type,
+                email: row.user_email,
+                kyc_status: row.kyc_status,
+                kyc_submitted_at: row.kyc_submitted_at,
+                kyc_verified_at: row.kyc_verified_at,
+                kyc_investor_type: row.kyc_investor_type,
+                created_at: row.profile_created_at, // Using profile timestamps since this is joined data
+                updated_at: row.profile_updated_at,
+                password_hash: None, // Don't expose password hash
+                last_login_at: None,
+                email_verified: None,
+                email_verification_token: None,
+                password_reset_token: None,
+                password_reset_expires_at: None,
+                first_name: row.first_name,
+                last_name: row.last_name,
+                jurisdiction: row.jurisdiction,
+                wallet_address: row.wallet_address,
+            };
+
+            Ok(Some((profile, identity)))
+        }
+        None => Ok(None),
+    }
+}
