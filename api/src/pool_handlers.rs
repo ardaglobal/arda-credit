@@ -6,10 +6,11 @@ use axum::{
 use rust_decimal::Decimal;
 use std::str::FromStr;
 use tracing::{error, info, instrument};
+use utoipa;
 use uuid::Uuid;
 
 use crate::pool_api::*;
-use crate::rest::ApiState;
+use crate::rest::{ApiState, CreatePoolRequest, CreatePoolResponse};
 use arda_credit_db::{
     get_all_liquidity_pools, get_investor_dashboard_metrics,
     get_investor_pool_summaries as db_get_investor_pool_summaries, get_liquidity_pool_by_id,
@@ -22,6 +23,16 @@ use arda_credit_db::{
 // ============================================================================
 
 /// GET /api/pools - List all liquidity pools with filtering and pagination
+#[utoipa::path(
+    get,
+    path = "/api/v1/pools",
+    params(PoolListQuery),
+    responses(
+        (status = 200, description = "Pool list retrieved successfully", body = PoolListResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Liquidity Pools"
+)]
 #[instrument(skip(state))]
 pub async fn list_pools(
     State(state): State<ApiState>,
@@ -78,6 +89,19 @@ pub async fn list_pools(
 }
 
 /// GET /api/pools/:pool_id - Get detailed information about a specific pool
+#[utoipa::path(
+    get,
+    path = "/api/v1/pools/{pool_id}",
+    params(
+        ("pool_id" = String, Path, description = "Pool ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Pool details retrieved successfully", body = PoolDetailsResponse),
+        (status = 404, description = "Pool not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Liquidity Pools"
+)]
 #[instrument(skip(state))]
 pub async fn get_pool_details(
     State(state): State<ApiState>,
@@ -268,6 +292,153 @@ pub async fn get_pool_transactions(
                 Json(ErrorResponse::new(
                     "database_error",
                     "Failed to retrieve pool transactions",
+                )),
+            ))
+        }
+    }
+}
+
+/// POST /api/pools - Create a new liquidity pool
+#[utoipa::path(
+    post,
+    path = "/api/v1/pools",
+    request_body = CreatePoolRequest,
+    responses(
+        (status = 201, description = "Pool created successfully", body = CreatePoolResponse),
+        (status = 400, description = "Invalid request parameters", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Liquidity Pools"
+)]
+#[instrument(skip(state))]
+pub async fn create_pool(
+    State(state): State<ApiState>,
+    Json(request): Json<CreatePoolRequest>,
+) -> Result<Json<CreatePoolResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("🏦 Creating liquidity pool: name={}", request.name);
+
+    // Validate parameters
+    if request.name.trim().is_empty() || request.name.len() > 255 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "invalid_name",
+                "Pool name must be between 1 and 255 characters",
+            )),
+        ));
+    }
+
+    // Parse and validate decimal parameters
+    let max_ltv_ratio = match Decimal::from_str(&request.max_ltv_ratio) {
+        Ok(val) => val,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "invalid_ltv_ratio",
+                    "Invalid LTV ratio format, must be a decimal string",
+                )),
+            ));
+        }
+    };
+
+    let max_interest_rate = match Decimal::from_str(&request.max_interest_rate) {
+        Ok(val) => val,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "invalid_interest_rate",
+                    "Invalid interest rate format, must be a decimal string",
+                )),
+            ));
+        }
+    };
+
+    // Validate ranges
+    if max_ltv_ratio < Decimal::from_str("0.1").unwrap()
+        || max_ltv_ratio > Decimal::from_str("0.95").unwrap()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "ltv_out_of_range",
+                "LTV ratio must be between 0.1 and 0.95",
+            )),
+        ));
+    }
+
+    if max_interest_rate < Decimal::from_str("0.01").unwrap()
+        || max_interest_rate > Decimal::from_str("0.30").unwrap()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "interest_rate_out_of_range",
+                "Interest rate must be between 0.01 and 0.30",
+            )),
+        ));
+    }
+
+    if request.repayment_period_days < 30 || request.repayment_period_days > 3650 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "repayment_period_out_of_range",
+                "Repayment period must be between 30 and 3650 days",
+            )),
+        ));
+    }
+
+    // TODO: Extract investor_id from authentication middleware
+    // For now, using a placeholder - this should be extracted from authenticated user context
+    let investor_id = match request
+        .investor_id
+        .as_ref()
+        .and_then(|id| Uuid::parse_str(id).ok())
+    {
+        Some(id) => id,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "missing_investor_id",
+                    "Investor ID is required",
+                )),
+            ));
+        }
+    };
+
+    // Create the pool using database function
+    let pool_request = arda_credit_db::CreateLiquidityPoolRequest {
+        investor_id,
+        name: request.name.clone(),
+        max_ltv_ratio,
+        max_interest_rate,
+        repayment_period_days: request.repayment_period_days,
+    };
+
+    match arda_credit_db::create_liquidity_pool(&state.pool, &pool_request).await {
+        Ok(pool) => {
+            info!("✅ Pool created successfully: id={}", pool.id);
+            Ok(Json(CreatePoolResponse {
+                pool_id: pool.id.to_string(),
+                name: pool.name,
+                investor_id: pool.investor_id.to_string(),
+                max_ltv_ratio: pool.max_ltv_ratio.to_string(),
+                max_interest_rate: pool.max_interest_rate.to_string(),
+                repayment_period_days: pool.repayment_period_days,
+                status: pool.status,
+                created_at: pool.created_at,
+            }))
+        }
+        Err(e) => {
+            error!("❌ Database error creating pool: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "database_error",
+                    "Failed to create liquidity pool",
                 )),
             ))
         }
