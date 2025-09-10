@@ -59,8 +59,11 @@ pub use credit_line_operations::{
 pub use db::{
     // Invite code functions
     check_invite_code,
+    // Financial transaction functions
+    create_account_financial_transaction,
     // Batch functions
     create_batch,
+    create_credit_line_financial_transaction,
     // CCR Domain functions
     create_identity,
     create_identity_with_password,
@@ -75,6 +78,7 @@ pub use db::{
     create_merchant_profile,
     create_or_update_turnover,
     create_payment,
+    create_pool_financial_transaction,
     create_state_snapshot,
     // USDC Deposit functions
     create_usdc_deposit,
@@ -91,6 +95,7 @@ pub use db::{
     get_balance,
     get_batch_by_id,
     get_contract_submission_data,
+    get_credit_line_financial_transactions,
     // State functions
     get_current_counter_value,
     get_current_state,
@@ -114,6 +119,7 @@ pub use db::{
     // Merchant query functions
     get_merchant_by_id,
     get_merchant_by_user_id,
+    get_merchant_credit_line_financial_transactions,
     get_merchant_documents,
     get_merchant_profile_by_merchant_id,
     get_merchant_profile_completion,
@@ -124,15 +130,20 @@ pub use db::{
     get_pending_transactions,
 
     get_pending_withdrawal_requests,
+    get_pool_financial_transactions,
     get_pool_summary,
     get_pool_transactions,
     get_pool_utilization_history,
     get_potential_stuck_batches,
     get_proven_unposted_batches,
+    get_user_account_financial_transactions,
     get_user_balance_by_address,
     get_user_balance_by_id,
     get_user_deposit_balance,
+    get_user_financial_summary,
+    get_user_financial_transactions,
     get_user_id_by_wallet_address,
+    get_user_pool_financial_transactions,
     get_user_withdrawal_balance,
     get_withdrawal_by_tx_hash,
     get_withdrawal_request_by_id,
@@ -187,6 +198,8 @@ pub use db::{
     use_invite_code,
     validate_pool_parameters,
     verify_email_with_token,
+    // Financial transaction types
+    AccountFinancialTransaction,
     // Types
     AdsStateCommit,
     Balance,
@@ -195,6 +208,8 @@ pub use db::{
     ContractPublicData,
     ContractSubmissionData,
     CounterState,
+    CreateAccountFinancialTransactionRequest,
+    CreateCreditLineFinancialTransactionRequest,
     // Merchant turnover and document types
     CreateDocumentRequest,
     // Investor profile types
@@ -202,7 +217,9 @@ pub use db::{
     CreateLiquidityPoolRequest,
     CreateMerchantProfileRequest,
     CreateMerchantRequest,
+    CreatePoolFinancialTransactionRequest,
     CreateTurnoverRequest,
+    CreditLineFinancialTransaction,
     // CCR Domain types
     Identity,
     IncomingTransaction,
@@ -224,6 +241,7 @@ pub use db::{
     MerchantTurnoverAnalytics,
     MerchantTurnoverDaily,
     Payment,
+    PoolFinancialTransaction,
     PoolMatchingCriteria,
     // Pool query types
     PoolSummary,
@@ -239,6 +257,8 @@ pub use db::{
     UsdcDeposit,
     UsdcWithdrawal,
     UserDepositBalance,
+    UserFinancialSummary,
+    UserFinancialTransaction,
     UserWithdrawalBalance,
     WithdrawalRequest,
     WithdrawalRequestHistory,

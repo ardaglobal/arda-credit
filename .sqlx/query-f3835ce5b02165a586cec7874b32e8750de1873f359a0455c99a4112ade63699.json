@@ -1,0 +1,165 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO withdrawal_requests (\n            user_id, user_address, recipient_address, amount, state,\n            kyc_status_at_request, available_balance_at_request,\n            created_at, updated_at\n        ) VALUES ($1, $2, $3, $4, 'pending', $5, $6, NOW(), NOW())\n        RETURNING\n            id, user_id, user_address, recipient_address, amount, amount_usdc,\n            state, kyc_validated, balance_validated, kyc_status_at_request,\n            available_balance_at_request, transaction_hash, block_number,\n            confirmation_count, required_confirmations, error_message,\n            validation_errors, created_at, updated_at, validated_at,\n            submitted_at, confirmed_at, failed_at, cancelled_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "recipient_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "amount_usdc",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "state",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "kyc_validated",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "balance_validated",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "kyc_status_at_request",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "available_balance_at_request",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 11,
+        "name": "transaction_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "block_number",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 13,
+        "name": "confirmation_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "required_confirmations",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 15,
+        "name": "error_message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "validation_errors",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 19,
+        "name": "validated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 20,
+        "name": "submitted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 21,
+        "name": "confirmed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 22,
+        "name": "failed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 23,
+        "name": "cancelled_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Numeric",
+        "Varchar",
+        "Numeric"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "f3835ce5b02165a586cec7874b32e8750de1873f359a0455c99a4112ade63699"
+}
