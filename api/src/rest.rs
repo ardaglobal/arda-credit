@@ -391,6 +391,7 @@ impl std::str::FromStr for UserType {
             "user" => Ok(Self::User),
             "investor" => Ok(Self::Investor),
             "originator" => Ok(Self::Originator),
+            "merchant" => Ok(Self::Merchant),
             "admin" => Ok(Self::Admin),
             _ => Err(format!("Invalid user type: {}", s)),
         }
