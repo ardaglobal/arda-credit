@@ -561,5 +561,5 @@ cargo check --workspace     # Works without PostgreSQL
 ### Service URLs
 - Database: `localhost:5432`
 - API Server: `http://localhost:8080`
-- Health Check: `http://localhost:8080/api/v2/health`
+- Health Check: `http://localhost:8080/api/v1/health`
 - GraphQL Playground: `http://localhost:8080/playground` (dev only)

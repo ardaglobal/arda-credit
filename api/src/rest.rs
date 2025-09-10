@@ -1416,7 +1416,7 @@ pub fn create_router(state: ApiState) -> Router {
         (status = 200, description = "Health check passed", body = HealthResponse),
         (status = 500, description = "Health check failed")
     ),
-    tag = "Health"
+    tag = "Info"
 )]
 #[instrument(skip(state), level = "info")]
 async fn health_check(
@@ -5895,16 +5895,18 @@ async fn get_pending_withdrawals_endpoint(
         )
     ),
     tags(
-        (name = "Health", description = "Health check and system status endpoints"),
+        (name = "Info", description = "Health check and API information endpoints"),
         (name = "Authentication", description = "User login, logout and token management"),
+        (name = "Users", description = "User registration and KYC management"),
+        (name = "Investors", description = "Investor registration and management"),
+        (name = "Merchants", description = "Merchant registration and management"),
+        (name = "Credit Lines", description = "Credit line requests and eligibility evaluation"),
+        (name = "Loans", description = "Loan creation and management"),
+        (name = "Liquidity Pools", description = "Liquidity pool creation and management for auto-deployment"),
         (name = "Transactions", description = "Transaction submission and management"),
         (name = "Batches", description = "Batch processing and proof management"),
-        (name = "Users", description = "User registration and KYC management"),
-        (name = "Loans", description = "Loan creation and management"),
-        (name = "Payments", description = "Payment processing and history"),
         (name = "State", description = "System state and proof verification"),
-        (name = "Proofs", description = "Zero-knowledge proof generation and verification"),
-        (name = "Liquidity Pools", description = "Liquidity pool creation and management for auto-deployment")
+        (name = "Admin", description = "Administrative operations and management")
     ),
     info(
         title = "Arda Credit API",

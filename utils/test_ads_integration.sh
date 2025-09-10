@@ -6,7 +6,7 @@ echo "=========================================="
 
 echo ""
 echo "📝 Step 1: Submit a test transaction"
-RESPONSE1=$(curl -s -X POST http://localhost:8080/api/v2/transactions \
+RESPONSE1=$(curl -s -X POST http://localhost:8080/api/v1/transactions \
      -H "Content-Type: application/json" \
      -d '{"amount": 1337}')
 echo "Transaction Response: $RESPONSE1"
@@ -17,7 +17,7 @@ sleep 2
 
 echo ""
 echo "🔄 Step 3: Trigger ADS-integrated batch processing (CORRECT ENDPOINT)"
-RESPONSE2=$(curl -s -X POST http://localhost:8080/api/v2/batches/trigger)
+RESPONSE2=$(curl -s -X POST http://localhost:8080/api/v1/batches/trigger)
 echo "Batch Trigger Response: $RESPONSE2"
 
 echo ""

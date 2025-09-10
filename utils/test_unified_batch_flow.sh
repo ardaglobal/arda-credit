@@ -7,8 +7,8 @@ echo "============================="
 
 echo ""
 echo "🧪 This test verifies that ALL batch creation paths now use the same ADS-integrated workflow:"
-echo "   ✅ POST /api/v2/batches (REST endpoint)"
-echo "   ✅ POST /api/v2/batches/trigger (Background processor trigger)"  
+echo "   ✅ POST /api/v1/batches (REST endpoint)"
+echo "   ✅ POST /api/v1/batches/trigger (Background processor trigger)"  
 echo "   ✅ Background timer (automatic)"
 echo "   ✅ Background count threshold (automatic)"
 echo ""
@@ -17,7 +17,7 @@ echo ""
 submit_transaction() {
     local amount=$1
     echo "📝 Submitting transaction with amount: $amount"
-    RESPONSE=$(curl -s -X POST http://localhost:8080/api/v2/transactions \
+    RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/transactions \
          -H "Content-Type: application/json" \
          -d "{\"amount\": $amount}")
     echo "   Response: $RESPONSE"
@@ -39,10 +39,10 @@ echo "════════════════════════�
 echo "TEST 1: REST API Batch Creation"
 echo "═══════════════════════════════════════"
 submit_transaction 111
-echo "🔄 Creating batch via REST API (POST /api/v2/batches)"
-curl -s -X POST http://localhost:8080/api/v2/batches \
+echo "🔄 Creating batch via REST API (POST /api/v1/batches)"
+curl -s -X POST http://localhost:8080/api/v1/batches \
      -H "Content-Type: application/json" \
-     -d '{"batch_size": 1}' | jq . 2>/dev/null || echo "Raw response: $(curl -s -X POST http://localhost:8080/api/v2/batches -H "Content-Type: application/json" -d '{"batch_size": 1}')"
+     -d '{"batch_size": 1}' | jq . 2>/dev/null || echo "Raw response: $(curl -s -X POST http://localhost:8080/api/v1/batches -H "Content-Type: application/json" -d '{"batch_size": 1}')"
 
 echo ""
 echo "⏳ Waiting 2 seconds..."
@@ -54,8 +54,8 @@ echo "════════════════════════�
 echo "TEST 2: Background Processor Trigger"
 echo "═══════════════════════════════════════"
 submit_transaction 222
-echo "🔄 Triggering batch via background processor (POST /api/v2/batches/trigger)"
-curl -s -X POST http://localhost:8080/api/v2/batches/trigger | jq . 2>/dev/null || echo "Raw response: $(curl -s -X POST http://localhost:8080/api/v2/batches/trigger)"
+echo "🔄 Triggering batch via background processor (POST /api/v1/batches/trigger)"
+curl -s -X POST http://localhost:8080/api/v1/batches/trigger | jq . 2>/dev/null || echo "Raw response: $(curl -s -X POST http://localhost:8080/api/v1/batches/trigger)"
 
 echo ""
 echo "⏳ Waiting 3 seconds..."

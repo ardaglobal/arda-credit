@@ -208,7 +208,7 @@ test_api_health() {
         log_info "Trying alternative health paths..."
         
         # Try alternative paths
-        for path in "/health" "/api/health" "/api/v2/health"; do
+        for path in "/health" "/api/health" "/api/v1/health"; do
             if curl -f -s "${API_BASE_URL}${path}" >/dev/null 2>&1; then
                 test_passed "API responds on alternative path: $path"
                 return

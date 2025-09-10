@@ -135,21 +135,21 @@ CREATE TABLE loan_transactions (
 ## API Endpoints
 
 ### User Management
-- `POST /api/v2/users` - Register new user
-- `GET /api/v2/users/{user_id}` - Get user details
-- `POST /api/v2/users/{user_id}/kyc` - Submit KYC
-- `PUT /api/v2/users/{user_id}/kyc/verify` - Verify KYC (admin)
+- `POST /api/v1/users` - Register new user
+- `GET /api/v1/users/{user_id}` - Get user details
+- `POST /api/v1/users/{user_id}/kyc` - Submit KYC
+- `PUT /api/v1/users/{user_id}/kyc/verify` - Verify KYC (admin)
 
 ### Loan Operations
-- `POST /api/v2/loans` - Originate new loan
-- `GET /api/v2/loans/{loan_id}` - Get loan details
-- `POST /api/v2/loans/{loan_id}/payments` - Make loan payment
-- `POST /api/v2/loans/{loan_id}/closeout` - Close out loan
+- `POST /api/v1/loans` - Originate new loan
+- `GET /api/v1/loans/{loan_id}` - Get loan details
+- `POST /api/v1/loans/{loan_id}/payments` - Make loan payment
+- `POST /api/v1/loans/{loan_id}/closeout` - Close out loan
 
 ### Transaction Processing (existing)
-- `GET /api/v2/transactions/pending` - View pending transactions
-- `POST /api/v2/batches` - Process batch of transactions
-- `GET /api/v2/batches/{batch_id}` - Get batch details
+- `GET /api/v1/transactions/pending` - View pending transactions
+- `POST /api/v1/batches` - Process batch of transactions
+- `GET /api/v1/batches/{batch_id}` - Get batch details
 
 ## CLI Commands
 

@@ -158,7 +158,7 @@ All functions return `Result<T, sqlx::Error>` for proper error handling. Common 
 ```bash
 # Submit transaction and trigger batch
 make cli ARGS="submit-transaction --amount 42"
-curl -X POST http://localhost:8080/api/v2/batches/trigger
+curl -X POST http://localhost:8080/api/v1/batches/trigger
 ```
 
 #### 2. Debug Logging

@@ -41,14 +41,14 @@ All request/response models have been annotated with `#[derive(ToSchema)]`:
 ### 3. Endpoint Annotations ✅
 Key API endpoints have been annotated with `#[utoipa::path(...)]` including:
 
-- **Health Endpoints**: `GET /api/v2/health`
+- **Health Endpoints**: `GET /api/v1/health`
 - **Transaction Endpoints**: 
-  - `POST /api/v2/transactions` (Submit transaction)
-  - `GET /api/v2/transactions/pending` (Get pending transactions)
+  - `POST /api/v1/transactions` (Submit transaction)
+  - `GET /api/v1/transactions/pending` (Get pending transactions)
 - **Batch Endpoints**:
-  - `POST /api/v2/batches` (Create batch)
-  - `GET /api/v2/batches` (List batches)
-  - `GET /api/v2/batches/{batch_id}` (Get specific batch)
+  - `POST /api/v1/batches` (Create batch)
+  - `GET /api/v1/batches` (List batches)
+  - `GET /api/v1/batches/{batch_id}` (Get specific batch)
 
 ### 4. OpenAPI Specification ✅
 A comprehensive OpenAPI specification has been created in `api/src/rest.rs`:
