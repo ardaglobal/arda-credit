@@ -169,7 +169,7 @@ pub struct UseInviteCodeRequest {
     pub user_id: Option<String>,
 }
 
-/// Use invite code response  
+/// Use invite code response
 #[derive(Debug, Deserialize)]
 pub struct UseInviteCodeResponse {
     pub code: String,
@@ -660,7 +660,6 @@ impl BatchApiClient {
     pub async fn register_investor(
         &self,
         email: &str,
-        password: &str,
         first_name: Option<&str>,
         last_name: Option<&str>,
         jurisdiction: Option<&str>,
@@ -671,8 +670,7 @@ impl BatchApiClient {
     ) -> Result<serde_json::Value, ApiClientError> {
         let url = format!("{}/api/v1/auth/register/investor", self.base_url);
         let mut request = serde_json::json!({
-            "email": email,
-            "password": password
+            "email": email
         });
 
         if let Some(fn_val) = first_name {
@@ -759,7 +757,7 @@ impl BatchApiClient {
         max_interest_rate: f64,
         repayment_period_days: i32,
     ) -> Result<PoolResponse, ApiClientError> {
-        let url = format!("{}/api/pool", self.base_url);
+        let url = format!("{}/api/v1/pools", self.base_url);
         let request = CreatePoolRequest {
             name: name.to_string(),
             max_ltv_ratio,

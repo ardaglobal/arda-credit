@@ -183,13 +183,13 @@ run:
 cli:
 	@cargo run --bin cli -- $(ARGS)
 
-## server: Start API server locally
+## server: Start API server locally (in debug mode with verbose logging)
 .PHONY: server
 server: up
 	@sleep 2
 	@echo "Running database migrations..."
 	sqlx migrate run --source db/migrations
-	cargo run --bin server --release
+	RUST_LOG=debug cargo run --bin server
 
 ## forge-build: Build smart contracts
 .PHONY: forge-build

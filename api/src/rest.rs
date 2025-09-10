@@ -592,8 +592,6 @@ pub struct RegisterMerchantResponse {
 pub struct RegisterInvestorRequest {
     #[schema(example = "investor@example.com")]
     pub email: String,
-    #[schema(example = "SecureP@ssw0rd123")]
-    pub password: String,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub jurisdiction: Option<String>, // Optional, defaults to "US"
@@ -3506,32 +3504,14 @@ async fn register_investor_endpoint(
 ) -> Result<Json<RegisterInvestorResponse>, (StatusCode, String)> {
     info!("🏗️ API: Registering investor: {}", request.email);
 
-    // Validate email and password using AuthService
+    // Validate email using AuthService
     if let Err(e) = state.auth_service.validate_email(&request.email) {
         warn!("❌ API: Invalid email format for investor: {}", e);
         return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
     }
 
-    if let Err(e) = state.auth_service.validate_password(&request.password) {
-        warn!("❌ API: Invalid password format for investor: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
-    }
-
-    // Hash the password
-    let password_hash = match state.auth_service.hash_password(&request.password) {
-        Ok(hash) => hash,
-        Err(e) => {
-            error!("❌ API: Failed to hash password for investor: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                e.user_message().to_string(),
-            ));
-        }
-    };
-
-    // Register the user first as investor
-    match register_or_reregister_user(&state.pool, "investor", &request.email, &password_hash).await
-    {
+    // Register the user first as investor (no password required for investors)
+    match register_or_reregister_user(&state.pool, "investor", &request.email, "").await {
         Ok(result) => {
             let identity = match result {
                 RegisterResult::Created(identity) => identity,
@@ -6083,7 +6063,7 @@ fn swagger_ui() -> Router<ApiState> {
 /// Create a new liquidity pool
 #[utoipa::path(
     post,
-    path = "/api/pool",
+    path = "/api/v1/pools",
     request_body = CreatePoolRequest,
     responses(
         (status = 201, description = "Pool created successfully", body = CreatePoolResponse),
