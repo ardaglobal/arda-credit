@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::env;
 use std::str::FromStr;
-use tracing::debug;
+use tracing::{debug, instrument};
 
 #[cfg(all(not(target_env = "msvc"), feature = "tikv-jemallocator"))]
 use tikv_jemallocator::Jemalloc;
@@ -540,11 +540,16 @@ async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool), fields(
+    operation = "submit_transaction",
+    table = "incoming_transactions",
+    layer = "database",
+    amount = %amount
+), level = "info")]
 pub async fn submit_transaction(
     pool: &PgPool,
     amount: i32,
 ) -> Result<IncomingTransaction, sqlx::Error> {
-    debug!("Submitting transaction: amount={amount}");
 
     let row = sqlx::query!(
         "INSERT INTO incoming_transactions (amount) VALUES ($1) RETURNING id, amount, included_in_batch_id, created_at",
@@ -601,12 +606,17 @@ pub async fn get_pending_transactions(
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool), fields(
+    operation = "create_batch",
+    table = "batches",
+    layer = "database",
+    batch_size = %batch_size.unwrap_or(10)
+), level = "info")]
 pub async fn create_batch(
     pool: &PgPool,
     batch_size: Option<i32>,
 ) -> Result<Option<ProofBatch>, sqlx::Error> {
     let size = batch_size.unwrap_or(10);
-    debug!("Creating batch with size: {size}");
 
     let batch_id: i32 = sqlx::query_scalar!("SELECT create_batch($1)", size)
         .fetch_one(pool)
@@ -705,13 +715,20 @@ pub async fn get_all_batches(
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool), fields(
+    operation = "update_batch_proof",
+    table = "batches",
+    layer = "database",
+    batch_id = %batch_id,
+    proof_id = %proof_id,
+    status = %status
+), level = "info")]
 pub async fn update_batch_proof(
     pool: &PgPool,
     batch_id: i32,
     proof_id: &str,
     status: &str,
 ) -> Result<(), sqlx::Error> {
-    debug!("Updating batch {batch_id} with proof {proof_id}, status: {status}");
 
     let proven_at = if status == "proven" {
         Some(Utc::now())
@@ -806,12 +823,18 @@ pub async fn get_current_state(pool: &PgPool) -> Result<CounterState, sqlx::Erro
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool, merkle_root), fields(
+    operation = "store_ads_state_commit",
+    table = "ads_state_commits",
+    layer = "database",
+    batch_id = %batch_id,
+    merkle_root_len = %merkle_root.len()
+), level = "info")]
 pub async fn store_ads_state_commit(
     pool: &PgPool,
     batch_id: i32,
     merkle_root: &[u8],
 ) -> Result<AdsStateCommit, sqlx::Error> {
-    debug!("Storing ADS state commit for batch {batch_id}");
 
     let row = sqlx::query!(
         r"
@@ -1085,6 +1108,13 @@ pub async fn get_potential_stuck_batches(
 // ============================================================================
 
 /// Create a new identity (user registration)
+#[instrument(skip(pool), fields(
+    operation = "create_identity",
+    table = "identities",
+    layer = "database",
+    user_type = %user_type,
+    email = %email
+), level = "info")]
 pub async fn create_identity(
     pool: &PgPool,
     user_type: &str,
@@ -1133,6 +1163,13 @@ pub async fn create_identity(
 }
 
 /// Create identity with password (for registration)
+#[instrument(skip(pool, password_hash), fields(
+    operation = "create_identity_with_password",
+    table = "identities",
+    layer = "database",
+    user_type = %user_type,
+    email = %email
+), level = "info")]
 pub async fn create_identity_with_password(
     pool: &PgPool,
     user_type: &str,
@@ -1327,6 +1364,12 @@ pub enum RegisterResult {
 }
 
 /// Get identity by ID
+#[instrument(skip(pool), fields(
+    operation = "get_identity_by_id",
+    table = "identities",
+    layer = "database",
+    user_id = %id
+), level = "info")]
 pub async fn get_identity_by_id(
     pool: &PgPool,
     id: uuid::Uuid,

@@ -271,8 +271,32 @@ deploy-contract-help:
 .PHONY: clean-docker
 clean-docker:
 	docker compose down -v
-	docker system prune -f -a
+	@echo "🧹 Cleaning Docker resources (preserving Kind clusters)..."
+	@# Preserve Kind networks and containers during cleanup
+	@if kind get clusters 2>/dev/null | grep -q .; then \
+		echo "ℹ️  Found active Kind clusters, preserving Kind resources"; \
+		docker system prune -f --filter "label!=io.x-k8s.kind.cluster" --filter "label!=io.x-k8s.kind.role"; \
+	else \
+		echo "ℹ️  No Kind clusters found, running full cleanup"; \
+		docker system prune -f -a; \
+	fi
 	@echo "✅ Docker resources cleaned up"
+
+## kind-docker-clean: Clean Docker resources while preserving ALL Kind clusters
+.PHONY: kind-docker-clean
+kind-docker-clean:
+	docker compose down -v
+	@echo "🧹 Safely cleaning Docker resources (preserving ALL Kind resources)..."
+	@# Only clean non-Kind resources
+	docker container prune -f --filter "label!=io.x-k8s.kind.cluster"
+	docker image prune -f --filter "label!=io.x-k8s.kind.cluster"
+	docker volume prune -f --filter "label!=io.x-k8s.kind.cluster"
+	@# Preserve all Kind networks
+	@for network in $$(docker network ls --filter "name=kind" --format "{{.Name}}"); do \
+		echo "ℹ️  Preserving Kind network: $$network"; \
+	done
+	docker network prune -f --filter "name!=kind*"
+	@echo "✅ Docker resources safely cleaned up (Kind clusters preserved)"
 
 ## clean-sqlx: Clean up SQLx resources
 .PHONY: clean-sqlx
