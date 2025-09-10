@@ -116,6 +116,7 @@ pub use db::{
     get_liquidity_pools_by_investor,
     get_loan_by_id,
     get_market_overview_metrics,
+    get_merchant_by_email,
     // Merchant query functions
     get_merchant_by_id,
     get_merchant_by_user_id,
