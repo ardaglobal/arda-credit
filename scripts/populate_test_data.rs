@@ -425,8 +425,8 @@ async fn print_summary(identities: &[Identity], loans: &[Loan], payments: &[Paym
     }
 
     println!("\n🌐 API Testing URLs:");
-    println!("GET http://localhost:8080/api/v2/ccr/identities");
-    println!("GET http://localhost:8080/api/v2/ccr/loans");
-    println!("GET http://localhost:8080/api/v2/ccr/loans/stats");
-    println!("POST http://localhost:8080/api/v2/ccr/identities (to create new user)");
+    println!("GET http://localhost:8080/api/v1/ccr/identities");
+    println!("GET http://localhost:8080/api/v1/ccr/loans");
+    println!("GET http://localhost:8080/api/v1/ccr/loans/stats");
+    println!("POST http://localhost:8080/api/v1/ccr/identities (to create new user)");
 }

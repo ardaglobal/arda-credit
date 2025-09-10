@@ -103,10 +103,10 @@ cargo run --bin populate_test_data
    - mixed: 6
 
 🌐 API Testing URLs:
-GET http://localhost:8080/api/v2/ccr/identities
-GET http://localhost:8080/api/v2/ccr/loans
-GET http://localhost:8080/api/v2/ccr/loans/stats
-POST http://localhost:8080/api/v2/ccr/identities
+GET http://localhost:8080/api/v1/ccr/identities
+GET http://localhost:8080/api/v1/ccr/loans
+GET http://localhost:8080/api/v1/ccr/loans/stats
+POST http://localhost:8080/api/v1/ccr/identities
 ```
 
 ## Testing the API
@@ -118,12 +118,12 @@ After running the population script, you can test the API endpoints:
 cargo run -p api --bin server
 
 # Test endpoints
-curl http://localhost:8080/api/v2/ccr/identities
-curl http://localhost:8080/api/v2/ccr/loans
-curl http://localhost:8080/api/v2/ccr/loans/stats
+curl http://localhost:8080/api/v1/ccr/identities
+curl http://localhost:8080/api/v1/ccr/loans
+curl http://localhost:8080/api/v1/ccr/loans/stats
 
 # Register a new user
-curl -X POST http://localhost:8080/api/v2/ccr/identities \
+curl -X POST http://localhost:8080/api/v1/ccr/identities \
   -H "Content-Type: application/json" \
   -d '{
     "user_type": "investor",

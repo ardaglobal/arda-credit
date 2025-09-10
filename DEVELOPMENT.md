@@ -51,7 +51,7 @@ The server will start on http://localhost:8080
 
 Test the health endpoint:
 ```bash
-curl http://localhost:8080/api/v2/health
+curl http://localhost:8080/api/v1/health
 ```
 
 View traces in your SigNoz Cloud dashboard (if OpenTelemetry is enabled)

@@ -362,15 +362,15 @@ async fn api_info_handler() -> Html<&'static str> {
         <h3>🔗 REST API Endpoints</h3>
         <p>Version 2.0 batch processing endpoints:</p>
         <ul>
-            <li><span class="endpoint">POST /api/v2/transactions</span> - Submit transaction</li>
-            <li><span class="endpoint">GET /api/v2/transactions/pending</span> - View pending transactions</li>
-            <li><span class="endpoint">POST /api/v2/batches</span> - Create batch from pending transactions</li>
-            <li><span class="endpoint">GET /api/v2/batches</span> - List historical batches</li>
-            <li><span class="endpoint">GET /api/v2/batches/:id</span> - Get specific batch</li>
-            <li><span class="endpoint">POST /api/v2/batches/:id/proof</span> - Update batch with ZK proof</li>
-            <li><span class="endpoint">GET /api/v2/state/current</span> - Get current counter state</li>
-            <li><span class="endpoint">GET /api/v2/state/:id/contract</span> - Get contract submission data</li>
-            <li><span class="endpoint">GET /api/v2/health</span> - Health check</li>
+            <li><span class="endpoint">POST /api/v1/transactions</span> - Submit transaction</li>
+            <li><span class="endpoint">GET /api/v1/transactions/pending</span> - View pending transactions</li>
+            <li><span class="endpoint">POST /api/v1/batches</span> - Create batch from pending transactions</li>
+            <li><span class="endpoint">GET /api/v1/batches</span> - List historical batches</li>
+            <li><span class="endpoint">GET /api/v1/batches/:id</span> - Get specific batch</li>
+            <li><span class="endpoint">POST /api/v1/batches/:id/proof</span> - Update batch with ZK proof</li>
+            <li><span class="endpoint">GET /api/v1/state/current</span> - Get current counter state</li>
+            <li><span class="endpoint">GET /api/v1/state/:id/contract</span> - Get contract submission data</li>
+            <li><span class="endpoint">GET /api/v1/health</span> - Health check</li>
         </ul>
     </div>
 
@@ -388,12 +388,12 @@ async fn api_info_handler() -> Html<&'static str> {
     <div class="feature">
         <h3>📚 Example Usage</h3>
         <p>Submit a transaction to add 5 to the counter:</p>
-        <pre><code>curl -X POST http://localhost:8080/api/v2/transactions \
+        <pre><code>curl -X POST http://localhost:8080/api/v1/transactions \
   -H "Content-Type: application/json" \
   -d '{"amount": 5}'</code></pre>
         
         <p>Create a batch of pending transactions:</p>
-        <pre><code>curl -X POST http://localhost:8080/api/v2/batches \
+        <pre><code>curl -X POST http://localhost:8080/api/v1/batches \
   -H "Content-Type: application/json" \
   -d '{"batch_size": 10}'</code></pre>
     </div>

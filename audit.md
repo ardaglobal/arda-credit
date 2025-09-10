@@ -153,7 +153,7 @@ CREATE OR REPLACE FUNCTION create_batch(batch_size INTEGER DEFAULT 10) ... SELEC
 # ✅ Batch Flow Unification - COMPLETE
 ```
 ```407:435:api/src/rest.rs
-// POST /api/v2/batches uses UnifiedBatchService
+// POST /api/v1/batches uses UnifiedBatchService
 ```
 ```441:519:db/src/db.rs
 // get_contract_submission_data builds prev/new roots and pulls transactions
