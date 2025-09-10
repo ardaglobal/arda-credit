@@ -144,6 +144,17 @@ server:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  
+  # Test data population configuration
+  populateTestData:
+    enabled: true  # Enable test data population on cluster instantiation
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
 
 # Frontend App configuration
 app:

@@ -9,6 +9,7 @@ This production-ready Helm chart deploys the Arda Credit application stack on Ku
 ✅ **Security**: Service accounts, RBAC, proper secret management  
 ✅ **Configuration Management**: ConfigMaps for non-sensitive config  
 ✅ **PostgreSQL Integration**: Bundled Bitnami PostgreSQL or external database  
+✅ **Test Data Population**: Automatic test data creation on cluster instantiation  
 ✅ **Production Ready**: Resource limits, security contexts, graceful shutdowns  
 
 ## Prerequisites
@@ -305,6 +306,39 @@ kubectl exec -it deployment/arda-credit-app -n arda-credit -- cat /etc/nginx/con
 
 ```bash
 helm upgrade arda-credit ./helm/charts/arda-credit --namespace arda-credit
+```
+
+## Test Data Population
+
+The chart includes automatic test data population on cluster instantiation. This feature creates sample identities, loans, and payments for testing purposes.
+
+### Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `server.populateTestData.enabled` | Enable test data population on startup | `true` |
+| `server.populateTestData.resources` | Resource limits for init container | See values.yaml |
+
+### Behavior
+
+- **First deployment**: Creates test data automatically
+- **Subsequent deployments**: Skips population if data already exists
+- **Data safety**: Never clears existing data unless explicitly configured
+
+### Manual Control
+
+To force repopulation of test data:
+
+```bash
+# Deploy with data clearing enabled (use with caution!)
+helm upgrade arda-credit ./helm/charts/arda-credit \
+  --set server.populateTestData.enabled=true \
+  --namespace arda-credit
+
+# Disable test data population
+helm upgrade arda-credit ./helm/charts/arda-credit \
+  --set server.populateTestData.enabled=false \
+  --namespace arda-credit
 ```
 
 ## Uninstalling

@@ -25,6 +25,35 @@ spec:
       serviceAccountName: {{ include "arda-credit.fullname" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.server.populateTestData.enabled }}
+      initContainers:
+        - name: populate-test-data
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.server.image.registry }}/{{ .Values.server.image.repository }}:{{ .Values.server.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command: ["./populate_test_data"]
+          env:
+            # Database URL constructed with secret password
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- if .Values.postgresql.enabled }}
+                  name: {{ include "arda-credit.fullname" . }}-postgresql
+                  key: postgres-password
+                  {{- else }}
+                  name: {{ .Values.postgresql.external.existingSecret }}
+                  key: {{ .Values.postgresql.external.secretPasswordKey }}
+                  {{- end }}
+            - name: DATABASE_URL
+              {{- if .Values.postgresql.enabled }}
+              value: "postgresql://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "arda-credit.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+              {{- else }}
+              value: "postgresql://{{ .Values.postgresql.external.username }}:$(POSTGRES_PASSWORD)@{{ .Values.postgresql.external.host }}:{{ .Values.postgresql.external.port }}/{{ .Values.postgresql.external.database }}"
+              {{- end }}
+          resources:
+            {{- toYaml .Values.server.populateTestData.resources | nindent 12 }}
+      {{- end }}
       containers:
         - name: server
           securityContext:

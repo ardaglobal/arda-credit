@@ -3,6 +3,10 @@
 //!
 //! This script creates fake identities, loans, and payments for testing the CCR domain.
 //! Run with: cargo run --bin populate_test_data
+//! 
+//! Environment Variables:
+//! - DATABASE_URL: PostgreSQL connection string
+//! - CLEAR_EXISTING_DATA: Set to "true" to clear existing data (default: false for production safety)
 
 use chrono::Utc;
 use db::{create_identity, init_db_with_url, Identity};
@@ -55,9 +59,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = init_db_with_url(&database_url).await?;
     println!("✅ Connected to database");
 
-    // Clear existing test data (optional)
-    println!("🧹 Clearing existing test data...");
-    clear_test_data(&pool).await?;
+    // Check if data already exists
+    let existing_identities_count = sqlx::query_scalar!("SELECT COUNT(*) FROM identities")
+        .fetch_one(&pool)
+        .await?
+        .unwrap_or(0);
+
+    if existing_identities_count > 0 {
+        println!("📊 Found {} existing identities in database", existing_identities_count);
+        
+        // Check if we should clear existing data
+        let clear_data = env::var("CLEAR_EXISTING_DATA")
+            .unwrap_or_else(|_| "false".to_string())
+            .to_lowercase() == "true";
+            
+        if clear_data {
+            println!("🧹 Clearing existing test data...");
+            clear_test_data(&pool).await?;
+        } else {
+            println!("⚠️  Skipping data population - data already exists and CLEAR_EXISTING_DATA is not set to 'true'");
+            println!("💡 To populate fresh data, set CLEAR_EXISTING_DATA=true environment variable");
+            println!("🎉 Database population completed (skipped due to existing data)!");
+            return Ok(());
+        }
+    } else {
+        println!("📊 No existing data found, proceeding with population...");
+    }
 
     // Create test identities
     println!("👥 Creating test identities...");

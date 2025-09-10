@@ -27,6 +27,10 @@ WORKDIR /app/api
 ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin server
 
+# Build population script binary
+WORKDIR /app/scripts
+RUN cargo build --release --bin populate_test_data
+
 # Runtime stage - simple and lightweight since verification is done locally
 FROM debian:bookworm-slim
 
@@ -38,7 +42,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /app/target/release/server ./server
-RUN chown appuser:appuser /app/server
+COPY --from=builder /app/target/release/populate_test_data ./populate_test_data
+RUN chown appuser:appuser /app/server /app/populate_test_data
 
 USER appuser
 EXPOSE 8080
