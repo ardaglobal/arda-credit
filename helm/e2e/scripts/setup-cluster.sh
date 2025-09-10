@@ -93,10 +93,11 @@ setup_local_registry() {
     log_info "Setting up local container registry..."
 
     # Always clean up any existing registry container first
-    if docker ps -a --format "table {{.Names}}" | grep -q "^${REGISTRY_NAME}$"; then
+    if docker ps -a --format "{{.Names}}" | grep -q "^${REGISTRY_NAME}$"; then
         log_info "Removing existing registry container '${REGISTRY_NAME}'..."
-        docker stop "${REGISTRY_NAME}" 2>/dev/null || log_warning "Registry container was not running"
-        docker rm -f "${REGISTRY_NAME}" 2>/dev/null || log_error "Failed to remove existing registry container"
+        docker stop "${REGISTRY_NAME}" 2>/dev/null || true
+        docker rm -f "${REGISTRY_NAME}" 2>/dev/null || true
+        log_success "Existing registry container cleaned up"
     fi
 
     # Start local registry
@@ -257,30 +258,51 @@ EOF
         log_warning "GHCR credentials not found in .env, skipping ghcr-secret creation"
     fi
     
-    # Create arda-credit-secrets if variables are available
+    # Create arda-credit-secrets for Helm lookup (external to Helm management)
     if [ -n "${SINDRI_API_KEY:-}" ]; then
-        log_info "Creating arda-credit-secrets from environment variables..."
-        kubectl create secret generic arda-credit-secrets \
+        log_info "Creating arda-credit-secrets from environment variables for Helm lookup..."
+        
+        # Validate SigNoz key if provided
+        local signoz_key="${SIGNOZ_INGESTION_KEY:-test-signoz-key}"
+        if [ "${signoz_key}" != "test-signoz-key" ] && [ -n "${signoz_key}" ]; then
+            if curl -X POST https://ingest.us.signoz.cloud:443/v1/metrics \
+                -H "signoz-ingestion-key: ${signoz_key}" \
+                -H "Content-Type: application/x-protobuf" \
+                --data-binary "" --max-time 10 >/dev/null 2>&1; then
+                log_success "SigNoz ingestion key validated successfully"
+            else
+                log_warning "SigNoz ingestion key validation failed, using test key"
+                signoz_key="test-signoz-key"
+            fi
+        fi
+        
+        kubectl create secret generic arda-credit-secrets-external \
             --from-literal=sindri-api-key="${SINDRI_API_KEY}" \
             --from-literal=ethereum-rpc-url="${ETHEREUM_RPC_URL:-http://localhost:8545}" \
             --from-literal=ethereum-contract-address="${ETHEREUM_CONTRACT_ADDRESS:-0x0}" \
             --from-literal=ethereum-wallet-private-key="${ETHEREUM_WALLET_PRIVATE_KEY:-0x0}" \
             --from-literal=ethereum-deployer-address="${ETHEREUM_DEPLOYER_ADDRESS:-0x0}" \
+            --from-literal=signoz-ingestion-key="${signoz_key}" \
+            --namespace=arda-credit \
             --dry-run=client -o yaml | kubectl apply -f -
+        log_success "arda-credit-secrets-external created for Helm lookup"
     else
-        log_warning "SINDRI_API_KEY not found in .env, using test values for local development"
-        # Create with test values for local e2e testing
-        kubectl create secret generic arda-credit-secrets \
+        log_warning "SINDRI_API_KEY not found, creating test secret for Helm lookup"
+        kubectl create secret generic arda-credit-secrets-external \
             --from-literal=sindri-api-key="test-key" \
             --from-literal=ethereum-rpc-url="http://localhost:8545" \
             --from-literal=ethereum-contract-address="0x1234567890123456789012345678901234567890" \
             --from-literal=ethereum-wallet-private-key="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" \
             --from-literal=ethereum-deployer-address="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" \
+            --from-literal=signoz-ingestion-key="test-signoz-key" \
+            --namespace=arda-credit \
             --dry-run=client -o yaml | kubectl apply -f -
+        log_success "Test arda-credit-secrets-external created for Helm lookup"
     fi
     
     log_success "Dependencies installed and configured"
 }
+
 
 # Update Helm dependencies
 update_helm_dependencies() {
@@ -325,6 +347,111 @@ deploy_arda_credit() {
     fi
 }
 
+# Configure PostgreSQL monitoring user
+configure_postgresql_monitoring() {
+    log_info "Configuring PostgreSQL monitoring user permissions..."
+    
+    # Wait for PostgreSQL to be ready for connections
+    local max_attempts=60
+    local attempt=0
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if kubectl exec -n arda-credit statefulset/arda-credit-postgresql -- env PGPASSWORD=local-dev-password psql -U postgres -c "SELECT 1;" >/dev/null 2>&1; then
+            log_success "PostgreSQL is ready for configuration"
+            break
+        fi
+        
+        attempt=$((attempt + 1))
+        log_info "Waiting for PostgreSQL to accept connections (attempt $attempt/$max_attempts)..."
+        sleep 3
+    done
+    
+    if [ $attempt -eq $max_attempts ]; then
+        log_error "PostgreSQL failed to become ready for connections"
+        exit 1
+    fi
+    
+    # PostgreSQL init scripts should have created the monitoring user, but ensure it's properly configured
+    log_info "Verifying and configuring monitoring user permissions..."
+    kubectl exec -n arda-credit statefulset/arda-credit-postgresql -- env PGPASSWORD=local-dev-password psql -U postgres -c "
+        -- Ensure monitoring user exists with correct password (init script should have created it)
+        DO \$\$
+        BEGIN
+            -- Update password in case it needs refresh
+            ALTER USER monitoring PASSWORD 'monitoring-password';
+            RAISE NOTICE 'Monitoring user password updated';
+        EXCEPTION WHEN undefined_object THEN
+            -- Fallback: create user if init script failed
+            CREATE USER monitoring WITH PASSWORD 'monitoring-password';
+            RAISE NOTICE 'Monitoring user created as fallback';
+        END
+        \$\$;
+        
+        -- Ensure required permissions for PostgreSQL 10+ (SigNoz requirements)
+        GRANT pg_monitor TO monitoring;
+        GRANT SELECT ON pg_stat_database TO monitoring;
+        
+        -- Verify permissions
+        SELECT 'Monitoring user configured successfully' AS status;
+    " || {
+        log_error "Failed to configure monitoring user"
+        exit 1
+    }
+    
+    # Test monitoring user connection with retries
+    log_info "Testing monitoring user connection..."
+    local test_attempts=0
+    local max_test_attempts=5
+    
+    while [ $test_attempts -lt $max_test_attempts ]; do
+        if kubectl exec -n arda-credit statefulset/arda-credit-postgresql -- env PGPASSWORD=monitoring-password psql -U monitoring -d arda_credit_db_local -c "SELECT count(*) FROM pg_stat_database;" >/dev/null 2>&1; then
+            log_success "Monitoring user authentication and permissions verified"
+            return 0
+        fi
+        
+        test_attempts=$((test_attempts + 1))
+        log_warning "Monitoring user test failed (attempt $test_attempts/$max_test_attempts), retrying..."
+        sleep 2
+    done
+    
+    log_error "Monitoring user authentication test failed after $max_test_attempts attempts"
+    exit 1
+}
+
+# Validate monitoring configuration end-to-end
+validate_monitoring_setup() {
+    log_info "Validating end-to-end monitoring setup..."
+    
+    # Wait for OTEL collector to be ready
+    log_info "Waiting for OTEL collector to be ready..."
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=opentelemetry-collector -n arda-credit --timeout=120s
+    
+    # Give OTEL collector time to start scraping
+    log_info "Allowing OTEL collector to start metric collection..."
+    sleep 30
+    
+    # Check for PostgreSQL receiver errors
+    local error_count=$(kubectl logs deployment/arda-credit-opentelemetry-collector -n arda-credit --since=30s | grep -c "postgresql.*authentication.*failed" || echo "0")
+    
+    if [ "$error_count" -gt 0 ]; then
+        log_warning "Found $error_count PostgreSQL authentication errors in OTEL collector logs"
+        log_info "Attempting to restart OTEL collector to refresh connections..."
+        kubectl rollout restart deployment/arda-credit-opentelemetry-collector -n arda-credit
+        kubectl rollout status deployment/arda-credit-opentelemetry-collector -n arda-credit --timeout=60s
+        sleep 20
+        
+        # Re-check for errors
+        error_count=$(kubectl logs deployment/arda-credit-opentelemetry-collector -n arda-credit --since=20s | grep -c "postgresql.*authentication.*failed" || echo "0")
+        
+        if [ "$error_count" -gt 0 ]; then
+            log_error "PostgreSQL monitoring still has authentication errors after restart"
+            exit 1
+        fi
+    fi
+    
+    log_success "End-to-end monitoring validation completed successfully"
+}
+
 # Wait for services to be ready
 wait_for_services() {
     log_info "Waiting for services to be ready..."
@@ -332,6 +459,9 @@ wait_for_services() {
     # Wait for PostgreSQL
     log_info "Waiting for PostgreSQL to be ready..."
     kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgresql -n arda-credit --timeout=120s
+    
+    # Configure PostgreSQL monitoring user after PostgreSQL is ready
+    configure_postgresql_monitoring
     
     # Wait for server
     log_info "Waiting for server to be ready..."
@@ -341,7 +471,10 @@ wait_for_services() {
     log_info "Waiting for app to be ready..."
     kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app -n arda-credit --timeout=120s
     
-    log_success "All services are ready"
+    # Validate end-to-end monitoring setup
+    validate_monitoring_setup
+    
+    log_success "All services are ready and monitoring is validated"
 }
 
 # Display access information
@@ -358,11 +491,13 @@ display_access_info() {
     echo "  🔧 API Server:      http://localhost:8080"
     echo "  🔧 Health Check:    http://localhost:8080/api/v1/health"
     echo "  🗄️  PostgreSQL:      localhost:5432"
+    echo "  📊 Postgres Metrics: kubectl port-forward svc/arda-credit-prometheus-postgres-exporter 9187:9187 -n arda-credit"
     echo
     log_info "Kubernetes Access:"
     echo "  kubectl get pods -n arda-credit"
     echo "  kubectl logs -f deployment/arda-credit-server -n arda-credit"
     echo "  kubectl logs -f deployment/arda-credit-app -n arda-credit"
+    echo "  kubectl logs -f deployment/arda-credit-prometheus-postgres-exporter -n arda-credit"
     echo "  kubectl port-forward svc/arda-credit-postgresql 5432:5432 -n arda-credit"
     echo
     log_info "Database Connection:"

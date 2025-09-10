@@ -1,0 +1,40 @@
+{{- if .Values.monitoring.postgresExporter.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-postgres-exporter-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+data:
+  # Custom queries configuration for Arda Credits specific metrics
+  custom-queries.yaml: |
+    {{- .Values.monitoring.postgresExporter.config.customQueries | nindent 4 }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-postgres-exporter
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres-exporter
+type: Opaque
+data:
+  # Connection string for postgres exporter
+  {{- if .Values.postgresql.enabled }}
+  # Use bundled PostgreSQL configuration
+  DATA_SOURCE_NAME: {{ printf "postgresql://%s:%s@%s-postgresql:5432/%s?sslmode=disable" 
+    .Values.postgresql.auth.username 
+    .Values.postgresql.auth.password 
+    (include "arda-credit.fullname" .) 
+    .Values.postgresql.auth.database | b64enc }}
+  {{- else }}
+  # Use external PostgreSQL configuration
+  DATA_SOURCE_NAME: {{ printf "postgresql://%s:$(POSTGRES_PASSWORD)@%s:5432/%s?sslmode=disable" 
+    .Values.postgresql.external.username
+    .Values.postgresql.external.host
+    .Values.postgresql.external.database | b64enc }}
+  {{- end }}
+{{- end }}

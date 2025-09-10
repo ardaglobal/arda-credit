@@ -1,0 +1,65 @@
+{{- if .Values.monitoring.otelCollector.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-otel-collector-env
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: otel-collector
+type: Opaque
+data:
+  # PostgreSQL connection configuration
+  {{- if .Values.postgresql.enabled }}
+  # Use bundled PostgreSQL configuration with monitoring user
+  POSTGRESQL_ENDPOINT: {{ printf "%s-postgresql:5432" (include "arda-credit.fullname" .) | b64enc }}
+  {{- if .Values.secrets.existingSecret }}
+  {{- $existingSecret := lookup "v1" "Secret" .Release.Namespace .Values.secrets.existingSecret }}
+  {{- if and $existingSecret $existingSecret.data }}
+  {{- if index $existingSecret.data "postgresql-monitoring-username" }}
+  POSTGRESQL_USERNAME: {{ index $existingSecret.data "postgresql-monitoring-username" }}
+  {{- else }}
+  POSTGRESQL_USERNAME: {{ "monitoring" | b64enc }}
+  {{- end }}
+  {{- if index $existingSecret.data "postgresql-monitoring-password" }}
+  POSTGRESQL_PASSWORD: {{ index $existingSecret.data "postgresql-monitoring-password" }}
+  {{- else }}
+  POSTGRESQL_PASSWORD: {{ "monitoring-password" | b64enc }}
+  {{- end }}
+  {{- else }}
+  # Fallback when existing secret not found - use correct password from .env
+  POSTGRESQL_USERNAME: {{ "monitoring" | b64enc }}
+  POSTGRESQL_PASSWORD: {{ "monitoring-password" | b64enc }}
+  {{- end }}
+  {{- else }}
+  # No existing secret configured - use correct password
+  POSTGRESQL_USERNAME: {{ "monitoring" | b64enc }}
+  POSTGRESQL_PASSWORD: {{ "monitoring-password" | b64enc }}
+  {{- end }}
+  {{- else }}
+  # Use external PostgreSQL configuration  
+  POSTGRESQL_ENDPOINT: {{ printf "%s:5432" .Values.postgresql.external.host | b64enc }}
+  POSTGRESQL_USERNAME: {{ .Values.postgresql.external.username | b64enc }}
+  POSTGRESQL_PASSWORD: {{ .Values.postgresql.external.password | b64enc }}
+  {{- end }}
+  
+  # SigNoz configuration
+  OTLP_DESTINATION_ENDPOINT: {{ .Values.monitoring.otelCollector.config.env.OTLP_DESTINATION_ENDPOINT | b64enc }}
+  # Get SIGNOZ_INGESTION_KEY from the arda-credit-secrets created by setup script
+  {{- if .Values.secrets.existingSecret }}
+  {{- $existingSecret := lookup "v1" "Secret" .Release.Namespace .Values.secrets.existingSecret }}
+  {{- if and $existingSecret $existingSecret.data }}
+  {{- if index $existingSecret.data "signoz-ingestion-key" }}
+  SIGNOZ_INGESTION_KEY: {{ index $existingSecret.data "signoz-ingestion-key" }}
+  {{- else }}
+  SIGNOZ_INGESTION_KEY: {{ "test-signoz-key" | b64enc }}
+  {{- end }}
+  {{- else }}
+  # Fallback when existing secret not found
+  SIGNOZ_INGESTION_KEY: {{ "test-signoz-key" | b64enc }}
+  {{- end }}
+  {{- else }}
+  # No existing secret configured
+  SIGNOZ_INGESTION_KEY: {{ "test-signoz-key" | b64enc }}
+  {{- end }}
+{{- end }}

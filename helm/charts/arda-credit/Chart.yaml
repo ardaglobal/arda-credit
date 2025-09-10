@@ -25,3 +25,11 @@ dependencies:
     version: 15.5.38
     repository: https://charts.bitnami.com/bitnami
     condition: postgresql.enabled
+  - name: prometheus-postgres-exporter
+    version: 7.1.1
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: monitoring.postgresExporter.enabled
+  - name: opentelemetry-collector
+    version: 0.133.0
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: monitoring.otelCollector.enabled
