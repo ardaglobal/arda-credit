@@ -93,44 +93,49 @@ pub fn init_tracing() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 pub mod api {
     use tracing::{info_span, Span};
     use uuid::Uuid;
-    
+
     /// Standard API endpoint instrumentation
-    /// 
+    ///
     /// Creates a standardized span for API endpoints with consistent naming
     /// and field structure for observability.
-    /// 
+    ///
     /// # Arguments
     /// * `operation` - The API operation (e.g., "create_user", "get_batch")
     /// * `endpoint` - The HTTP endpoint path
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// let _span = instrument_endpoint("create_user", "/api/v1/users").entered();
     /// ```
     pub fn instrument_endpoint(operation: &str, endpoint: &str) -> Span {
-        info_span!("api_endpoint",
+        info_span!(
+            "api_endpoint",
             operation = operation,
             endpoint = endpoint,
             layer = "api",
             service = "arda-credit-api"
         )
     }
-    
+
     /// Instrumentation for authenticated API endpoints
-    /// 
+    ///
     /// Creates spans for operations that require authentication, including
     /// the user ID for correlation and security auditing.
-    /// 
+    ///
     /// # Arguments
     /// * `operation` - The API operation being performed
     /// * `endpoint` - The HTTP endpoint path
     /// * `user_id` - The authenticated user's UUID
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// let _span = instrument_authenticated_endpoint("withdraw_funds", "/api/v1/withdrawals", user_uuid).entered();
     /// ```
-    pub fn instrument_authenticated_endpoint(operation: &str, endpoint: &str, user_id: Uuid) -> Span {
+    pub fn instrument_authenticated_endpoint(
+        operation: &str,
+        endpoint: &str,
+        user_id: Uuid,
+    ) -> Span {
         info_span!("api_endpoint",
             operation = operation,
             endpoint = endpoint,
@@ -140,23 +145,24 @@ pub mod api {
             user_id = %user_id
         )
     }
-    
+
     /// Instrumentation for batch processing API endpoints
-    /// 
+    ///
     /// Creates spans for batch operations with size tracking for performance
     /// monitoring and optimization.
-    /// 
+    ///
     /// # Arguments
     /// * `operation` - The batch operation type
     /// * `endpoint` - The HTTP endpoint path
     /// * `batch_size` - Number of items in the batch
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// let _span = instrument_batch_endpoint("process_transactions", "/api/v1/batches", 50).entered();
     /// ```
     pub fn instrument_batch_endpoint(operation: &str, endpoint: &str, batch_size: usize) -> Span {
-        info_span!("api_batch_endpoint",
+        info_span!(
+            "api_batch_endpoint",
             operation = operation,
             endpoint = endpoint,
             layer = "api",
@@ -164,23 +170,28 @@ pub mod api {
             batch_size = batch_size
         )
     }
-    
+
     /// Instrumentation for KYC-related API operations
-    /// 
+    ///
     /// Creates spans for compliance-critical operations with additional
     /// metadata for regulatory and audit purposes.
-    /// 
+    ///
     /// # Arguments
     /// * `operation` - The KYC operation (e.g., "submit_kyc", "validate_kyc")
     /// * `endpoint` - The HTTP endpoint path
     /// * `user_id` - The user undergoing KYC
     /// * `kyc_status` - Current KYC status
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// let _span = instrument_kyc_endpoint("validate_kyc", "/api/v1/kyc/validate", user_uuid, "pending").entered();
     /// ```
-    pub fn instrument_kyc_endpoint(operation: &str, endpoint: &str, user_id: Uuid, kyc_status: &str) -> Span {
+    pub fn instrument_kyc_endpoint(
+        operation: &str,
+        endpoint: &str,
+        user_id: Uuid,
+        kyc_status: &str,
+    ) -> Span {
         info_span!("api_kyc_endpoint",
             operation = operation,
             endpoint = endpoint,
@@ -191,27 +202,27 @@ pub mod api {
             kyc_status = kyc_status
         )
     }
-    
+
     /// Instrumentation for loan operations API endpoints
-    /// 
+    ///
     /// Creates spans for loan-related operations with loan context
     /// for financial transaction tracking.
-    /// 
+    ///
     /// # Arguments
     /// * `operation` - The loan operation (e.g., "originate_loan", "make_payment")
     /// * `endpoint` - The HTTP endpoint path
     /// * `loan_id` - Optional loan identifier
     /// * `amount` - Optional transaction amount
-    /// 
+    ///
     /// # Example
     /// ```rust
     /// let _span = instrument_loan_endpoint("make_payment", "/api/v1/loans/payments", Some(loan_uuid), Some(1000)).entered();
     /// ```
     pub fn instrument_loan_endpoint(
-        operation: &str, 
-        endpoint: &str, 
-        loan_id: Option<Uuid>, 
-        amount: Option<i64>
+        operation: &str,
+        endpoint: &str,
+        loan_id: Option<Uuid>,
+        amount: Option<i64>,
     ) -> Span {
         info_span!("api_loan_endpoint",
             operation = operation,
@@ -229,17 +240,21 @@ pub mod api {
 pub mod context {
     use tracing::Span;
     use uuid::Uuid;
-    
+
     /// Create a request context span that bridges API and database layers
-    /// 
+    ///
     /// This function helps correlate API requests with their corresponding
     /// database operations for end-to-end tracing.
-    /// 
+    ///
     /// # Arguments
     /// * `request_id` - Unique request identifier
     /// * `operation` - The high-level operation being performed
     /// * `user_id` - Optional user identifier for user-specific operations
-    pub fn create_request_context(request_id: Uuid, operation: &str, user_id: Option<Uuid>) -> Span {
+    pub fn create_request_context(
+        request_id: Uuid,
+        operation: &str,
+        user_id: Option<Uuid>,
+    ) -> Span {
         tracing::info_span!("request_context",
             request_id = %request_id,
             operation = operation,
@@ -247,11 +262,11 @@ pub mod context {
             layer = "request"
         )
     }
-    
+
     /// Attach HTTP context to spans
-    /// 
+    ///
     /// Useful for adding HTTP-specific metadata to existing spans.
-    /// 
+    ///
     /// # Arguments
     /// * `method` - HTTP method (GET, POST, etc.)
     /// * `path` - Request path

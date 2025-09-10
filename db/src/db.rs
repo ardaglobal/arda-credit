@@ -550,7 +550,6 @@ pub async fn submit_transaction(
     pool: &PgPool,
     amount: i32,
 ) -> Result<IncomingTransaction, sqlx::Error> {
-
     let row = sqlx::query!(
         "INSERT INTO incoming_transactions (amount) VALUES ($1) RETURNING id, amount, included_in_batch_id, created_at",
         amount
@@ -729,7 +728,6 @@ pub async fn update_batch_proof(
     proof_id: &str,
     status: &str,
 ) -> Result<(), sqlx::Error> {
-
     let proven_at = if status == "proven" {
         Some(Utc::now())
     } else {
@@ -835,7 +833,6 @@ pub async fn store_ads_state_commit(
     batch_id: i32,
     merkle_root: &[u8],
 ) -> Result<AdsStateCommit, sqlx::Error> {
-
     let row = sqlx::query!(
         r"
         INSERT INTO ads_state_commits (batch_id, merkle_root)
