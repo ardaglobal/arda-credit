@@ -320,15 +320,7 @@ pub async fn handle_user_command(
             code,
             user_id,
             verbose: cmd_verbose,
-        } => {
-            use_invite_code(
-                client,
-                &code,
-                user_id.as_deref(),
-                cmd_verbose || verbose,
-            )
-            .await
-        }
+        } => use_invite_code(client, &code, user_id.as_deref(), cmd_verbose || verbose).await,
         UserCommands::Test {
             count,
             user_type,
@@ -385,19 +377,44 @@ pub async fn create_user(
 pub async fn get_user(client: &BatchApiClient, user_id: &str, verbose: bool) -> Result<()> {
     println!("🔍 Retrieving user details for ID: {}", user_id);
 
-    // Placeholder implementation - would need to call actual API
-    println!("✅ User details retrieved:");
-    println!("   User ID: {}", user_id);
-    println!("   Status: Active");
-    println!("   KYC Status: Approved");
-    println!("   Created: 2024-01-15");
+    match client.get_user(user_id).await {
+        Ok(user) => {
+            println!("✅ User details retrieved:");
+            println!("   User ID: {}", user["user_id"].as_str().unwrap_or("N/A"));
+            println!("   Email: {}", user["email"].as_str().unwrap_or("N/A"));
+            println!("   Type: {}", user["user_type"].as_str().unwrap_or("N/A"));
+            println!(
+                "   KYC Status: {}",
+                user["kyc_status"].as_str().unwrap_or("N/A")
+            );
 
-    if verbose {
-        println!();
-        println!("🔧 Extended Information:");
-        println!("   Last Login: 2024-01-20");
-        println!("   Login Count: 15");
-        println!("   Account Flags: None");
+            if let Some(created) = user["created_at"].as_str() {
+                println!("   Created: {}", created);
+            }
+
+            if verbose {
+                println!();
+                println!("🔧 Extended Information:");
+                if let Some(updated) = user["updated_at"].as_str() {
+                    println!("   Updated: {}", updated);
+                }
+                if let Some(kyc_submitted) = user["kyc_submitted_at"].as_str() {
+                    println!("   KYC Submitted: {}", kyc_submitted);
+                }
+                if let Some(kyc_verified) = user["kyc_verified_at"].as_str() {
+                    println!("   KYC Verified: {}", kyc_verified);
+                }
+            }
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            if error_msg.contains("404") {
+                println!("❌ User not found: {}", user_id);
+            } else {
+                eprintln!("❌ Failed to retrieve user: {}", e);
+                return Err(e.into());
+            }
+        }
     }
 
     Ok(())
@@ -482,7 +499,10 @@ pub async fn update_user(
         println!();
         println!("🔧 Update Details:");
         println!("   Fields updated: {}", updates.len());
-        println!("   Timestamp: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "   Timestamp: {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+        );
     }
 
     Ok(())
@@ -542,7 +562,11 @@ pub async fn submit_kyc(
     println!("📄 Submitting KYC information for user: {}", user_id);
 
     println!("   Document Type: {}", document_type);
-    println!("   Document Hash: {}...{}", &document_hash[..8], &document_hash[document_hash.len()-8..]);
+    println!(
+        "   Document Hash: {}...{}",
+        &document_hash[..8],
+        &document_hash[document_hash.len() - 8..]
+    );
     if let Some(jurisdiction) = jurisdiction {
         println!("   Jurisdiction: {}", jurisdiction);
     }
@@ -560,14 +584,20 @@ pub async fn submit_kyc(
         println!();
         println!("🔧 Submission Details:");
         println!("   Document size: {} bytes", document_hash.len() * 32); // Simulated
-        println!("   Submission time: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "   Submission time: {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+        );
         println!("   Review process: Automated + Manual");
     }
 
     println!();
     println!("💡 Next steps:");
     println!("   • KYC review typically takes 3-5 business days");
-    println!("   • Check status using: cli user get --user-id {}", user_id);
+    println!(
+        "   • Check status using: cli user get --user-id {}",
+        user_id
+    );
     println!("   • You will be notified via email when review is complete");
 
     Ok(())
@@ -606,7 +636,10 @@ pub async fn update_kyc_status(
         println!();
         println!("🔧 Update Details:");
         println!("   Admin action: Yes");
-        println!("   Timestamp: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "   Timestamp: {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+        );
         println!("   Audit logged: Yes");
     }
 
@@ -627,31 +660,44 @@ pub async fn generate_invite_code(
     let expires_in_hours = expires_in_hours.unwrap_or(168);
 
     println!("   Max Uses: {}", max_uses);
-    println!("   Expires In: {} hours ({} days)", expires_in_hours, expires_in_hours / 24);
+    println!(
+        "   Expires In: {} hours ({} days)",
+        expires_in_hours,
+        expires_in_hours / 24
+    );
     if let Some(description) = description {
         println!("   Description: {}", description);
     }
 
     // Placeholder implementation - would generate actual code
     let invite_code = format!("ARDA{}", chrono::Utc::now().timestamp() % 1000000);
-    
+
     println!();
     println!("✅ Invite code generated successfully!");
     println!("   Code: {}", invite_code);
-    println!("   Valid Until: {}", chrono::Utc::now() + chrono::Duration::hours(expires_in_hours as i64));
+    println!(
+        "   Valid Until: {}",
+        chrono::Utc::now() + chrono::Duration::hours(expires_in_hours as i64)
+    );
 
     if verbose {
         println!();
         println!("🔧 Code Details:");
         println!("   Code ID: invite-{}", &invite_code[4..]);
         println!("   Security Level: High");
-        println!("   Created: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "   Created: {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+        );
     }
 
     println!();
     println!("💡 Usage:");
     println!("   • Share this code with new users");
-    println!("   • Check usage with: cli user check-invite-code --code {}", invite_code);
+    println!(
+        "   • Check usage with: cli user check-invite-code --code {}",
+        invite_code
+    );
 
     Ok(())
 }
@@ -702,7 +748,10 @@ pub async fn use_invite_code(
     if verbose {
         println!();
         println!("🔧 Usage Details:");
-        println!("   Used At: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "   Used At: {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+        );
         println!("   Total Uses: 1");
         if let Some(user_id) = user_id {
             println!("   User Association: {}", user_id);
@@ -733,11 +782,11 @@ pub async fn test_user_operations(
     // Placeholder implementation for comprehensive testing
     println!();
     println!("🔄 Running user operation tests...");
-    
+
     for i in 1..=count {
         println!("   {}. Creating user test-user-{}", i, i);
         // Would create actual test users here
-        
+
         if test_kyc {
             println!("      Submitting KYC for test-user-{}", i);
             // Would submit test KYC here
@@ -763,7 +812,10 @@ pub async fn test_user_operations(
     if verbose {
         println!();
         println!("🔧 Test Statistics:");
-        println!("   Total operations: {}", count * if test_kyc { 2 } else { 1 });
+        println!(
+            "   Total operations: {}",
+            count * if test_kyc { 2 } else { 1 }
+        );
         println!("   Success rate: 100%");
         println!("   Average response time: 120ms");
     }

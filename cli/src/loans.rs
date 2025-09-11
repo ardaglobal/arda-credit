@@ -641,12 +641,18 @@ pub async fn register_investor(
     println!("   Investor ID: {}", investor_id);
     println!("   Status: Active");
     println!("   KYC Status: Pending");
-    println!("   Created: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Created: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
         println!("🔧 Registration Details:");
-        println!("   Regulatory Jurisdiction: {}", regulatory_jurisdiction.unwrap_or("US"));
+        println!(
+            "   Regulatory Jurisdiction: {}",
+            regulatory_jurisdiction.unwrap_or("US")
+        );
         if let Some(invite_code) = invite_code {
             println!("   Invite Code Used: {}", invite_code);
         }
@@ -656,8 +662,14 @@ pub async fn register_investor(
 
     println!();
     println!("💡 Next steps:");
-    println!("   • Submit KYC documents: cli user submit-kyc --user-id {}", investor_id);
-    println!("   • Update profile: cli loan update-investor-profile --user-id {}", investor_id);
+    println!(
+        "   • Submit KYC documents: cli user submit-kyc --user-id {}",
+        investor_id
+    );
+    println!(
+        "   • Update profile: cli loan update-investor-profile --user-id {}",
+        investor_id
+    );
     println!("   • Create liquidity pools: cli pool create");
 
     Ok(())
@@ -787,7 +799,10 @@ pub async fn register_merchant(
     println!("   Merchant ID: {}", merchant_id);
     println!("   Status: Active");
     println!("   KYC Status: Pending");
-    println!("   Created: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Created: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
@@ -852,14 +867,23 @@ pub async fn submit_turnover(
     println!("✅ Turnover data submitted successfully!");
     println!("   Date: {}", date);
     println!("   Status: Recorded");
-    println!("   Verification: {}", verification_method.unwrap_or("Pending"));
+    println!(
+        "   Verification: {}",
+        verification_method.unwrap_or("Pending")
+    );
 
     if verbose {
         println!();
         println!("🔧 Submission Details:");
         println!("   Data Source: {}", source);
-        println!("   Submission Time: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
-        println!("   Record ID: turnover-{}", chrono::Utc::now().timestamp() % 1000000);
+        println!(
+            "   Submission Time: {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+        );
+        println!(
+            "   Record ID: turnover-{}",
+            chrono::Utc::now().timestamp() % 1000000
+        );
     }
 
     Ok(())
@@ -1060,7 +1084,10 @@ pub async fn check_credit_eligibility(
     merchant_id: &str,
     verbose: bool,
 ) -> Result<()> {
-    println!("🔍 Checking credit eligibility for merchant: {}", merchant_id);
+    println!(
+        "🔍 Checking credit eligibility for merchant: {}",
+        merchant_id
+    );
 
     // Placeholder implementation - would run actual eligibility checks
     println!();
@@ -1148,7 +1175,10 @@ pub async fn submit_credit_line_request(
     println!("📋 Request Details:");
     println!("   Amount: ${:.2}", amount_usd);
     println!("   Term: {} days", requested_tenor_days);
-    println!("   Submitted: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Submitted: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
@@ -1162,7 +1192,10 @@ pub async fn submit_credit_line_request(
 
     println!();
     println!("💡 Track your request:");
-    println!("   • Check status: cli loan list-credit-line-requests --merchant-id {}", merchant_id);
+    println!(
+        "   • Check status: cli loan list-credit-line-requests --merchant-id {}",
+        merchant_id
+    );
 
     Ok(())
 }
@@ -1307,15 +1340,27 @@ pub async fn originate_loan(
     println!("   Loan ID: {}", loan_id);
     println!("   Principal: ${:.2}", amount);
     println!("   Status: Active");
-    println!("   Created: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
-    println!("   Maturity: {}", chrono::Utc::now() + chrono::Duration::days(term_days as i64));
+    println!(
+        "   Created: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
+    println!(
+        "   Maturity: {}",
+        chrono::Utc::now() + chrono::Duration::days(term_days as i64)
+    );
 
     if verbose {
         println!();
         println!("🔧 Loan Details:");
         println!("   Interest Rate: {:.2}% APR", interest_rate.unwrap_or(8.0));
-        println!("   Monthly Payment: ${:.2}", calculate_monthly_payment(amount, interest_rate.unwrap_or(8.0) / 100.0, term_days));
-        println!("   Total Interest: ${:.2}", amount * (interest_rate.unwrap_or(8.0) / 100.0) * (term_days as f64 / 365.0));
+        println!(
+            "   Monthly Payment: ${:.2}",
+            calculate_monthly_payment(amount, interest_rate.unwrap_or(8.0) / 100.0, term_days)
+        );
+        println!(
+            "   Total Interest: ${:.2}",
+            amount * (interest_rate.unwrap_or(8.0) / 100.0) * (term_days as f64 / 365.0)
+        );
         println!("   KYC Status: Both parties verified");
     }
 
@@ -1348,7 +1393,10 @@ pub async fn make_payment(
     println!("   Payment ID: {}", payment_id);
     println!("   Amount: ${:.2}", amount);
     println!("   Remaining Balance: ${:.2}", remaining_balance.max(0.0));
-    println!("   Payment Date: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Payment Date: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
@@ -1356,7 +1404,10 @@ pub async fn make_payment(
         println!("   Principal: ${:.2}", amount * 0.8); // Simulated split
         println!("   Interest: ${:.2}", amount * 0.2);
         println!("   Transaction Hash: Pending ZK batch");
-        println!("   Next Due Date: {}", chrono::Utc::now() + chrono::Duration::days(30));
+        println!(
+            "   Next Due Date: {}",
+            chrono::Utc::now() + chrono::Duration::days(30)
+        );
     }
 
     Ok(())
@@ -1372,7 +1423,10 @@ pub async fn closeout_loan(client: &BatchApiClient, loan_id: &str, verbose: bool
     println!("   Loan ID: {}", loan_id);
     println!("   Final Status: Paid in Full");
     println!("   Total Paid: $15,450.75");
-    println!("   Closed Date: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Closed Date: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
@@ -1504,7 +1558,8 @@ pub async fn test_loan_operations(
     if verbose {
         println!();
         println!("🔧 Test Statistics:");
-        let total_tests = count + if test_payments { count } else { 0 } + if test_merchants { 3 } else { 0 };
+        let total_tests =
+            count + if test_payments { count } else { 0 } + if test_merchants { 3 } else { 0 };
         println!("   Total tests: {}", total_tests);
         println!("   Success rate: 100%");
         println!("   Average loan creation time: 0.8s");
@@ -1518,13 +1573,13 @@ pub async fn test_loan_operations(
 fn calculate_monthly_payment(principal: f64, annual_rate: f64, term_days: i32) -> f64 {
     let monthly_rate = annual_rate / 12.0;
     let term_months = term_days as f64 / 30.44; // Average days per month
-    
+
     if monthly_rate == 0.0 {
         return principal / term_months;
     }
-    
-    let payment = principal * (monthly_rate * (1.0 + monthly_rate).powf(term_months)) 
-                  / ((1.0 + monthly_rate).powf(term_months) - 1.0);
-    
+
+    let payment = principal * (monthly_rate * (1.0 + monthly_rate).powf(term_months))
+        / ((1.0 + monthly_rate).powf(term_months) - 1.0);
+
     payment
 }

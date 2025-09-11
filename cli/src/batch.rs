@@ -107,30 +107,19 @@ pub async fn handle_batch_command(
     verbose: bool,
 ) -> Result<()> {
     match command {
-        BatchCommands::SubmitTransaction { amount } => {
-            submit_transaction(client, amount).await
-        }
-        BatchCommands::ViewPending => {
-            view_pending_transactions(client).await
-        }
-        BatchCommands::GetCurrentState => {
-            get_current_state(client).await
-        }
-        BatchCommands::Trigger { batch_size, verbose: cmd_verbose } => {
-            trigger_batch(client, batch_size, cmd_verbose || verbose).await
-        }
-        BatchCommands::ListBatches => {
-            list_batches(client).await
-        }
-        BatchCommands::GetBatch { batch_id } => {
-            get_batch(client, batch_id).await
-        }
+        BatchCommands::SubmitTransaction { amount } => submit_transaction(client, amount).await,
+        BatchCommands::ViewPending => view_pending_transactions(client).await,
+        BatchCommands::GetCurrentState => get_current_state(client).await,
+        BatchCommands::Trigger {
+            batch_size,
+            verbose: cmd_verbose,
+        } => trigger_batch(client, batch_size, cmd_verbose || verbose).await,
+        BatchCommands::ListBatches => list_batches(client).await,
+        BatchCommands::GetBatch { batch_id } => get_batch(client, batch_id).await,
         BatchCommands::DownloadProof { batch_id, output } => {
             download_proof(client, batch_id, output).await
         }
-        BatchCommands::HealthCheck => {
-            health_check(client).await
-        }
+        BatchCommands::HealthCheck => health_check(client).await,
         BatchCommands::VerifyProof {
             proof_file,
             proof_data,
@@ -139,20 +128,18 @@ pub async fn handle_batch_command(
             expected_initial_balance,
             expected_final_balance,
             verbose: cmd_verbose,
-        } => {
-            verify_proof_local(
-                proof_file,
-                proof_data,
-                public_values,
-                verifying_key,
-                expected_initial_balance,
-                expected_final_balance,
-                cmd_verbose || verbose,
-            )
-        }
-        BatchCommands::QueryVerificationKey { verbose: cmd_verbose } => {
-            query_verification_key(cmd_verbose || verbose).await
-        }
+        } => verify_proof_local(
+            proof_file,
+            proof_data,
+            public_values,
+            verifying_key,
+            expected_initial_balance,
+            expected_final_balance,
+            cmd_verbose || verbose,
+        ),
+        BatchCommands::QueryVerificationKey {
+            verbose: cmd_verbose,
+        } => query_verification_key(cmd_verbose || verbose).await,
     }
 }
 
@@ -184,7 +171,9 @@ pub async fn view_pending_transactions(client: &BatchApiClient) -> Result<()> {
             if response.transactions.is_empty() {
                 println!("📭 No pending transactions found.");
                 println!();
-                println!("💡 Submit transactions using: cli batch submit-transaction --amount <amount>");
+                println!(
+                    "💡 Submit transactions using: cli batch submit-transaction --amount <amount>"
+                );
             } else {
                 println!("📋 Pending Transactions (Unbatched):");
                 println!("   Total Count: {}", response.total_count);
@@ -202,7 +191,9 @@ pub async fn view_pending_transactions(client: &BatchApiClient) -> Result<()> {
                 }
 
                 println!();
-                println!("💡 Use 'cli batch trigger' to batch these transactions and generate proof");
+                println!(
+                    "💡 Use 'cli batch trigger' to batch these transactions and generate proof"
+                );
             }
         }
         Err(e) => {
@@ -266,20 +257,34 @@ pub async fn trigger_batch(
                     println!("📄 Contract Submission Data (Dry Run):");
                     println!();
                     println!("🔒 Public Information:");
-                    println!("   Previous Merkle Root: {}", contract_data.public.prev_merkle_root);
-                    println!("   New Merkle Root: {}", contract_data.public.new_merkle_root);
+                    println!(
+                        "   Previous Merkle Root: {}",
+                        contract_data.public.prev_merkle_root
+                    );
+                    println!(
+                        "   New Merkle Root: {}",
+                        contract_data.public.new_merkle_root
+                    );
                     println!("   ZK Proof ID: {}", contract_data.public.zk_proof);
 
                     if verbose {
                         println!();
                         println!("🔓 Private Information (for verification only):");
-                        println!("   Previous Counter Value: {}", contract_data.private.prev_counter_value);
-                        println!("   New Counter Value: {}", contract_data.private.new_counter_value);
+                        println!(
+                            "   Previous Counter Value: {}",
+                            contract_data.private.prev_counter_value
+                        );
+                        println!(
+                            "   New Counter Value: {}",
+                            contract_data.private.new_counter_value
+                        );
                         println!("   Transactions: {:?}", contract_data.private.transactions);
 
                         println!();
                         println!("🔍 Privacy Note:");
-                        println!("   • The private information above is shown for CLI verification");
+                        println!(
+                            "   • The private information above is shown for CLI verification"
+                        );
                         println!("   • On-chain, only the public information would be submitted");
                         println!("   • Individual transaction amounts remain private via ZK proof");
                     }
@@ -296,8 +301,14 @@ pub async fn trigger_batch(
             println!();
             println!("💡 Next steps:");
             println!("   • ZK proof generation happens asynchronously");
-            println!("   • Use 'cli batch get-batch --batch-id {}' to check batch status", response.batch_id);
-            println!("   • Use 'cli batch download-proof --batch-id {}' once proof is ready", response.batch_id);
+            println!(
+                "   • Use 'cli batch get-batch --batch-id {}' to check batch status",
+                response.batch_id
+            );
+            println!(
+                "   • Use 'cli batch download-proof --batch-id {}' once proof is ready",
+                response.batch_id
+            );
         }
         Err(e) => {
             eprintln!("❌ Failed to create batch: {}", e);
@@ -322,7 +333,10 @@ pub async fn list_batches(client: &BatchApiClient) -> Result<()> {
 
                 for (i, batch) in response.batches.iter().enumerate() {
                     println!("   {}. Batch ID: {}", i + 1, batch.id);
-                    println!("      Counter: {} → {}", batch.previous_counter_value, batch.final_counter_value);
+                    println!(
+                        "      Counter: {} → {}",
+                        batch.previous_counter_value, batch.final_counter_value
+                    );
                     println!("      Transactions: {}", batch.transaction_count);
                     println!("      Status: {}", batch.proof_status);
                     if let Some(ref proof_id) = batch.sindri_proof_id {
@@ -335,8 +349,12 @@ pub async fn list_batches(client: &BatchApiClient) -> Result<()> {
                     println!();
                 }
 
-                println!("💡 Use 'cli batch get-batch --batch-id <id>' for detailed batch information");
-                println!("💡 Use 'cli batch download-proof --batch-id <id>' to download proof data");
+                println!(
+                    "💡 Use 'cli batch get-batch --batch-id <id>' for detailed batch information"
+                );
+                println!(
+                    "💡 Use 'cli batch download-proof --batch-id <id>' to download proof data"
+                );
             }
         }
         Err(e) => {
@@ -367,19 +385,15 @@ pub async fn get_batch(client: &BatchApiClient, batch_id: i32) -> Result<()> {
                 println!("   Proven At: {}", proven_at);
             }
 
-            // Show transaction details if available
-            if !batch.transactions.is_empty() {
-                println!();
-                println!("   📊 Transactions in Batch:");
-                for (i, tx) in batch.transactions.iter().enumerate() {
-                    println!("      {}. ID: {} | Amount: {} | Created: {}", 
-                             i + 1, tx.id, tx.amount, tx.created_at);
-                }
-            }
+            // Show transaction count (transaction details not available in batch info)
+            println!("   Transaction Count: {}", batch.transaction_count);
 
             println!();
             if batch.proof_status == "proven" {
-                println!("💡 Proof is ready! Use 'cli batch download-proof --batch-id {}' to download", batch_id);
+                println!(
+                    "💡 Proof is ready! Use 'cli batch download-proof --batch-id {}' to download",
+                    batch_id
+                );
             } else {
                 println!("⏳ Proof generation in progress. Check back later.");
             }
@@ -409,7 +423,10 @@ pub async fn download_proof(
                 println!("❌ Batch {} does not have a completed proof yet", batch_id);
                 println!("   Current Status: {}", batch.proof_status);
                 println!();
-                println!("💡 Use 'cli batch get-batch --batch-id {}' to check status", batch_id);
+                println!(
+                    "💡 Use 'cli batch get-batch --batch-id {}' to check status",
+                    batch_id
+                );
                 return Ok(());
             }
         }
@@ -425,18 +442,32 @@ pub async fn download_proof(
 
     println!("📥 Downloading proof data for batch {}...", batch_id);
 
-    match client.get_proof_data(batch_id).await {
+    match client.get_contract_data(batch_id).await {
         Ok(Some(proof_data)) => {
             let filename = output.unwrap_or_else(|| format!("proof_batch_{}.json", batch_id));
-            
-            let proof_json = serde_json::to_string_pretty(&proof_data)?;
-            fs::write(&filename, proof_json)?;
 
-            println!("✅ Proof data downloaded successfully!");
+            // Create a serializable representation
+            let serializable_data = serde_json::json!({
+                "public": {
+                    "prev_merkle_root": proof_data.public.prev_merkle_root,
+                    "new_merkle_root": proof_data.public.new_merkle_root,
+                    "zk_proof": proof_data.public.zk_proof
+                },
+                "private": {
+                    "prev_counter_value": proof_data.private.prev_counter_value,
+                    "new_counter_value": proof_data.private.new_counter_value,
+                    "transactions": proof_data.private.transactions
+                }
+            });
+
+            let proof_json = serde_json::to_string_pretty(&serializable_data)?;
+            fs::write(&filename, &proof_json)?;
+
+            println!("✅ Contract submission data downloaded successfully!");
             println!("   File: {}", filename);
             println!("   Size: {} bytes", proof_json.len());
             println!();
-            println!("💡 Use 'cli batch verify-proof --proof-file {}' to verify locally", filename);
+            println!("💡 This data can be used for contract submission verification");
         }
         Ok(None) => {
             println!("❌ No proof data available for batch {}", batch_id);
@@ -459,17 +490,16 @@ pub async fn health_check(client: &BatchApiClient) -> Result<()> {
             let duration = start.elapsed();
             println!("✅ API Server Health Check:");
             println!("   Status: {}", response.status);
-            println!("   Version: {}", response.version);
+            println!("   API Version: {}", response.api_version);
+            println!("   Git Tag: {}", response.git_tag);
             println!("   Response Time: {:.2}ms", duration.as_millis());
-            
-            if let Some(ref database) = response.database_status {
-                println!("   Database: {}", database);
+
+            if response.database_connected {
+                println!("   Database: Connected");
+            } else {
+                println!("   Database: Disconnected");
             }
-            
-            if let Some(ref sindri) = response.sindri_status {
-                println!("   Sindri: {}", sindri);
-            }
-            
+
             println!();
             if response.status == "healthy" {
                 println!("🟢 All systems operational");
@@ -479,7 +509,11 @@ pub async fn health_check(client: &BatchApiClient) -> Result<()> {
         }
         Err(e) => {
             let duration = start.elapsed();
-            eprintln!("❌ Health check failed after {:.2}ms: {}", duration.as_millis(), e);
+            eprintln!(
+                "❌ Health check failed after {:.2}ms: {}",
+                duration.as_millis(),
+                e
+            );
             eprintln!();
             eprintln!("🔍 Troubleshooting:");
             eprintln!("   • Check if API server is running");
@@ -507,11 +541,11 @@ pub fn verify_proof_local(
 
     // Implementation would go here - this is a placeholder for the actual verification logic
     // The full implementation would need to be extracted from the original file
-    
+
     println!("⚠️  Local proof verification not yet implemented");
     println!("   Expected initial balance: {}", expected_initial_balance);
     println!("   Expected final balance: {}", expected_final_balance);
-    
+
     if verbose {
         println!();
         println!("🔧 Debug Information:");
@@ -530,7 +564,10 @@ pub fn verify_proof_local(
     }
 
     let duration = start_time.elapsed();
-    println!("⏱️  Verification completed in {:.2}ms", duration.as_millis());
+    println!(
+        "⏱️  Verification completed in {:.2}ms",
+        duration.as_millis()
+    );
 
     Ok(())
 }
@@ -541,30 +578,25 @@ pub async fn query_verification_key(verbose: bool) -> Result<()> {
 
     // Load environment configuration
     let config = Config::from_env().map_err(|e| {
-        eyre::eyre!("Failed to load configuration: {}. Please check your environment variables.", e)
+        eyre::eyre!(
+            "Failed to load configuration: {}. Please check your environment variables.",
+            e
+        )
     })?;
 
-    let client = EthereumClient::new(config).await.map_err(|e| {
-        eyre::eyre!("Failed to create Ethereum client: {}", e)
-    })?;
+    let client = EthereumClient::new(config)
+        .await
+        .map_err(|e| eyre::eyre!("Failed to create Ethereum client: {}", e))?;
 
-    match client.query_verification_key().await {
-        Ok(vkey_bytes) => {
+    match client.query_contract_verification_key().await {
+        Ok((vkey_hash, address)) => {
             println!("✅ Verification key retrieved successfully!");
-            println!("   Length: {} bytes", vkey_bytes.len());
-            
+            println!("   Verification Key Hash: 0x{}", hex::encode(vkey_hash));
+            println!("   Contract Address: {}", address);
+
             if verbose {
-                println!("   Hex: 0x{}", hex::encode(&vkey_bytes));
-            } else {
-                // Show first and last few bytes for identification
-                let hex_str = hex::encode(&vkey_bytes);
-                let preview = if hex_str.len() > 16 {
-                    format!("{}...{}", &hex_str[..8], &hex_str[hex_str.len()-8..])
-                } else {
-                    hex_str
-                };
-                println!("   Preview: 0x{}", preview);
-                println!("   💡 Use --verbose to see full verification key");
+                println!("   Hash Length: {} bytes", vkey_hash.len());
+                println!("   Full Hash: 0x{}", hex::encode(vkey_hash));
             }
         }
         Err(e) => {

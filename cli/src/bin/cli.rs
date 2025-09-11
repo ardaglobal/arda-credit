@@ -11,7 +11,7 @@
 //! All operations maintain privacy through zero-knowledge proofs while enabling
 //! regulatory compliance and transaction verification.
 
-use arda_credit_cli::cli::run_cli;
+use cli::cli::run_cli;
 use eyre::Result;
 
 #[tokio::main]

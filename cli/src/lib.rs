@@ -21,17 +21,23 @@ pub mod batch;
 pub mod cli;
 pub mod loans;
 pub mod pools;
-pub mod testing;
 pub mod user;
+
+// Performance benchmarks (available for both internal and integration tests)
+#[cfg(any(test, feature = "testing"))]
+pub mod benchmarks;
 
 // Re-export commonly used types and functions
 pub use balance::*;
-pub use batch::*; 
+pub use batch::*;
 pub use cli::*;
 pub use loans::*;
 pub use pools::*;
-pub use testing::*;
 pub use user::*;
+
+// Conditionally re-export benchmark utilities
+#[cfg(any(test, feature = "testing"))]
+pub use benchmarks::*;
 
 // External dependencies used across modules
 pub use clap::{Parser, Subcommand};
@@ -75,15 +81,15 @@ pub struct CliConfig {
 impl CliConfig {
     /// Creates a new CLI configuration from environment variables
     pub fn new() -> Self {
-        let api_base_url = env::var("ARDA_CREDIT_API_URL")
-            .unwrap_or_else(|_| "http://localhost:8080".to_string());
-        
+        let api_base_url =
+            env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+
         Self {
             api_base_url,
             verbose: false,
         }
     }
-    
+
     /// Creates a BatchApiClient from the configuration
     pub fn create_client(&self) -> BatchApiClient {
         BatchApiClient::new(&self.api_base_url)

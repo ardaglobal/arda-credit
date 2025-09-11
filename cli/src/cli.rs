@@ -21,13 +21,15 @@ use tracing_subscriber;
 use arda_credit_api::BatchApiClient;
 
 use crate::{
-    balance::{BalanceCommands, handle_balance_command},
-    batch::{BatchCommands, handle_batch_command},
-    loans::{LoanCommands, handle_loan_command},
-    pools::{PoolCommands, handle_pool_command},
-    testing::{TestingCommands, handle_testing_command},
-    user::{UserCommands, handle_user_command},
+    balance::{handle_balance_command, BalanceCommands},
+    batch::{handle_batch_command, BatchCommands},
+    loans::{handle_loan_command, LoanCommands},
+    pools::{handle_pool_command, PoolCommands},
+    user::{handle_user_command, UserCommands},
 };
+
+#[cfg(any(test, feature = "testing"))]
+use crate::benchmarks::{handle_benchmark_command, BenchmarkCommands};
 
 /// Main CLI application structure
 #[derive(Parser)]
@@ -85,9 +87,10 @@ pub enum Commands {
     #[command(subcommand)]
     Batch(BatchCommands),
 
-    /// Testing, performance, and analytics operations
+    /// Performance benchmarks and analytics operations (requires testing feature)
+    #[cfg(any(test, feature = "testing"))]
     #[command(subcommand)]
-    Test(TestingCommands),
+    Benchmark(BenchmarkCommands),
 
     /// Legacy commands for backward compatibility (deprecated)
     #[command(flatten)]
@@ -105,15 +108,15 @@ pub enum LegacyCommands {
         #[arg(short, long)]
         amount: i32,
     },
-    
+
     /// View all pending (unbatched) transactions  
     #[deprecated(note = "Use 'batch view-pending' instead")]
     ViewPending,
-    
+
     /// Check API server health
     #[deprecated(note = "Use 'batch health-check' instead")]
     HealthCheck,
-    
+
     /// Trigger batch creation and get contract submission data
     #[deprecated(note = "Use 'batch trigger' instead")]
     TriggerBatch {
@@ -166,8 +169,9 @@ pub async fn run_cli() -> Result<()> {
         Commands::Batch(cmd) => {
             handle_batch_command(&client, cmd, cli.verbose).await?;
         }
-        Commands::Test(cmd) => {
-            handle_testing_command(&client, cmd, cli.verbose).await?;
+        #[cfg(any(test, feature = "testing"))]
+        Commands::Benchmark(cmd) => {
+            handle_benchmark_command(&client, cmd, cli.verbose).await?;
         }
         Commands::Legacy(cmd) => {
             handle_legacy_command(&client, cmd, cli.verbose).await?;
@@ -192,16 +196,23 @@ async fn handle_legacy_command(
         }
         #[allow(deprecated)]
         LegacyCommands::ViewPending => {
-            eprintln!("⚠️  WARNING: 'view-pending' is deprecated. Use 'batch view-pending' instead.");
+            eprintln!(
+                "⚠️  WARNING: 'view-pending' is deprecated. Use 'batch view-pending' instead."
+            );
             crate::batch::view_pending_transactions(client).await
         }
         #[allow(deprecated)]
         LegacyCommands::HealthCheck => {
-            eprintln!("⚠️  WARNING: 'health-check' is deprecated. Use 'batch health-check' instead.");
+            eprintln!(
+                "⚠️  WARNING: 'health-check' is deprecated. Use 'batch health-check' instead."
+            );
             crate::batch::health_check(client).await
         }
         #[allow(deprecated)]
-        LegacyCommands::TriggerBatch { batch_size, verbose: cmd_verbose } => {
+        LegacyCommands::TriggerBatch {
+            batch_size,
+            verbose: cmd_verbose,
+        } => {
             eprintln!("⚠️  WARNING: 'trigger-batch' is deprecated. Use 'batch trigger' instead.");
             crate::batch::trigger_batch(client, batch_size, cmd_verbose || verbose).await
         }

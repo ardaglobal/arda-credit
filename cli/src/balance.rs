@@ -13,8 +13,8 @@
 use clap::Subcommand;
 use eyre::Result;
 
-use arda_credit_api::BatchApiClient;
 use crate::validate_ethereum_address;
+use arda_credit_api::BatchApiClient;
 
 /// Balance and wallet CLI commands
 #[derive(Subcommand)]
@@ -193,15 +193,7 @@ pub async fn handle_balance_command(
             user_id,
             limit,
             verbose: cmd_verbose,
-        } => {
-            get_user_transactions(
-                client,
-                &user_id,
-                limit,
-                cmd_verbose || verbose,
-            )
-            .await
-        }
+        } => get_user_transactions(client, &user_id, limit, cmd_verbose || verbose).await,
         BalanceCommands::GetTransactionStatus {
             tx_hash,
             verbose: cmd_verbose,
@@ -210,28 +202,12 @@ pub async fn handle_balance_command(
             user_id,
             wallet_address,
             verbose: cmd_verbose,
-        } => {
-            set_user_wallet(
-                client,
-                &user_id,
-                &wallet_address,
-                cmd_verbose || verbose,
-            )
-            .await
-        }
+        } => set_user_wallet(client, &user_id, &wallet_address, cmd_verbose || verbose).await,
         BalanceCommands::LinkWallet {
             user_id,
             wallet_address,
             verbose: cmd_verbose,
-        } => {
-            link_wallet(
-                client,
-                &user_id,
-                &wallet_address,
-                cmd_verbose || verbose,
-            )
-            .await
-        }
+        } => link_wallet(client, &user_id, &wallet_address, cmd_verbose || verbose).await,
         BalanceCommands::InitiateWithdrawal {
             user_address,
             recipient_address,
@@ -259,15 +235,7 @@ pub async fn handle_balance_command(
             address,
             limit,
             verbose: cmd_verbose,
-        } => {
-            get_withdrawal_history(
-                client,
-                &address,
-                limit,
-                cmd_verbose || verbose,
-            )
-            .await
-        }
+        } => get_withdrawal_history(client, &address, limit, cmd_verbose || verbose).await,
         BalanceCommands::CancelWithdrawal {
             request_id,
             verbose: cmd_verbose,
@@ -342,7 +310,11 @@ pub async fn get_balance_by_address(
 }
 
 /// Get user balance by user ID
-pub async fn get_balance_by_id(client: &BatchApiClient, user_id: &str, verbose: bool) -> Result<()> {
+pub async fn get_balance_by_id(
+    client: &BatchApiClient,
+    user_id: &str,
+    verbose: bool,
+) -> Result<()> {
     println!("💰 Retrieving balance for user ID: {}", user_id);
 
     // Placeholder implementation - would need to call actual API
@@ -470,7 +442,10 @@ pub async fn set_user_wallet(
     println!("   User ID: {}", user_id);
     println!("   Wallet Address: {}", wallet_address);
     println!("   Status: Active");
-    println!("   Updated: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Updated: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
@@ -521,7 +496,10 @@ pub async fn link_wallet(
         println!("🔧 Link Details:");
         println!("   Link Type: Primary Wallet");
         println!("   Network: Ethereum Mainnet");
-        println!("   Created: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+        println!(
+            "   Created: {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+        );
         println!("   Verification: Address format verified");
     }
 
@@ -602,8 +580,14 @@ pub async fn initiate_withdrawal(
 
     println!();
     println!("💡 Track your withdrawal:");
-    println!("   • Check status: cli balance get-withdrawal-status --request-id {}", request_id);
-    println!("   • Cancel if needed: cli balance cancel-withdrawal --request-id {}", request_id);
+    println!(
+        "   • Check status: cli balance get-withdrawal-status --request-id {}",
+        request_id
+    );
+    println!(
+        "   • Cancel if needed: cli balance cancel-withdrawal --request-id {}",
+        request_id
+    );
 
     Ok(())
 }
@@ -765,7 +749,10 @@ pub async fn cancel_withdrawal(
     println!("   Request ID: {}", request_id);
     println!("   Amount: $100.50 (returned to balance)");
     println!("   Status: CANCELLED");
-    println!("   Cancelled At: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Cancelled At: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
@@ -884,7 +871,8 @@ pub async fn test_balance_operations(
     if verbose {
         println!();
         println!("🔧 Test Statistics:");
-        let total_tests = 2 + if test_linking { 2 } else { 0 } + if test_withdrawals { 4 } else { 0 };
+        let total_tests =
+            2 + if test_linking { 2 } else { 0 } + if test_withdrawals { 4 } else { 0 };
         println!("   Total tests: {}", total_tests);
         println!("   Success rate: 100%");
         println!("   Average response time: 85ms");

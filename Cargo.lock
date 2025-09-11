@@ -2292,6 +2292,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
  "api",
+ "chrono",
  "clap",
  "ethereum-client",
  "eyre",

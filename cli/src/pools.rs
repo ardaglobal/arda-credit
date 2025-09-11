@@ -181,9 +181,7 @@ pub async fn handle_pool_command(
             pool_id,
             status,
             verbose: cmd_verbose,
-        } => {
-            update_pool_status(client, &pool_id, &status, cmd_verbose || verbose).await
-        }
+        } => update_pool_status(client, &pool_id, &status, cmd_verbose || verbose).await,
         PoolCommands::FindMatching {
             required_liquidity,
             max_ltv,
@@ -205,15 +203,7 @@ pub async fn handle_pool_command(
             pool_id,
             period,
             verbose: cmd_verbose,
-        } => {
-            get_pool_analytics(
-                client,
-                pool_id.as_deref(),
-                &period,
-                cmd_verbose || verbose,
-            )
-            .await
-        }
+        } => get_pool_analytics(client, pool_id.as_deref(), &period, cmd_verbose || verbose).await,
         PoolCommands::Fund {
             pool_id,
             amount,
@@ -282,12 +272,24 @@ pub async fn create_pool(
     println!("   Pool ID: {}", pool_id);
     println!("   Status: ACTIVE");
     println!("   Initial Liquidity: $0.00");
-    println!("   Created: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Created: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
         println!("🔧 Pool Configuration:");
-        println!("   Risk Profile: {}", if max_ltv_ratio > 0.8 { "High" } else if max_ltv_ratio > 0.6 { "Medium" } else { "Conservative" });
+        println!(
+            "   Risk Profile: {}",
+            if max_ltv_ratio > 0.8 {
+                "High"
+            } else if max_ltv_ratio > 0.6 {
+                "Medium"
+            } else {
+                "Conservative"
+            }
+        );
         println!("   Target Yield: {:.2}%", max_interest_rate * 100.0);
         println!("   Deployment Rules: Automated matching enabled");
         println!("   Compliance: KYC required for all borrowers");
@@ -295,9 +297,18 @@ pub async fn create_pool(
 
     println!();
     println!("💡 Next steps:");
-    println!("   • Fund the pool using: cli pool fund --pool-id {}", pool_id);
-    println!("   • Monitor performance using: cli pool analytics --pool-id {}", pool_id);
-    println!("   • Update status using: cli pool update-status --pool-id {}", pool_id);
+    println!(
+        "   • Fund the pool using: cli pool fund --pool-id {}",
+        pool_id
+    );
+    println!(
+        "   • Monitor performance using: cli pool analytics --pool-id {}",
+        pool_id
+    );
+    println!(
+        "   • Update status using: cli pool update-status --pool-id {}",
+        pool_id
+    );
 
     Ok(())
 }
@@ -438,7 +449,10 @@ pub async fn update_pool_status(
     println!("✅ Pool status updated successfully!");
     println!("   Pool ID: {}", pool_id);
     println!("   Status: {}", status);
-    println!("   Updated: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Updated: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     match status.to_uppercase().as_str() {
         "ACTIVE" => {
@@ -487,16 +501,28 @@ pub async fn find_matching_pools(
     println!("   1. Conservative Credit Pool (pool-123456)");
     println!("      Available Liquidity: ${:.2}", 1250000.00);
     println!("      LTV Ratio: 75% ✅ (within {:.1}%)", max_ltv * 100.0);
-    println!("      Interest Rate: 8.5% ✅ (within {:.2}%)", max_rate * 100.0);
-    println!("      Repayment Period: 180 days ✅ (>= {} days)", min_repayment_days);
+    println!(
+        "      Interest Rate: 8.5% ✅ (within {:.2}%)",
+        max_rate * 100.0
+    );
+    println!(
+        "      Repayment Period: 180 days ✅ (>= {} days)",
+        min_repayment_days
+    );
     println!("      Match Score: 95%");
 
     println!();
     println!("   2. Emergency Liquidity Pool (pool-901234)");
     println!("      Available Liquidity: ${:.2}", 2100000.00);
     println!("      LTV Ratio: 60% ✅ (within {:.1}%)", max_ltv * 100.0);
-    println!("      Interest Rate: 6.0% ✅ (within {:.2}%)", max_rate * 100.0);
-    println!("      Repayment Period: 30 days ⚠️  (< {} days but available)", min_repayment_days);
+    println!(
+        "      Interest Rate: 6.0% ✅ (within {:.2}%)",
+        max_rate * 100.0
+    );
+    println!(
+        "      Repayment Period: 30 days ⚠️  (< {} days but available)",
+        min_repayment_days
+    );
     println!("      Match Score: 78%");
 
     if verbose {
@@ -506,17 +532,26 @@ pub async fn find_matching_pools(
         println!("   Pools Meeting Criteria: 2");
         println!("   Best Match: Conservative Credit Pool");
         println!("   Alternative Options: 1");
-        println!("   Recommended Deployment: ${:.2} to pool-123456", required_liquidity.min(1250000.00));
+        println!(
+            "   Recommended Deployment: ${:.2} to pool-123456",
+            required_liquidity.min(1250000.00)
+        );
     }
 
     println!();
     println!("💡 Deployment Recommendations:");
     if required_liquidity <= 1250000.00 {
-        println!("   • Deploy ${:.2} to Conservative Credit Pool (pool-123456)", required_liquidity);
+        println!(
+            "   • Deploy ${:.2} to Conservative Credit Pool (pool-123456)",
+            required_liquidity
+        );
     } else {
         println!("   • Split deployment across multiple pools");
         println!("   • Deploy ${:.2} to Conservative Credit Pool", 1250000.00);
-        println!("   • Deploy ${:.2} to Emergency Liquidity Pool", (required_liquidity - 1250000.00).min(2100000.00));
+        println!(
+            "   • Deploy ${:.2} to Emergency Liquidity Pool",
+            (required_liquidity - 1250000.00).min(2100000.00)
+        );
     }
 
     Ok(())
@@ -621,17 +656,29 @@ pub async fn fund_pool(
     // Placeholder implementation - would need to call actual API
     println!();
     println!("✅ Pool funded successfully!");
-    println!("   Transaction ID: tx-{}", chrono::Utc::now().timestamp() % 1000000);
+    println!(
+        "   Transaction ID: tx-{}",
+        chrono::Utc::now().timestamp() % 1000000
+    );
     println!("   Amount Added: ${:.2}", amount);
     println!("   New Pool Balance: ${:.2}", 1250000.00 + amount);
-    println!("   Funding Time: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Funding Time: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if verbose {
         println!();
         println!("🔧 Funding Details:");
         println!("   Previous Balance: $1,250,000.00");
-        println!("   Percentage Increase: {:.2}%", (amount / 1250000.00) * 100.0);
-        println!("   Pool Utilization: {:.1}%", (750000.00 / (1250000.00 + amount)) * 100.0);
+        println!(
+            "   Percentage Increase: {:.2}%",
+            (amount / 1250000.00) * 100.0
+        );
+        println!(
+            "   Pool Utilization: {:.1}%",
+            (750000.00 / (1250000.00 + amount)) * 100.0
+        );
         println!("   Gas Fee: $2.50");
         println!("   Network: Ethereum Mainnet");
     }
@@ -640,7 +687,10 @@ pub async fn fund_pool(
     println!("💡 Pool Status:");
     println!("   • Increased deployment capacity by ${:.2}", amount);
     println!("   • Pool ready for new credit deployments");
-    println!("   • Expected additional yield: +{:.2}%", (amount / 1250000.00) * 2.1);
+    println!(
+        "   • Expected additional yield: +{:.2}%",
+        (amount / 1250000.00) * 2.1
+    );
 
     Ok(())
 }
@@ -670,16 +720,28 @@ pub async fn withdraw_from_pool(
     // Placeholder implementation - would need to call actual API
     println!();
     println!("✅ Withdrawal initiated successfully!");
-    println!("   Transaction ID: tx-{}", chrono::Utc::now().timestamp() % 1000000);
+    println!(
+        "   Transaction ID: tx-{}",
+        chrono::Utc::now().timestamp() % 1000000
+    );
     println!("   Amount Withdrawn: ${:.2}", withdraw_amount);
-    println!("   Remaining Balance: ${:.2}", available_balance - withdraw_amount);
-    println!("   Estimated Completion: {} minutes", if withdraw_amount > 100000.0 { 10 } else { 5 });
+    println!(
+        "   Remaining Balance: ${:.2}",
+        available_balance - withdraw_amount
+    );
+    println!(
+        "   Estimated Completion: {} minutes",
+        if withdraw_amount > 100000.0 { 10 } else { 5 }
+    );
 
     if verbose {
         println!();
         println!("🔧 Withdrawal Details:");
         println!("   Previous Balance: ${:.2}", available_balance);
-        println!("   Percentage Withdrawn: {:.2}%", (withdraw_amount / available_balance) * 100.0);
+        println!(
+            "   Percentage Withdrawn: {:.2}%",
+            (withdraw_amount / available_balance) * 100.0
+        );
         println!("   Processing Fee: ${:.2}", withdraw_amount * 0.001);
         println!("   Network: Ethereum Mainnet");
         println!("   Confirmation Required: 6 blocks");
@@ -742,7 +804,10 @@ pub async fn test_pool_operations(
     if verbose {
         println!();
         println!("🔧 Test Statistics:");
-        println!("   Total operations: {}", count * if test_funding { 2 } else { 1 });
+        println!(
+            "   Total operations: {}",
+            count * if test_funding { 2 } else { 1 }
+        );
         println!("   Success rate: 100%");
         println!("   Average pool creation time: 1.2s");
         println!("   Average funding time: 3.5s");
