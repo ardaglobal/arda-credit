@@ -10,9 +10,7 @@ use utoipa;
 use uuid::Uuid;
 
 use crate::pool_api::*;
-use crate::rest::{
-    ApiState, CreatePoolRequest, CreatePoolResponse, PoolDetailsResponse, UpdatePoolStatusRequest,
-};
+use crate::types::ApiState;
 use arda_credit_db::{
     get_all_liquidity_pools, get_investor_dashboard_metrics,
     get_investor_pool_summaries as db_get_investor_pool_summaries, get_liquidity_pool_by_id,

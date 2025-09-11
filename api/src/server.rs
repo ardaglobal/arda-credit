@@ -1,6 +1,6 @@
 use axum::{
-    response::{Html, IntoResponse},
-    routing::get,
+    response::{Html, IntoResponse, Json},
+    routing::{get, post, put},
     Router,
 };
 use std::time::Duration;
@@ -18,7 +18,17 @@ use tracing::{info, instrument};
 use crate::auth::AuthService;
 use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
 use crate::middleware::AuthConfig;
-use crate::rest::{ApiConfig, ApiState};
+use crate::openapi::ApiDoc;
+use crate::types::{ApiConfig, ApiState};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+// Import new handler modules
+use crate::admin_handlers::*;
+use crate::merchant_handlers::*;
+use crate::state_handlers::*;
+use crate::user_handlers::*;
+
 use arda_credit_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -492,4 +502,46 @@ impl Default for ApiServerBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ============================================================================
+// NEW ROUTER IMPLEMENTATION
+// ============================================================================
+
+/// Create a new router using the refactored handler modules
+/// This replaces the old rest::create_router function
+pub fn create_new_router(state: ApiState) -> Router {
+    let swagger_ui = SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
+
+    Router::new()
+        // Health and info endpoints (using new handlers as examples)
+        .route("/new-health", get(new_health_check))
+        .route("/new-info", get(new_api_info))
+        // OpenAPI documentation
+        .merge(swagger_ui)
+    // Example of how to add new handler endpoints:
+    // .route(crate::paths::USER, post(register_user_endpoint))
+    // .route(crate::paths::STATE_BATCHES, post(create_batch_endpoint))
+
+    // TODO: Gradually add new handler endpoints here
+    // For now, all endpoints are handled by rest::create_router
+}
+
+/// New placeholder health check endpoint (different from rest.rs version)
+async fn new_health_check() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "healthy",
+        "timestamp": chrono::Utc::now(),
+        "source": "new_handlers"
+    }))
+}
+
+/// New placeholder API info endpoint
+async fn new_api_info() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "name": "Arda Credit API",
+        "version": "v1",
+        "status": "running",
+        "source": "new_handlers"
+    }))
 }

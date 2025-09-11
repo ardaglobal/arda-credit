@@ -18,7 +18,7 @@ use tracing::{error, info, instrument};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::rest::ApiState;
+use crate::types::ApiState;
 use arda_credit_db::{
     create_credit_line_request, get_all_liquidity_pools, get_credit_line_requests_by_merchant,
     get_merchant_by_user_id, get_merchant_profile_by_merchant_id, get_merchant_turnover_analytics,

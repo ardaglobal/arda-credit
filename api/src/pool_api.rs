@@ -129,8 +129,23 @@ pub struct PageInfo {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PoolDetailsResponse {
-    pub pool: StandardPoolObject,
-    pub summary: PoolSummaryInfo,
+    pub pool_id: String,
+    pub name: String,
+    pub investor_id: String,
+    /// Total deposits as decimal string
+    pub total_deposits: String,
+    /// Available liquidity as decimal string
+    pub available_liquidity: String,
+    /// Utilized liquidity as decimal string
+    pub utilized_liquidity: String,
+    /// Maximum loan-to-value ratio as a decimal string (e.g., "0.8000" for 80%)
+    pub max_ltv_ratio: String,
+    /// Maximum interest rate as a decimal string (e.g., "0.1200" for 12%)
+    pub max_interest_rate: String,
+    pub repayment_period_days: i32,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -389,4 +404,54 @@ impl ErrorResponse {
             details: Some(details),
         }
     }
+}
+
+// ============================================================================
+// POOL MANAGEMENT REQUEST/RESPONSE TYPES
+// ============================================================================
+
+/// Request to create a new liquidity pool
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CreatePoolRequest {
+    pub name: String,
+    /// Maximum loan-to-value ratio as a decimal string (e.g., "0.8000" for 80%)
+    pub max_ltv_ratio: String,
+    /// Maximum interest rate as a decimal string (e.g., "0.1200" for 12%)
+    pub max_interest_rate: String,
+    pub repayment_period_days: i32,
+    /// Investor ID (required for pool creation)
+    pub investor_id: Option<String>,
+}
+
+/// Response from pool creation
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CreatePoolResponse {
+    pub pool_id: String,
+    pub investor_id: String,
+    pub name: String,
+    /// Maximum loan-to-value ratio as a decimal string (e.g., "0.8000" for 80%)
+    pub max_ltv_ratio: String,
+    /// Maximum interest rate as a decimal string (e.g., "0.1200" for 12%)
+    pub max_interest_rate: String,
+    pub repayment_period_days: i32,
+    pub status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Request to update pool status
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdatePoolStatusRequest {
+    pub status: String, // ACTIVE, PAUSED, CLOSED
+}
+
+/// Pool matching criteria for auto-deployment
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PoolMatchRequest {
+    /// Required liquidity amount as decimal string
+    pub required_liquidity: String,
+    /// Maximum LTV ratio as decimal string
+    pub max_ltv: String,
+    /// Maximum interest rate as decimal string
+    pub max_rate: String,
+    pub min_repayment_days: i32,
 }

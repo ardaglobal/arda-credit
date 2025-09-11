@@ -11,7 +11,7 @@ use tracing::{error, info, instrument};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{rest::ApiState, ErrorResponse};
+use crate::{types::ApiState, ErrorResponse};
 
 // ============================================================================
 // REQUEST/RESPONSE TYPES
