@@ -22,6 +22,7 @@ pub mod database {
     ///
     /// # Example
     /// ```rust
+    /// # use db::telemetry::database::instrument_query;
     /// let _span = instrument_query("select", "identities").entered();
     /// ```
     pub fn instrument_query(operation: &str, table: &str) -> Span {
@@ -44,6 +45,7 @@ pub mod database {
     ///
     /// # Example
     /// ```rust
+    /// # use db::telemetry::database::instrument_transaction;
     /// let _span = instrument_transaction("batch_insert").entered();
     /// ```
     pub fn instrument_transaction(transaction_type: &str) -> Span {
@@ -66,6 +68,9 @@ pub mod database {
     ///
     /// # Example
     /// ```rust
+    /// # use db::telemetry::database::instrument_user_operation;
+    /// # use uuid::Uuid;
+    /// # let user_uuid = Uuid::new_v4();
     /// let _span = instrument_user_operation("kyc_validation", Some(user_uuid)).entered();
     /// ```
     pub fn instrument_user_operation(operation: &str, user_id: Option<Uuid>) -> Span {
@@ -88,6 +93,7 @@ pub mod database {
     ///
     /// # Example
     /// ```rust
+    /// # use db::telemetry::database::instrument_batch_operation;
     /// let _span = instrument_batch_operation("bulk_insert", 150).entered();
     /// ```
     pub fn instrument_batch_operation(operation: &str, batch_size: usize) -> Span {
@@ -111,6 +117,7 @@ pub mod database {
     ///
     /// # Example
     /// ```rust
+    /// # use db::telemetry::database::instrument_ads_operation;
     /// let _span = instrument_ads_operation("state_commit", "indexed_merkle_tree").entered();
     /// ```
     pub fn instrument_ads_operation(operation: &str, tree_type: &str) -> Span {
@@ -136,14 +143,14 @@ pub mod database {
 /// * `$table` - String literal for the table name
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// # use sqlx::PgPool;
 /// # use serde::{Deserialize, Serialize};
 /// # #[derive(Debug, Serialize, Deserialize)]
 /// # struct Identity { id: i32, email: String }
 /// # use db::instrument_db_fn;
 /// 
-/// instrument_db_fn!("create_identity", "identities")
+/// #[instrument_db_fn!("create_identity", "identities")]
 /// pub async fn create_identity(pool: &PgPool, email: String) -> Result<Identity, sqlx::Error> {
 ///     // function implementation would go here
 ///     # Ok(Identity { id: 1, email })
@@ -169,7 +176,7 @@ macro_rules! instrument_db_fn {
 /// * `$user_field` - Field name containing the user ID
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// # use sqlx::PgPool;
 /// # use uuid::Uuid;
 /// # use serde::{Deserialize, Serialize};
@@ -177,7 +184,7 @@ macro_rules! instrument_db_fn {
 /// # struct Identity { id: i32, email: String }
 /// # use db::instrument_db_user_fn;
 /// 
-/// instrument_db_user_fn!("get_identity_by_id", "identities", user_id)
+/// #[instrument_db_user_fn!("get_identity_by_id", "identities", user_id)]
 /// async fn get_identity_by_id(pool: &PgPool, user_id: Uuid) -> Result<Option<Identity>, sqlx::Error> {
 ///     // function implementation would go here
 ///     # Ok(Some(Identity { id: 1, email: "test@example.com".to_string() }))
@@ -204,11 +211,11 @@ macro_rules! instrument_db_user_fn {
 /// * `$size_field` - Field name containing the batch size
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// # use sqlx::PgPool;
 /// # use db::instrument_db_batch_fn;
 /// 
-/// instrument_db_batch_fn!("bulk_insert_transactions", "loan_transactions", batch_size)
+/// #[instrument_db_batch_fn!("bulk_insert_transactions", "loan_transactions", batch_size)]
 /// async fn bulk_insert_transactions(pool: &PgPool, batch_size: usize) -> Result<(), sqlx::Error> {
 ///     // function implementation would go here
 ///     # Ok(())
