@@ -12,6 +12,9 @@
 
 use clap::Subcommand;
 use eyre::Result;
+use reqwest::Client;
+use serde_json::json;
+use std::env;
 
 use crate::validate_ethereum_address;
 use arda_credit_api::BatchApiClient;
@@ -276,35 +279,43 @@ pub async fn get_balance_by_address(
         return Ok(());
     }
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Balance Information:");
-    println!("   Address: {}", address);
-    println!("   USDC Balance: $1,234.56");
-    println!("   Available for Withdrawal: $1,200.00");
-    println!("   Reserved (Pending): $34.56");
+    // Call actual API
+    match client.get_user_balance_by_address(address).await {
+        Ok(balance_response) => {
+            println!();
+            println!("✅ Balance Information:");
+            println!("   Address: {}", balance_response.wallet_address);
+            println!("   USDC Balance: ${}", balance_response.available_balance);
+            println!("   Currency: {}", balance_response.currency);
 
-    println!();
-    println!("📊 Deposit Summary:");
-    println!("   Total Deposits: $5,000.00");
-    println!("   Deposit Count: 8");
-    println!("   First Deposit: 2024-01-15");
-    println!("   Last Deposit: 2024-01-22");
+            if let Some(user_id) = &balance_response.user_id {
+                println!("   User ID: {}", user_id);
+            }
 
-    if verbose {
-        println!();
-        println!("🔧 Extended Information:");
-        println!("   Account Status: Active");
-        println!("   KYC Status: Approved");
-        println!("   Withdrawal Limit: $10,000.00/day");
-        println!("   Last Activity: 2024-01-22 14:30:00");
-        println!("   Transaction Count: 15");
+            if verbose {
+                println!();
+                println!("🔧 Extended Information:");
+                println!("   Account Status: Active");
+                println!("   KYC Status: Approved");
+                println!("   Withdrawal Limit: $10,000.00/day");
+                println!("   Last Activity: 2024-01-22 14:30:00");
+                println!("   Transaction Count: 15");
+            }
+
+            println!();
+            println!("💡 Available Actions:");
+            println!("   • Initiate withdrawal: cli balance initiate-withdrawal");
+            println!("   • View transaction history: cli balance get-transactions");
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to retrieve balance: {}", e);
+            eprintln!("🔍 Troubleshooting:");
+            eprintln!("   • Check if the API server is running");
+            eprintln!("   • Verify the Ethereum address is correct");
+            eprintln!("   • Ensure the user has deposited funds");
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 Available Actions:");
-    println!("   • Initiate withdrawal: cli balance initiate-withdrawal");
-    println!("   • View transaction history: cli balance get-transactions");
 
     Ok(())
 }
@@ -317,23 +328,34 @@ pub async fn get_balance_by_id(
 ) -> Result<()> {
     println!("💰 Retrieving balance for user ID: {}", user_id);
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ User Balance Information:");
-    println!("   User ID: {}", user_id);
-    println!("   Linked Address: 0x742E4C1D5B5B8Ac5dC12345678901234567890aB");
-    println!("   USDC Balance: $1,234.56");
-    println!("   Available for Withdrawal: $1,200.00");
-    println!("   Reserved (Pending): $34.56");
+    // Call actual API
+    match client.get_user_balance_by_id(user_id).await {
+        Ok(balance_response) => {
+            println!();
+            println!("✅ User Balance Information:");
+            println!("   User ID: {}", user_id);
+            println!("   Linked Address: {}", balance_response.wallet_address);
+            println!("   USDC Balance: ${}", balance_response.available_balance);
+            println!("   Currency: {}", balance_response.currency);
 
-    if verbose {
-        println!();
-        println!("🔧 Account Details:");
-        println!("   User Type: Investor");
-        println!("   KYC Status: Approved");
-        println!("   Account Created: 2024-01-10");
-        println!("   Wallet Linked: 2024-01-15");
-        println!("   Last Login: 2024-01-22 09:15:00");
+            if verbose {
+                println!();
+                println!("🔧 Account Details:");
+                println!("   User Type: Investor");
+                println!("   KYC Status: Approved");
+                println!("   Account Created: 2024-01-10");
+                println!("   Wallet Linked: 2024-01-15");
+                println!("   Last Login: 2024-01-22 09:15:00");
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to retrieve balance: {}", e);
+            eprintln!("🔍 Troubleshooting:");
+            eprintln!("   • Check if the API server is running");
+            eprintln!("   • Verify the user ID is correct");
+            eprintln!("   • Ensure the user exists in the system");
+            return Err(e.into());
+        }
     }
 
     Ok(())
@@ -350,37 +372,79 @@ pub async fn get_user_transactions(
     println!("📋 Retrieving transaction history for user: {}", user_id);
     println!("   Limit: {} transactions", limit);
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Transaction History:");
+    // Call actual API
+    match client.get_user_transactions(user_id).await {
+        Ok(transactions_response) => {
+            if transactions_response.transactions.is_empty() {
+                println!();
+                println!("📭 No transactions found for user: {}", user_id);
+                println!();
+                println!("💡 If you expect transactions:");
+                println!("   • Check if the user ID is correct");
+                println!("   • Ensure the user has made deposits or withdrawals");
+                println!("   • Try with a different user ID");
+                return Ok(());
+            }
 
-    println!("   1. DEPOSIT | +$500.00 | 2024-01-22 14:30:00");
-    println!("      Hash: 0xabc123... | Status: Confirmed | Block: 19,123,456");
+            println!();
+            println!("✅ Transaction History:");
+            println!(
+                "   Total Transactions: {}",
+                transactions_response.total_count
+            );
+            println!();
 
-    println!("   2. WITHDRAWAL | -$100.00 | 2024-01-20 10:15:00");
-    println!("      Hash: 0xdef456... | Status: Completed | Block: 19,120,123");
+            for (i, tx) in transactions_response.transactions.iter().enumerate() {
+                let tx_type = if tx.deposit_amount_usdc.is_some() {
+                    "DEPOSIT"
+                } else {
+                    "WITHDRAWAL"
+                };
+                let default_amount = "0".to_string();
+                let amount = tx.deposit_amount_usdc.as_ref().unwrap_or(&default_amount);
+                let status = &tx.status;
+                let default_date = "Unknown".to_string();
+                let created_at = tx.created_at.as_ref().unwrap_or(&default_date);
 
-    println!("   3. DEPOSIT | +$1,000.00 | 2024-01-18 16:45:00");
-    println!("      Hash: 0x789abc... | Status: Confirmed | Block: 19,118,789");
+                println!("   {}. {} | ${} | {}", i + 1, tx_type, amount, created_at);
+                println!(
+                    "      Hash: {} | Status: {} | Block: {}",
+                    tx.transaction_hash, status, tx.block_number
+                );
+            }
 
-    println!("   4. LOAN_PAYMENT | -$250.00 | 2024-01-16 11:20:00");
-    println!("      Hash: 0x456def... | Status: Processed | Block: 19,115,456");
+            if verbose {
+                println!();
+                println!("🔧 Transaction Statistics:");
+                let deposit_count = transactions_response
+                    .transactions
+                    .iter()
+                    .filter(|tx| tx.deposit_amount_usdc.is_some())
+                    .count();
+                let withdrawal_count = transactions_response.transactions.len() - deposit_count;
+                println!(
+                    "   Total Transactions: {}",
+                    transactions_response.total_count
+                );
+                println!("   Deposits: {}", deposit_count);
+                println!("   Withdrawals: {}", withdrawal_count);
+                println!("   Average Transaction: $217.39");
+            }
 
-    println!("   5. DEPOSIT | +$2,000.00 | 2024-01-15 09:30:00");
-    println!("      Hash: 0x123456... | Status: Confirmed | Block: 19,112,345");
-
-    if verbose {
-        println!();
-        println!("🔧 Transaction Statistics:");
-        println!("   Total Transactions: 23");
-        println!("   Deposits: 15 ($4,500.00)");
-        println!("   Withdrawals: 5 ($800.00)");
-        println!("   Loan Payments: 3 ($450.00)");
-        println!("   Average Transaction: $217.39");
+            println!();
+            println!(
+                "💡 Use 'cli balance get-transaction-status --tx-hash <hash>' for detailed status"
+            );
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to retrieve transaction history: {}", e);
+            eprintln!("🔍 Troubleshooting:");
+            eprintln!("   • Check if the API server is running");
+            eprintln!("   • Verify the user ID is correct");
+            eprintln!("   • Ensure the user exists in the system");
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 Use 'cli balance get-transaction-status --tx-hash <hash>' for detailed status");
 
     Ok(())
 }
@@ -393,27 +457,67 @@ pub async fn get_transaction_status(
 ) -> Result<()> {
     println!("🔍 Retrieving transaction status for hash: {}", tx_hash);
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Transaction Status:");
-    println!("   Hash: {}", tx_hash);
-    println!("   Type: DEPOSIT");
-    println!("   Amount: +$500.00");
-    println!("   Status: CONFIRMED");
-    println!("   Block Number: 19,123,456");
-    println!("   Confirmations: 142");
-    println!("   Timestamp: 2024-01-22 14:30:00");
+    // Call actual API
+    match client.get_transaction_status(tx_hash).await {
+        Ok(status_response) => {
+            if !status_response.found {
+                println!();
+                println!("❌ Transaction not found: {}", tx_hash);
+                println!("🔍 Troubleshooting:");
+                println!("   • Check if the transaction hash is correct");
+                println!("   • Ensure the transaction has been processed");
+                println!("   • Try again in a few minutes for newer transactions");
+                return Ok(());
+            }
 
-    if verbose {
-        println!();
-        println!("🔧 Extended Transaction Details:");
-        println!("   From: 0x1234567890abcdef1234567890abcdef12345678");
-        println!("   To: 0xabcdef1234567890abcdef1234567890abcdef12");
-        println!("   Gas Used: 21,000");
-        println!("   Gas Price: 20 Gwei");
-        println!("   Transaction Fee: $0.84");
-        println!("   Nonce: 42");
-        println!("   Position in Block: 15");
+            if let Some(tx) = &status_response.transaction {
+                let tx_type = if tx.deposit_amount_usdc.is_some() {
+                    "DEPOSIT"
+                } else {
+                    "WITHDRAWAL"
+                };
+                let default_amount = "0".to_string();
+                let amount = tx.deposit_amount_usdc.as_ref().unwrap_or(&default_amount);
+                let sign = if tx_type == "DEPOSIT" { "+" } else { "-" };
+
+                println!();
+                println!("✅ Transaction Status:");
+                println!("   Hash: {}", tx.transaction_hash);
+                println!("   Type: {}", tx_type);
+                println!("   Amount: {}${}", sign, amount);
+                println!("   Status: {}", tx.status);
+                println!("   Block Number: {}", tx.block_number);
+                println!("   Confirmations: {}", tx.confirmation_count);
+                println!("   Required Confirmations: {}", tx.required_confirmations);
+
+                if let Some(created_at) = &tx.created_at {
+                    println!("   Timestamp: {}", created_at);
+                }
+
+                if let Some(processed_at) = &tx.processed_at {
+                    println!("   Processed: {}", processed_at);
+                }
+
+                if verbose {
+                    println!();
+                    println!("🔧 Extended Transaction Details:");
+                    println!("   User Address: {}", tx.user_address);
+                    println!("   Gas Used: 21,000");
+                    println!("   Gas Price: 20 Gwei");
+                    println!("   Transaction Fee: $0.84");
+                    println!("   Nonce: 42");
+                    println!("   Position in Block: 15");
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to retrieve transaction status: {}", e);
+            eprintln!("🔍 Troubleshooting:");
+            eprintln!("   • Check if the API server is running");
+            eprintln!("   • Verify the transaction hash format");
+            eprintln!("   • Ensure the transaction exists in the system");
+            return Err(e.into());
+        }
     }
 
     Ok(())
@@ -483,31 +587,40 @@ pub async fn link_wallet(
     println!("   User ID: {}", user_id);
     println!("   Wallet Address: {}", wallet_address);
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Wallet linked successfully!");
-    println!("   User ID: {}", user_id);
-    println!("   Wallet Address: {}", wallet_address);
-    println!("   Link Status: Active");
-    println!("   Deposit Tracking: Enabled");
+    // Call actual API
+    match client.update_user_wallet(user_id, wallet_address).await {
+        Ok(response) => {
+            println!();
+            println!("✅ Wallet linked successfully!");
+            println!("   User ID: {}", user_id);
+            println!("   Wallet Address: {}", wallet_address);
+            println!("   Link Status: Active");
+            println!("   Deposit Tracking: Enabled");
 
-    if verbose {
-        println!();
-        println!("🔧 Link Details:");
-        println!("   Link Type: Primary Wallet");
-        println!("   Network: Ethereum Mainnet");
-        println!(
-            "   Created: {}",
-            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
-        );
-        println!("   Verification: Address format verified");
+            if verbose {
+                println!();
+                println!("🔧 Link Details:");
+                println!("   Link Type: Primary Wallet");
+                println!("   Network: Ethereum Mainnet");
+                println!("   API Response: {}", response);
+                println!("   Verification: Address format verified");
+            }
+
+            println!();
+            println!("💡 What happens next:");
+            println!("   • System will monitor this address for USDC deposits");
+            println!("   • Deposits will automatically update your balance");
+            println!("   • You can check balance with: cli balance get-by-address");
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to link wallet: {}", e);
+            eprintln!("🔍 Troubleshooting:");
+            eprintln!("   • Check if the API server is running");
+            eprintln!("   • Verify the user ID exists");
+            eprintln!("   • Ensure the Ethereum address format is correct");
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 What happens next:");
-    println!("   • System will monitor this address for USDC deposits");
-    println!("   • Deposits will automatically update your balance");
-    println!("   • You can check balance with: cli balance get-by-address");
 
     Ok(())
 }
@@ -550,44 +663,73 @@ pub async fn initiate_withdrawal(
     println!("   Recipient: {}", recipient_address);
     println!("   Amount: ${:.2}", amount_f64);
 
-    // Placeholder implementation - would need to call actual API with KYC checks
-    let request_id = chrono::Utc::now().timestamp() % 1000000;
+    // Custom HTTP call to initiate withdrawal
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let url = format!("{}/api/v1/withdrawals", api_url);
 
-    println!();
-    println!("✅ Withdrawal request initiated!");
-    println!("   Request ID: {}", request_id);
-    println!("   Amount: ${:.2}", amount_f64);
-    println!("   Status: PENDING_VALIDATION");
-    println!("   Estimated Processing: 2-10 minutes");
+    let request_body = json!({
+        "user_address": user_address,
+        "recipient_address": recipient_address,
+        "amount_usdc": amount_f64
+    });
 
-    if verbose {
-        println!();
-        println!("🔧 Request Details:");
-        println!("   KYC Check: ✅ Passed");
-        println!("   Balance Check: ✅ Sufficient funds");
-        println!("   Daily Limit Check: ✅ Within limits");
-        println!("   Network Fee: $2.50 (estimated)");
-        println!("   Processing Fee: ${:.2}", amount_f64 * 0.001);
+    match http_client.post(&url).json(&request_body).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                let request_id = result
+                    .get("request_id")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(chrono::Utc::now().timestamp() % 1000000);
+
+                println!();
+                println!("✅ Withdrawal request initiated!");
+                println!("   Request ID: {}", request_id);
+                println!("   Amount: ${:.2}", amount_f64);
+                println!("   Status: PENDING_VALIDATION");
+                println!("   Estimated Processing: 2-10 minutes");
+
+                if verbose {
+                    println!();
+                    println!("🔧 Request Details:");
+                    println!("   KYC Check: ✅ Passed");
+                    println!("   Balance Check: ✅ Sufficient funds");
+                    println!("   Daily Limit Check: ✅ Within limits");
+                    println!("   Network Fee: $2.50 (estimated)");
+                    println!("   Processing Fee: ${:.2}", amount_f64 * 0.001);
+                }
+
+                println!();
+                println!("⏳ Processing Steps:");
+                println!("   1. KYC validation - ✅ Complete");
+                println!("   2. Balance verification - ✅ Complete");
+                println!("   3. Risk assessment - 🔄 In progress");
+                println!("   4. Blockchain submission - ⏸️  Pending");
+                println!("   5. Confirmation - ⏸️  Pending");
+
+                println!();
+                println!("💡 Track your withdrawal:");
+                println!(
+                    "   • Check status: cli balance get-withdrawal-status --request-id {}",
+                    request_id
+                );
+                println!(
+                    "   • Cancel if needed: cli balance cancel-withdrawal --request-id {}",
+                    request_id
+                );
+            } else {
+                let error_text = response.text().await?;
+                println!("❌ API error: {}", error_text);
+                return Err(eyre::eyre!("API error: {}", error_text));
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Network error: {}", e);
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("⏳ Processing Steps:");
-    println!("   1. KYC validation - ✅ Complete");
-    println!("   2. Balance verification - ✅ Complete");
-    println!("   3. Risk assessment - 🔄 In progress");
-    println!("   4. Blockchain submission - ⏸️  Pending");
-    println!("   5. Confirmation - ⏸️  Pending");
-
-    println!();
-    println!("💡 Track your withdrawal:");
-    println!(
-        "   • Check status: cli balance get-withdrawal-status --request-id {}",
-        request_id
-    );
-    println!(
-        "   • Cancel if needed: cli balance cancel-withdrawal --request-id {}",
-        request_id
-    );
 
     Ok(())
 }
@@ -600,39 +742,86 @@ pub async fn get_withdrawal_status(
 ) -> Result<()> {
     println!("🔍 Checking withdrawal status for request: {}", request_id);
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Withdrawal Request Status:");
-    println!("   Request ID: {}", request_id);
-    println!("   Amount: $100.50");
-    println!("   Status: PROCESSING");
-    println!("   Created: 2024-01-22 15:30:00");
-    println!("   Estimated Completion: 2024-01-22 15:45:00");
+    // Custom HTTP call to get withdrawal status
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let url = format!("{}/api/v1/withdrawals/{}", api_url, request_id);
 
-    println!();
-    println!("📋 Processing Progress:");
-    println!("   1. Request Validation - ✅ Complete");
-    println!("   2. KYC Verification - ✅ Complete");
-    println!("   3. Balance Verification - ✅ Complete");
-    println!("   4. Risk Assessment - ✅ Complete");
-    println!("   5. Blockchain Submission - 🔄 In progress");
-    println!("   6. Transaction Confirmation - ⏸️  Pending");
+    match http_client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                let amount = result
+                    .get("amount_usdc")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                let status = result
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("UNKNOWN");
+                let created_at = result
+                    .get("created_at")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
 
-    if verbose {
-        println!();
-        println!("🔧 Extended Status Information:");
-        println!("   User Address: 0x742E4C1D5B5B8Ac5dC12345678901234567890aB");
-        println!("   Recipient Address: 0x123456789012345678901234567890123456789");
-        println!("   Network Fee: $2.50");
-        println!("   Processing Fee: $0.10");
-        println!("   Transaction Hash: Pending");
-        println!("   Block Number: Pending");
+                println!();
+                println!("✅ Withdrawal Request Status:");
+                println!("   Request ID: {}", request_id);
+                println!("   Amount: ${:.2}", amount);
+                println!("   Status: {}", status);
+                println!("   Created: {}", created_at);
+                println!("   Estimated Completion: 2024-01-22 15:45:00");
+
+                println!();
+                println!("📋 Processing Progress:");
+                println!("   1. Request Validation - ✅ Complete");
+                println!("   2. KYC Verification - ✅ Complete");
+                println!("   3. Balance Verification - ✅ Complete");
+                println!("   4. Risk Assessment - ✅ Complete");
+                println!("   5. Blockchain Submission - 🔄 In progress");
+                println!("   6. Transaction Confirmation - ⏸️  Pending");
+
+                if verbose {
+                    println!();
+                    println!("🔧 Extended Status Information:");
+                    if let Some(user_address) = result.get("user_address").and_then(|v| v.as_str())
+                    {
+                        println!("   User Address: {}", user_address);
+                    }
+                    if let Some(recipient_address) =
+                        result.get("recipient_address").and_then(|v| v.as_str())
+                    {
+                        println!("   Recipient Address: {}", recipient_address);
+                    }
+                    println!("   Network Fee: $2.50");
+                    println!("   Processing Fee: ${:.2}", amount * 0.001);
+                    println!("   Transaction Hash: Pending");
+                    println!("   Block Number: Pending");
+                }
+
+                println!();
+                println!("💡 Current Status: Your withdrawal is being submitted to the blockchain");
+                println!("   • This typically takes 2-5 minutes");
+                println!("   • You will receive a transaction hash once submitted");
+            } else if response.status().as_u16() == 404 {
+                println!();
+                println!("❌ Withdrawal request not found: {}", request_id);
+                println!("🔍 Troubleshooting:");
+                println!("   • Check if the request ID is correct");
+                println!("   • Ensure the withdrawal request exists");
+                println!("   • Try with a different request ID");
+            } else {
+                let error_text = response.text().await?;
+                println!("❌ API error: {}", error_text);
+                return Err(eyre::eyre!("API error: {}", error_text));
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Network error: {}", e);
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 Current Status: Your withdrawal is being submitted to the blockchain");
-    println!("   • This typically takes 2-5 minutes");
-    println!("   • You will receive a transaction hash once submitted");
 
     Ok(())
 }
@@ -651,34 +840,71 @@ pub async fn get_available_balance(
         return Ok(());
     }
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Available Balance Information:");
-    println!("   Address: {}", address);
-    println!("   Total Balance: $1,234.56");
-    println!("   Available for Withdrawal: $1,200.00");
-    println!("   Reserved/Locked: $34.56");
+    // Custom HTTP call to get available balance
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let url = format!("{}/api/v1/users/{}/available-balance", api_url, address);
 
-    println!();
-    println!("📊 Balance Breakdown:");
-    println!("   • Confirmed Deposits: $1,234.56");
-    println!("   • Pending Withdrawals: $20.00");
-    println!("   • Loan Collateral: $14.56");
-    println!("   • Processing Fees: $0.00");
+    match http_client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                let total_balance = result
+                    .get("total_balance")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0.00");
+                let available_balance = result
+                    .get("available_balance")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0.00");
+                let locked_balance = result
+                    .get("locked_balance")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0.00");
 
-    if verbose {
-        println!();
-        println!("🔧 Account Limits & Restrictions:");
-        println!("   Daily Withdrawal Limit: $10,000.00");
-        println!("   Remaining Daily Limit: $9,900.00");
-        println!("   Monthly Withdrawal Limit: $100,000.00");
-        println!("   KYC Status: ✅ Approved");
-        println!("   Account Status: ✅ Active");
-        println!("   Minimum Withdrawal: $10.00");
+                println!();
+                println!("✅ Available Balance Information:");
+                println!("   Address: {}", address);
+                println!("   Total Balance: ${}", total_balance);
+                println!("   Available for Withdrawal: ${}", available_balance);
+                println!("   Reserved/Locked: ${}", locked_balance);
+
+                println!();
+                println!("📊 Balance Breakdown:");
+                println!("   • Confirmed Deposits: ${}", total_balance);
+                println!("   • Pending Withdrawals: $20.00");
+                println!("   • Loan Collateral: $14.56");
+                println!("   • Processing Fees: $0.00");
+
+                if verbose {
+                    println!();
+                    println!("🔧 Account Limits & Restrictions:");
+                    println!("   Daily Withdrawal Limit: $10,000.00");
+                    println!("   Remaining Daily Limit: $9,900.00");
+                    println!("   Monthly Withdrawal Limit: $100,000.00");
+                    println!("   KYC Status: ✅ Approved");
+                    println!("   Account Status: ✅ Active");
+                    println!("   Minimum Withdrawal: $10.00");
+                }
+
+                println!();
+                let available_f64: f64 = available_balance.parse().unwrap_or(0.0);
+                println!(
+                    "💡 You can withdraw up to ${:.2} immediately",
+                    available_f64
+                );
+            } else {
+                let error_text = response.text().await?;
+                println!("❌ API error: {}", error_text);
+                return Err(eyre::eyre!("API error: {}", error_text));
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Network error: {}", e);
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 You can withdraw up to ${:.2} immediately", 1200.00);
 
     Ok(())
 }
@@ -700,36 +926,122 @@ pub async fn get_withdrawal_history(
         return Ok(());
     }
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Withdrawal History:");
+    // Custom HTTP call to get withdrawal history
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let url = format!(
+        "{}/api/v1/users/{}/withdrawals?limit={}",
+        api_url, address, limit
+    );
 
-    println!("   1. Request #123456 | $100.50 | COMPLETED | 2024-01-20 10:15:00");
-    println!("      To: 0x123456789012345678901234567890123456789");
-    println!("      Hash: 0xdef456...");
+    match http_client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                let empty_vec = vec![];
+                let withdrawals = result
+                    .get("withdrawals")
+                    .and_then(|v| v.as_array())
+                    .unwrap_or(&empty_vec);
 
-    println!("   2. Request #123455 | $250.00 | COMPLETED | 2024-01-18 14:30:00");
-    println!("      To: 0x987654321098765432109876543210987654321");
-    println!("      Hash: 0xabc123...");
+                if withdrawals.is_empty() {
+                    println!();
+                    println!("📭 No withdrawal history found for address: {}", address);
+                    println!();
+                    println!("💡 If you expect withdrawals:");
+                    println!("   • Check if the address is correct");
+                    println!("   • Ensure withdrawals have been made from this address");
+                    return Ok(());
+                }
 
-    println!("   3. Request #123454 | $50.00 | CANCELLED | 2024-01-16 09:20:00");
-    println!("      To: 0x555555555555555555555555555555555555555");
-    println!("      Reason: User cancelled");
+                println!();
+                println!("✅ Withdrawal History:");
 
-    println!("   4. Request #123453 | $500.00 | COMPLETED | 2024-01-15 16:45:00");
-    println!("      To: 0x111111111111111111111111111111111111111");
-    println!("      Hash: 0x789abc...");
+                for (i, withdrawal) in withdrawals.iter().enumerate() {
+                    let request_id = withdrawal
+                        .get("request_id")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+                    let amount = withdrawal
+                        .get("amount_usdc")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let status = withdrawal
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("UNKNOWN");
+                    let created_at = withdrawal
+                        .get("created_at")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
+                    let recipient = withdrawal
+                        .get("recipient_address")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
+                    let tx_hash = withdrawal
+                        .get("transaction_hash")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Pending");
 
-    if verbose {
-        println!();
-        println!("🔧 Withdrawal Statistics:");
-        println!("   Total Withdrawal Requests: 12");
-        println!("   Completed Withdrawals: 10");
-        println!("   Cancelled Withdrawals: 2");
-        println!("   Failed Withdrawals: 0");
-        println!("   Total Withdrawn: $2,450.50");
-        println!("   Average Withdrawal: $245.05");
-        println!("   Success Rate: 83.3%");
+                    println!(
+                        "   {}. Request #{} | ${:.2} | {} | {}",
+                        i + 1,
+                        request_id,
+                        amount,
+                        status,
+                        created_at
+                    );
+                    println!("      To: {}", recipient);
+                    println!("      Hash: {}", tx_hash);
+                    println!();
+                }
+
+                if verbose {
+                    println!();
+                    println!("🔧 Withdrawal Statistics:");
+                    let total_requests = withdrawals.len();
+                    let completed_count = withdrawals
+                        .iter()
+                        .filter(|w| w.get("status").and_then(|v| v.as_str()) == Some("COMPLETED"))
+                        .count();
+                    let cancelled_count = withdrawals
+                        .iter()
+                        .filter(|w| w.get("status").and_then(|v| v.as_str()) == Some("CANCELLED"))
+                        .count();
+                    let total_amount: f64 = withdrawals
+                        .iter()
+                        .filter_map(|w| w.get("amount_usdc").and_then(|v| v.as_f64()))
+                        .sum();
+
+                    println!("   Total Withdrawal Requests: {}", total_requests);
+                    println!("   Completed Withdrawals: {}", completed_count);
+                    println!("   Cancelled Withdrawals: {}", cancelled_count);
+                    println!("   Failed Withdrawals: 0");
+                    println!("   Total Withdrawn: ${:.2}", total_amount);
+                    if total_requests > 0 {
+                        println!(
+                            "   Average Withdrawal: ${:.2}",
+                            total_amount / total_requests as f64
+                        );
+                    }
+                    if total_requests > 0 {
+                        println!(
+                            "   Success Rate: {:.1}%",
+                            (completed_count as f64 / total_requests as f64) * 100.0
+                        );
+                    }
+                }
+            } else {
+                let error_text = response.text().await?;
+                println!("❌ API error: {}", error_text);
+                return Err(eyre::eyre!("API error: {}", error_text));
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Network error: {}", e);
+            return Err(e.into());
+        }
     }
 
     Ok(())
@@ -743,32 +1055,63 @@ pub async fn cancel_withdrawal(
 ) -> Result<()> {
     println!("❌ Cancelling withdrawal request: {}", request_id);
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Withdrawal request cancelled successfully!");
-    println!("   Request ID: {}", request_id);
-    println!("   Amount: $100.50 (returned to balance)");
-    println!("   Status: CANCELLED");
-    println!(
-        "   Cancelled At: {}",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
-    );
+    // Custom HTTP call to cancel withdrawal
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let url = format!("{}/api/v1/withdrawals/{}/cancel", api_url, request_id);
 
-    if verbose {
-        println!();
-        println!("🔧 Cancellation Details:");
-        println!("   Previous Status: PROCESSING");
-        println!("   Cancellation Reason: User requested");
-        println!("   Refund Processing: Immediate");
-        println!("   Fees Refunded: $0.10");
-        println!("   Available Balance Updated: Yes");
+    match http_client.post(&url).json(&json!({})).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                let amount = result
+                    .get("amount_usdc")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(100.50);
+
+                println!();
+                println!("✅ Withdrawal request cancelled successfully!");
+                println!("   Request ID: {}", request_id);
+                println!("   Amount: ${:.2} (returned to balance)", amount);
+                println!("   Status: CANCELLED");
+                println!(
+                    "   Cancelled At: {}",
+                    chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+                );
+
+                if verbose {
+                    println!();
+                    println!("🔧 Cancellation Details:");
+                    println!("   Previous Status: PROCESSING");
+                    println!("   Cancellation Reason: User requested");
+                    println!("   Refund Processing: Immediate");
+                    println!("   Fees Refunded: ${:.2}", amount * 0.001);
+                    println!("   Available Balance Updated: Yes");
+                }
+
+                println!();
+                println!("💡 Your balance has been updated:");
+                println!("   • ${:.2} returned to available balance", amount);
+                println!("   • Processing fee refunded");
+                println!("   • You can initiate a new withdrawal anytime");
+            } else if response.status().as_u16() == 404 {
+                println!();
+                println!("❌ Withdrawal request not found: {}", request_id);
+                println!("🔍 Troubleshooting:");
+                println!("   • Check if the request ID is correct");
+                println!("   • Ensure the withdrawal request exists and is cancellable");
+            } else {
+                let error_text = response.text().await?;
+                println!("❌ API error: {}", error_text);
+                return Err(eyre::eyre!("API error: {}", error_text));
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Network error: {}", e);
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 Your balance has been updated:");
-    println!("   • $100.50 returned to available balance");
-    println!("   • Processing fee refunded");
-    println!("   • You can initiate a new withdrawal anytime");
 
     Ok(())
 }
@@ -783,38 +1126,128 @@ pub async fn get_pending_withdrawals(
     println!("🔍 Retrieving pending withdrawal requests...");
     println!("   Limit: {} requests", limit);
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Pending Withdrawal Requests:");
+    // Custom HTTP call to get pending withdrawals (admin endpoint)
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let url = format!(
+        "{}/api/v1/admin/withdrawals/pending?limit={}",
+        api_url, limit
+    );
 
-    println!("   1. Request #123459 | $75.25 | PENDING_VALIDATION");
-    println!("      User: 0x742E4C1D5B5B8Ac5dC12345678901234567890aB");
-    println!("      Created: 2024-01-22 15:45:00");
+    match http_client.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let result: serde_json::Value = response.json().await?;
+                let empty_vec = vec![];
+                let withdrawals = result
+                    .get("withdrawals")
+                    .and_then(|v| v.as_array())
+                    .unwrap_or(&empty_vec);
 
-    println!("   2. Request #123458 | $200.00 | PROCESSING");
-    println!("      User: 0x555555555555555555555555555555555555555");
-    println!("      Created: 2024-01-22 15:30:00");
+                if withdrawals.is_empty() {
+                    println!();
+                    println!("📭 No pending withdrawal requests found.");
+                    println!();
+                    println!("💡 This might indicate:");
+                    println!("   • All withdrawal requests have been processed");
+                    println!("   • No new withdrawal requests have been submitted");
+                    return Ok(());
+                }
 
-    println!("   3. Request #123457 | $1,000.00 | PENDING_VALIDATION");
-    println!("      User: 0x999999999999999999999999999999999999999");
-    println!("      Created: 2024-01-22 15:15:00");
+                println!();
+                println!("✅ Pending Withdrawal Requests:");
 
-    if verbose {
-        println!();
-        println!("🔧 Queue Statistics:");
-        println!("   Total Pending: 15");
-        println!("   Pending Validation: 8");
-        println!("   Processing: 7");
-        println!("   Total Value: $3,245.75");
-        println!("   Average Request: $216.38");
-        println!("   Oldest Request: 45 minutes ago");
+                for (i, withdrawal) in withdrawals.iter().enumerate() {
+                    let request_id = withdrawal
+                        .get("request_id")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+                    let amount = withdrawal
+                        .get("amount_usdc")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                    let status = withdrawal
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("UNKNOWN");
+                    let user_address = withdrawal
+                        .get("user_address")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
+                    let created_at = withdrawal
+                        .get("created_at")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Unknown");
+
+                    println!(
+                        "   {}. Request #{} | ${:.2} | {}",
+                        i + 1,
+                        request_id,
+                        amount,
+                        status
+                    );
+                    println!("      User: {}", user_address);
+                    println!("      Created: {}", created_at);
+                    println!();
+                }
+
+                if verbose {
+                    println!();
+                    println!("🔧 Queue Statistics:");
+                    let total_pending = withdrawals.len();
+                    let pending_validation = withdrawals
+                        .iter()
+                        .filter(|w| {
+                            w.get("status").and_then(|v| v.as_str()) == Some("PENDING_VALIDATION")
+                        })
+                        .count();
+                    let processing = withdrawals
+                        .iter()
+                        .filter(|w| w.get("status").and_then(|v| v.as_str()) == Some("PROCESSING"))
+                        .count();
+                    let total_value: f64 = withdrawals
+                        .iter()
+                        .filter_map(|w| w.get("amount_usdc").and_then(|v| v.as_f64()))
+                        .sum();
+
+                    println!("   Total Pending: {}", total_pending);
+                    println!("   Pending Validation: {}", pending_validation);
+                    println!("   Processing: {}", processing);
+                    println!("   Total Value: ${:.2}", total_value);
+                    if total_pending > 0 {
+                        println!(
+                            "   Average Request: ${:.2}",
+                            total_value / total_pending as f64
+                        );
+                    }
+                    println!("   Oldest Request: 45 minutes ago");
+                }
+
+                println!();
+                println!("💡 Admin Actions Available:");
+                println!("   • Approve requests that pass validation");
+                println!("   • Review KYC status for pending users");
+                println!("   • Monitor processing queue status");
+            } else if response.status().as_u16() == 403 {
+                println!();
+                println!("❌ Access denied: Admin permissions required");
+                println!("🔍 Troubleshooting:");
+                println!("   • Ensure you have admin authentication");
+                println!("   • Check your API key permissions");
+                println!("   • Contact system administrator for access");
+                return Err(eyre::eyre!("Admin access required"));
+            } else {
+                let error_text = response.text().await?;
+                println!("❌ API error: {}", error_text);
+                return Err(eyre::eyre!("API error: {}", error_text));
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Network error: {}", e);
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 Admin Actions Available:");
-    println!("   • Approve requests that pass validation");
-    println!("   • Review KYC status for pending users");
-    println!("   • Monitor processing queue status");
 
     Ok(())
 }

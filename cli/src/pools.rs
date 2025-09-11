@@ -12,6 +12,9 @@
 
 use clap::Subcommand;
 use eyre::Result;
+use reqwest::Client;
+use serde_json::json;
+use std::env;
 
 use arda_credit_api::BatchApiClient;
 
@@ -254,8 +257,8 @@ pub async fn create_pool(
         return Ok(());
     }
 
-    if repayment_period_days <= 0 {
-        println!("❌ Invalid repayment period: must be positive number of days");
+    if repayment_period_days <= 0 || repayment_period_days > 365 {
+        println!("❌ Invalid repayment period: must be between 1 and 365 days");
         return Ok(());
     }
 
@@ -264,51 +267,66 @@ pub async fn create_pool(
     println!("   Max Interest Rate: {:.2}%", max_interest_rate * 100.0);
     println!("   Repayment Period: {} days", repayment_period_days);
 
-    // Placeholder implementation - would need to call actual API
-    let pool_id = format!("pool-{}", chrono::Utc::now().timestamp() % 1000000);
+    // Call the actual API
+    match client
+        .create_pool(
+            name,
+            max_ltv_ratio,
+            max_interest_rate,
+            repayment_period_days,
+        )
+        .await
+    {
+        Ok(pool) => {
+            println!();
+            println!("✅ Liquidity pool created successfully!");
+            println!("   Pool ID: {}", pool.pool_id);
+            println!("   Status: {}", pool.status);
+            println!("   Initial Liquidity: ${:.2}", pool.available_liquidity);
+            println!("   Created: {}", pool.created_at);
 
-    println!();
-    println!("✅ Liquidity pool created successfully!");
-    println!("   Pool ID: {}", pool_id);
-    println!("   Status: ACTIVE");
-    println!("   Initial Liquidity: $0.00");
-    println!(
-        "   Created: {}",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
-    );
-
-    if verbose {
-        println!();
-        println!("🔧 Pool Configuration:");
-        println!(
-            "   Risk Profile: {}",
-            if max_ltv_ratio > 0.8 {
-                "High"
-            } else if max_ltv_ratio > 0.6 {
-                "Medium"
-            } else {
-                "Conservative"
+            if verbose {
+                println!();
+                println!("🔧 Pool Configuration:");
+                println!(
+                    "   Risk Profile: {}",
+                    if max_ltv_ratio > 0.8 {
+                        "High"
+                    } else if max_ltv_ratio > 0.6 {
+                        "Medium"
+                    } else {
+                        "Conservative"
+                    }
+                );
+                println!("   Target Yield: {:.2}%", max_interest_rate * 100.0);
+                println!("   Deployment Rules: Automated matching enabled");
+                println!("   Compliance: KYC required for all borrowers");
+                println!("   Investor ID: {}", pool.investor_id);
+                println!("   Total Deposits: ${:.2}", pool.total_deposits);
+                println!("   Utilized Liquidity: ${:.2}", pool.utilized_liquidity);
+                println!("   Updated: {}", pool.updated_at);
             }
-        );
-        println!("   Target Yield: {:.2}%", max_interest_rate * 100.0);
-        println!("   Deployment Rules: Automated matching enabled");
-        println!("   Compliance: KYC required for all borrowers");
-    }
 
-    println!();
-    println!("💡 Next steps:");
-    println!(
-        "   • Fund the pool using: cli pool fund --pool-id {}",
-        pool_id
-    );
-    println!(
-        "   • Monitor performance using: cli pool analytics --pool-id {}",
-        pool_id
-    );
-    println!(
-        "   • Update status using: cli pool update-status --pool-id {}",
-        pool_id
-    );
+            println!();
+            println!("💡 Next steps:");
+            println!(
+                "   • Fund the pool using: cli pool fund --pool-id {}",
+                pool.pool_id
+            );
+            println!(
+                "   • Monitor performance using: cli pool analytics --pool-id {}",
+                pool.pool_id
+            );
+            println!(
+                "   • Update status using: cli pool update-status --pool-id {}",
+                pool.pool_id
+            );
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to create liquidity pool: {}", e);
+            return Err(e.into());
+        }
+    }
 
     Ok(())
 }
@@ -325,53 +343,80 @@ pub async fn list_pools(
         println!("   Filter: Status = {}", status);
     }
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Found 4 liquidity pools:");
+    // Call the actual API
+    match client.list_pools(status).await {
+        Ok(response) => {
+            if response.pools.is_empty() {
+                println!();
+                println!("📭 No liquidity pools found.");
+                if let Some(status) = status {
+                    println!("   Try removing the status filter or check available statuses: ACTIVE, PAUSED, CLOSED");
+                } else {
+                    println!("   Create your first pool using: cli pool create");
+                }
+                return Ok(());
+            }
 
-    println!("   1. Conservative Credit Pool");
-    println!("      Pool ID: pool-123456");
-    println!("      Status: ACTIVE");
-    println!("      Liquidity: $1,250,000.00 / $2,000,000.00 (62.5%)");
-    println!("      LTV: 75% | Rate: 8.5% | Term: 180 days");
-    println!("      Performance: +2.1% (30d)");
+            println!();
+            println!("✅ Found {} liquidity pool(s):", response.pools.len());
 
-    println!();
-    println!("   2. Growth Opportunity Pool");
-    println!("      Pool ID: pool-789012");
-    println!("      Status: ACTIVE");
-    println!("      Liquidity: $850,000.00 / $1,500,000.00 (56.7%)");
-    println!("      LTV: 85% | Rate: 12.0% | Term: 365 days");
-    println!("      Performance: +3.8% (30d)");
+            for (i, pool) in response.pools.iter().enumerate() {
+                println!("   {}. {}", i + 1, pool.name);
+                println!("      Pool ID: {}", pool.pool_id);
+                println!("      Status: {}", pool.status);
+                println!(
+                    "      Liquidity: ${:.2} / ${:.2} ({:.1}%)",
+                    pool.available_liquidity,
+                    pool.total_deposits,
+                    if pool.total_deposits > 0.0 {
+                        (pool.available_liquidity / pool.total_deposits) * 100.0
+                    } else {
+                        0.0
+                    }
+                );
+                println!(
+                    "      LTV: {:.0}% | Rate: {:.1}% | Term: {} days",
+                    pool.max_ltv_ratio * 100.0,
+                    pool.max_interest_rate * 100.0,
+                    pool.repayment_period_days
+                );
+                println!("      Investor: {}", pool.investor_id);
+            }
 
-    println!();
-    println!("   3. High-Yield Pool");
-    println!("      Pool ID: pool-345678");
-    println!("      Status: PAUSED");
-    println!("      Liquidity: $0.00 / $500,000.00 (0%)");
-    println!("      LTV: 90% | Rate: 15.0% | Term: 90 days");
-    println!("      Performance: N/A (Paused)");
+            if verbose {
+                let total_liquidity: f64 =
+                    response.pools.iter().map(|p| p.available_liquidity).sum();
+                let total_capacity: f64 = response.pools.iter().map(|p| p.total_deposits).sum();
+                let active_pools = response
+                    .pools
+                    .iter()
+                    .filter(|p| p.status == "ACTIVE")
+                    .count();
 
-    println!();
-    println!("   4. Emergency Liquidity Pool");
-    println!("      Pool ID: pool-901234");
-    println!("      Status: ACTIVE");
-    println!("      Liquidity: $2,100,000.00 / $3,000,000.00 (70%)");
-    println!("      LTV: 60% | Rate: 6.0% | Term: 30 days");
-    println!("      Performance: +0.8% (30d)");
+                println!();
+                println!("🔧 Summary Statistics:");
+                println!("   Total Pools: {}", response.pools.len());
+                println!("   Active Pools: {}", active_pools);
+                println!("   Total Capacity: ${:.2}", total_capacity);
+                println!("   Total Available Liquidity: ${:.2}", total_liquidity);
+                if total_capacity > 0.0 {
+                    println!(
+                        "   Average Utilization: {:.1}%",
+                        ((total_capacity - total_liquidity) / total_capacity) * 100.0
+                    );
+                } else {
+                    println!("   Average Utilization: 0.0%");
+                }
+            }
 
-    if verbose {
-        println!();
-        println!("🔧 Summary Statistics:");
-        println!("   Total Pools: 4");
-        println!("   Active Pools: 3");
-        println!("   Total Liquidity: $4,200,000.00");
-        println!("   Average Utilization: 59.6%");
-        println!("   Average Performance: +2.2% (30d)");
+            println!();
+            println!("💡 Use 'cli pool get --pool-id <id>' for detailed pool information");
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to list liquidity pools: {}", e);
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 Use 'cli pool get --pool-id <id>' for detailed pool information");
 
     Ok(())
 }
@@ -380,45 +425,88 @@ pub async fn list_pools(
 pub async fn get_pool(client: &BatchApiClient, pool_id: &str, verbose: bool) -> Result<()> {
     println!("🔍 Retrieving pool details for ID: {}", pool_id);
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Pool Details:");
-    println!("   Pool ID: {}", pool_id);
-    println!("   Name: Conservative Credit Pool");
-    println!("   Status: ACTIVE");
-    println!("   Creator: investor-abc123");
+    // Call the actual API
+    match client.get_pool(pool_id).await {
+        Ok(Some(pool)) => {
+            println!();
+            println!("✅ Pool Details:");
+            println!("   Pool ID: {}", pool.pool_id);
+            println!("   Name: {}", pool.name);
+            println!("   Status: {}", pool.status);
+            println!("   Investor: {}", pool.investor_id);
 
-    println!();
-    println!("💰 Liquidity Information:");
-    println!("   Total Capacity: $2,000,000.00");
-    println!("   Current Liquidity: $1,250,000.00 (62.5%)");
-    println!("   Deployed Capital: $750,000.00 (37.5%)");
-    println!("   Available for Deployment: $1,250,000.00");
+            println!();
+            println!("💰 Liquidity Information:");
+            println!("   Total Capacity: ${:.2}", pool.total_deposits);
+            println!("   Current Liquidity: ${:.2}", pool.available_liquidity);
+            if pool.total_deposits > 0.0 {
+                let utilization = ((pool.total_deposits - pool.available_liquidity)
+                    / pool.total_deposits)
+                    * 100.0;
+                println!(
+                    "   Utilized Liquidity: ${:.2} ({:.1}%)",
+                    pool.utilized_liquidity, utilization
+                );
+                println!(
+                    "   Available for Deployment: ${:.2}",
+                    pool.available_liquidity
+                );
+            } else {
+                println!("   Utilized Liquidity: $0.00 (0.0%)");
+                println!("   Available for Deployment: $0.00");
+            }
 
-    println!();
-    println!("📊 Risk Parameters:");
-    println!("   Maximum LTV Ratio: 75%");
-    println!("   Maximum Interest Rate: 8.5%");
-    println!("   Repayment Period: 180 days");
-    println!("   Risk Rating: Conservative");
+            println!();
+            println!("📊 Risk Parameters:");
+            println!("   Maximum LTV Ratio: {:.0}%", pool.max_ltv_ratio * 100.0);
+            println!(
+                "   Maximum Interest Rate: {:.1}%",
+                pool.max_interest_rate * 100.0
+            );
+            println!("   Repayment Period: {} days", pool.repayment_period_days);
+            println!(
+                "   Risk Rating: {}",
+                if pool.max_ltv_ratio > 0.8 {
+                    "High"
+                } else if pool.max_ltv_ratio > 0.6 {
+                    "Medium"
+                } else {
+                    "Conservative"
+                }
+            );
 
-    println!();
-    println!("📈 Performance Metrics:");
-    println!("   30-day Performance: +2.1%");
-    println!("   90-day Performance: +6.8%");
-    println!("   Annualized Yield: 8.2%");
-    println!("   Default Rate: 0.1%");
+            println!();
+            println!("📈 Pool Timeline:");
+            println!("   Created: {}", pool.created_at);
+            println!("   Updated: {}", pool.updated_at);
 
-    if verbose {
-        println!();
-        println!("🔧 Extended Information:");
-        println!("   Created: 2024-01-15 10:30:00");
-        println!("   Last Activity: 2024-01-22 14:25:00");
-        println!("   Active Deployments: 12");
-        println!("   Total Historical Deployments: 45");
-        println!("   Average Deployment Size: $62,500.00");
-        println!("   Pool Version: 1.2.0");
-        println!("   Compliance Status: Fully Compliant");
+            if verbose {
+                println!();
+                println!("🔧 Extended Information:");
+                println!("   Pool Version: 1.0.0");
+                println!("   Compliance Status: Active");
+                println!(
+                    "   Status Details: {}",
+                    match pool.status.as_str() {
+                        "ACTIVE" => "Accepting new deployments",
+                        "PAUSED" => "Temporarily suspended",
+                        "CLOSED" => "Permanently closed",
+                        _ => "Unknown status",
+                    }
+                );
+            }
+        }
+        Ok(None) => {
+            println!();
+            println!("❌ Pool with ID '{}' not found", pool_id);
+            println!();
+            println!("💡 Use 'cli pool list' to see available pools");
+            return Ok(());
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to retrieve pool details: {}", e);
+            return Err(e.into());
+        }
     }
 
     Ok(())
@@ -436,44 +524,55 @@ pub async fn update_pool_status(
     println!("   New Status: {}", status);
 
     // Validate status
-    match status.to_uppercase().as_str() {
-        "ACTIVE" | "PAUSED" | "CLOSED" => {}
+    let valid_status = match status.to_uppercase().as_str() {
+        "ACTIVE" | "PAUSED" | "CLOSED" => status.to_uppercase(),
         _ => {
             println!("❌ Invalid status. Must be one of: ACTIVE, PAUSED, CLOSED");
             return Ok(());
         }
-    }
+    };
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Pool status updated successfully!");
-    println!("   Pool ID: {}", pool_id);
-    println!("   Status: {}", status);
-    println!(
-        "   Updated: {}",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
-    );
+    // Call the actual API
+    match client.update_pool_status(pool_id, &valid_status).await {
+        Ok(updated_pool) => {
+            println!();
+            println!("✅ Pool status updated successfully!");
+            println!("   Pool ID: {}", updated_pool.pool_id);
+            println!("   Status: {}", updated_pool.status);
+            println!("   Updated: {}", updated_pool.updated_at);
 
-    match status.to_uppercase().as_str() {
-        "ACTIVE" => {
-            println!("   Effect: Pool is now accepting new deployments");
-        }
-        "PAUSED" => {
-            println!("   Effect: New deployments suspended, existing deployments continue");
-        }
-        "CLOSED" => {
-            println!("   Effect: Pool permanently closed, no new activity allowed");
-        }
-        _ => {}
-    }
+            match updated_pool.status.to_uppercase().as_str() {
+                "ACTIVE" => {
+                    println!("   Effect: Pool is now accepting new deployments");
+                }
+                "PAUSED" => {
+                    println!("   Effect: New deployments suspended, existing deployments continue");
+                }
+                "CLOSED" => {
+                    println!("   Effect: Pool permanently closed, no new activity allowed");
+                }
+                _ => {}
+            }
 
-    if verbose {
-        println!();
-        println!("🔧 Status Change Details:");
-        println!("   Previous Status: ACTIVE");
-        println!("   Change Reason: Manual update");
-        println!("   Admin Action: Yes");
-        println!("   Notification Sent: Yes");
+            if verbose {
+                println!();
+                println!("🔧 Status Change Details:");
+                println!("   Pool Name: {}", updated_pool.name);
+                println!("   Investor: {}", updated_pool.investor_id);
+                println!("   Change Reason: Manual update");
+                println!("   Admin Action: Yes");
+                println!("   Notification Sent: Yes");
+                println!(
+                    "   Current Liquidity: ${:.2}",
+                    updated_pool.available_liquidity
+                );
+                println!("   Total Deposits: ${:.2}", updated_pool.total_deposits);
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to update pool status: {}", e);
+            return Err(e.into());
+        }
     }
 
     Ok(())
@@ -494,64 +593,127 @@ pub async fn find_matching_pools(
     println!("   Max Interest Rate: {:.2}%", max_rate * 100.0);
     println!("   Min Repayment Period: {} days", min_repayment_days);
 
-    // Placeholder implementation - would run actual matching algorithm
-    println!();
-    println!("✅ Found 2 matching pools:");
-
-    println!("   1. Conservative Credit Pool (pool-123456)");
-    println!("      Available Liquidity: ${:.2}", 1250000.00);
-    println!("      LTV Ratio: 75% ✅ (within {:.1}%)", max_ltv * 100.0);
-    println!(
-        "      Interest Rate: 8.5% ✅ (within {:.2}%)",
-        max_rate * 100.0
-    );
-    println!(
-        "      Repayment Period: 180 days ✅ (>= {} days)",
-        min_repayment_days
-    );
-    println!("      Match Score: 95%");
-
-    println!();
-    println!("   2. Emergency Liquidity Pool (pool-901234)");
-    println!("      Available Liquidity: ${:.2}", 2100000.00);
-    println!("      LTV Ratio: 60% ✅ (within {:.1}%)", max_ltv * 100.0);
-    println!(
-        "      Interest Rate: 6.0% ✅ (within {:.2}%)",
-        max_rate * 100.0
-    );
-    println!(
-        "      Repayment Period: 30 days ⚠️  (< {} days but available)",
-        min_repayment_days
-    );
-    println!("      Match Score: 78%");
-
-    if verbose {
-        println!();
-        println!("🔧 Matching Algorithm Details:");
-        println!("   Total Pools Evaluated: 4");
-        println!("   Pools Meeting Criteria: 2");
-        println!("   Best Match: Conservative Credit Pool");
-        println!("   Alternative Options: 1");
-        println!(
-            "   Recommended Deployment: ${:.2} to pool-123456",
-            required_liquidity.min(1250000.00)
-        );
+    // Validate parameters
+    if required_liquidity <= 0.0 {
+        println!("❌ Invalid required liquidity: must be positive amount");
+        return Ok(());
+    }
+    if max_ltv <= 0.0 || max_ltv > 1.0 {
+        println!("❌ Invalid max LTV ratio: must be between 0.0 and 1.0");
+        return Ok(());
+    }
+    if max_rate <= 0.0 || max_rate > 1.0 {
+        println!("❌ Invalid max interest rate: must be between 0.0 and 1.0");
+        return Ok(());
+    }
+    if min_repayment_days <= 0 {
+        println!("❌ Invalid min repayment period: must be positive number of days");
+        return Ok(());
     }
 
-    println!();
-    println!("💡 Deployment Recommendations:");
-    if required_liquidity <= 1250000.00 {
-        println!(
-            "   • Deploy ${:.2} to Conservative Credit Pool (pool-123456)",
-            required_liquidity
-        );
-    } else {
-        println!("   • Split deployment across multiple pools");
-        println!("   • Deploy ${:.2} to Conservative Credit Pool", 1250000.00);
-        println!(
-            "   • Deploy ${:.2} to Emergency Liquidity Pool",
-            (required_liquidity - 1250000.00).min(2100000.00)
-        );
+    // Call the actual API
+    match client
+        .find_matching_pools(required_liquidity, max_ltv, max_rate, min_repayment_days)
+        .await
+    {
+        Ok(response) => {
+            if response.pools.is_empty() {
+                println!();
+                println!("❌ No matching pools found");
+                println!("   Try adjusting your criteria or create a new pool");
+                return Ok(());
+            }
+
+            println!();
+            println!("✅ Found {} matching pool(s):", response.pools.len());
+
+            let mut total_available = 0.0;
+            for (i, pool) in response.pools.iter().enumerate() {
+                println!("   {}. {} ({})", i + 1, pool.name, pool.pool_id);
+                println!(
+                    "      Available Liquidity: ${:.2}",
+                    pool.available_liquidity
+                );
+
+                let ltv_match = pool.max_ltv_ratio <= max_ltv;
+                let rate_match = pool.max_interest_rate <= max_rate;
+                let period_match = pool.repayment_period_days >= min_repayment_days;
+
+                println!(
+                    "      LTV Ratio: {:.0}% {}",
+                    pool.max_ltv_ratio * 100.0,
+                    if ltv_match { "✅" } else { "❌" }
+                );
+                println!(
+                    "      Interest Rate: {:.1}% {}",
+                    pool.max_interest_rate * 100.0,
+                    if rate_match { "✅" } else { "❌" }
+                );
+                println!(
+                    "      Repayment Period: {} days {}",
+                    pool.repayment_period_days,
+                    if period_match { "✅" } else { "⚠️" }
+                );
+
+                let match_score = if ltv_match && rate_match && period_match {
+                    100
+                } else if ltv_match && rate_match {
+                    80
+                } else if ltv_match || rate_match {
+                    60
+                } else {
+                    40
+                };
+                println!("      Match Score: {}%", match_score);
+
+                total_available += pool.available_liquidity;
+            }
+
+            if verbose {
+                println!();
+                println!("🔧 Matching Algorithm Details:");
+                println!("   Total Pools Evaluated: {}", response.total_count);
+                println!("   Pools Meeting Criteria: {}", response.pools.len());
+                if let Some(best_pool) = response.pools.first() {
+                    println!("   Best Match: {}", best_pool.name);
+                }
+                println!("   Total Available Liquidity: ${:.2}", total_available);
+            }
+
+            println!();
+            println!("💡 Deployment Recommendations:");
+            if required_liquidity <= total_available {
+                if let Some(best_pool) = response.pools.first() {
+                    if best_pool.available_liquidity >= required_liquidity {
+                        println!(
+                            "   • Deploy ${:.2} to {} ({})",
+                            required_liquidity, best_pool.name, best_pool.pool_id
+                        );
+                    } else {
+                        println!("   • Split deployment across pools:");
+                        println!(
+                            "   • Deploy ${:.2} to {} ({})",
+                            best_pool.available_liquidity, best_pool.name, best_pool.pool_id
+                        );
+
+                        let remaining = required_liquidity - best_pool.available_liquidity;
+                        if response.pools.len() > 1 {
+                            println!("   • Deploy ${:.2} to additional pools", remaining);
+                        }
+                    }
+                }
+            } else {
+                println!(
+                    "   • Insufficient total liquidity: ${:.2} required, ${:.2} available",
+                    required_liquidity, total_available
+                );
+                println!("   • Consider increasing liquidity limits or creating new pools");
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to find matching pools: {}", e);
+            return Err(e.into());
+        }
     }
 
     Ok(())
@@ -579,59 +741,172 @@ pub async fn get_pool_analytics(
         }
     }
 
-    // Placeholder implementation - would fetch actual analytics
-    println!();
-    println!("✅ Performance Analytics:");
+    // Make custom HTTP call to analytics endpoint
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
 
-    if let Some(pool_id) = pool_id {
-        println!("   Pool: {}", pool_id);
-        println!("   Performance: +2.1%");
-        println!("   Liquidity Utilization: 62.5%");
-        println!("   Active Deployments: 12");
-        println!("   Default Rate: 0.1%");
-    } else {
-        println!("   Total Pools: 4");
-        println!("   Portfolio Performance: +2.2%");
-        println!("   Total Liquidity: $4,200,000.00");
-        println!("   Average Utilization: 59.6%");
-        println!("   Overall Default Rate: 0.15%");
-    }
+    let url = match pool_id {
+        Some(pool_id) => format!(
+            "{}/api/v1/pools/{}/analytics?period={}",
+            api_url, pool_id, period
+        ),
+        None => format!("{}/api/v1/pools/analytics?period={}", api_url, period),
+    };
 
-    println!();
-    println!("📈 Trend Analysis ({}):", period);
-    match period {
-        "7d" => {
-            println!("   Weekly Growth: +0.3%");
-            println!("   New Deployments: 3");
-            println!("   Repayments Received: $85,000.00");
-        }
-        "30d" => {
-            println!("   Monthly Growth: +2.1%");
-            println!("   New Deployments: 15");
-            println!("   Repayments Received: $340,000.00");
-        }
-        "90d" => {
-            println!("   Quarterly Growth: +6.8%");
-            println!("   New Deployments: 42");
-            println!("   Repayments Received: $1,020,000.00");
-        }
-        "1y" => {
-            println!("   Annual Growth: +28.5%");
-            println!("   New Deployments: 156");
-            println!("   Repayments Received: $4,080,000.00");
-        }
-        _ => {}
-    }
+    let request_body = json!({
+        "period": period,
+        "include_trends": true,
+        "include_detailed_metrics": verbose
+    });
 
-    if verbose {
-        println!();
-        println!("🔧 Detailed Metrics:");
-        println!("   Deployment Success Rate: 98.7%");
-        println!("   Average Deployment Time: 2.3 days");
-        println!("   Repayment On-Time Rate: 94.2%");
-        println!("   Risk-Adjusted Return: +1.9%");
-        println!("   Sharpe Ratio: 1.42");
-        println!("   Maximum Drawdown: -0.8%");
+    match http_client.get(&url).json(&request_body).send().await {
+        Ok(response) => {
+            match response.status().as_u16() {
+                200 => {
+                    match response.json::<serde_json::Value>().await {
+                        Ok(analytics) => {
+                            println!();
+                            println!("✅ Performance Analytics:");
+
+                            if let Some(pool_id) = pool_id {
+                                // Individual pool analytics
+                                let performance = analytics["performance"].as_f64().unwrap_or(0.0);
+                                let utilization =
+                                    analytics["liquidity_utilization"].as_f64().unwrap_or(0.0);
+                                let active_deployments =
+                                    analytics["active_deployments"].as_u64().unwrap_or(0);
+                                let default_rate =
+                                    analytics["default_rate"].as_f64().unwrap_or(0.0);
+
+                                println!("   Pool: {}", pool_id);
+                                println!("   Performance: {:.1}%", performance * 100.0);
+                                println!("   Liquidity Utilization: {:.1}%", utilization * 100.0);
+                                println!("   Active Deployments: {}", active_deployments);
+                                println!("   Default Rate: {:.2}%", default_rate * 100.0);
+                            } else {
+                                // Portfolio-wide analytics
+                                let total_pools = analytics["total_pools"].as_u64().unwrap_or(0);
+                                let portfolio_performance =
+                                    analytics["portfolio_performance"].as_f64().unwrap_or(0.0);
+                                let total_liquidity =
+                                    analytics["total_liquidity"].as_f64().unwrap_or(0.0);
+                                let avg_utilization =
+                                    analytics["average_utilization"].as_f64().unwrap_or(0.0);
+                                let overall_default_rate =
+                                    analytics["overall_default_rate"].as_f64().unwrap_or(0.0);
+
+                                println!("   Total Pools: {}", total_pools);
+                                println!(
+                                    "   Portfolio Performance: {:.1}%",
+                                    portfolio_performance * 100.0
+                                );
+                                println!("   Total Liquidity: ${:.2}", total_liquidity);
+                                println!("   Average Utilization: {:.1}%", avg_utilization * 100.0);
+                                println!(
+                                    "   Overall Default Rate: {:.2}%",
+                                    overall_default_rate * 100.0
+                                );
+                            }
+
+                            // Trend analysis
+                            if let Some(trends) = analytics["trends"].as_object() {
+                                println!();
+                                println!("📈 Trend Analysis ({}):", period);
+
+                                if let Some(growth) = trends.get(period) {
+                                    if let Some(growth_rate) = growth["growth_rate"].as_f64() {
+                                        println!("   Growth Rate: {:.1}%", growth_rate * 100.0);
+                                    }
+                                    if let Some(new_deployments) =
+                                        growth["new_deployments"].as_u64()
+                                    {
+                                        println!("   New Deployments: {}", new_deployments);
+                                    }
+                                    if let Some(repayments) = growth["repayments_received"].as_f64()
+                                    {
+                                        println!("   Repayments Received: ${:.2}", repayments);
+                                    }
+                                }
+                            }
+
+                            if verbose {
+                                if let Some(detailed) = analytics["detailed_metrics"].as_object() {
+                                    println!();
+                                    println!("🔧 Detailed Metrics:");
+                                    if let Some(success_rate) =
+                                        detailed["deployment_success_rate"].as_f64()
+                                    {
+                                        println!(
+                                            "   Deployment Success Rate: {:.1}%",
+                                            success_rate * 100.0
+                                        );
+                                    }
+                                    if let Some(avg_time) =
+                                        detailed["average_deployment_time_days"].as_f64()
+                                    {
+                                        println!(
+                                            "   Average Deployment Time: {:.1} days",
+                                            avg_time
+                                        );
+                                    }
+                                    if let Some(on_time_rate) =
+                                        detailed["repayment_on_time_rate"].as_f64()
+                                    {
+                                        println!(
+                                            "   Repayment On-Time Rate: {:.1}%",
+                                            on_time_rate * 100.0
+                                        );
+                                    }
+                                    if let Some(rar) = detailed["risk_adjusted_return"].as_f64() {
+                                        println!("   Risk-Adjusted Return: {:.1}%", rar * 100.0);
+                                    }
+                                    if let Some(sharpe) = detailed["sharpe_ratio"].as_f64() {
+                                        println!("   Sharpe Ratio: {:.2}", sharpe);
+                                    }
+                                    if let Some(max_drawdown) =
+                                        detailed["maximum_drawdown"].as_f64()
+                                    {
+                                        println!(
+                                            "   Maximum Drawdown: {:.1}%",
+                                            max_drawdown * 100.0
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("❌ Failed to parse analytics response: {}", e);
+                            return Err(e.into());
+                        }
+                    }
+                }
+                404 => {
+                    println!("❌ Analytics not available for the specified pool/period");
+                    if let Some(pool_id) = pool_id {
+                        println!("   Pool ID: {}", pool_id);
+                    }
+                }
+                400 => {
+                    println!("❌ Invalid analytics request parameters");
+                }
+                500..=599 => {
+                    println!("❌ Analytics service temporarily unavailable");
+                }
+                _ => {
+                    let error_text = response
+                        .text()
+                        .await
+                        .unwrap_or_else(|_| "Unknown error".to_string());
+                    eprintln!("❌ Analytics API error: {}", error_text);
+                    return Err(eyre::eyre!("Analytics API error: {}", error_text));
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Network error fetching analytics: {}", e);
+            return Err(e.into());
+        }
     }
 
     Ok(())
@@ -653,44 +928,124 @@ pub async fn fund_pool(
         return Ok(());
     }
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Pool funded successfully!");
-    println!(
-        "   Transaction ID: tx-{}",
-        chrono::Utc::now().timestamp() % 1000000
-    );
-    println!("   Amount Added: ${:.2}", amount);
-    println!("   New Pool Balance: ${:.2}", 1250000.00 + amount);
-    println!(
-        "   Funding Time: {}",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
-    );
+    // Make custom HTTP call to pool funding endpoint
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
 
-    if verbose {
-        println!();
-        println!("🔧 Funding Details:");
-        println!("   Previous Balance: $1,250,000.00");
-        println!(
-            "   Percentage Increase: {:.2}%",
-            (amount / 1250000.00) * 100.0
-        );
-        println!(
-            "   Pool Utilization: {:.1}%",
-            (750000.00 / (1250000.00 + amount)) * 100.0
-        );
-        println!("   Gas Fee: $2.50");
-        println!("   Network: Ethereum Mainnet");
+    let url = format!("{}/api/v1/pool/{}/financial/fund", api_url, pool_id);
+
+    let request_body = json!({
+        "pool_id": pool_id,
+        "amount_usdc": amount,
+        "funding_source": "investor_wallet"
+    });
+
+    match http_client.post(&url).json(&request_body).send().await {
+        Ok(response) => match response.status().as_u16() {
+            200 => match response.json::<serde_json::Value>().await {
+                Ok(funding_result) => {
+                    println!();
+                    println!("✅ Pool funded successfully!");
+
+                    let transaction_id = funding_result["transaction_id"]
+                        .as_str()
+                        .unwrap_or("unknown");
+                    let amount_added = funding_result["amount_added"].as_f64().unwrap_or(amount);
+                    let new_balance = funding_result["new_pool_balance"].as_f64().unwrap_or(0.0);
+                    let funding_time = funding_result["funding_time"].as_str().unwrap_or("now");
+
+                    println!("   Transaction ID: {}", transaction_id);
+                    println!("   Amount Added: ${:.2}", amount_added);
+                    println!("   New Pool Balance: ${:.2}", new_balance);
+                    println!("   Funding Time: {}", funding_time);
+
+                    if verbose {
+                        println!();
+                        println!("🔧 Funding Details:");
+
+                        if let Some(previous_balance) = funding_result["previous_balance"].as_f64()
+                        {
+                            println!("   Previous Balance: ${:.2}", previous_balance);
+                            if previous_balance > 0.0 {
+                                println!(
+                                    "   Percentage Increase: {:.2}%",
+                                    (amount_added / previous_balance) * 100.0
+                                );
+                            }
+                        }
+
+                        if let Some(utilization) = funding_result["pool_utilization"].as_f64() {
+                            println!("   Pool Utilization: {:.1}%", utilization * 100.0);
+                        }
+
+                        if let Some(gas_fee) = funding_result["gas_fee_usdc"].as_f64() {
+                            println!("   Gas Fee: ${:.2}", gas_fee);
+                        }
+
+                        println!("   Network: Ethereum Mainnet");
+
+                        if let Some(block_number) = funding_result["block_number"].as_u64() {
+                            println!("   Block Number: {}", block_number);
+                        }
+
+                        if let Some(tx_hash) = funding_result["transaction_hash"].as_str() {
+                            println!("   Transaction Hash: {}", tx_hash);
+                        }
+                    }
+
+                    println!();
+                    println!("💡 Pool Status:");
+                    println!("   • Increased deployment capacity by ${:.2}", amount_added);
+                    println!("   • Pool ready for new credit deployments");
+
+                    if let Some(expected_yield) =
+                        funding_result["expected_additional_yield"].as_f64()
+                    {
+                        println!(
+                            "   • Expected additional yield: +{:.2}%",
+                            expected_yield * 100.0
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to parse funding response: {}", e);
+                    return Err(e.into());
+                }
+            },
+            400 => {
+                println!("❌ Invalid funding request");
+                println!("   Pool ID: {}", pool_id);
+                println!("   Amount: ${:.2}", amount);
+            }
+            404 => {
+                println!("❌ Pool not found for funding");
+                println!("   Pool ID: {}", pool_id);
+                println!();
+                println!("💡 Use 'cli pool list' to see available pools");
+            }
+            422 => {
+                println!("❌ Insufficient funds or invalid funding amount");
+                println!("   Requested: ${:.2}", amount);
+            }
+            500..=599 => {
+                println!("❌ Funding service temporarily unavailable");
+                println!("   Please try again later");
+            }
+            _ => {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                eprintln!("❌ Funding API error: {}", error_text);
+                return Err(eyre::eyre!("Funding API error: {}", error_text));
+            }
+        },
+        Err(e) => {
+            eprintln!("❌ Network error during funding: {}", e);
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 Pool Status:");
-    println!("   • Increased deployment capacity by ${:.2}", amount);
-    println!("   • Pool ready for new credit deployments");
-    println!(
-        "   • Expected additional yield: +{:.2}%",
-        (amount / 1250000.00) * 2.1
-    );
 
     Ok(())
 }
@@ -705,53 +1060,177 @@ pub async fn withdraw_from_pool(
     println!("💸 Withdrawing from liquidity pool...");
     println!("   Pool ID: {}", pool_id);
 
-    let available_balance = 1250000.00; // Placeholder value
-    let withdraw_amount = amount.unwrap_or(available_balance);
+    let withdraw_amount = amount.unwrap_or(f64::MAX); // Use MAX to indicate full withdrawal
 
-    if withdraw_amount > available_balance {
-        println!("❌ Insufficient available balance");
-        println!("   Requested: ${:.2}", withdraw_amount);
-        println!("   Available: ${:.2}", available_balance);
-        return Ok(());
+    if let Some(amount) = amount {
+        if amount <= 0.0 {
+            println!("❌ Invalid amount: must be positive");
+            return Ok(());
+        }
+        println!("   Amount: ${:.2}", amount);
+    } else {
+        println!("   Amount: All available funds");
     }
 
-    println!("   Amount: ${:.2}", withdraw_amount);
+    // Make custom HTTP call to pool withdrawal endpoint
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
 
-    // Placeholder implementation - would need to call actual API
-    println!();
-    println!("✅ Withdrawal initiated successfully!");
-    println!(
-        "   Transaction ID: tx-{}",
-        chrono::Utc::now().timestamp() % 1000000
-    );
-    println!("   Amount Withdrawn: ${:.2}", withdraw_amount);
-    println!(
-        "   Remaining Balance: ${:.2}",
-        available_balance - withdraw_amount
-    );
-    println!(
-        "   Estimated Completion: {} minutes",
-        if withdraw_amount > 100000.0 { 10 } else { 5 }
-    );
+    let url = format!("{}/api/v1/pool/{}/financial/withdraw", api_url, pool_id);
 
-    if verbose {
-        println!();
-        println!("🔧 Withdrawal Details:");
-        println!("   Previous Balance: ${:.2}", available_balance);
-        println!(
-            "   Percentage Withdrawn: {:.2}%",
-            (withdraw_amount / available_balance) * 100.0
-        );
-        println!("   Processing Fee: ${:.2}", withdraw_amount * 0.001);
-        println!("   Network: Ethereum Mainnet");
-        println!("   Confirmation Required: 6 blocks");
+    let request_body = match amount {
+        Some(amount) => json!({
+            "pool_id": pool_id,
+            "amount_usdc": amount,
+            "withdraw_all": false
+        }),
+        None => json!({
+            "pool_id": pool_id,
+            "withdraw_all": true
+        }),
+    };
+
+    match http_client.post(&url).json(&request_body).send().await {
+        Ok(response) => match response.status().as_u16() {
+            200 => match response.json::<serde_json::Value>().await {
+                Ok(withdrawal_result) => {
+                    println!();
+                    println!("✅ Withdrawal initiated successfully!");
+
+                    let transaction_id = withdrawal_result["transaction_id"]
+                        .as_str()
+                        .unwrap_or("unknown");
+                    let amount_withdrawn = withdrawal_result["amount_withdrawn"]
+                        .as_f64()
+                        .unwrap_or(0.0);
+                    let remaining_balance = withdrawal_result["remaining_balance"]
+                        .as_f64()
+                        .unwrap_or(0.0);
+                    let estimated_completion = withdrawal_result["estimated_completion_minutes"]
+                        .as_u64()
+                        .unwrap_or(5);
+
+                    println!("   Transaction ID: {}", transaction_id);
+                    println!("   Amount Withdrawn: ${:.2}", amount_withdrawn);
+                    println!("   Remaining Balance: ${:.2}", remaining_balance);
+                    println!("   Estimated Completion: {} minutes", estimated_completion);
+
+                    if verbose {
+                        println!();
+                        println!("🔧 Withdrawal Details:");
+
+                        if let Some(previous_balance) =
+                            withdrawal_result["previous_balance"].as_f64()
+                        {
+                            println!("   Previous Balance: ${:.2}", previous_balance);
+                            if previous_balance > 0.0 {
+                                println!(
+                                    "   Percentage Withdrawn: {:.2}%",
+                                    (amount_withdrawn / previous_balance) * 100.0
+                                );
+                            }
+                        }
+
+                        if let Some(processing_fee) =
+                            withdrawal_result["processing_fee_usdc"].as_f64()
+                        {
+                            println!("   Processing Fee: ${:.2}", processing_fee);
+                        }
+
+                        println!("   Network: Ethereum Mainnet");
+
+                        if let Some(confirmations_required) =
+                            withdrawal_result["confirmations_required"].as_u64()
+                        {
+                            println!(
+                                "   Confirmation Required: {} blocks",
+                                confirmations_required
+                            );
+                        }
+
+                        if let Some(block_number) = withdrawal_result["block_number"].as_u64() {
+                            println!("   Block Number: {}", block_number);
+                        }
+
+                        if let Some(tx_hash) = withdrawal_result["transaction_hash"].as_str() {
+                            println!("   Transaction Hash: {}", tx_hash);
+                        }
+                    }
+
+                    println!();
+                    println!("⏳ Processing Status:");
+                    println!("   • Withdrawal request submitted to blockchain");
+                    println!("   • Pool liquidity adjusted automatically");
+                    println!("   • You will receive confirmation once completed");
+
+                    if let Some(destination_address) =
+                        withdrawal_result["destination_address"].as_str()
+                    {
+                        println!("   • Funds will be sent to: {}", destination_address);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to parse withdrawal response: {}", e);
+                    return Err(e.into());
+                }
+            },
+            400 => {
+                println!("❌ Invalid withdrawal request");
+                println!("   Pool ID: {}", pool_id);
+                if let Some(amount) = amount {
+                    println!("   Amount: ${:.2}", amount);
+                }
+            }
+            404 => {
+                println!("❌ Pool not found for withdrawal");
+                println!("   Pool ID: {}", pool_id);
+                println!();
+                println!("💡 Use 'cli pool list' to see available pools");
+            }
+            422 => match response.json::<serde_json::Value>().await {
+                Ok(error_details) => {
+                    if let Some(available_balance) = error_details["available_balance"].as_f64() {
+                        println!("❌ Insufficient available balance");
+                        if let Some(requested) = amount {
+                            println!("   Requested: ${:.2}", requested);
+                        } else {
+                            println!("   Requested: All available funds");
+                        }
+                        println!("   Available: ${:.2}", available_balance);
+                    } else {
+                        println!("❌ Withdrawal validation failed");
+                    }
+                }
+                Err(_) => {
+                    println!("❌ Insufficient funds or invalid withdrawal amount");
+                    if let Some(requested) = amount {
+                        println!("   Requested: ${:.2}", requested);
+                    }
+                }
+            },
+            429 => {
+                println!("❌ Too many withdrawal requests");
+                println!("   Please wait before submitting another withdrawal");
+            }
+            500..=599 => {
+                println!("❌ Withdrawal service temporarily unavailable");
+                println!("   Please try again later");
+            }
+            _ => {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                eprintln!("❌ Withdrawal API error: {}", error_text);
+                return Err(eyre::eyre!("Withdrawal API error: {}", error_text));
+            }
+        },
+        Err(e) => {
+            eprintln!("❌ Network error during withdrawal: {}", e);
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("⏳ Processing Status:");
-    println!("   • Withdrawal request submitted to blockchain");
-    println!("   • Pool liquidity adjusted automatically");
-    println!("   • You will receive confirmation once completed");
 
     Ok(())
 }
