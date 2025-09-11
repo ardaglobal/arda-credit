@@ -33,21 +33,32 @@
 #![allow(clippy::struct_excessive_bools)]
 #![allow(clippy::suboptimal_flops)]
 
+pub mod admin_handlers;
 pub mod auth;
+pub mod authentication_handlers;
 pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
 pub mod credit_line_handlers;
 pub mod financial_transaction_handlers;
+pub mod health_handlers;
 pub mod kyc_service;
+pub mod loan_handlers;
+pub mod merchant_handlers;
 pub mod middleware;
+pub mod openapi;
 pub mod paths;
 pub mod pool_api;
 pub mod pool_handlers;
-pub mod rest;
+pub mod router;
 pub mod server;
+pub mod state_handlers;
 pub mod telemetry;
+pub mod turnover_handlers;
+pub mod types;
 pub mod unified_batch_service;
+pub mod user_handlers;
+pub mod withdrawal_handlers;
 pub mod withdrawal_service;
 
 #[cfg(test)]
@@ -79,15 +90,15 @@ pub use client::{
     UserTransactionsResponse,
 };
 
-pub use rest::{
-    create_router, ApiConfig, ApiInfoResponse, ApiState, BatchListQuery,
-    BatchListResponse as RestBatchListResponse, CreateBatchRequest as RestCreateBatchRequest,
-    CreateBatchResponse as RestCreateBatchResponse,
-    CurrentStateResponse as RestCurrentStateResponse, EndpointInfo,
-    PendingTransactionsResponse as RestPendingTransactionsResponse,
-    SubmitTransactionRequest as RestSubmitTransactionRequest,
-    SubmitTransactionResponse as RestSubmitTransactionResponse, UpdateBatchProofRequest,
-};
+pub use health_handlers::EndpointInfo;
+pub use router::{create_router, ApiConfig, ApiState};
+
+// Re-export new handler modules
+pub use admin_handlers::*;
+pub use merchant_handlers::*;
+pub use state_handlers::*;
+pub use user_handlers::*;
+pub use withdrawal_handlers::*;
 
 pub use server::{ApiServer, ApiServerBuilder, ApiServerConfig};
 
@@ -107,10 +118,11 @@ pub use withdrawal_service::{
 };
 
 pub use pool_api::{
-    ErrorResponse, InvestorDashboardResponse, InvestorMetrics, InvestorPoolSummariesResponse,
-    InvestorPoolSummary, MarketOverviewResponse, PageInfo, PlatformMetrics, PoolDetailsResponse,
-    PoolListQuery, PoolListResponse, PoolPerformanceResponse, PoolSummaryInfo,
-    PoolTransactionsResponse, PoolUtilizationResponse, StandardPoolObject, TransactionHistoryQuery,
+    CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
+    InvestorMetrics, InvestorPoolSummariesResponse, InvestorPoolSummary, MarketOverviewResponse,
+    PageInfo, PlatformMetrics, PoolDetailsResponse, PoolListQuery, PoolListResponse,
+    PoolMatchRequest, PoolPerformanceResponse, PoolSummaryInfo, PoolTransactionsResponse,
+    PoolUtilizationResponse, StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest,
     UtilizationDataPoint, UtilizationHistoryQuery,
 };
 
@@ -128,6 +140,8 @@ pub use credit_line_handlers::{
 };
 
 pub use telemetry::{init_tracer, init_tracing, shutdown_telemetry};
+
+// Note: New handler modules are available but not yet replacing rest.rs functionality
 
 // Re-export database types that the API uses
 pub use arda_credit_db::{

@@ -1,6 +1,6 @@
 use axum::{
-    response::{Html, IntoResponse},
-    routing::get,
+    response::{Html, IntoResponse, Json},
+    routing::{get, post, put},
     Router,
 };
 use std::time::Duration;
@@ -18,7 +18,17 @@ use tracing::{info, instrument};
 use crate::auth::AuthService;
 use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
 use crate::middleware::AuthConfig;
-use crate::rest::{ApiConfig, ApiState};
+use crate::openapi::ApiDoc;
+use crate::types::{ApiConfig, ApiState};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+
+// Import new handler modules
+use crate::admin_handlers::*;
+use crate::merchant_handlers::*;
+use crate::state_handlers::*;
+use crate::user_handlers::*;
+
 use arda_credit_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -222,7 +232,7 @@ impl ApiServer {
         // Use REST API routes (includes health endpoints and state)
         let router = if self.config.enable_rest {
             info!("📡 Adding batch processing REST API routes");
-            crate::rest::create_router(self.state.clone())
+            crate::router::create_router(self.state.clone())
         } else {
             Router::new()
                 .route("/health", get(health_check))
@@ -492,4 +502,74 @@ impl Default for ApiServerBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+// ============================================================================
+// NEW ROUTER IMPLEMENTATION
+// ============================================================================
+
+/// Create a new router using the refactored handler modules
+/// This replaces the old rest::create_router function
+pub fn create_new_router(state: ApiState) -> Router<ApiState> {
+    let swagger_ui = SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi());
+
+    Router::new()
+        // Health and info endpoints (using new handlers as examples)
+        .route("/new-health", get(new_health_check))
+        .route("/new-info", get(new_api_info))
+        // OpenAPI documentation
+        .merge(swagger_ui)
+        // User management endpoints from user_handlers.rs
+        .route(
+            crate::paths::USER,
+            post(crate::user_handlers::register_user_endpoint),
+        )
+        .route(
+            crate::paths::USERS,
+            get(crate::user_handlers::list_identities_endpoint),
+        )
+        .route(
+            crate::paths::USER_BY_ID,
+            get(crate::user_handlers::get_user_details_endpoint),
+        )
+        // State management endpoints from state_handlers.rs
+        .route(
+            crate::paths::STATE_TRANSACTIONS,
+            post(crate::state_handlers::submit_transaction_endpoint),
+        )
+        .route(
+            crate::paths::STATE_TRANSACTIONS_PENDING,
+            get(crate::state_handlers::get_pending_transactions_endpoint),
+        )
+        .route(
+            crate::paths::STATE_BATCHES,
+            post(crate::state_handlers::create_batch_endpoint),
+        )
+        // Admin endpoints from admin_handlers.rs
+        .route(
+            crate::paths::ADMIN_KYC_PENDING,
+            get(crate::admin_handlers::list_pending_kyc_endpoint),
+        )
+        // TODO: Continue migrating remaining endpoints from rest.rs
+        // For now, some endpoints are still handled by rest::create_router
+        .with_state(state)
+}
+
+/// New placeholder health check endpoint (different from rest.rs version)
+async fn new_health_check() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "healthy",
+        "timestamp": chrono::Utc::now(),
+        "source": "new_handlers"
+    }))
+}
+
+/// New placeholder API info endpoint
+async fn new_api_info() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "name": "Arda Credit API",
+        "version": "v1",
+        "status": "running",
+        "source": "new_handlers"
+    }))
 }

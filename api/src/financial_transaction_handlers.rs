@@ -11,14 +11,14 @@ use tracing::{error, info, instrument};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{rest::ApiState, ErrorResponse};
+use crate::{types::ApiState, ErrorResponse};
 
 // ============================================================================
 // REQUEST/RESPONSE TYPES
 // ============================================================================
 
 /// Query parameters for financial transaction endpoints
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[derive(Debug, Serialize, Deserialize, utoipa::IntoParams, ToSchema)]
 pub struct FinancialTransactionQuery {
     /// Maximum number of transactions to return (default: 50, max: 100)
     #[serde(default = "default_limit")]

@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, Instant};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::rest::ApiConfig;
+use crate::types::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
 use arda_credit_db::{
     get_batch_by_id, get_contract_submission_data, get_pending_transactions,

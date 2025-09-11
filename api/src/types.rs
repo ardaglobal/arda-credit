@@ -1,0 +1,64 @@
+//! Core API types and configurations
+//!
+//! This module contains the fundamental types and configurations used across
+//! the API, extracted from the original rest.rs file.
+
+use crate::{
+    auth::AuthService, batch_processor::BatchProcessorHandle, BalanceVerificationService,
+    WithdrawalTransactionService,
+};
+use arda_credit_db::IndexedMerkleTreeADS;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use utoipa::{IntoParams, ToSchema};
+
+// Re-export the core types from router.rs
+pub use crate::router::{ApiConfig, ApiState};
+
+// ============================================================================
+// CORE TYPES MOVED FROM REST.RS
+// ============================================================================
+
+/// User type enumeration for allowed user types
+#[derive(Debug, Serialize, Deserialize, ToSchema, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum UserType {
+    User,
+    Investor,
+    Originator,
+    Admin,
+    Merchant,
+}
+
+impl std::fmt::Display for UserType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::User => write!(f, "user"),
+            Self::Investor => write!(f, "investor"),
+            Self::Originator => write!(f, "originator"),
+            Self::Admin => write!(f, "admin"),
+            Self::Merchant => write!(f, "merchant"),
+        }
+    }
+}
+
+impl std::str::FromStr for UserType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "user" => Ok(Self::User),
+            "investor" => Ok(Self::Investor),
+            "originator" => Ok(Self::Originator),
+            "merchant" => Ok(Self::Merchant),
+            "admin" => Ok(Self::Admin),
+            _ => Err(format!("Invalid user type: {}", s)),
+        }
+    }
+}
+
+// Note: All types are now imported from rest.rs to avoid duplication
+// This file serves as a bridge during the transition period
