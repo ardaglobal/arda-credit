@@ -25,10 +25,10 @@ use crate::user_handlers::UpdateUserRequest;
 use arda_credit_db::update_identity_profile;
 use arda_credit_db::{
     create_investor_profile, create_merchant, get_identity_by_email, get_identity_by_id,
-    get_investor_profile_by_user_id_or_email, get_investor_profile_with_identity,
-    get_merchant_by_user_id, get_merchant_profile_by_merchant_id, register_or_reregister_user,
-    update_investor_profile, update_merchant_profile, CreateInvestorProfileRequest,
-    CreateMerchantRequest, RegisterResult,
+    get_investor_profile_by_user_id, get_investor_profile_by_user_id_or_email,
+    get_investor_profile_with_identity, get_merchant_by_user_id,
+    get_merchant_profile_by_merchant_id, register_or_reregister_user, update_investor_profile,
+    update_merchant_profile, CreateInvestorProfileRequest, CreateMerchantRequest, RegisterResult,
     UpdateInvestorProfileRequest as DbUpdateInvestorProfileRequest,
     UpdateMerchantProfileRequest as DbUpdateMerchantProfileRequest,
 };
@@ -931,7 +931,7 @@ pub async fn update_investor_profile_endpoint(
     responses(
         (status = 201, description = "Investor registered successfully", body = RegisterInvestorResponse),
         (status = 400, description = "Invalid request parameters"),
-        (status = 409, description = "Investor with this email already exists"),
+        (status = 409, description = "Investor profile already exists for this email"),
         (status = 500, description = "Internal server error")
     ),
     tag = "Investor"
@@ -949,86 +949,135 @@ pub async fn register_investor_endpoint(
         return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
     }
 
-    // Register the user first as investor (no password required for investors)
-    match register_or_reregister_user(&state.pool, "investor", &request.email, "").await {
-        Ok(result) => {
-            let identity = match result {
-                RegisterResult::Created(identity) => identity,
-                RegisterResult::Reregistered(identity) => identity,
-                RegisterResult::AlreadyExists => {
-                    return Err((StatusCode::CONFLICT, "Email already exists".to_string()));
-                }
-            };
-
-            // Update additional profile fields if provided
-            if request.first_name.is_some()
-                || request.last_name.is_some()
-                || request.jurisdiction.is_some()
-            {
-                let update_request = UpdateUserRequest {
-                    email: None,
-                    user_type: None,
-                    first_name: request.first_name.clone(),
-                    last_name: request.last_name.clone(),
-                    jurisdiction: request.jurisdiction.clone(),
-                    wallet_address: None,
-                };
-
-                let user_type_str = update_request.user_type.as_ref().map(|t| t.to_string());
-                if let Err(e) = update_identity_profile(
-                    &state.pool,
-                    identity.id,
-                    update_request.email.as_deref(),
-                    user_type_str.as_deref(),
-                    update_request.jurisdiction.as_deref(),
-                    update_request.first_name.as_deref(),
-                    update_request.last_name.as_deref(),
-                    update_request.wallet_address.as_deref(),
-                )
-                .await
-                {
-                    warn!("Failed to update investor profile fields: {}", e);
-                }
-            }
-
-            // Create investor profile
-            let profile_request = CreateInvestorProfileRequest {
-                accredited_investor: request.accredited_investor,
-                investment_capacity: request.investment_capacity,
-                regulatory_jurisdiction: request.regulatory_jurisdiction,
-            };
-
-            match create_investor_profile(&state.pool, identity.id, &profile_request).await {
-                Ok(profile) => {
-                    info!(
-                        "✅ API: Investor {} registered with profile {}",
-                        identity.id, profile.id
+    // First, check if email already exists
+    let existing_identity = match get_identity_by_email(&state.pool, &request.email).await {
+        Ok(Some(identity)) => {
+            // Email exists, check if user already has an investor profile
+            match get_investor_profile_by_user_id(&state.pool, identity.id).await {
+                Ok(Some(_existing_profile)) => {
+                    // User already has an investor profile - return conflict
+                    warn!(
+                        "❌ API: Investor profile already exists for email: {}",
+                        request.email
                     );
-
-                    Ok(Json(RegisterInvestorResponse {
-                        user_id: identity.id.to_string(),
-                        user_type: UserType::Investor,
-                        kyc_status: identity.kyc_status,
-                        created_at: identity.created_at,
-                        profile_id: profile.id.to_string(),
-                        accredited_investor: profile.accredited_investor,
-                        regulatory_jurisdiction: profile.regulatory_jurisdiction,
-                    }))
+                    return Err((
+                        StatusCode::CONFLICT,
+                        "Investor profile already exists for this email".to_string(),
+                    ));
+                }
+                Ok(None) => {
+                    // User exists but no investor profile - use existing identity
+                    info!(
+                        "🔄 API: User exists but no investor profile - creating investor profile for existing user: {}",
+                        identity.id
+                    );
+                    identity
                 }
                 Err(e) => {
-                    error!("❌ API: Failed to create investor profile: {}", e);
-                    Err((
+                    error!("❌ API: Failed to check existing investor profile: {}", e);
+                    return Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to create investor profile".to_string(),
-                    ))
+                        "Failed to check existing investor profile".to_string(),
+                    ));
+                }
+            }
+        }
+        Ok(None) => {
+            // Email doesn't exist - create new user
+            match register_or_reregister_user(&state.pool, "investor", &request.email, "").await {
+                Ok(result) => {
+                    match result {
+                        RegisterResult::Created(identity) => identity,
+                        RegisterResult::Reregistered(identity) => identity,
+                        RegisterResult::AlreadyExists => {
+                            // This shouldn't happen since we already checked email doesn't exist
+                            error!("❌ API: Unexpected AlreadyExists result when email should not exist");
+                            return Err((
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                "Unexpected registration conflict".to_string(),
+                            ));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("❌ API: Failed to register new investor user: {}", e);
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Failed to register investor".to_string(),
+                    ));
                 }
             }
         }
         Err(e) => {
-            error!("❌ API: Failed to register investor: {}", e);
+            error!("❌ API: Failed to check existing identity: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to check existing user".to_string(),
+            ));
+        }
+    };
+
+    // At this point we have an identity (either existing or newly created)
+    let identity = existing_identity;
+
+    // Update additional profile fields if provided
+    if request.first_name.is_some() || request.last_name.is_some() || request.jurisdiction.is_some()
+    {
+        let update_request = UpdateUserRequest {
+            email: None,
+            user_type: None,
+            first_name: request.first_name.clone(),
+            last_name: request.last_name.clone(),
+            jurisdiction: request.jurisdiction.clone(),
+            wallet_address: None,
+        };
+
+        let user_type_str = update_request.user_type.as_ref().map(|t| t.to_string());
+        if let Err(e) = update_identity_profile(
+            &state.pool,
+            identity.id,
+            update_request.email.as_deref(),
+            user_type_str.as_deref(),
+            update_request.jurisdiction.as_deref(),
+            update_request.first_name.as_deref(),
+            update_request.last_name.as_deref(),
+            update_request.wallet_address.as_deref(),
+        )
+        .await
+        {
+            warn!("Failed to update investor profile fields: {}", e);
+        }
+    }
+
+    // Create investor profile
+    let profile_request = CreateInvestorProfileRequest {
+        accredited_investor: request.accredited_investor,
+        investment_capacity: request.investment_capacity,
+        regulatory_jurisdiction: request.regulatory_jurisdiction,
+    };
+
+    match create_investor_profile(&state.pool, identity.id, &profile_request).await {
+        Ok(profile) => {
+            info!(
+                "✅ API: Investor profile {} created for user {}",
+                profile.id, identity.id
+            );
+
+            Ok(Json(RegisterInvestorResponse {
+                user_id: identity.id.to_string(),
+                user_type: UserType::Investor,
+                kyc_status: identity.kyc_status,
+                created_at: identity.created_at,
+                profile_id: profile.id.to_string(),
+                accredited_investor: profile.accredited_investor,
+                regulatory_jurisdiction: profile.regulatory_jurisdiction,
+            }))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to create investor profile: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to register investor".to_string(),
+                "Failed to create investor profile".to_string(),
             ))
         }
     }

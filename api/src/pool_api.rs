@@ -5,8 +5,8 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use arda_credit_db::{
-    InvestorDashboardMetrics, LiquidityPool, MarketOverviewMetrics, PoolSummary, PoolTransaction,
-    PoolUtilizationData,
+    InvestorDashboardMetrics, InvestorPoolMetrics, LiquidityPool, MarketOverviewMetrics,
+    PoolSummary, PoolTransaction, PoolUtilizationData,
 };
 
 // ============================================================================
@@ -245,6 +245,20 @@ pub struct InvestorDashboardResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct EnhancedInvestorMetricsResponse {
+    pub metrics: EnhancedInvestorMetrics,
+    pub summary: InvestorMetricsSummary,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvestorMetricsSummary {
+    pub total_return_percentage: Option<String>,
+    pub annualized_return: Option<String>,
+    pub risk_assessment: String, // LOW, MEDIUM, HIGH based on default rate
+    pub portfolio_health: String, // EXCELLENT, GOOD, FAIR, POOR based on metrics
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct InvestorMetrics {
     pub total_pools: i64,
     pub active_pools: i64,
@@ -254,6 +268,26 @@ pub struct InvestorMetrics {
     pub total_interest_earned: String,
     pub total_loans_originated: i64,
     pub total_loan_volume: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EnhancedInvestorMetrics {
+    pub investor_id: String,
+    pub total_pools: i64,
+    pub active_pools: i64,
+    pub total_liquidity_provided: String,
+    pub total_utilized_liquidity: String,
+    pub average_utilization_rate: String,
+    pub total_interest_earned: String,
+    pub total_loans_originated: i64,
+    pub total_loan_volume: String,
+    pub lifetime_apr: Option<String>,     // Annual Percentage Rate
+    pub lifetime_yield: Option<String>,   // Total return percentage
+    pub average_loan_apr: Option<String>, // Average APR across all loans
+    pub average_loan_duration_days: Option<i32>, // Average loan duration in days
+    pub total_principal_repaid: String,
+    pub total_outstanding_principal: String,
+    pub default_rate: String,
 }
 
 impl From<InvestorDashboardMetrics> for InvestorMetrics {
@@ -267,6 +301,29 @@ impl From<InvestorDashboardMetrics> for InvestorMetrics {
             total_interest_earned: metrics.total_interest_earned.to_string(),
             total_loans_originated: metrics.total_loans_originated,
             total_loan_volume: metrics.total_loan_volume.to_string(),
+        }
+    }
+}
+
+impl From<arda_credit_db::EnhancedInvestorMetrics> for EnhancedInvestorMetrics {
+    fn from(metrics: arda_credit_db::EnhancedInvestorMetrics) -> Self {
+        Self {
+            investor_id: metrics.investor_id.to_string(),
+            total_pools: metrics.total_pools,
+            active_pools: metrics.active_pools,
+            total_liquidity_provided: metrics.total_liquidity_provided.to_string(),
+            total_utilized_liquidity: metrics.total_utilized_liquidity.to_string(),
+            average_utilization_rate: metrics.average_utilization_rate.to_string(),
+            total_interest_earned: metrics.total_interest_earned.to_string(),
+            total_loans_originated: metrics.total_loans_originated,
+            total_loan_volume: metrics.total_loan_volume.to_string(),
+            lifetime_apr: metrics.lifetime_apr.map(|apr| apr.to_string()),
+            lifetime_yield: metrics.lifetime_yield.map(|yield_| yield_.to_string()),
+            average_loan_apr: metrics.average_loan_apr.map(|apr| apr.to_string()),
+            average_loan_duration_days: metrics.average_loan_duration_days,
+            total_principal_repaid: metrics.total_principal_repaid.to_string(),
+            total_outstanding_principal: metrics.total_outstanding_principal.to_string(),
+            default_rate: metrics.default_rate.to_string(),
         }
     }
 }
@@ -300,6 +357,57 @@ pub struct PoolPerformanceMetrics {
     pub total_interest_earned: String,
     pub default_rate: String,
     pub roi: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvestorPoolMetricsResponse {
+    pub success: bool,
+    pub data: InvestorPoolMetricsData,
+    pub metadata: InvestorPoolMetricsMetadata,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvestorPoolMetricsData {
+    pub investor_id: String,
+    pub total_pools: i64,
+    pub active_pools: i64,
+    pub paused_pools: i64,
+    pub active_total_capital: String,
+    pub total_capital_deployed: String,
+    pub lifetime_percentage_yield: Option<String>,
+    pub current_annual_yield_apr: Option<String>,
+    pub total_interest_earned: String,
+    pub average_utilization_rate: String,
+    pub total_loans_originated: i64,
+    pub default_rate: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvestorPoolMetricsMetadata {
+    pub last_updated: DateTime<Utc>,
+    pub calculation_basis: String,
+    pub data_freshness: String,
+}
+
+impl From<InvestorPoolMetrics> for InvestorPoolMetricsData {
+    fn from(metrics: InvestorPoolMetrics) -> Self {
+        Self {
+            investor_id: metrics.investor_id.to_string(),
+            total_pools: metrics.total_pools,
+            active_pools: metrics.active_pools,
+            paused_pools: metrics.paused_pools,
+            active_total_capital: metrics.active_total_capital.to_string(),
+            total_capital_deployed: metrics.total_capital_deployed.to_string(),
+            lifetime_percentage_yield: metrics.lifetime_percentage_yield.map(|v| v.to_string()),
+            current_annual_yield_apr: metrics.current_annual_yield_apr.map(|v| v.to_string()),
+            total_interest_earned: metrics.total_interest_earned.to_string(),
+            average_utilization_rate: metrics.average_utilization_rate.to_string(),
+            total_loans_originated: metrics.total_loans_originated,
+            default_rate: metrics.default_rate.to_string(),
+            created_at: metrics.created_at,
+        }
+    }
 }
 
 // ============================================================================
@@ -404,6 +512,68 @@ impl ErrorResponse {
             details: Some(details),
         }
     }
+}
+
+// ============================================================================
+// POOL METRICS OVERVIEW ENDPOINTS
+// ============================================================================
+
+/// Response containing platform-wide pool metrics overview
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PoolMetricsOverviewResponse {
+    /// Total number of liquidity pools on the platform
+    pub total_pools: i64,
+    /// Number of active liquidity pools
+    pub active_pools: i64,
+    /// Total capital deployed across all pools (as decimal string)
+    pub total_capital_deployed: String,
+    /// Total capital available in active pools (as decimal string)
+    pub active_total_capital: String,
+    /// Platform-wide utilization rate as percentage (0-100)
+    pub platform_utilization_rate: String,
+    /// Total number of loans originated
+    pub total_loans_originated: i64,
+    /// Total volume of loans issued (as decimal string)
+    pub total_loan_volume: String,
+    /// Average interest rate across all pools (as decimal string)
+    pub average_interest_rate: String,
+    /// Platform-wide default rate as percentage (0-100)
+    pub platform_default_rate: String,
+    /// Average lifetime percentage yield across all pools (as decimal string)
+    pub average_lifetime_yield: Option<String>,
+    /// Average current APR across all pools (as decimal string)
+    pub average_current_apr: Option<String>,
+    /// Last updated timestamp
+    pub last_updated: DateTime<Utc>,
+}
+
+/// Response containing investor-specific pool metrics
+#[derive(Debug, Serialize, ToSchema)]
+pub struct InvestorPoolMetricsOverviewResponse {
+    /// Investor ID
+    pub investor_id: String,
+    /// Total pools owned by this investor
+    pub total_pools: i64,
+    /// Active pools owned by this investor
+    pub active_pools: i64,
+    /// Total capital deployed by this investor (as decimal string)
+    pub total_capital_deployed: String,
+    /// Active total capital in investor's pools (as decimal string)
+    pub active_total_capital: String,
+    /// Average utilization rate across investor's pools (as decimal string)
+    pub average_utilization_rate: String,
+    /// Total interest earned by investor (as decimal string)
+    pub total_interest_earned: String,
+    /// Total loans originated from investor's pools
+    pub total_loans_originated: i64,
+    /// Default rate across investor's pools (as decimal string)
+    pub default_rate: String,
+    /// Lifetime percentage yield (as decimal string)
+    pub lifetime_percentage_yield: Option<String>,
+    /// Current annual yield APR (as decimal string)
+    pub current_annual_yield_apr: Option<String>,
+    /// Last updated timestamp
+    pub last_updated: DateTime<Utc>,
 }
 
 // ============================================================================

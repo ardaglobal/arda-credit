@@ -88,7 +88,7 @@ pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
 /// Investor registration
 pub const REGISTER_INVESTOR: &str = api_path!("/auth/register/investor");
 
-/// Merchant registration  
+/// Merchant registration
 pub const REGISTER_MERCHANT: &str = api_path!("/auth/register/merchant");
 
 /// Investor profile operations
@@ -122,7 +122,7 @@ pub const WITHDRAWAL_BY_ID: &str = api_path!("/withdrawals/{request_id}");
 /// Get user's available balance for withdrawals
 pub const USER_AVAILABLE_BALANCE: &str = api_path!("/users/{address}/available-balance");
 
-/// Get user's withdrawal history by address  
+/// Get user's withdrawal history by address
 pub const USER_WITHDRAWALS: &str = api_path!("/users/{address}/withdrawals");
 
 /// Cancel withdrawal request
@@ -184,6 +184,12 @@ pub const POOL_TRANSACTIONS: &str = api_path!("/pools/{pool_id}/transactions");
 
 /// Pool matching endpoint for auto-deployment
 pub const POOL_MATCH: &str = api_path!("/pools/match");
+
+/// Pool metrics overview endpoint
+pub const POOL_METRICS_OVERVIEW: &str = api_path!("/pools/metrics/overview");
+
+/// Investor-specific pool metrics endpoint
+pub const POOL_METRICS_INVESTOR: &str = api_path!("/pools/metrics/investor/{investor_id}");
 
 // ============================================================================
 // CREDIT LINE MANAGEMENT PATHS

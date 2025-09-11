@@ -89,6 +89,7 @@ cargo run --bin cli -- health-check
 cargo run --bin cli -- create-pool --name "My Pool" --max-ltv-ratio 0.8 --max-interest-rate 0.12 --repayment-period-days 365
 cargo run --bin cli -- list-pools --verbose
 cargo run --bin cli -- get-pool --pool-id <pool-id> --verbose
+cargo run --bin cli -- get-investor-pool-metrics --investor-id <investor-id> --verbose
 cargo run --bin cli -- update-pool-status --pool-id <pool-id> --status ACTIVE
 cargo run --bin cli -- find-matching-pools --required-liquidity 10000 --max-ltv 0.8 --max-rate 0.12 --min-repayment-days 30
 

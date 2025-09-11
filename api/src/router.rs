@@ -40,9 +40,11 @@ use crate::merchant_handlers::{
 use crate::openapi::ApiDoc;
 use crate::paths;
 use crate::pool_handlers::{
-    create_pool, get_investor_dashboard, get_investor_pool_summaries, get_market_overview,
-    get_pool_details, get_pool_performance, get_pool_transactions, get_pool_utilization,
-    list_pools, update_pool_status,
+    create_pool, /* get_enhanced_investor_metrics_handler, */ get_investor_dashboard,
+    get_investor_pool_metrics_handler, get_investor_pool_metrics_overview,
+    get_investor_pool_summaries, get_market_overview, get_pool_details, get_pool_metrics_overview,
+    get_pool_performance, get_pool_transactions, get_pool_utilization, list_pools,
+    update_pool_status,
 };
 use crate::state_handlers::{
     create_batch_endpoint, get_batch_details_endpoint, get_batches_endpoint,
@@ -415,12 +417,28 @@ pub fn create_router(state: ApiState) -> Router {
         )
         .route(paths::POOL_UTILIZATION, get(get_pool_utilization))
         .route(paths::POOL_TRANSACTIONS, get(get_pool_transactions))
+        // ========================================================================
+        // POOL METRICS ENDPOINTS
+        // ========================================================================
+        .route(paths::POOL_METRICS_OVERVIEW, get(get_pool_metrics_overview))
+        .route(
+            paths::POOL_METRICS_INVESTOR,
+            get(get_investor_pool_metrics_overview),
+        )
         // Investor Query Endpoints
         .route("/api/investor/dashboard", get(get_investor_dashboard))
         .route(
             "/api/investor/pools/summary",
             get(get_investor_pool_summaries),
         )
+        .route(
+            "/api/investor/pool-metrics",
+            get(get_investor_pool_metrics_handler),
+        )
+        /* .route(
+            "/api/investor/metrics",
+            get(get_enhanced_investor_metrics_handler),
+        ) */
         // Analytics Endpoints
         .route("/api/analytics/market-overview", get(get_market_overview))
         .route("/api/analytics/pool-performance", get(get_pool_performance))
