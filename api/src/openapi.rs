@@ -42,12 +42,13 @@ pub use crate::merchant_handlers::{
 };
 pub use crate::pool_api::{
     BenchmarkData, CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
-    InvestorMetrics, InvestorPoolSummariesResponse, InvestorPoolSummary, MarketOverviewResponse,
-    PageInfo, PlatformMetrics, PoolDetailsResponse, PoolListQuery, PoolListResponse,
-    PoolMatchRequest, PoolPerformanceData, PoolPerformanceMetrics, PoolPerformanceResponse,
-    PoolSummaryInfo, PoolTransactionInfo, PoolTransactionsResponse, PoolUtilizationResponse,
-    RecentActivity, StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest,
-    UtilizationDataPoint, UtilizationHistoryQuery,
+    InvestorMetrics, InvestorPoolMetricsOverviewResponse, InvestorPoolSummariesResponse,
+    InvestorPoolSummary, MarketOverviewResponse, PageInfo, PlatformMetrics, PoolDetailsResponse,
+    PoolListQuery, PoolListResponse, PoolMatchRequest, PoolMetricsOverviewResponse,
+    PoolPerformanceData, PoolPerformanceMetrics, PoolPerformanceResponse, PoolSummaryInfo,
+    PoolTransactionInfo, PoolTransactionsResponse, PoolUtilizationResponse, RecentActivity,
+    StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
+    UtilizationHistoryQuery,
 };
 pub use crate::state_handlers::{
     BatchInfo, BatchListResponse, BatchProcessorStatsResponse, ContractSubmissionData,
@@ -167,6 +168,8 @@ fn default_limit() -> u32 {
         crate::pool_handlers::get_pool_details,
         crate::pool_handlers::create_pool,
         crate::pool_handlers::update_pool_status,
+        crate::pool_handlers::get_pool_metrics_overview,
+        crate::pool_handlers::get_investor_pool_metrics_overview,
 
         // Withdrawal endpoints
         crate::withdrawal_handlers::initiate_withdrawal_endpoint,
@@ -222,6 +225,7 @@ fn default_limit() -> u32 {
         (name = "Batches", description = "Batch creation and management"),
         (name = "Transactions", description = "Transaction operations"),
         (name = "Liquidity Pools", description = "Liquidity pool management and queries"),
+        (name = "Pool Metrics", description = "Platform-wide and investor-specific pool metrics and analytics"),
         (name = "Loans", description = "Loan lifecycle management"),
         (name = "Payments", description = "Payment processing and history"),
         (name = "Withdrawals", description = "Withdrawal operations"),
@@ -325,6 +329,8 @@ fn default_limit() -> u32 {
         CreatePoolResponse,
         UpdatePoolStatusRequest,
         PoolMatchRequest,
+        PoolMetricsOverviewResponse,
+        InvestorPoolMetricsOverviewResponse,
         ErrorResponse,
 
         // State management types

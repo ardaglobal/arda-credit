@@ -776,6 +776,16 @@ enum Commands {
         verbose: bool,
     },
 
+    /// Get investor pool metrics for dashboard
+    GetInvestorPoolMetrics {
+        /// Investor ID to retrieve metrics for
+        #[arg(long)]
+        investor_id: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
     /// Find matching pools for auto-deployment
     FindMatchingPools {
         /// Required liquidity amount
@@ -1313,6 +1323,13 @@ async fn main() -> Result<()> {
 
         Commands::GetPool { pool_id, verbose } => {
             get_pool(&client, &pool_id, verbose).await?;
+        }
+
+        Commands::GetInvestorPoolMetrics {
+            investor_id,
+            verbose,
+        } => {
+            get_investor_pool_metrics(&client, &investor_id, verbose).await?;
         }
 
         Commands::UpdatePoolStatus {
@@ -5176,6 +5193,128 @@ async fn get_pool(client: &BatchApiClient, pool_id: &str, verbose: bool) -> Resu
         Err(e) => {
             return Err(eyre::eyre!("Failed to get pool: {}", e));
         }
+    }
+
+    Ok(())
+}
+
+/// Get investor pool metrics for dashboard
+async fn get_investor_pool_metrics(
+    client: &BatchApiClient,
+    investor_id: &str,
+    verbose: bool,
+) -> Result<()> {
+    println!("📊 Getting pool metrics for investor: {}", investor_id);
+
+    let url = format!(
+        "{}/api/investor/pool-metrics?investor_id={}",
+        client.base_url(),
+        investor_id
+    );
+    let client_http = client.http_client().clone();
+
+    let response = client_http.get(&url).send().await?;
+
+    if !response.status().is_success() {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        return Err(eyre::eyre!("API request failed: {}", error_text));
+    }
+
+    let response_text = response.text().await?;
+    let metrics: serde_json::Value = serde_json::from_str(&response_text)?;
+
+    if let Some(data) = metrics.get("data") {
+        println!("✅ Investor Pool Metrics:");
+        println!();
+
+        // Pool counts
+        if let (Some(total), Some(active), Some(paused)) = (
+            data.get("total_pools"),
+            data.get("active_pools"),
+            data.get("paused_pools"),
+        ) {
+            println!("   📈 Pool Portfolio:");
+            println!("      Total Pools: {}", total);
+            println!("      Active Pools: {}", active);
+            println!("      Paused Pools: {}", paused);
+            println!();
+        }
+
+        // Capital metrics
+        if let (Some(active_capital), Some(deployed_capital)) = (
+            data.get("active_total_capital"),
+            data.get("total_capital_deployed"),
+        ) {
+            println!("   💰 Capital Metrics:");
+            println!(
+                "      Active Total Capital: ${}",
+                active_capital.as_str().unwrap_or("0")
+            );
+            println!(
+                "      Total Capital Deployed: ${}",
+                deployed_capital.as_str().unwrap_or("0")
+            );
+            println!();
+        }
+
+        // Performance metrics
+        if let (Some(lifetime_yield), Some(annual_yield)) = (
+            data.get("lifetime_percentage_yield"),
+            data.get("current_annual_yield_apr"),
+        ) {
+            println!("   📊 Performance Metrics:");
+            if let Some(yield_val) = lifetime_yield.as_str() {
+                println!("      Lifetime Percentage Yield: {}%", yield_val);
+            }
+            if let Some(apr_val) = annual_yield.as_str() {
+                println!("      Current Annual Yield (APR): {}%", apr_val);
+            }
+            println!();
+        }
+
+        // Interest and utilization
+        if let (Some(interest), Some(utilization)) = (
+            data.get("total_interest_earned"),
+            data.get("average_utilization_rate"),
+        ) {
+            println!("   🔄 Utilization & Earnings:");
+            println!(
+                "      Total Interest Earned: ${}",
+                interest.as_str().unwrap_or("0")
+            );
+            println!(
+                "      Average Utilization Rate: {}%",
+                utilization.as_str().unwrap_or("0")
+            );
+            println!();
+        }
+
+        // Loan metrics
+        if let (Some(loans), Some(default_rate)) =
+            (data.get("total_loans_originated"), data.get("default_rate"))
+        {
+            println!("   📋 Loan Metrics:");
+            println!("      Total Loans Originated: {}", loans);
+            println!(
+                "      Default Rate: {}%",
+                default_rate.as_str().unwrap_or("0")
+            );
+            println!();
+        }
+
+        if let Some(created_at) = data.get("created_at") {
+            println!("   Started: {}", created_at.as_str().unwrap_or("Unknown"));
+        }
+
+        if verbose {
+            println!();
+            println!("Full Response: {:#?}", metrics);
+        }
+    } else {
+        println!("❌ No metrics data found for investor: {}", investor_id);
     }
 
     Ok(())

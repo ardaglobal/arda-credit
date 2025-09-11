@@ -12,9 +12,10 @@ use uuid::Uuid;
 use crate::pool_api::*;
 use crate::types::ApiState;
 use arda_credit_db::{
-    get_all_liquidity_pools, get_investor_dashboard_metrics,
-    get_investor_pool_summaries as db_get_investor_pool_summaries, get_liquidity_pool_by_id,
-    get_market_overview_metrics, get_pool_summary,
+    get_all_liquidity_pools,
+    /* get_enhanced_investor_metrics, */ get_investor_dashboard_metrics,
+    get_investor_pool_metrics, get_investor_pool_summaries as db_get_investor_pool_summaries,
+    get_liquidity_pool_by_id, get_market_overview_metrics, get_pool_summary,
     get_pool_transactions as db_get_pool_transactions, get_pool_utilization_history,
 };
 
@@ -672,6 +673,136 @@ pub async fn get_investor_pool_summaries(
     }
 }
 
+/* /// GET /api/investor/metrics - Get enhanced investor metrics with APR and yield calculations
+#[utoipa::path(
+    get,
+    path = "/api/v1/investor/metrics",
+    params(
+        ("investor_id" = Uuid, Query, description = "Investor ID")
+    ),
+    responses(
+        (status = 200, description = "Enhanced investor metrics retrieved successfully", body = EnhancedInvestorMetricsResponse),
+        (status = 400, description = "Invalid investor ID", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Investor Metrics"
+)]
+#[instrument(skip(state))]
+pub async fn get_enhanced_investor_metrics_handler(
+    State(state): State<ApiState>,
+    Query(investor_query): Query<InvestorQuery>,
+) -> Result<Json<EnhancedInvestorMetricsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let investor_id = match investor_query.investor_id {
+        Some(id) => id,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "missing_investor_id",
+                    "Investor ID is required",
+                )),
+            ));
+        }
+    };
+
+    info!("Getting enhanced metrics for investor: {}", investor_id);
+
+    match get_enhanced_investor_metrics(&state.pool, investor_id).await {
+        Ok(db_metrics) => {
+            let api_metrics = EnhancedInvestorMetrics::from(db_metrics);
+
+            // Calculate summary statistics
+            let summary = InvestorMetricsSummary {
+                total_return_percentage: api_metrics.lifetime_yield.clone(),
+                annualized_return: api_metrics.lifetime_apr.clone(),
+                risk_assessment: calculate_risk_assessment(&api_metrics),
+                portfolio_health: calculate_portfolio_health(&api_metrics),
+            };
+
+            Ok(Json(EnhancedInvestorMetricsResponse {
+                metrics: api_metrics,
+                summary,
+            }))
+        }
+        Err(e) => {
+            error!("Database error getting enhanced investor metrics: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "database_error",
+                    "Failed to retrieve enhanced investor metrics",
+                )),
+            ))
+        }
+    }
+} */
+
+/// GET /api/investor/pool-metrics - Get investor pool metrics for dashboard
+#[utoipa::path(
+    get,
+    path = "/api/v1/investor/pool-metrics",
+    params(
+        ("investor_id" = Uuid, Query, description = "Investor ID")
+    ),
+    responses(
+        (status = 200, description = "Investor pool metrics retrieved successfully", body = InvestorPoolMetricsResponse),
+        (status = 400, description = "Invalid investor ID", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Investor Metrics"
+)]
+#[instrument(skip(state))]
+pub async fn get_investor_pool_metrics_handler(
+    State(state): State<ApiState>,
+    Query(investor_query): Query<InvestorQuery>,
+) -> Result<Json<InvestorPoolMetricsResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let investor_id = match investor_query.investor_id {
+        Some(id) => id,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "missing_investor_id",
+                    "Investor ID is required",
+                )),
+            ));
+        }
+    };
+
+    info!("Getting pool metrics for investor: {}", investor_id);
+
+    match get_investor_pool_metrics(&state.pool, investor_id).await {
+        Ok(db_metrics) => {
+            let api_metrics = InvestorPoolMetricsData::from(db_metrics);
+
+            Ok(Json(InvestorPoolMetricsResponse {
+                success: true,
+                data: api_metrics,
+                metadata: InvestorPoolMetricsMetadata {
+                    last_updated: chrono::Utc::now(),
+                    calculation_basis:
+                        "Real-time calculation based on current pool states and transaction history"
+                            .to_string(),
+                    data_freshness: "Live".to_string(),
+                },
+            }))
+        }
+        Err(e) => {
+            error!(
+                "Failed to retrieve pool metrics for investor {}: {}",
+                investor_id, e
+            );
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "database_error",
+                    &format!("Failed to retrieve pool metrics: {}", e),
+                )),
+            ))
+        }
+    }
+}
+
 // ============================================================================
 // ANALYTICS ENDPOINTS
 // ============================================================================
@@ -791,6 +922,136 @@ pub async fn get_pool_performance(
 }
 
 // ============================================================================
+// POOL METRICS OVERVIEW ENDPOINTS
+// ============================================================================
+
+/// GET /api/pools/metrics/overview - Get platform-wide pool metrics overview
+#[utoipa::path(
+    get,
+    path = "/api/v1/pools/metrics/overview",
+    responses(
+        (status = 200, description = "Pool metrics overview retrieved successfully", body = PoolMetricsOverviewResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Pool Metrics"
+)]
+#[instrument(skip(state))]
+pub async fn get_pool_metrics_overview(
+    State(state): State<ApiState>,
+) -> Result<Json<PoolMetricsOverviewResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Getting platform-wide pool metrics overview");
+
+    match get_market_overview_metrics(&state.pool).await {
+        Ok(market_metrics) => {
+            // For now, we'll use the existing market metrics. In the future, we might want to
+            // enhance this with additional calculations for lifetime yield and APR
+            let response = PoolMetricsOverviewResponse {
+                total_pools: market_metrics.total_pools,
+                active_pools: market_metrics.active_pools,
+                total_capital_deployed: market_metrics.total_utilized_liquidity.to_string(),
+                active_total_capital: market_metrics.total_liquidity.to_string(),
+                platform_utilization_rate: (market_metrics.platform_utilization_rate
+                    * Decimal::from(100))
+                .to_string(),
+                total_loans_originated: market_metrics.total_loans,
+                total_loan_volume: market_metrics.total_loan_volume.to_string(),
+                average_interest_rate: market_metrics.average_interest_rate.to_string(),
+                platform_default_rate: market_metrics.platform_default_rate.to_string(),
+                // TODO: Calculate these from enhanced market metrics when available
+                average_lifetime_yield: None,
+                average_current_apr: None,
+                last_updated: chrono::Utc::now(),
+            };
+
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("Database error getting market overview metrics: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "database_error",
+                    "Failed to retrieve pool metrics overview",
+                )),
+            ))
+        }
+    }
+}
+
+/// GET /api/pools/metrics/investor/{investor_id} - Get investor-specific pool metrics overview
+#[utoipa::path(
+    get,
+    path = "/api/v1/pools/metrics/investor/{investor_id}",
+    params(
+        ("investor_id" = String, Path, description = "Investor ID (UUID)")
+    ),
+    responses(
+        (status = 200, description = "Investor pool metrics retrieved successfully", body = InvestorPoolMetricsOverviewResponse),
+        (status = 400, description = "Invalid investor ID", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Pool Metrics"
+)]
+#[instrument(skip(state))]
+pub async fn get_investor_pool_metrics_overview(
+    State(state): State<ApiState>,
+    Path(investor_id): Path<String>,
+) -> Result<Json<InvestorPoolMetricsOverviewResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let investor_uuid = match Uuid::parse_str(&investor_id) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "invalid_investor_id",
+                    "Invalid investor ID format",
+                )),
+            ));
+        }
+    };
+
+    info!(
+        "Getting pool metrics overview for investor: {}",
+        investor_uuid
+    );
+
+    match get_investor_pool_metrics(&state.pool, investor_uuid).await {
+        Ok(investor_metrics) => {
+            let response = InvestorPoolMetricsOverviewResponse {
+                investor_id: investor_metrics.investor_id.to_string(),
+                total_pools: investor_metrics.total_pools,
+                active_pools: investor_metrics.active_pools,
+                total_capital_deployed: investor_metrics.total_capital_deployed.to_string(),
+                active_total_capital: investor_metrics.active_total_capital.to_string(),
+                average_utilization_rate: investor_metrics.average_utilization_rate.to_string(),
+                total_interest_earned: investor_metrics.total_interest_earned.to_string(),
+                total_loans_originated: investor_metrics.total_loans_originated,
+                default_rate: investor_metrics.default_rate.to_string(),
+                lifetime_percentage_yield: investor_metrics
+                    .lifetime_percentage_yield
+                    .map(|v| v.to_string()),
+                current_annual_yield_apr: investor_metrics
+                    .current_annual_yield_apr
+                    .map(|v| v.to_string()),
+                last_updated: chrono::Utc::now(),
+            };
+
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("Database error getting investor pool metrics: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "database_error",
+                    "Failed to retrieve investor pool metrics",
+                )),
+            ))
+        }
+    }
+}
+
+// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
@@ -799,6 +1060,41 @@ fn calculate_roi(interest_earned: Decimal, total_deposits: Decimal) -> Decimal {
         interest_earned / total_deposits
     } else {
         Decimal::ZERO
+    }
+}
+
+fn calculate_risk_assessment(metrics: &EnhancedInvestorMetrics) -> String {
+    let default_rate = Decimal::from_str(&metrics.default_rate).unwrap_or(Decimal::ZERO);
+
+    if default_rate <= Decimal::from_str("2.0").unwrap() {
+        "LOW".to_string()
+    } else if default_rate <= Decimal::from_str("5.0").unwrap() {
+        "MEDIUM".to_string()
+    } else {
+        "HIGH".to_string()
+    }
+}
+
+fn calculate_portfolio_health(metrics: &EnhancedInvestorMetrics) -> String {
+    let utilization_rate =
+        Decimal::from_str(&metrics.average_utilization_rate).unwrap_or(Decimal::ZERO);
+    let default_rate = Decimal::from_str(&metrics.default_rate).unwrap_or(Decimal::ZERO);
+
+    // Portfolio health based on utilization and default rate
+    if utilization_rate >= Decimal::from_str("0.7").unwrap()
+        && default_rate <= Decimal::from_str("2.0").unwrap()
+    {
+        "EXCELLENT".to_string()
+    } else if utilization_rate >= Decimal::from_str("0.5").unwrap()
+        && default_rate <= Decimal::from_str("4.0").unwrap()
+    {
+        "GOOD".to_string()
+    } else if utilization_rate >= Decimal::from_str("0.3").unwrap()
+        || default_rate <= Decimal::from_str("6.0").unwrap()
+    {
+        "FAIR".to_string()
+    } else {
+        "POOR".to_string()
     }
 }
 
