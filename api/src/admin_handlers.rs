@@ -18,12 +18,19 @@ use axum::{
     response::Json,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument};
+use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::openapi::PaginationParams;
 use crate::paths;
-use crate::rest::{KycStatisticsResponse, UserDetailsResponse, UserType};
+use crate::rest::{
+    KycStatisticsResponse, UserDetailsResponse, UserType, ListPendingKycQuery,
+    ListPendingKycResponse, BulkKycApprovalRequest, BulkKycApprovalResponse,
+};
+use arda_credit_db::{
+    list_pending_kyc_applications, get_kyc_statistics, update_kyc_status,
+    Identity,
+};
 use crate::types::ApiState;
 
 // ============================================================================
@@ -74,13 +81,7 @@ pub struct BulkOperationResponse {
     pub errors: Vec<String>,
 }
 
-/// Bulk KYC approval request
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct BulkKycApprovalRequest {
-    pub user_ids: Vec<String>,
-    pub approval_status: String, // "approved", "rejected", etc.
-    pub admin_notes: Option<String>,
-}
+// Note: BulkKycApprovalRequest is imported from rest.rs above
 
 // ============================================================================
 // PLACEHOLDER IMPLEMENTATIONS
@@ -98,11 +99,9 @@ fn placeholder_error() -> (StatusCode, String) {
 #[utoipa::path(
     get,
     path = "/api/v1/admin/kyc/pending",
-    params(PaginationParams),
+    params(ListPendingKycQuery),
     responses(
-        (status = 200, description = "Pending KYC applications retrieved", body = Vec<AdminUserIdentity>),
-        (status = 401, description = "Admin authentication required"),
-        (status = 403, description = "Admin privileges required"),
+        (status = 200, description = "List of pending KYC applications", body = ListPendingKycResponse),
         (status = 500, description = "Internal server error")
     ),
     tag = "Admin"
@@ -110,12 +109,57 @@ fn placeholder_error() -> (StatusCode, String) {
 #[instrument(skip(state), level = "info")]
 pub async fn list_pending_kyc_endpoint(
     State(state): State<ApiState>,
-    Query(_pagination): Query<PaginationParams>,
-) -> Result<Json<Vec<AdminUserIdentity>>, (StatusCode, String)> {
-    info!("🆔 API: Admin fetching pending KYC applications");
+    Query(params): Query<ListPendingKycQuery>,
+) -> Result<Json<ListPendingKycResponse>, (StatusCode, String)> {
+    info!("🔍 API: Listing pending KYC applications");
 
-    // TODO: Implement proper KYC pending list
-    Err(placeholder_error())
+    let limit = params.limit.unwrap_or(50);
+    let offset = params.offset.unwrap_or(0);
+
+    match list_pending_kyc_applications(&state.pool, Some(limit as i64), Some(offset as i64)).await
+    {
+        Ok(applications) => {
+            let total_count = applications.len();
+            let has_more = total_count >= limit as usize;
+
+            let application_responses: Vec<UserDetailsResponse> = applications
+                .into_iter()
+                .map(|identity| UserDetailsResponse {
+                    user_id: identity.id.to_string(),
+                    email: identity.email,
+                    user_type: identity.user_type.parse().unwrap_or(UserType::User),
+                    kyc_status: identity.kyc_status,
+                    kyc_submitted_at: identity.kyc_submitted_at,
+                    kyc_verified_at: identity.kyc_verified_at,
+                    created_at: identity.created_at,
+                    updated_at: Some(identity.updated_at),
+                    first_name: identity.first_name,
+                    last_name: identity.last_name,
+                    jurisdiction: identity.jurisdiction,
+                    wallet_address: identity.wallet_address,
+                })
+                .collect();
+
+            let response = ListPendingKycResponse {
+                applications: application_responses,
+                total_count,
+                has_more,
+            };
+
+            info!(
+                "✅ API: Found {} pending KYC applications",
+                response.total_count
+            );
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to list pending KYC applications: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve pending KYC applications".to_string(),
+            ))
+        }
+    }
 }
 
 /// Get KYC statistics (admin only)
@@ -123,9 +167,7 @@ pub async fn list_pending_kyc_endpoint(
     get,
     path = "/api/v1/admin/kyc/stats",
     responses(
-        (status = 200, description = "KYC statistics retrieved", body = KycStatisticsResponse),
-        (status = 401, description = "Admin authentication required"),
-        (status = 403, description = "Admin privileges required"),
+        (status = 200, description = "KYC statistics", body = KycStatisticsResponse),
         (status = 500, description = "Internal server error")
     ),
     tag = "Admin"
@@ -134,10 +176,45 @@ pub async fn list_pending_kyc_endpoint(
 pub async fn get_kyc_statistics_endpoint(
     State(state): State<ApiState>,
 ) -> Result<Json<KycStatisticsResponse>, (StatusCode, String)> {
-    info!("📊 API: Admin fetching KYC statistics");
+    info!("📊 API: Getting KYC statistics");
 
-    // TODO: Implement proper KYC statistics
-    Err(placeholder_error())
+    match get_kyc_statistics(&state.pool).await {
+        Ok(stats) => {
+            let total_processed = stats.approved_count + stats.rejected_count;
+            let approval_rate = if total_processed > 0 {
+                (stats.approved_count as f64 / total_processed as f64) * 100.0
+            } else {
+                0.0
+            };
+
+            let response = KycStatisticsResponse {
+                total_users: stats.total_users,
+                approved_count: stats.approved_count,
+                pending_count: stats.pending_count,
+                rejected_count: stats.rejected_count,
+                not_submitted_count: stats.not_submitted_count,
+                approval_rate,
+            };
+
+            info!(
+                "✅ API: KYC stats - Total: {}, Approved: {}, Pending: {}, Rejected: {}, Not Submitted: {}, Approval Rate: {:.1}%",
+                response.total_users,
+                response.approved_count,
+                response.pending_count,
+                response.rejected_count,
+                response.not_submitted_count,
+                response.approval_rate
+            );
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get KYC statistics: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve KYC statistics".to_string(),
+            ))
+        }
+    }
 }
 
 /// Bulk KYC approval (admin only)

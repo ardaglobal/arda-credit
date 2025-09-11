@@ -8,10 +8,30 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
-// Re-export the actual types from rest.rs to ensure compatibility
-pub use crate::rest::{
-    LoginRequest, LoginResponse, LogoutResponse, RegisterInvestorRequest, RegisterMerchantRequest,
-    RegisterUserRequest, RegisterUserResponse, UpdateUserRequest, UserDetailsResponse, UserType,
+// Re-export types from their new locations
+pub use crate::rest::UserType;
+pub use crate::authentication_handlers::{
+    LoginRequest, LoginResponse, LogoutResponse, GenerateInviteCodeRequest,
+    GenerateInviteCodeResponse, ValidateInviteCodeResponse,
+};
+pub use crate::user_handlers::{
+    RegisterUserRequest, RegisterUserResponse, UserDetailsResponse, UpdateUserRequest,
+    ListIdentitiesQuery, ListIdentitiesResponse, SubmitKycRequest, SubmitKycResponse,
+    UpdateKycStatusRequest, UserBalanceResponse, UserTransactionsResponse,
+};
+pub use crate::merchant_handlers::{
+    RegisterMerchantRequest, RegisterMerchantResponse, RegisterInvestorRequest,
+    RegisterInvestorResponse,
+};
+pub use crate::state_handlers::{
+    CreateBatchRequest, CreateBatchResponse, BatchListResponse, BatchInfo,
+    SubmitTransactionRequest, SubmitTransactionResponse, PendingTransactionsResponse,
+    TransactionInfo, CurrentStateResponse, UpdateBatchProofRequest,
+    ContractSubmissionData, BatchProcessorStatsResponse, TriggerBatchResponse,
+};
+pub use crate::loan_handlers::{
+    CreateLoanRequest, LoanDetailsResponse, ListLoansQuery, ListLoansResponse,
+    LoanStatsResponse, UpdateLoanRequest, UpdateLoanResponse, DeleteLoanResponse,
 };
 
 /// Pagination parameters for list endpoints

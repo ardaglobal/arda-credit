@@ -1238,8 +1238,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/api/auth/login", post(login_endpoint))
         .route("/api/auth/logout", post(logout_endpoint))
         // Admin KYC endpoints
-        .route(paths::ADMIN_KYC_PENDING, get(list_pending_kyc_endpoint))
-        .route(paths::ADMIN_KYC_STATS, get(get_kyc_statistics_endpoint))
+        .route(paths::ADMIN_KYC_PENDING, get(crate::admin_handlers::list_pending_kyc_endpoint))
+        .route(paths::ADMIN_KYC_STATS, get(crate::admin_handlers::get_kyc_statistics_endpoint))
         .route(
             paths::ADMIN_KYC_BULK_APPROVE,
             post(bulk_kyc_approval_endpoint),
@@ -1253,13 +1253,13 @@ pub fn create_router(state: ApiState) -> Router {
             post(validate_invite_code_endpoint),
         )
         // Transaction operations
-        .route(paths::STATE_TRANSACTIONS, post(submit_transaction_endpoint))
+        .route(paths::STATE_TRANSACTIONS, post(crate::state_handlers::submit_transaction_endpoint))
         .route(
             paths::STATE_TRANSACTIONS_PENDING,
-            get(get_pending_transactions_endpoint),
+            get(crate::state_handlers::get_pending_transactions_endpoint),
         )
         // Batch operations
-        .route(paths::STATE_BATCHES, post(create_batch_endpoint))
+        .route(paths::STATE_BATCHES, post(crate::state_handlers::create_batch_endpoint))
         .route(paths::STATE_BATCHES, get(get_batches_endpoint))
         .route(paths::STATE_BATCH_BY_ID, get(get_batch_endpoint))
         .route(paths::STATE_BATCH_PROOF, post(update_batch_proof_endpoint))
@@ -1275,9 +1275,9 @@ pub fn create_router(state: ApiState) -> Router {
         // LOAN PROCESSING ENDPOINTS
         // ========================================================================
         // User Management
-        .route(paths::USER, post(register_user_endpoint))
-        .route(paths::USERS, get(list_identities_endpoint))
-        .route(paths::USER_BY_ID, get(get_user_details_endpoint))
+        .route(paths::USER, post(crate::user_handlers::register_user_endpoint))
+        .route(paths::USERS, get(crate::user_handlers::list_identities_endpoint))
+        .route(paths::USER_BY_ID, get(crate::user_handlers::get_user_details_endpoint))
         .route(paths::USER_BY_ID, put(update_user_endpoint))
         .route(paths::USER_BY_ID, delete(delete_user_endpoint))
         .route(paths::USER_KYC, post(submit_kyc_endpoint))
@@ -2311,200 +2311,7 @@ async fn get_batch_processor_stats_endpoint(
 
 // ---- USER MANAGEMENT ENDPOINTS ----
 
-/// Register a new user identity
-#[utoipa::path(
-    post,
-    path = "/api/v1/user",
-    request_body = RegisterUserRequest,
-    responses(
-        (status = 200, description = "User registered successfully", body = RegisterUserResponse),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Users"
-)]
-#[instrument(skip(state), level = "info")]
-async fn register_user_endpoint(
-    State(state): State<ApiState>,
-    Json(request): Json<RegisterUserRequest>,
-) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
-    info!(
-        "👤 API: Registering new user: type={}, email={}, invite_code={:?}",
-        request.user_type, request.email, request.invite_code
-    );
-
-    // If invite code is provided, validate it first
-    if let Some(ref invite_code) = request.invite_code {
-        info!(
-            "🎫 API: Validating invite code during registration: {}",
-            invite_code
-        );
-
-        match get_invite_code_info(&state.pool, invite_code).await {
-            Ok(invite_info) => {
-                if !invite_info.is_valid {
-                    warn!(
-                        "❌ API: Invalid invite code provided during registration: {}",
-                        invite_code
-                    );
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        "Invalid or expired invite code".to_string(),
-                    ));
-                }
-
-                // Check invite code restrictions: only admin codes require admin users
-                if let Some(ref code_user_type) = invite_info.user_type {
-                    let requested_type = request.user_type.to_string();
-
-                    // Only restrict admin codes to admin users
-                    if code_user_type == "admin" && requested_type != "admin" {
-                        warn!(
-                            "❌ API: Admin invite code used for non-admin registration: code={}, requested={}",
-                            code_user_type, requested_type
-                        );
-                        return Err((
-                            StatusCode::BAD_REQUEST,
-                            "This is an admin invite code and can only be used for admin user registration".to_string(),
-                        ));
-                    }
-
-                    info!(
-                        "✅ API: Invite code type check passed: code_type={}, user_type={}",
-                        code_user_type, requested_type
-                    );
-                }
-
-                info!(
-                    "✅ API: Invite code validated successfully: {}",
-                    invite_code
-                );
-            }
-            Err(e) => {
-                error!(
-                    "❌ API: Failed to validate invite code during registration: {}",
-                    e
-                );
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to validate invite code".to_string(),
-                ));
-            }
-        }
-    }
-
-    // Validate email and password using AuthService
-    if let Err(e) = state.auth_service.validate_email(&request.email) {
-        warn!("❌ API: Invalid email format: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
-    }
-
-    if let Err(e) = state.auth_service.validate_password(&request.password) {
-        warn!("❌ API: Invalid password format: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
-    }
-
-    // Hash the password
-    let password_hash = match state.auth_service.hash_password(&request.password) {
-        Ok(hash) => hash,
-        Err(e) => {
-            error!("❌ API: Failed to hash password: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                e.user_message().to_string(),
-            ));
-        }
-    };
-
-    // Create or re-register user with soft delete handling
-    match register_or_reregister_user(
-        &state.pool,
-        &request.user_type.to_string(),
-        &request.email,
-        &password_hash,
-    )
-    .await
-    {
-        Ok(RegisterResult::Created(identity)) => {
-            info!(
-                "✅ API: New user registered successfully: id={}",
-                identity.id
-            );
-
-            // If invite code was provided, mark it as used now that user is created
-            if let Some(ref invite_code) = request.invite_code {
-                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
-                    Ok(was_used) => {
-                        if was_used {
-                            info!(
-                                "✅ API: Invite code marked as used: code={}, user_id={}",
-                                invite_code, identity.id
-                            );
-                        } else {
-                            warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
-                        }
-                    }
-                    Err(e) => {
-                        error!("❌ API: Failed to mark invite code as used: {}", e);
-                        // Note: We don't fail the registration here since the user was already created
-                        // This is logged for monitoring but shouldn't block the successful registration
-                    }
-                }
-            }
-
-            Ok(Json(identity_to_register_response(identity)))
-        }
-        Ok(RegisterResult::Reregistered(identity)) => {
-            info!(
-                "✅ API: Deleted user re-registered successfully: id={}",
-                identity.id
-            );
-
-            // If invite code was provided, mark it as used for the re-registered user
-            if let Some(ref invite_code) = request.invite_code {
-                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
-                    Ok(was_used) => {
-                        if was_used {
-                            info!(
-                                "✅ API: Invite code marked as used for re-registered user: code={}, user_id={}",
-                                invite_code, identity.id
-                            );
-                        } else {
-                            warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            "❌ API: Failed to mark invite code as used for re-registered user: {}",
-                            e
-                        );
-                        // Note: We don't fail the registration here since the user was already re-registered
-                        // This is logged for monitoring but shouldn't block the successful re-registration
-                    }
-                }
-            }
-
-            Ok(Json(identity_to_register_response(identity)))
-        }
-        Ok(RegisterResult::AlreadyExists) => {
-            warn!(
-                "❌ API: Registration failed - user with email already exists and is active: {}",
-                request.email
-            );
-            Err((
-                StatusCode::CONFLICT,
-                "User with this email already exists".to_string(),
-            ))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to register user: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to register user".to_string(),
-            ))
-        }
-    }
-}
+// register_user_endpoint moved to user_handlers.rs
 
 /// Login endpoint for user authentication
 #[utoipa::path(
@@ -5880,11 +5687,11 @@ async fn get_pending_withdrawals_endpoint(
         api_info,
 
         // Transaction endpoints
-        submit_transaction_endpoint,
-        get_pending_transactions_endpoint,
+        // submit_transaction_endpoint, // moved to state_handlers.rs
+        // get_pending_transactions_endpoint, // moved to state_handlers.rs
 
         // Batch endpoints
-        create_batch_endpoint,
+        // create_batch_endpoint, // moved to state_handlers.rs
         get_batches_endpoint,
         get_batch_endpoint,
         update_batch_proof_endpoint,
@@ -5902,15 +5709,15 @@ async fn get_pending_withdrawals_endpoint(
         generate_invite_code_endpoint,
 
         // User Management endpoints
-        register_user_endpoint,
-        list_identities_endpoint,
-        get_user_details_endpoint,
+        // register_user_endpoint, // moved to user_handlers.rs
+        // list_identities_endpoint, // moved to user_handlers.rs  
+        // get_user_details_endpoint, // moved to user_handlers.rs
         update_user_endpoint,
         delete_user_endpoint,
         submit_kyc_endpoint,
         update_kyc_status_endpoint,
-        list_pending_kyc_endpoint,
-        get_kyc_statistics_endpoint,
+        // list_pending_kyc_endpoint, // moved to admin_handlers.rs
+        // get_kyc_statistics_endpoint, // moved to admin_handlers.rs
         bulk_kyc_approval_endpoint,
 
         // Investor Management endpoints

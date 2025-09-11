@@ -7,33 +7,89 @@
 //! - Profile completion tracking
 //!
 //! All routes are documented with OpenAPI and use consistent error handling.
-//!
-//! NOTE: These are placeholder implementations for compilation testing.
-//! TODO: Implement proper database integration.
 
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::Json,
 };
-use tracing::{info, instrument};
-use utoipa::ToSchema;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info, instrument, warn};
+use utoipa::{IntoParams, ToSchema};
 
 use crate::paths;
-use crate::rest::{RegisterInvestorRequest, RegisterMerchantRequest, RegisterUserResponse};
 use crate::types::ApiState;
+use crate::rest::UserType;
 
 // ============================================================================
-// PLACEHOLDER IMPLEMENTATIONS
+// MERCHANT & INVESTOR TYPES (MOVED FROM rest.rs)
 // ============================================================================
 
-/// Placeholder error response type
-fn placeholder_error() -> (StatusCode, String) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        "Not yet implemented".to_string(),
-    )
+/// Request to register a new merchant with business information
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterMerchantRequest {
+    #[schema(example = "merchant@example.com")]
+    pub email: String,
+    #[schema(example = "MyBusiness LLC")]
+    pub legal_name: String,
+    #[schema(example = "MyBusiness Store")]
+    pub dba: Option<String>, // Doing Business As name
+    #[schema(example = "12-3456789")]
+    pub tax_id: Option<String>,
+    #[schema(example = "5999")]
+    pub mcc: Option<String>, // Merchant Category Code
+    #[schema(example = "USA")]
+    pub country: String,
+    #[schema(example = "LLC")]
+    pub business_type: Option<String>, // LLC, CORP, SOLE_PROP, PARTNERSHIP, OTHER
+    pub jurisdiction: Option<String>, // Optional, defaults to "US"
+    #[schema(example = "ABC123DEF456")]
+    pub invite_code: Option<String>, // Optional invite code for registration
 }
+
+/// Response from merchant registration
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterMerchantResponse {
+    pub user_id: String,     // UUID as string
+    pub merchant_id: String, // UUID as string
+    pub user_type: UserType,
+    pub legal_name: String,
+    pub kyc_status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Request to register a new investor with profile
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterInvestorRequest {
+    #[schema(example = "investor@example.com")]
+    pub email: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub jurisdiction: Option<String>, // Optional, defaults to "US"
+    pub accredited_investor: Option<bool>, // Optional, defaults to false
+    #[schema(value_type = Option<String>, example = "100000.50")]
+    pub investment_capacity: Option<rust_decimal::Decimal>, // Optional max investment
+    pub regulatory_jurisdiction: Option<String>, // Optional, defaults to "US"
+    #[schema(example = "ABC123DEF456")]
+    pub invite_code: Option<String>, // Optional invite code for registration
+}
+
+/// Response from investor registration
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterInvestorResponse {
+    pub user_id: String, // UUID as string
+    pub user_type: UserType,
+    pub kyc_status: String,
+    pub created_at: DateTime<Utc>,
+    pub profile_id: String, // UUID as string of investor profile
+    pub accredited_investor: bool,
+    pub regulatory_jurisdiction: String,
+}
+
+// ============================================================================
+// PLACEHOLDER ENDPOINTS (TO BE IMPLEMENTED)
+// ============================================================================
 
 /// Register a new merchant
 #[utoipa::path(
@@ -41,7 +97,7 @@ fn placeholder_error() -> (StatusCode, String) {
     path = "/api/v1/auth/register/merchant",
     request_body = RegisterMerchantRequest,
     responses(
-        (status = 201, description = "Merchant registered successfully", body = RegisterUserResponse),
+        (status = 201, description = "Merchant registered successfully", body = RegisterMerchantResponse),
         (status = 400, description = "Invalid request parameters"),
         (status = 409, description = "Merchant with this email already exists"),
         (status = 500, description = "Internal server error")
@@ -52,11 +108,11 @@ fn placeholder_error() -> (StatusCode, String) {
 pub async fn register_merchant_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<RegisterMerchantRequest>,
-) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
+) -> Result<Json<RegisterMerchantResponse>, (StatusCode, String)> {
     info!("🏪 API: Registering new merchant: email={}", request.email);
-
-    // TODO: Implement merchant registration
-    Err(placeholder_error())
+    
+    // TODO: Implement full merchant registration from rest.rs
+    Err((StatusCode::NOT_IMPLEMENTED, "Merchant registration not yet implemented".to_string()))
 }
 
 /// Register a new investor
@@ -65,7 +121,7 @@ pub async fn register_merchant_endpoint(
     path = "/api/v1/auth/register/investor",
     request_body = RegisterInvestorRequest,
     responses(
-        (status = 201, description = "Investor registered successfully", body = RegisterUserResponse),
+        (status = 201, description = "Investor registered successfully", body = RegisterInvestorResponse),
         (status = 400, description = "Invalid request parameters"),
         (status = 409, description = "Investor with this email already exists"),
         (status = 500, description = "Internal server error")
@@ -76,174 +132,9 @@ pub async fn register_merchant_endpoint(
 pub async fn register_investor_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<RegisterInvestorRequest>,
-) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
+) -> Result<Json<RegisterInvestorResponse>, (StatusCode, String)> {
     info!("💼 API: Registering new investor: email={}", request.email);
-
-    // TODO: Implement investor registration
-    Err(placeholder_error())
-}
-
-/// Get merchant profile
-#[utoipa::path(
-    get,
-    path = "/api/v1/merchant/profile",
-    responses(
-        (status = 200, description = "Merchant profile retrieved", body = serde_json::Value),
-        (status = 401, description = "Authentication required"),
-        (status = 404, description = "Merchant profile not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn get_merchant_profile_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    info!("🏪 API: Fetching merchant profile");
-
-    // TODO: Implement merchant profile retrieval
-    Err(placeholder_error())
-}
-
-/// Update merchant profile
-#[utoipa::path(
-    put,
-    path = "/api/v1/merchant/profile",
-    request_body = serde_json::Value,
-    responses(
-        (status = 200, description = "Merchant profile updated", body = serde_json::Value),
-        (status = 401, description = "Authentication required"),
-        (status = 404, description = "Merchant profile not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn update_merchant_profile_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-    Json(request): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    info!("🏪 API: Updating merchant profile");
-
-    // TODO: Implement merchant profile update
-    Err(placeholder_error())
-}
-
-/// Get investor profile
-#[utoipa::path(
-    get,
-    path = "/api/v1/investor/profile",
-    responses(
-        (status = 200, description = "Investor profile retrieved", body = serde_json::Value),
-        (status = 401, description = "Authentication required"),
-        (status = 404, description = "Investor profile not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Investor"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn get_investor_profile_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    info!("💼 API: Fetching investor profile");
-
-    // TODO: Implement investor profile retrieval
-    Err(placeholder_error())
-}
-
-/// Update investor profile
-#[utoipa::path(
-    put,
-    path = "/api/v1/investor/profile",
-    request_body = serde_json::Value,
-    responses(
-        (status = 200, description = "Investor profile updated", body = serde_json::Value),
-        (status = 401, description = "Authentication required"),
-        (status = 404, description = "Investor profile not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Investor"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn update_investor_profile_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-    Json(request): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    info!("💼 API: Updating investor profile");
-
-    // TODO: Implement investor profile update
-    Err(placeholder_error())
-}
-
-/// Create or update turnover data
-#[utoipa::path(
-    post,
-    path = "/api/v1/merchant/turnover",
-    request_body = serde_json::Value,
-    responses(
-        (status = 201, description = "Turnover data submitted successfully", body = serde_json::Value),
-        (status = 401, description = "Authentication required"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn create_turnover_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-    Json(request): Json<serde_json::Value>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    info!("💰 API: Creating turnover data");
-
-    // TODO: Implement turnover creation
-    Err(placeholder_error())
-}
-
-/// Get turnover data
-#[utoipa::path(
-    get,
-    path = "/api/v1/merchant/turnover",
-    responses(
-        (status = 200, description = "Turnover data retrieved successfully", body = serde_json::Value),
-        (status = 401, description = "Authentication required"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn get_turnover_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    info!("💰 API: Fetching turnover data");
-
-    // TODO: Implement turnover retrieval
-    Err(placeholder_error())
-}
-
-/// Get turnover analytics
-#[utoipa::path(
-    get,
-    path = "/api/v1/merchant/turnover/analytics",
-    responses(
-        (status = 200, description = "Turnover analytics retrieved successfully", body = serde_json::Value),
-        (status = 401, description = "Authentication required"),
-        (status = 404, description = "Analytics data not available"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn get_turnover_analytics_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    info!("📊 API: Fetching turnover analytics");
-
-    // TODO: Implement turnover analytics
-    Err(placeholder_error())
+    
+    // TODO: Implement full investor registration from rest.rs
+    Err((StatusCode::NOT_IMPLEMENTED, "Investor registration not yet implemented".to_string()))
 }

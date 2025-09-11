@@ -35,12 +35,14 @@
 
 pub mod admin_handlers;
 pub mod auth;
+pub mod authentication_handlers;
 pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
 pub mod credit_line_handlers;
 pub mod financial_transaction_handlers;
 pub mod kyc_service;
+pub mod loan_handlers;
 pub mod merchant_handlers;
 pub mod middleware;
 pub mod openapi;

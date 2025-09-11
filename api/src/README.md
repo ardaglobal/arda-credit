@@ -24,7 +24,7 @@ api/src/
 │   ├── unified_batch_service.rs     # Unified batch operations
 │   └── withdrawal_service.rs        # Withdrawal operations
 ├── middleware.rs                    # Authentication and middleware
-├── rest.rs                          # LEGACY - Original monolithic handlers (7323 lines)
+├── rest.rs                          # ACTIVE - Remaining API endpoints (7130 lines, reduced from 7323)
 ├── bin/                             # Binary executables
 │   └── server.rs
 └── client/                          # Client SDK

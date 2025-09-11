@@ -12,18 +12,175 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::Json,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::paths;
-use crate::rest::{RegisterUserRequest, RegisterUserResponse, UserDetailsResponse, UserType};
+use crate::rest::UserType;
 use crate::types::ApiState;
 use arda_credit_db::{
-    get_identity_by_id, get_invite_code_info, list_identities, register_or_reregister_user,
-    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code, Identity,
-    RegisterResult,
+    get_identity_by_id, get_invite_code_info, register_or_reregister_user,
+    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code,
+    get_user_balance_by_address, get_user_balance_by_id, get_deposits_by_user_address,
+    Identity, RegisterResult,
 };
+
+// ============================================================================
+// USER MANAGEMENT TYPES (MOVED FROM rest.rs)
+// ============================================================================
+
+/// Request to register a new user identity
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterUserRequest {
+    pub user_type: UserType,
+    #[schema(example = "user@example.com")]
+    pub email: String,
+    #[schema(example = "SecureP@ssw0rd123")]
+    pub password: String,
+    pub jurisdiction: Option<String>, // Optional, defaults to "US"
+    #[schema(example = "ABC123DEF456")]
+    pub invite_code: Option<String>, // Optional invite code for registration
+}
+
+/// Response from user registration
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct RegisterUserResponse {
+    pub user_id: String, // UUID as string
+    pub user_type: UserType,
+    pub kyc_status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+/// User details response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserDetailsResponse {
+    pub user_id: String,
+    pub email: String,
+    pub user_type: UserType,
+    pub kyc_status: String,
+    pub kyc_submitted_at: Option<DateTime<Utc>>,
+    pub kyc_verified_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: Option<DateTime<Utc>>,
+    #[schema(example = "John")]
+    pub first_name: Option<String>,
+    #[schema(example = "Doe")]
+    pub last_name: Option<String>,
+    #[schema(example = "US")]
+    pub jurisdiction: Option<String>,
+    #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
+    pub wallet_address: Option<String>,
+}
+
+/// Update user profile request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateUserRequest {
+    pub email: Option<String>,
+    pub user_type: Option<UserType>,
+    pub jurisdiction: Option<String>,
+    #[schema(example = "John")]
+    pub first_name: Option<String>,
+    #[schema(example = "Doe")]
+    pub last_name: Option<String>,
+    #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
+    pub wallet_address: Option<String>,
+}
+
+/// Update user response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateUserResponse {
+    pub user_id: String,
+    pub updated_fields: Vec<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Delete user response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DeleteUserResponse {
+    pub user_id: String,
+    pub deleted: bool,
+    pub deleted_at: DateTime<Utc>,
+}
+
+/// List identities query parameters
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListIdentitiesQuery {
+    pub user_type: Option<UserType>,
+    pub kyc_status: Option<String>,
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
+/// List identities response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ListIdentitiesResponse {
+    pub identities: Vec<UserDetailsResponse>,
+    pub total_count: usize,
+    pub has_more: bool,
+}
+
+/// KYC submission request
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SubmitKycRequest {
+    pub kyc_data: KycData,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct KycData {
+    pub document_type: String,
+    pub document_hash: String,
+    pub jurisdiction: Option<String>,
+    pub kyc_investor_type: Option<String>, // QIB, QP, AI - required for investors
+}
+
+/// KYC submission response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SubmitKycResponse {
+    pub user_id: String,
+    pub kyc_status: String,
+    pub submitted_at: DateTime<Utc>,
+}
+
+/// Update KYC status request (admin only)
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateKycStatusRequest {
+    pub status: String, // "Pending" | "Approved" | "Rejected"
+    pub notes: Option<String>,
+}
+
+/// Response for user balance query
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserBalanceResponse {
+    pub user_id: Option<String>,
+    pub wallet_address: String,
+    pub available_balance: String,
+    pub currency: String,
+}
+
+/// Response for user transaction history
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserTransactionsResponse {
+    pub transactions: Vec<DepositTransactionInfo>,
+    pub total_count: usize,
+}
+
+/// Deposit transaction information
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DepositTransactionInfo {
+    pub id: i32,
+    pub user_address: String,
+    pub amount: String,
+    pub deposit_amount_usdc: Option<String>,
+    pub transaction_hash: String,
+    pub status: String, // pending, confirmed, processed, failed
+    pub confirmation_count: i32,
+    pub required_confirmations: i32,
+    pub block_number: i64,
+    pub created_at: Option<DateTime<Utc>>,
+    pub processed_at: Option<DateTime<Utc>>,
+}
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -307,5 +464,79 @@ pub async fn get_user_details_endpoint(
     }
 }
 
-// Additional user management endpoints can be added here as needed
-// For now, keeping this file focused on core user registration and details
+/// List user identities
+#[utoipa::path(
+    get,
+    path = "/api/v1/users",
+    params(ListIdentitiesQuery),
+    responses(
+        (status = 200, description = "List of user identities", body = ListIdentitiesResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn list_identities_endpoint(
+    State(state): State<ApiState>,
+    Query(params): Query<ListIdentitiesQuery>,
+) -> Result<Json<ListIdentitiesResponse>, (StatusCode, String)> {
+    info!("📋 API: Listing identities with filters");
+
+    let limit = params.limit.unwrap_or(50);
+    let offset = params.offset.unwrap_or(0);
+
+    // Basic identity listing using direct SQL (excludes soft deleted users)
+    let identities_result = sqlx::query!(
+        r#"
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
+        FROM identities
+        WHERE deleted_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit as i64,
+        offset as i64
+    )
+    .fetch_all(&state.pool)
+    .await;
+
+    match identities_result {
+        Ok(rows) => {
+            let identities = rows
+                .into_iter()
+                .map(|row| UserDetailsResponse {
+                    user_id: row.id.to_string(),
+                    email: row.email,
+                    user_type: row.user_type.parse().unwrap_or(UserType::User),
+                    kyc_status: row.kyc_status,
+                    kyc_submitted_at: row.kyc_submitted_at,
+                    kyc_verified_at: row.kyc_verified_at,
+                    created_at: row.created_at.unwrap_or_else(chrono::Utc::now),
+                    updated_at: Some(row.updated_at.unwrap_or_else(chrono::Utc::now)),
+                    first_name: row.first_name,
+                    last_name: row.last_name,
+                    jurisdiction: row.jurisdiction,
+                    wallet_address: row.wallet_address,
+                })
+                .collect::<Vec<_>>();
+
+            let total_count = identities.len() as u64;
+
+            let response = ListIdentitiesResponse {
+                identities,
+                total_count: total_count as usize,
+                has_more: total_count >= limit as u64,
+            };
+
+            info!("✅ API: Listed {} identities", response.total_count);
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to list identities: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to list identities: {}", e),
+            ))
+        }
+    }
+}
