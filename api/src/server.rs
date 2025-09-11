@@ -232,7 +232,7 @@ impl ApiServer {
         // Use REST API routes (includes health endpoints and state)
         let router = if self.config.enable_rest {
             info!("📡 Adding batch processing REST API routes");
-            crate::rest::create_router(self.state.clone())
+            crate::router::create_router(self.state.clone())
         } else {
             Router::new()
                 .route("/health", get(health_check))

@@ -24,7 +24,16 @@ api/src/
 │   ├── unified_batch_service.rs     # Unified batch operations
 │   └── withdrawal_service.rs        # Withdrawal operations
 ├── middleware.rs                    # Authentication and middleware
-├── rest.rs                          # ACTIVE - Remaining API endpoints (7130 lines, reduced from 7323)
+├── router.rs                        # API routing configuration
+├── tests/                           # Integration test suite
+│   ├── mod.rs                       # Test module exports
+│   ├── admin_tests.rs               # Admin endpoint tests
+│   ├── auth_tests.rs                # Authentication tests
+│   ├── credit_line_tests.rs         # Credit line tests
+│   ├── financial_tests.rs           # Financial transaction tests
+│   ├── loan_tests.rs                # Loan lifecycle tests
+│   ├── pool_tests.rs                # Liquidity pool tests
+│   └── user_tests.rs                # User management tests
 ├── bin/                             # Binary executables
 │   └── server.rs
 └── client/                          # Client SDK
@@ -167,9 +176,10 @@ mod tests {
 ```
 
 ### Integration Tests
-- Place in `integration.rs`
-- Test complete request/response cycles
-- Use test database fixtures
+- Located in `tests/` directory with comprehensive test suite
+- Each handler module has dedicated test file (e.g., `user_tests.rs`)
+- Test complete request/response cycles with database fixtures
+- Use `test_utils.rs` for common testing utilities and helpers
 
 ## 📚 Documentation Requirements
 
@@ -191,4 +201,5 @@ mod tests {
 1. Add OpenAPI schema to `openapi.rs`
 1. Implement handler in appropriate `*_handlers.rs` file
 1. Implement services in appropriate `*_service.rs` file
+1. Add integration tests in `tests/` directory
 1. Update this README if adding new file types

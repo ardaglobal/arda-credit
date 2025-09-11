@@ -15,12 +15,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use utoipa::{IntoParams, ToSchema};
 
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
-
-// Re-export the core types from rest.rs for now
-pub use crate::rest::{ApiConfig, ApiState};
+// Re-export the core types from router.rs
+pub use crate::router::{ApiConfig, ApiState};
 
 // ============================================================================
 // CORE TYPES MOVED FROM REST.RS

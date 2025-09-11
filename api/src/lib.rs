@@ -50,7 +50,7 @@ pub mod openapi;
 pub mod paths;
 pub mod pool_api;
 pub mod pool_handlers;
-pub mod rest;
+pub mod router;
 pub mod server;
 pub mod state_handlers;
 pub mod telemetry;
@@ -91,15 +91,7 @@ pub use client::{
 };
 
 pub use health_handlers::EndpointInfo;
-pub use rest::{
-    create_router, ApiConfig, ApiInfoResponse, ApiState, BatchListQuery,
-    BatchListResponse as RestBatchListResponse, CreateBatchRequest as RestCreateBatchRequest,
-    CreateBatchResponse as RestCreateBatchResponse,
-    CurrentStateResponse as RestCurrentStateResponse,
-    PendingTransactionsResponse as RestPendingTransactionsResponse,
-    SubmitTransactionRequest as RestSubmitTransactionRequest,
-    SubmitTransactionResponse as RestSubmitTransactionResponse, UpdateBatchProofRequest,
-};
+pub use router::{create_router, ApiConfig, ApiState};
 
 // Re-export new handler modules
 pub use admin_handlers::*;

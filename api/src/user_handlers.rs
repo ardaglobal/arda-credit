@@ -518,40 +518,6 @@ pub async fn list_identities_endpoint(
 // ============================================================================
 // USER BALANCE AND TRANSACTION TYPES
 // ============================================================================
-
-/// Response for user balance query
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UserBalanceResponse {
-    pub user_id: Option<String>,
-    pub wallet_address: String,
-    pub available_balance: String,
-    pub currency: String,
-}
-
-/// Response for user transaction history
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UserTransactionsResponse {
-    pub transactions: Vec<DepositTransactionInfo>,
-    pub total_count: usize,
-}
-
-/// Deposit transaction information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct DepositTransactionInfo {
-    pub id: i32,
-    pub user_address: String,
-    pub amount: String,
-    pub deposit_amount_usdc: Option<String>,
-    pub transaction_hash: String,
-    pub status: String, // pending, confirmed, processed, failed
-    pub confirmation_count: i32,
-    pub required_confirmations: i32,
-    pub block_number: i64,
-    pub created_at: Option<DateTime<Utc>>,
-    pub processed_at: Option<DateTime<Utc>>,
-}
-
-// ============================================================================
 // USER ENDPOINTS FROM rest.rs
 // ============================================================================
 
@@ -579,16 +545,7 @@ pub async fn update_user_endpoint(
 ) -> Result<Json<UpdateUserResponse>, (StatusCode, String)> {
     info!("🔄 API: Updating user profile: user_id={}", user_id);
 
-    let uuid = match parse_user_id(&user_id) {
-        Ok(uuid) => uuid,
-        Err(e) => {
-            warn!("❌ API: Invalid user ID format: {}", e);
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("Invalid user ID format: {}", e),
-            ));
-        }
-    };
+    let uuid = parse_user_id(&user_id)?;
 
     // Build list of fields being updated
     let mut updated_fields = Vec::new();
@@ -810,13 +767,7 @@ pub async fn get_user_balance_by_id_endpoint(
 ) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
     info!("🔍 API: Getting user balance by ID: {}", user_id);
 
-    let user_uuid = match parse_user_id(&user_id) {
-        Ok(id) => id,
-        Err(err) => {
-            warn!("⚠️ API: Invalid user ID format: {}", err);
-            return Err((StatusCode::BAD_REQUEST, err));
-        }
-    };
+    let user_uuid = parse_user_id(&user_id)?;
 
     // First get user details to get wallet address
     match get_identity_by_id(&state.pool, user_uuid).await {
@@ -880,13 +831,7 @@ pub async fn get_user_transactions_endpoint(
 ) -> Result<Json<UserTransactionsResponse>, (StatusCode, String)> {
     info!("🔍 API: Getting user transactions by ID: {}", user_id);
 
-    let user_uuid = match parse_user_id(&user_id) {
-        Ok(id) => id,
-        Err(err) => {
-            warn!("⚠️ API: Invalid user ID format: {}", err);
-            return Err((StatusCode::BAD_REQUEST, err));
-        }
-    };
+    let user_uuid = parse_user_id(&user_id)?;
 
     // First get user details to get wallet address
     match get_identity_by_id(&state.pool, user_uuid).await {
@@ -952,8 +897,13 @@ pub async fn get_user_transactions_endpoint(
 }
 
 /// Parse user ID string to UUID
-fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
-    uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
+fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
+    uuid::Uuid::parse_str(user_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid user ID format: {}", user_id),
+        )
+    })
 }
 
 /// Convert database Identity to API UserDetailsResponse
@@ -1001,16 +951,7 @@ pub async fn submit_kyc_endpoint(
         user_id, request.kyc_data.document_type
     );
 
-    let uuid = match parse_user_id(&user_id) {
-        Ok(uuid) => uuid,
-        Err(e) => {
-            warn!("❌ API: Invalid user ID format: {}", e);
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("Invalid user ID format: {}", e),
-            ));
-        }
-    };
+    let uuid = parse_user_id(&user_id)?;
 
     match submit_kyc_data(
         &state.pool,
@@ -1078,16 +1019,7 @@ pub async fn update_kyc_status_endpoint(
         user_id, request.status
     );
 
-    let uuid = match parse_user_id(&user_id) {
-        Ok(uuid) => uuid,
-        Err(e) => {
-            warn!("❌ API: Invalid user ID format: {}", e);
-            return Err((
-                StatusCode::BAD_REQUEST,
-                format!("Invalid user ID format: {}", e),
-            ));
-        }
-    };
+    let uuid = parse_user_id(&user_id)?;
 
     match update_kyc_status(&state.pool, uuid, &request.status, request.notes.as_deref()).await {
         Ok(identity) => {
