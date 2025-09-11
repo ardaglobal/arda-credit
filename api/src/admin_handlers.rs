@@ -23,15 +23,15 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::openapi::PaginationParams;
 use crate::paths;
-use crate::rest::{
-    KycStatisticsResponse, UserDetailsResponse, UserType, ListPendingKycQuery,
-    ListPendingKycResponse, BulkKycApprovalRequest, BulkKycApprovalResponse,
-};
-use arda_credit_db::{
-    list_pending_kyc_applications, get_kyc_statistics, update_kyc_status,
-    Identity,
-};
+use crate::rest::UserType;
+use crate::user_handlers::UserDetailsResponse;
+
+// Re-export types for OpenAPI documentation
+pub use crate::openapi::*;
 use crate::types::ApiState;
+use arda_credit_db::{
+    get_kyc_statistics, list_pending_kyc_applications, update_kyc_status, Identity,
+};
 
 // ============================================================================
 // ADMIN-SPECIFIC TYPES
@@ -81,7 +81,60 @@ pub struct BulkOperationResponse {
     pub errors: Vec<String>,
 }
 
-// Note: BulkKycApprovalRequest is imported from rest.rs above
+// ============================================================================
+// KYC MANAGEMENT TYPES
+// ============================================================================
+
+/// Query parameters for listing pending KYC applications
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct ListPendingKycQuery {
+    pub limit: Option<i32>,
+    pub offset: Option<i32>,
+}
+
+/// Response for listing pending KYC applications
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ListPendingKycResponse {
+    pub applications: Vec<UserDetailsResponse>,
+    pub total_count: usize,
+    pub has_more: bool,
+}
+
+/// Response for KYC statistics
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct KycStatisticsResponse {
+    pub total_users: u64,
+    pub approved_count: u64,
+    pub pending_count: u64,
+    pub rejected_count: u64,
+    pub not_submitted_count: u64,
+    pub approval_rate: f64, // percentage of users with approved KYC
+}
+
+/// Request for bulk KYC approval
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BulkKycApprovalRequest {
+    pub user_ids: Vec<String>, // Array of user IDs to approve
+    pub notes: Option<String>,
+}
+
+/// Response for bulk KYC approval
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct BulkKycApprovalResponse {
+    pub approved_count: usize,
+    pub failed_count: usize,
+    pub failed_user_ids: Vec<String>,
+    pub message: String,
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Helper function to parse UUID from string
+fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
+    uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
+}
 
 // ============================================================================
 // PLACEHOLDER IMPLEMENTATIONS
@@ -217,16 +270,14 @@ pub async fn get_kyc_statistics_endpoint(
     }
 }
 
-/// Bulk KYC approval (admin only)
+/// Bulk approve KYC applications (admin only)
 #[utoipa::path(
     post,
     path = "/api/v1/admin/kyc/bulk-approve",
     request_body = BulkKycApprovalRequest,
     responses(
-        (status = 200, description = "Bulk KYC approval completed", body = BulkOperationResponse),
+        (status = 200, description = "Bulk KYC approval completed", body = BulkKycApprovalResponse),
         (status = 400, description = "Invalid request parameters"),
-        (status = 401, description = "Admin authentication required"),
-        (status = 403, description = "Admin privileges required"),
         (status = 500, description = "Internal server error")
     ),
     tag = "Admin"
@@ -235,14 +286,67 @@ pub async fn get_kyc_statistics_endpoint(
 pub async fn bulk_kyc_approval_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<BulkKycApprovalRequest>,
-) -> Result<Json<BulkOperationResponse>, (StatusCode, String)> {
+) -> Result<Json<BulkKycApprovalResponse>, (StatusCode, String)> {
     info!(
-        "🆔 API: Admin bulk KYC approval: {} users",
+        "🔄 API: Bulk approving {} KYC applications",
         request.user_ids.len()
     );
 
-    // TODO: Implement proper bulk KYC approval
-    Err(placeholder_error())
+    if request.user_ids.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "At least one user ID must be provided".to_string(),
+        ));
+    }
+
+    let mut approved_count = 0;
+    let mut failed_user_ids = Vec::new();
+
+    for user_id_str in &request.user_ids {
+        match parse_user_id(user_id_str) {
+            Ok(user_id) => {
+                match update_kyc_status(&state.pool, user_id, "approved", request.notes.as_deref())
+                    .await
+                {
+                    Ok(_) => {
+                        approved_count += 1;
+                        info!("✅ Approved KYC for user: {}", user_id);
+                    }
+                    Err(e) => {
+                        error!("❌ Failed to approve KYC for user {}: {}", user_id, e);
+                        failed_user_ids.push(user_id_str.clone());
+                    }
+                }
+            }
+            Err(_) => {
+                warn!("⚠️ Invalid user ID format: {}", user_id_str);
+                failed_user_ids.push(user_id_str.clone());
+            }
+        }
+    }
+
+    let failed_count = failed_user_ids.len();
+    let message = if failed_count == 0 {
+        format!("Successfully approved {} KYC applications", approved_count)
+    } else {
+        format!(
+            "Approved {} KYC applications, {} failed",
+            approved_count, failed_count
+        )
+    };
+
+    let response = BulkKycApprovalResponse {
+        approved_count,
+        failed_count,
+        failed_user_ids,
+        message,
+    };
+
+    info!(
+        "✅ API: Bulk KYC approval completed - Approved: {}, Failed: {}",
+        approved_count, failed_count
+    );
+    Ok(Json(response))
 }
 
 // Additional admin endpoints can be added here as needed

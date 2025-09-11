@@ -18,7 +18,7 @@ use crate::{types::ApiState, ErrorResponse};
 // ============================================================================
 
 /// Query parameters for financial transaction endpoints
-#[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[derive(Debug, Serialize, Deserialize, utoipa::IntoParams, ToSchema)]
 pub struct FinancialTransactionQuery {
     /// Maximum number of transactions to return (default: 50, max: 100)
     #[serde(default = "default_limit")]

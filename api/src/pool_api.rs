@@ -13,7 +13,7 @@ use arda_credit_db::{
 // POOL QUERY PARAMETERS
 // ============================================================================
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Serialize, Deserialize, IntoParams, ToSchema)]
 pub struct PoolListQuery {
     #[serde(default)]
     pub status: Option<String>,
@@ -35,7 +35,7 @@ fn default_order_by() -> String {
     "created_at DESC".to_string()
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Serialize, Deserialize, IntoParams, ToSchema)]
 pub struct UtilizationHistoryQuery {
     #[serde(default = "default_days")]
     pub days: i32,
@@ -51,7 +51,7 @@ fn default_interval() -> String {
     "1 day".to_string()
 }
 
-#[derive(Debug, Deserialize, IntoParams)]
+#[derive(Debug, Serialize, Deserialize, IntoParams, ToSchema)]
 pub struct TransactionHistoryQuery {
     #[serde(default = "default_limit")]
     pub limit: i64,

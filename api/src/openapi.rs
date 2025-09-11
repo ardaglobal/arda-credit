@@ -9,30 +9,67 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 // Re-export types from their new locations
-pub use crate::rest::UserType;
+pub use crate::admin_handlers::{
+    AdminUserIdentity, AdminUserListResponse, BulkKycApprovalRequest, BulkKycApprovalResponse,
+    BulkOperationResponse, KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse,
+};
 pub use crate::authentication_handlers::{
-    LoginRequest, LoginResponse, LogoutResponse, GenerateInviteCodeRequest,
-    GenerateInviteCodeResponse, ValidateInviteCodeResponse,
+    GenerateInviteCodeRequest, GenerateInviteCodeResponse, LoginRequest, LoginResponse,
+    LogoutResponse, ValidateInviteCodeResponse,
 };
-pub use crate::user_handlers::{
-    RegisterUserRequest, RegisterUserResponse, UserDetailsResponse, UpdateUserRequest,
-    ListIdentitiesQuery, ListIdentitiesResponse, SubmitKycRequest, SubmitKycResponse,
-    UpdateKycStatusRequest, UserBalanceResponse, UserTransactionsResponse,
+pub use crate::credit_line_handlers::{
+    AvailablePoolResponse, CreditLineErrorResponse, CreditLineRequestListResponse,
+    CreditLineRequestQuery, CreditLineRequestResponse, EligibilityCheckDetail,
+    EligibilityCheckResponse, PoolBrowsingQuery, SubmitCreditLineRequestBody,
 };
-pub use crate::merchant_handlers::{
-    RegisterMerchantRequest, RegisterMerchantResponse, RegisterInvestorRequest,
-    RegisterInvestorResponse,
-};
-pub use crate::state_handlers::{
-    CreateBatchRequest, CreateBatchResponse, BatchListResponse, BatchInfo,
-    SubmitTransactionRequest, SubmitTransactionResponse, PendingTransactionsResponse,
-    TransactionInfo, CurrentStateResponse, UpdateBatchProofRequest,
-    ContractSubmissionData, BatchProcessorStatsResponse, TriggerBatchResponse,
+pub use crate::financial_transaction_handlers::{
+    AccountFinancialTransactionResponse, CreateAccountFinancialTransactionRequest,
+    CreateCreditLineFinancialTransactionRequest, CreatePoolFinancialTransactionRequest,
+    CreditLineFinancialTransactionResponse, FinancialSummaryResponse,
+    FinancialTransactionQuery, PaginatedFinancialTransactionsResponse,
+    PoolFinancialTransactionResponse, UnifiedFinancialTransactionResponse,
 };
 pub use crate::loan_handlers::{
-    CreateLoanRequest, LoanDetailsResponse, ListLoansQuery, ListLoansResponse,
-    LoanStatsResponse, UpdateLoanRequest, UpdateLoanResponse, DeleteLoanResponse,
+    CreateLoanRequest, DeleteLoanResponse, ListLoansQuery, ListLoansResponse, LoanDetailsResponse,
+    LoanPaymentHistoryResponse, LoanStatsResponse, PaymentDetailsResponse, PaymentResponse,
+    RecordPaymentRequest, UpdateLoanRequest, UpdateLoanResponse,
 };
+pub use crate::merchant_handlers::{
+    RegisterInvestorRequest, RegisterInvestorResponse, RegisterMerchantRequest,
+    RegisterMerchantResponse, MerchantProfileQuery, MerchantProfileResponse,
+    InvestorProfileQuery, InvestorProfileResponse, UpdateMerchantProfileRequest,
+    UpdateInvestorProfileRequest,
+};
+pub use crate::pool_api::{
+    BenchmarkData, CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
+    InvestorMetrics, InvestorPoolSummariesResponse, InvestorPoolSummary,
+    MarketOverviewResponse, PageInfo, PlatformMetrics, PoolDetailsResponse,
+    PoolListQuery, PoolListResponse, PoolMatchRequest, PoolPerformanceData,
+    PoolPerformanceMetrics, PoolPerformanceResponse, PoolSummaryInfo,
+    PoolTransactionInfo, PoolTransactionsResponse, PoolUtilizationResponse,
+    RecentActivity, StandardPoolObject, TransactionHistoryQuery,
+    UpdatePoolStatusRequest, UtilizationDataPoint, UtilizationHistoryQuery,
+};
+pub use crate::rest::UserType;
+pub use crate::state_handlers::{
+    BatchInfo, BatchListResponse, BatchProcessorStatsResponse, ContractSubmissionData,
+    CreateBatchRequest, CreateBatchResponse, CurrentStateResponse, PendingTransactionsResponse,
+    SubmitTransactionRequest, SubmitTransactionResponse, TransactionInfo, TriggerBatchResponse,
+    UpdateBatchProofRequest,
+};
+pub use crate::turnover_handlers::{
+    ProfileCompletionResponse, TurnoverAnalyticsResponse, TurnoverCreateRequest, TurnoverResponse,
+    TurnoverUpdateRequest,
+};
+pub use crate::user_handlers::{
+    ListIdentitiesQuery, ListIdentitiesResponse, RegisterUserRequest, RegisterUserResponse,
+    SubmitKycRequest, SubmitKycResponse, UpdateKycStatusRequest, UpdateUserRequest,
+    UserBalanceResponse, UserDetailsResponse, UserTransactionsResponse,
+};
+pub use crate::withdrawal_service::{
+    InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
+};
+pub use crate::balance_service::AvailableBalance;
 
 /// Pagination parameters for list endpoints
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
@@ -86,6 +123,7 @@ fn default_limit() -> u32 {
         (name = "Admin", description = "Administrative operations")
     ),
     components(schemas(
+        // Authentication types
         RegisterUserRequest,
         RegisterUserResponse,
         UserDetailsResponse,
@@ -95,8 +133,133 @@ fn default_limit() -> u32 {
         LogoutResponse,
         RegisterInvestorRequest,
         RegisterMerchantRequest,
+        MerchantProfileQuery,
+        MerchantProfileResponse,
+        InvestorProfileQuery,
+        InvestorProfileResponse,
+        UpdateMerchantProfileRequest,
+        UpdateInvestorProfileRequest,
         UserType,
-        PaginationParams
+
+        // Admin types
+        AdminUserIdentity,
+        AdminUserListResponse,
+        BulkKycApprovalRequest,
+        BulkKycApprovalResponse,
+        BulkOperationResponse,
+        KycStatisticsResponse,
+        ListPendingKycQuery,
+        ListPendingKycResponse,
+
+        // Credit line types
+        SubmitCreditLineRequestBody,
+        CreditLineRequestResponse,
+        EligibilityCheckResponse,
+        EligibilityCheckDetail,
+        AvailablePoolResponse,
+        PoolBrowsingQuery,
+        CreditLineRequestQuery,
+        CreditLineRequestListResponse,
+        CreditLineErrorResponse,
+
+        // Financial transaction types
+        FinancialTransactionQuery,
+        CreateAccountFinancialTransactionRequest,
+        CreatePoolFinancialTransactionRequest,
+        CreateCreditLineFinancialTransactionRequest,
+        AccountFinancialTransactionResponse,
+        PoolFinancialTransactionResponse,
+        CreditLineFinancialTransactionResponse,
+        UnifiedFinancialTransactionResponse,
+        FinancialSummaryResponse,
+
+        // Loan types
+        CreateLoanRequest,
+        DeleteLoanResponse,
+        ListLoansQuery,
+        ListLoansResponse,
+        LoanDetailsResponse,
+        LoanPaymentHistoryResponse,
+        LoanStatsResponse,
+        PaymentDetailsResponse,
+        PaymentResponse,
+        RecordPaymentRequest,
+        UpdateLoanRequest,
+        UpdateLoanResponse,
+
+        // Pool types
+        PoolListQuery,
+        UtilizationHistoryQuery,
+        TransactionHistoryQuery,
+        StandardPoolObject,
+        PoolListResponse,
+        PageInfo,
+        PoolDetailsResponse,
+        PoolSummaryInfo,
+        PoolUtilizationResponse,
+        UtilizationDataPoint,
+        PoolTransactionsResponse,
+        PoolTransactionInfo,
+        InvestorDashboardResponse,
+        InvestorMetrics,
+        RecentActivity,
+        InvestorPoolSummariesResponse,
+        InvestorPoolSummary,
+        PoolPerformanceMetrics,
+        MarketOverviewResponse,
+        PlatformMetrics,
+        PoolPerformanceResponse,
+        PoolPerformanceData,
+        BenchmarkData,
+        CreatePoolRequest,
+        CreatePoolResponse,
+        UpdatePoolStatusRequest,
+        PoolMatchRequest,
+        ErrorResponse,
+
+        // State management types
+        BatchInfo,
+        BatchListResponse,
+        BatchProcessorStatsResponse,
+        ContractSubmissionData,
+        CreateBatchRequest,
+        CreateBatchResponse,
+        CurrentStateResponse,
+        PendingTransactionsResponse,
+        SubmitTransactionRequest,
+        SubmitTransactionResponse,
+        TransactionInfo,
+        TriggerBatchResponse,
+        UpdateBatchProofRequest,
+
+        // Turnover types
+        ProfileCompletionResponse,
+        TurnoverAnalyticsResponse,
+        TurnoverCreateRequest,
+        TurnoverResponse,
+        TurnoverUpdateRequest,
+
+        // User types
+        ListIdentitiesQuery,
+        ListIdentitiesResponse,
+        SubmitKycRequest,
+        SubmitKycResponse,
+        UpdateKycStatusRequest,
+        UserBalanceResponse,
+        UserTransactionsResponse,
+
+        // Withdrawal types
+        PaginationParams,
+        InitiateWithdrawalRequest,
+        InitiateWithdrawalResponse,
+        WithdrawalStatusResponse,
+        AvailableBalance,
+
+        // Additional merchant types
+        InvestorProfileQuery,
+        InvestorProfileResponse,
+        UpdateMerchantProfileRequest,
+        UpdateInvestorProfileRequest
     ))
 )]
 pub struct ApiDoc;

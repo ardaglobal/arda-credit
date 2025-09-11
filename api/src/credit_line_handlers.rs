@@ -100,7 +100,7 @@ pub struct AvailablePoolResponse {
 }
 
 /// Pool browsing query parameters
-#[derive(Debug, Clone, Serialize, Deserialize, IntoParams)]
+#[derive(Debug, Clone, Serialize, Deserialize, IntoParams, ToSchema)]
 pub struct PoolBrowsingQuery {
     /// Minimum required liquidity in cents
     #[param(minimum = 1000_00)]
@@ -117,7 +117,7 @@ pub struct PoolBrowsingQuery {
 }
 
 /// Credit line request list query parameters
-#[derive(Debug, Clone, Serialize, Deserialize, IntoParams)]
+#[derive(Debug, Clone, Serialize, Deserialize, IntoParams, ToSchema)]
 pub struct CreditLineRequestQuery {
     /// Filter by status
     // Filter by status

@@ -14,18 +14,22 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json, Response},
 };
+use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::ToSchema;
 
 use crate::openapi::PaginationParams;
 use crate::paths;
-use arda_credit_db::{
-    submit_transaction, get_pending_transactions, get_all_batches, get_batch_by_id,
-    update_batch_proof, get_current_state, get_contract_submission_data,
-};
 use crate::types::ApiState;
+
+// Use Axum's built-in response types for Axum 0.8 compatibility
+use arda_credit_db::{
+    get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
+    get_pending_transactions, submit_transaction, update_batch_proof,
+    ProofBatch,
+};
 
 // ============================================================================
 // STATE MANAGEMENT TYPES (MOVED FROM rest.rs)
@@ -183,7 +187,7 @@ pub struct TriggerBatchResponse {
 pub async fn submit_transaction_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<SubmitTransactionRequest>,
-) -> Result<Json<SubmitTransactionResponse>, (StatusCode, String)> {
+) -> Response {
     info!("💰 API: Submitting transaction: amount={}", request.amount);
 
     match submit_transaction(&state.pool, request.amount).await {
@@ -196,14 +200,11 @@ pub async fn submit_transaction_endpoint(
             };
 
             info!("✅ API: Transaction submitted: id={}", transaction.id);
-            Ok(Json(response))
+            Json(response).into_response()
         }
         Err(e) => {
             error!("Failed to submit transaction: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to submit transaction: {}", e),
-            ))
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to submit transaction: {}", e)).into_response()
         }
     }
 }
@@ -221,7 +222,7 @@ pub async fn submit_transaction_endpoint(
 #[instrument(skip(state), level = "info")]
 pub async fn get_pending_transactions_endpoint(
     State(state): State<ApiState>,
-) -> Result<Json<PendingTransactionsResponse>, (StatusCode, String)> {
+) -> Response {
     info!("📋 API: Getting pending transactions");
 
     match get_pending_transactions(&state.pool).await {
@@ -246,14 +247,11 @@ pub async fn get_pending_transactions_endpoint(
                 "✅ API: Found {} pending transactions",
                 response.total_count
             );
-            Ok(Json(response))
+            Json(response).into_response()
         }
         Err(e) => {
             error!("Failed to get pending transactions: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get pending transactions: {}", e),
-            ))
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to get pending transactions: {}", e)).into_response()
         }
     }
 }
@@ -273,7 +271,7 @@ pub async fn get_pending_transactions_endpoint(
 pub async fn create_batch_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<CreateBatchRequest>,
-) -> Result<Json<CreateBatchResponse>, (StatusCode, String)> {
+) -> Response {
     // Validate and clamp batch_size to ensure it's in the valid range [1, max_batch_size]
     let requested_size = request
         .batch_size
@@ -335,21 +333,15 @@ pub async fn create_batch_endpoint(
                 warn!("Batch processor not available - proof generation skipped");
             }
 
-            Ok(Json(response))
+            Json(response).into_response()
         }
         Ok(None) => {
             info!("ℹ️ UNIFIED API: No transactions available to batch");
-            Err((
-                StatusCode::BAD_REQUEST,
-                "No pending transactions available to batch".to_string(),
-            ))
+            (StatusCode::BAD_REQUEST, "No pending transactions available to batch".to_string()).into_response()
         }
         Err(e) => {
             error!("UNIFIED API: Failed to create batch: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to create batch: {}", e),
-            ))
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create batch: {}", e)).into_response()
         }
     }
 }
@@ -368,25 +360,219 @@ pub async fn create_batch_endpoint(
 #[instrument(skip(state), level = "info")]
 pub async fn get_batches_endpoint(
     State(state): State<ApiState>,
-    Query(_pagination): Query<PaginationParams>,
-) -> Result<Json<BatchListResponse>, (StatusCode, String)> {
-    info!("📦 API: Fetching batches");
+    Query(pagination): Query<PaginationParams>,
+) -> Response {
+    info!("📦 API: Fetching batches with pagination: page={}, limit={}", pagination.page, pagination.limit);
 
-    // TODO: Implement proper batch retrieval
-    Ok(Json(BatchListResponse {
-        batches: vec![BatchInfo {
-            id: 123,
-            previous_counter_value: 0,
-            final_counter_value: 10,
-            transaction_count: 10,
-            proof_status: "completed".to_string(),
-            sindri_proof_id: Some("proof_123".to_string()),
-            created_at: chrono::Utc::now(),
-            proven_at: Some(chrono::Utc::now()),
-        }],
-        total_count: 1,
-    }))
+    match get_all_batches(&state.pool, Some(pagination.limit as i32)).await {
+        Ok(batches) => {
+            // Apply pagination
+            let start_idx = ((pagination.page - 1) * pagination.limit) as usize;
+            let end_idx = (start_idx + pagination.limit as usize).min(batches.len());
+            let paginated_batches = batches[start_idx..end_idx].to_vec();
+
+            // Convert database batches to API response format
+            let batch_infos: Vec<BatchInfo> = paginated_batches
+                .into_iter()
+                .map(|batch| BatchInfo {
+                    id: batch.id,
+                    previous_counter_value: batch.previous_counter_value,
+                    final_counter_value: batch.final_counter_value,
+                    transaction_count: batch.transaction_ids.len(),
+                    proof_status: batch.proof_status,
+                    sindri_proof_id: batch.sindri_proof_id,
+                    created_at: batch.created_at,
+                    proven_at: batch.proven_at,
+                })
+                .collect();
+
+            let response = BatchListResponse {
+                batches: batch_infos,
+                total_count: batches.len(),
+            };
+
+            info!(
+                "✅ API: Retrieved {} batches (showing {}-{})",
+                response.total_count,
+                start_idx + 1,
+                end_idx
+            );
+            Json(response).into_response()
+        }
+        Err(e) => {
+            error!("Failed to get batches: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to retrieve batches: {}", e)).into_response()
+        }
+    }
 }
 
-// Additional state management endpoints can be added here as needed
-// For now, keeping this file focused on core batch operations
+/// Get current system state
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/current",
+    responses(
+        (status = 200, description = "Current state retrieved successfully", body = CurrentStateResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "State Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_current_state_endpoint(
+    State(state): State<ApiState>,
+) -> Response {
+    info!("📊 API: Getting current system state");
+
+    match get_current_state(&state.pool).await {
+        Ok(state_data) => {
+            let response = CurrentStateResponse {
+                counter_value: state_data.counter_value,
+                has_merkle_root: state_data.merkle_root.is_some(),
+                last_batch_id: state_data.last_batch_id,
+                last_proven_batch_id: None, // Not available in CounterState
+            };
+
+            info!(
+                "✅ API: Current state: counter={}, has_merkle_root={}, last_batch_id={:?}, last_proven_batch_id={:?}",
+                response.counter_value,
+                response.has_merkle_root,
+                response.last_batch_id,
+                response.last_proven_batch_id
+            );
+            Json(response).into_response()
+        }
+        Err(e) => {
+            error!("Failed to get current state: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to get current state: {}", e)).into_response()
+        }
+    }
+}
+
+/// Get batch details by ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/batches/{batch_id}",
+    params(
+        ("batch_id" = i32, Path, description = "Batch ID")
+    ),
+    responses(
+        (status = 200, description = "Batch details retrieved successfully", body = BatchInfo),
+        (status = 404, description = "Batch not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "State Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_batch_details_endpoint(
+    State(state): State<ApiState>,
+    Path(batch_id): Path<i32>,
+) -> Response {
+    info!("🔍 API: Getting batch details for ID: {}", batch_id);
+
+    match get_batch_by_id(&state.pool, batch_id).await {
+        Ok(batch) => {
+            let response = BatchInfo {
+                id: batch.id,
+                previous_counter_value: batch.previous_counter_value,
+                final_counter_value: batch.final_counter_value,
+                transaction_count: batch.transaction_ids.len(),
+                proof_status: batch.proof_status,
+                sindri_proof_id: batch.sindri_proof_id,
+                created_at: batch.created_at,
+                proven_at: batch.proven_at,
+            };
+
+            info!(
+                "✅ API: Batch details retrieved: id={}, status={}, transactions={}",
+                response.id, response.proof_status, response.transaction_count
+            );
+            Json(response).into_response()
+        }
+        Err(e) => {
+            if let sqlx::Error::RowNotFound = e {
+                warn!("❌ API: Batch not found: {}", batch_id);
+                (StatusCode::NOT_FOUND, "Batch not found".to_string()).into_response()
+            } else {
+                error!("Failed to get batch details: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to get batch details: {}", e)).into_response()
+            }
+        }
+    }
+}
+
+/// Get contract submission data for a batch
+#[utoipa::path(
+    get,
+    path = "/api/v1/state/batches/{batch_id}/contract-data",
+    params(
+        ("batch_id" = i32, Path, description = "Batch ID")
+    ),
+    responses(
+        (status = 200, description = "Contract submission data retrieved successfully", body = ContractSubmissionData),
+        (status = 404, description = "Batch not found or no contract data available"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "State Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_contract_submission_data_endpoint(
+    State(state): State<ApiState>,
+    Path(batch_id): Path<i32>,
+) -> Response {
+    info!("📄 API: Getting contract submission data for batch: {}", batch_id);
+
+    match get_contract_submission_data(&state.pool, batch_id).await {
+        Ok(contract_data) => {
+            info!("✅ API: Contract submission data retrieved for batch: {}", batch_id);
+            Json(contract_data).into_response()
+        }
+        Err(e) => {
+            if let sqlx::Error::RowNotFound = e {
+                warn!("❌ API: No contract submission data found for batch: {}", batch_id);
+                (StatusCode::NOT_FOUND, "No contract submission data found for this batch".to_string()).into_response()
+            } else {
+                error!("Failed to get contract submission data: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to get contract submission data: {}", e)).into_response()
+            }
+        }
+    }
+}
+
+/// Update batch proof information
+#[utoipa::path(
+    put,
+    path = "/api/v1/state/batches/{batch_id}/proof",
+    request_body = UpdateBatchProofRequest,
+    params(
+        ("batch_id" = i32, Path, description = "Batch ID")
+    ),
+    responses(
+        (status = 200, description = "Batch proof updated successfully"),
+        (status = 404, description = "Batch not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "State Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn update_batch_proof_endpoint(
+    State(state): State<ApiState>,
+    Path(batch_id): Path<i32>,
+    Json(request): Json<UpdateBatchProofRequest>,
+) -> Response {
+    info!("🔄 API: Updating proof for batch: {} with sindri_proof_id: {}", batch_id, request.sindri_proof_id);
+
+    match update_batch_proof(&state.pool, batch_id, &request.sindri_proof_id, &request.status).await {
+        Ok(()) => {
+            info!("✅ API: Batch proof updated successfully: {}", batch_id);
+            (StatusCode::OK, "Batch proof updated successfully".to_string()).into_response()
+        }
+        Err(e) => {
+            if let sqlx::Error::RowNotFound = e {
+                warn!("❌ API: Batch not found: {}", batch_id);
+                (StatusCode::NOT_FOUND, "Batch not found".to_string()).into_response()
+            } else {
+                error!("Failed to update batch proof: {}", e);
+                (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to update batch proof: {}", e)).into_response()
+            }
+        }
+    }
+}

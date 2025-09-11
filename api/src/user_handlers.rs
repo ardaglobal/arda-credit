@@ -21,10 +21,10 @@ use crate::paths;
 use crate::rest::UserType;
 use crate::types::ApiState;
 use arda_credit_db::{
-    get_identity_by_id, get_invite_code_info, register_or_reregister_user,
-    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code,
-    get_user_balance_by_address, get_user_balance_by_id, get_deposits_by_user_address,
-    Identity, RegisterResult,
+    get_deposits_by_user_address, get_identity_by_id, get_invite_code_info,
+    get_user_balance_by_address, get_user_balance_by_id, register_or_reregister_user,
+    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code, Identity,
+    RegisterResult,
 };
 
 // ============================================================================

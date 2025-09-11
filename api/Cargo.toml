@@ -41,7 +41,7 @@ sqlx             = { workspace = true }
 async-graphql = { version = "7.0", features = [ "chrono" ] }
 async-graphql-axum = "7.0"
 async-trait = "0.1"
-axum = { version = "0.8", features = [ "ws" ] }
+axum = { workspace = true, features = [ "ws" ] }
 futures-util = "0.3"
 hex = "0.4"
 http = "1.0"
@@ -75,7 +75,7 @@ validator    = { version = "0.20", features = [ "derive" ] } # Email/password va
 opentelemetry                      = { version = "0.20.0", features = [ "rt-tokio", "trace" ] }
 opentelemetry-otlp                 = { version = "0.13.0", features = [ "trace" ] }
 opentelemetry-semantic-conventions = { version = "0.12.0" }
-tonic                              = { version = "0.9.0", features = [ "tls-roots" ] }
+tonic                              = { version = "0.12.0", features = [ "tls-roots" ] }
 tracing-opentelemetry              = { version = "0.20.0" }
 
 # Middleware dependencies
@@ -89,8 +89,8 @@ url    = "2.5"
 humantime = "2"
 
 # OpenAPI/Swagger documentation
-utoipa            = { version = "5.4", features = [ "axum_extras", "chrono", "uuid" ] }
-utoipa-swagger-ui = { version = "9.0", features = [ "axum" ] }
+utoipa            = { version = "5.4.0", features = [ "axum_extras", "chrono", "uuid" ] }
+utoipa-swagger-ui = { version = "9.0.1", features = [ "axum" ] }
 
 [dev-dependencies]
 
@@ -99,3 +99,7 @@ tempfile           = "3.21"
 tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
 uuid               = { version = "1.0", features = [ "v4" ] }
+
+[patch.crates-io]
+# Force all axum versions to use 0.8.4 to resolve version conflicts
+axum = "0.8.4"

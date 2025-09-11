@@ -10,7 +10,7 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::Json,
+    response::{IntoResponse, Json, Response},
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -20,9 +20,11 @@ use utoipa::ToSchema;
 use crate::paths;
 use crate::rest::UserType;
 use crate::types::ApiState;
+
+// Use Axum's built-in response types for Axum 0.8 compatibility
 use arda_credit_db::{
-    get_identity_by_email, get_invite_code_info, generate_invite_code, use_invite_code,
-    update_last_login,
+    generate_invite_code, get_identity_by_email, get_invite_code_info, update_last_login,
+    use_invite_code,
 };
 
 // ============================================================================
@@ -142,10 +144,7 @@ pub async fn login_endpoint(
         }
         Err(e) => {
             error!("❌ API: Database error during login: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Authentication error".to_string(),
-            ));
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Authentication error".to_string()));
         }
     };
 
@@ -163,10 +162,7 @@ pub async fn login_endpoint(
         Ok(valid) => valid,
         Err(e) => {
             error!("❌ API: Password verification error: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Authentication error".to_string(),
-            ));
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Authentication error".to_string()));
         }
     };
 
@@ -186,7 +182,7 @@ pub async fn login_endpoint(
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Authentication error".to_string(),
-            ));
+            ))
         }
     };
 
@@ -269,10 +265,7 @@ pub async fn validate_invite_code_endpoint(
     // Validate input
     if code.trim().is_empty() {
         warn!("❌ API: Empty invite code provided");
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Invite code cannot be empty".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, "Invite code cannot be empty".to_string()));
     }
 
     // Get detailed invite code information
@@ -350,10 +343,7 @@ pub async fn generate_invite_code_endpoint(
     // Validate user_type
     if user_type != "admin" && user_type != "regular" {
         warn!("❌ API: Invalid user_type provided: {}", user_type);
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "user_type must be either 'admin' or 'regular'".to_string(),
-        ));
+        return Err((StatusCode::BAD_REQUEST, "user_type must be either 'admin' or 'regular'".to_string()));
     }
 
     info!(

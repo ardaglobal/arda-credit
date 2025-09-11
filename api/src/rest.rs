@@ -24,6 +24,13 @@ use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
 use crate::auth::AuthService;
+use crate::admin_handlers::{
+    KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse,
+};
+use crate::authentication_handlers::{
+    GenerateInviteCodeRequest, GenerateInviteCodeResponse, InviteCodeResponse, LoginRequest,
+    LoginResponse, LogoutRequest, LogoutResponse, UserSummary, ValidateInviteCodeResponse,
+};
 use crate::batch_processor::BatchProcessorHandle;
 // Credit line handlers
 use crate::credit_line_handlers::{
@@ -62,6 +69,15 @@ use crate::pool_handlers::{
     create_pool, get_investor_dashboard, get_investor_pool_summaries, get_market_overview,
     get_pool_details, get_pool_performance, get_pool_transactions, get_pool_utilization,
     list_pools, update_pool_status,
+};
+use crate::user_handlers::{
+    KycData, RegisterUserRequest, RegisterUserResponse, SubmitKycRequest,
+    SubmitKycResponse, UpdateKycStatusRequest, UserDetailsResponse,
+};
+use crate::merchant_handlers::{
+    InvestorProfileQuery, InvestorProfileResponse, MerchantProfileResponse,
+    RegisterInvestorRequest, RegisterInvestorResponse, RegisterMerchantRequest,
+    RegisterMerchantResponse, UpdateInvestorProfileRequest, UpdateMerchantProfileRequest,
 };
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{
@@ -172,15 +188,6 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
     }
 }
 
-/// Convert database Identity to API RegisterUserResponse
-fn identity_to_register_response(identity: Identity) -> RegisterUserResponse {
-    RegisterUserResponse {
-        user_id: identity.id.to_string(),
-        user_type: identity.user_type.parse().unwrap_or(UserType::User),
-        kyc_status: identity.kyc_status,
-        created_at: identity.created_at,
-    }
-}
 
 // ============================================================================
 // API STATE
@@ -428,401 +435,18 @@ impl std::str::FromStr for UserType {
 
 /// Request to register a new user identity
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct RegisterUserRequest {
-    pub user_type: UserType,
-    #[schema(example = "user@example.com")]
-    pub email: String,
-    #[schema(example = "SecureP@ssw0rd123")]
-    pub password: String,
-    pub jurisdiction: Option<String>, // Optional, defaults to "US"
-    #[schema(example = "ABC123DEF456")]
-    pub invite_code: Option<String>, // Optional invite code for registration
-}
 
-/// Request to login with email and password
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct LoginRequest {
-    #[schema(example = "user@example.com")]
-    pub email: String,
-    #[schema(example = "SecureP@ssw0rd123")]
-    pub password: String,
-}
 
-/// Response for successful login
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct LoginResponse {
-    pub access_token: String,
-    pub token_type: String,
-    pub expires_in: i64,
-    pub user: UserSummary,
-}
 
-/// Summary user information for login response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UserSummary {
-    pub user_id: String,
-    pub email: String,
-    pub user_type: UserType,
-    pub kyc_status: String,
-    pub email_verified: bool,
-}
 
-/// Request to logout (optional - for token blacklisting)
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct LogoutRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub revoke_all_tokens: Option<bool>,
-}
 
-/// Response for logout
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct LogoutResponse {
-    pub message: String,
-}
 
-/// Invite code validation response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct InviteCodeResponse {
-    pub code: String,
-    pub is_valid: bool,
-    pub message: String,
-}
 
-/// Response from validating an invite code (doesn't mark as used)
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct ValidateInviteCodeResponse {
-    pub code: String,
-    pub is_valid: bool,
-    pub is_admin_code: bool, // New field to indicate if this is an admin invite
-    pub user_type: Option<String>, // The user type this invite is for ('admin' or 'regular')
-    pub expires_at: Option<DateTime<Utc>>,
-    pub message: String,
-}
 
-/// Request to generate a new invite code
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct GenerateInviteCodeRequest {
-    pub max_uses: Option<i32>,
-    pub expires_in_hours: Option<i32>,
-    pub user_type: Option<String>, // 'admin' or 'regular' (defaults to 'regular')
-}
 
-/// Response from generating an invite code
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct GenerateInviteCodeResponse {
-    pub code: String,
-    pub max_uses: i32,
-    pub expires_at: Option<DateTime<Utc>>,
-    pub user_type: String,   // 'admin' or 'regular'
-    pub is_admin_code: bool, // Convenience field
-    pub message: String,
-}
+// UpdateUserRequest moved to user_handlers.rs
 
-/// Response from user registration
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct RegisterUserResponse {
-    pub user_id: String, // UUID as string
-    pub user_type: UserType,
-    pub kyc_status: String,
-    pub created_at: DateTime<Utc>,
-}
-
-/// Request to register a new merchant with business information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct RegisterMerchantRequest {
-    #[schema(example = "merchant@example.com")]
-    pub email: String,
-    #[schema(example = "MyBusiness LLC")]
-    pub legal_name: String,
-    #[schema(example = "MyBusiness Store")]
-    pub dba: Option<String>, // Doing Business As name
-    #[schema(example = "12-3456789")]
-    pub tax_id: Option<String>,
-    #[schema(example = "5999")]
-    pub mcc: Option<String>, // Merchant Category Code
-    #[schema(example = "USA")]
-    pub country: String,
-    #[schema(example = "LLC")]
-    pub business_type: Option<String>, // LLC, CORP, SOLE_PROP, PARTNERSHIP, OTHER
-    pub jurisdiction: Option<String>, // Optional, defaults to "US"
-    #[schema(example = "ABC123DEF456")]
-    pub invite_code: Option<String>, // Optional invite code for registration
-}
-
-/// Request to update merchant profile information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UpdateMerchantProfileRequest {
-    #[schema(example = "Updated Business LLC")]
-    pub legal_name: Option<String>,
-    #[schema(example = "Updated Store")]
-    pub dba: Option<String>,
-    #[schema(example = "5912")]
-    pub mcc: Option<String>,
-    #[schema(example = "CAN")]
-    pub country: Option<String>,
-    #[schema(example = "CORP")]
-    pub business_type: Option<String>,
-    #[schema(example = "Retail")]
-    pub industry: Option<String>,
-    #[schema(example = 5)]
-    pub years_in_business: Option<i32>,
-    #[schema(example = 25)]
-    pub employee_count: Option<i32>,
-    #[schema(example = "150000.00", value_type = Option<String>)]
-    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
-    #[schema(example = "We provide high-quality retail services to customers.")]
-    pub business_description: Option<String>,
-}
-
-/// Response from merchant registration
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct RegisterMerchantResponse {
-    pub user_id: String,     // UUID as string
-    pub merchant_id: String, // UUID as string
-    pub user_type: UserType,
-    pub legal_name: String,
-    pub kyc_status: String,
-    pub created_at: DateTime<Utc>,
-}
-
-/// Request to register a new investor with profile
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct RegisterInvestorRequest {
-    #[schema(example = "investor@example.com")]
-    pub email: String,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub jurisdiction: Option<String>, // Optional, defaults to "US"
-    pub accredited_investor: Option<bool>, // Optional, defaults to false
-    #[schema(value_type = Option<String>, example = "100000.50")]
-    pub investment_capacity: Option<rust_decimal::Decimal>, // Optional max investment
-    pub regulatory_jurisdiction: Option<String>, // Optional, defaults to "US"
-    #[schema(example = "ABC123DEF456")]
-    pub invite_code: Option<String>, // Optional invite code for registration
-}
-
-/// Response from investor registration
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct RegisterInvestorResponse {
-    pub user_id: String, // UUID as string
-    pub user_type: UserType,
-    pub kyc_status: String,
-    pub created_at: DateTime<Utc>,
-    pub profile_id: String, // UUID as string of investor profile
-    pub accredited_investor: bool,
-    pub regulatory_jurisdiction: String,
-}
-
-/// Query parameters for getting investor profile
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct InvestorProfileQuery {
-    /// User ID (UUID)
-    pub user_id: Option<String>,
-    /// User email
-    pub email: Option<String>,
-}
-
-/// Query parameters for merchant profile endpoint
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct MerchantProfileQuery {
-    /// User ID (UUID) to query merchant profile
-    pub user_id: Option<String>,
-    /// User email to query merchant profile
-    pub email: Option<String>,
-}
-
-/// Investor profile response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct InvestorProfileResponse {
-    pub profile_id: String,
-    pub user_id: String,
-    pub email: String,
-    pub user_type: UserType,
-    pub kyc_status: String,
-    pub kyc_submitted_at: Option<DateTime<Utc>>,
-    pub kyc_verified_at: Option<DateTime<Utc>>,
-    pub kyc_investor_type: Option<String>,
-    pub accredited_investor: bool,
-    #[schema(value_type = Option<String>, example = "100000.50")]
-    pub investment_capacity: Option<rust_decimal::Decimal>,
-    pub regulatory_jurisdiction: String,
-    pub profile_created_at: DateTime<Utc>,
-    pub profile_updated_at: DateTime<Utc>,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub jurisdiction: Option<String>,
-    pub wallet_address: Option<String>,
-}
-
-/// Merchant profile response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct MerchantProfileResponse {
-    pub profile_id: String,
-    pub merchant_id: String,
-    pub user_id: String,
-    pub email: String,
-    pub user_type: UserType,
-    pub kyc_status: String,
-    pub kyc_submitted_at: Option<DateTime<Utc>>,
-    pub kyc_verified_at: Option<DateTime<Utc>>,
-    pub legal_name: String,
-    pub dba: Option<String>,
-    pub tax_id: Option<String>,
-    pub mcc: Option<String>,
-    pub country: String,
-    pub business_type: Option<String>,
-    pub industry: Option<String>,
-    pub years_in_business: Option<i32>,
-    pub employee_count: Option<i32>,
-    #[schema(value_type = Option<String>, example = "50000.00")]
-    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
-    pub business_description: Option<String>,
-    pub profile_completed: bool,
-    pub merchant_created_at: DateTime<Utc>,
-    pub merchant_updated_at: DateTime<Utc>,
-    pub profile_created_at: Option<DateTime<Utc>>,
-    pub profile_updated_at: Option<DateTime<Utc>>,
-    pub jurisdiction: Option<String>,
-}
-
-/// Request to update merchant profile
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UpdateMerchantRequest {
-    pub legal_name: Option<String>,
-    pub dba: Option<String>,
-    pub mcc: Option<String>,
-    pub country: Option<String>,
-    pub business_type: Option<String>,
-    pub industry: Option<String>,
-    pub years_in_business: Option<i32>,
-    pub employee_count: Option<i32>,
-    #[schema(value_type = Option<String>, example = "60000.00")]
-    pub monthly_revenue_estimate: Option<rust_decimal::Decimal>,
-    pub business_description: Option<String>,
-}
-
-/// Request to update investor profile
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UpdateInvestorProfileRequest {
-    pub accredited_investor: Option<bool>,
-    #[schema(value_type = Option<String>, example = "100000.50")]
-    pub investment_capacity: Option<rust_decimal::Decimal>,
-    pub regulatory_jurisdiction: Option<String>,
-}
-
-/// User details response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UserDetailsResponse {
-    pub user_id: String,
-    pub email: String,
-    pub user_type: UserType,
-    pub kyc_status: String,
-    pub kyc_submitted_at: Option<DateTime<Utc>>,
-    pub kyc_verified_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
-    #[schema(example = "John")]
-    pub first_name: Option<String>,
-    #[schema(example = "Doe")]
-    pub last_name: Option<String>,
-    #[schema(example = "US")]
-    pub jurisdiction: Option<String>,
-    #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
-    pub wallet_address: Option<String>,
-}
-
-/// KYC submission request
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct SubmitKycRequest {
-    pub kyc_data: KycData,
-}
-
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct KycData {
-    pub document_type: String,
-    pub document_hash: String,
-    pub jurisdiction: Option<String>,
-    pub kyc_investor_type: Option<String>, // QIB, QP, AI - required for investors
-}
-
-/// KYC submission response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct SubmitKycResponse {
-    pub user_id: String,
-    pub kyc_status: String,
-    pub submitted_at: DateTime<Utc>,
-}
-
-/// Update KYC status request (admin only)
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UpdateKycStatusRequest {
-    pub status: String, // "Pending" | "Approved" | "Rejected"
-    pub notes: Option<String>,
-}
-
-/// Query parameters for listing pending KYC applications
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
-pub struct ListPendingKycQuery {
-    pub limit: Option<i32>,
-    pub offset: Option<i32>,
-}
-
-/// Response for listing pending KYC applications
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct ListPendingKycResponse {
-    pub applications: Vec<UserDetailsResponse>,
-    pub total_count: usize,
-    pub has_more: bool,
-}
-
-/// Response for KYC statistics
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct KycStatisticsResponse {
-    pub total_users: u64,
-    pub approved_count: u64,
-    pub pending_count: u64,
-    pub rejected_count: u64,
-    pub not_submitted_count: u64,
-    pub approval_rate: f64, // percentage of users with approved KYC
-}
-
-/// Request for bulk KYC approval
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct BulkKycApprovalRequest {
-    pub user_ids: Vec<String>, // Array of user IDs to approve
-    pub notes: Option<String>,
-}
-
-/// Response for bulk KYC approval
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct BulkKycApprovalResponse {
-    pub approved_count: usize,
-    pub failed_count: usize,
-    pub failed_user_ids: Vec<String>,
-    pub message: String,
-}
-
-/// Update user profile request
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UpdateUserRequest {
-    pub email: Option<String>,
-    pub user_type: Option<UserType>,
-    pub jurisdiction: Option<String>,
-    #[schema(example = "John")]
-    pub first_name: Option<String>,
-    #[schema(example = "Doe")]
-    pub last_name: Option<String>,
-    #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
-    pub wallet_address: Option<String>,
-}
-
-/// Update user response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UpdateUserResponse {
-    pub user_id: String,
-    pub updated_fields: Vec<String>,
-    pub updated_at: DateTime<Utc>,
-}
+// UpdateUserResponse moved to user_handlers.rs
 
 /// Delete user response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -1235,31 +859,49 @@ pub fn create_router(state: ApiState) -> Router {
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
         // Authentication endpoints
-        .route("/api/auth/login", post(login_endpoint))
-        .route("/api/auth/logout", post(logout_endpoint))
+        .route(
+            "/api/auth/login",
+            post(crate::authentication_handlers::login_endpoint),
+        )
+        .route(
+            "/api/auth/logout",
+            post(crate::authentication_handlers::logout_endpoint),
+        )
         // Admin KYC endpoints
-        .route(paths::ADMIN_KYC_PENDING, get(crate::admin_handlers::list_pending_kyc_endpoint))
-        .route(paths::ADMIN_KYC_STATS, get(crate::admin_handlers::get_kyc_statistics_endpoint))
+        .route(
+            paths::ADMIN_KYC_PENDING,
+            get(crate::admin_handlers::list_pending_kyc_endpoint),
+        )
+        .route(
+            paths::ADMIN_KYC_STATS,
+            get(crate::admin_handlers::get_kyc_statistics_endpoint),
+        )
         .route(
             paths::ADMIN_KYC_BULK_APPROVE,
-            post(bulk_kyc_approval_endpoint),
+            post(crate::admin_handlers::bulk_kyc_approval_endpoint),
         )
         .route(
             paths::INVITE_CODE_GENERATE,
-            post(generate_invite_code_endpoint),
+            post(crate::authentication_handlers::generate_invite_code_endpoint),
         )
         .route(
             paths::INVITE_CODE_VALIDATE,
-            post(validate_invite_code_endpoint),
+            post(crate::authentication_handlers::validate_invite_code_endpoint),
         )
         // Transaction operations
-        .route(paths::STATE_TRANSACTIONS, post(crate::state_handlers::submit_transaction_endpoint))
+        .route(
+            paths::STATE_TRANSACTIONS,
+            post(crate::state_handlers::submit_transaction_endpoint),
+        )
         .route(
             paths::STATE_TRANSACTIONS_PENDING,
             get(crate::state_handlers::get_pending_transactions_endpoint),
         )
         // Batch operations
-        .route(paths::STATE_BATCHES, post(crate::state_handlers::create_batch_endpoint))
+        .route(
+            paths::STATE_BATCHES,
+            post(crate::state_handlers::create_batch_endpoint),
+        )
         .route(paths::STATE_BATCHES, get(get_batches_endpoint))
         .route(paths::STATE_BATCH_BY_ID, get(get_batch_endpoint))
         .route(paths::STATE_BATCH_PROOF, post(update_batch_proof_endpoint))
@@ -1275,25 +917,44 @@ pub fn create_router(state: ApiState) -> Router {
         // LOAN PROCESSING ENDPOINTS
         // ========================================================================
         // User Management
-        .route(paths::USER, post(crate::user_handlers::register_user_endpoint))
-        .route(paths::USERS, get(crate::user_handlers::list_identities_endpoint))
-        .route(paths::USER_BY_ID, get(crate::user_handlers::get_user_details_endpoint))
+        .route(
+            paths::USER,
+            post(crate::user_handlers::register_user_endpoint),
+        )
+        .route(
+            paths::USERS,
+            get(crate::user_handlers::list_identities_endpoint),
+        )
+        .route(
+            paths::USER_BY_ID,
+            get(crate::user_handlers::get_user_details_endpoint),
+        )
         .route(paths::USER_BY_ID, put(update_user_endpoint))
         .route(paths::USER_BY_ID, delete(delete_user_endpoint))
         .route(paths::USER_KYC, post(submit_kyc_endpoint))
         .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
         // Investor Management endpoints
-        .route(paths::REGISTER_INVESTOR, post(register_investor_endpoint))
-        .route(paths::INVESTOR_PROFILE, get(get_investor_profile_endpoint))
-        // Merchant Management endpoints
-        .route(paths::REGISTER_MERCHANT, post(register_merchant_endpoint))
         .route(
-            paths::MERCHANT_PROFILE,
-            get(get_merchant_profile_endpoint).put(update_merchant_profile_endpoint),
+            paths::REGISTER_INVESTOR,
+            post(crate::merchant_handlers::register_investor_endpoint),
         )
         .route(
             paths::INVESTOR_PROFILE,
-            put(update_investor_profile_endpoint),
+            get(crate::merchant_handlers::get_investor_profile_endpoint),
+        )
+        // Merchant Management endpoints
+        .route(
+            paths::REGISTER_MERCHANT,
+            post(crate::merchant_handlers::register_merchant_endpoint),
+        )
+        .route(
+            paths::MERCHANT_PROFILE,
+            get(crate::merchant_handlers::get_merchant_profile_endpoint)
+                .put(crate::merchant_handlers::update_merchant_profile_endpoint),
+        )
+        .route(
+            paths::INVESTOR_PROFILE,
+            put(crate::merchant_handlers::update_investor_profile_endpoint),
         )
         // User Balance & Transaction endpoints
         .route(
@@ -1387,19 +1048,40 @@ pub fn create_router(state: ApiState) -> Router {
         // LOAN MANAGEMENT ENDPOINTS
         // ========================================================================
         // Loan Management
-        .route(paths::LOAN, post(create_loan_endpoint))
-        .route(paths::LOANS, get(list_loans_endpoint))
-        .route(paths::LOAN_BY_ID, get(get_loan_details_endpoint))
-        .route(paths::LOAN_BY_ID, put(update_loan_endpoint))
-        .route(paths::LOAN_BY_ID, delete(delete_loan_endpoint))
-        .route(paths::LOANS_STATS, get(get_loan_stats_endpoint))
+        .route(
+            paths::LOAN,
+            post(crate::loan_handlers::create_loan_endpoint),
+        )
+        .route(paths::LOANS, get(crate::loan_handlers::list_loans_endpoint))
+        .route(
+            paths::LOAN_BY_ID,
+            get(crate::loan_handlers::get_loan_details_endpoint),
+        )
+        .route(
+            paths::LOAN_BY_ID,
+            put(crate::loan_handlers::update_loan_endpoint),
+        )
+        .route(
+            paths::LOAN_BY_ID,
+            delete(crate::loan_handlers::delete_loan_endpoint),
+        )
+        .route(
+            paths::LOANS_STATS,
+            get(crate::loan_handlers::get_loan_stats_endpoint),
+        )
         // Payment Processing
-        .route(paths::STATE_PAYMENTS, post(record_payment_endpoint))
+        .route(
+            paths::STATE_PAYMENTS,
+            post(crate::loan_handlers::record_payment_endpoint),
+        )
         .route(
             paths::STATE_PAYMENT_BY_ID,
-            get(get_payment_details_endpoint),
+            get(crate::loan_handlers::get_payment_details_endpoint),
         )
-        .route(paths::LOAN_PAYMENTS, get(get_loan_payment_history_endpoint))
+        .route(
+            paths::LOAN_PAYMENTS,
+            get(crate::loan_handlers::get_loan_payment_history_endpoint),
+        )
         // State Management & ZK Proofs
         .route(paths::STATE_SUMMARY, get(get_state_summary_endpoint))
         .route(paths::STATE_PROOF, get(get_transaction_proof_endpoint))
@@ -1460,19 +1142,25 @@ pub fn create_router(state: ApiState) -> Router {
         // ========================================================================
         // MERCHANT TURNOVER ENDPOINTS
         // ========================================================================
-        .route(paths::MERCHANT_TURNOVER, post(create_turnover_endpoint))
-        .route(paths::MERCHANT_TURNOVER, get(get_turnover_endpoint))
+        .route(
+            paths::MERCHANT_TURNOVER,
+            post(crate::turnover_handlers::create_turnover_endpoint),
+        )
+        .route(
+            paths::MERCHANT_TURNOVER,
+            get(crate::turnover_handlers::get_turnover_endpoint),
+        )
         .route(
             paths::MERCHANT_TURNOVER_BY_DATE,
-            put(update_turnover_endpoint),
+            put(crate::turnover_handlers::update_turnover_endpoint),
         )
         .route(
             paths::MERCHANT_TURNOVER_ANALYTICS,
-            get(get_turnover_analytics_endpoint),
+            get(crate::turnover_handlers::get_turnover_analytics_endpoint),
         )
         .route(
             paths::MERCHANT_PROFILE_COMPLETION,
-            get(get_profile_completion_endpoint),
+            get(crate::turnover_handlers::get_profile_completion_endpoint),
         )
         // ========================================================================
         // CREDIT LINE ENDPOINTS
@@ -2313,224 +2001,11 @@ async fn get_batch_processor_stats_endpoint(
 
 // register_user_endpoint moved to user_handlers.rs
 
-/// Login endpoint for user authentication
-#[utoipa::path(
-    post,
-    path = "/api/auth/login",
-    request_body = LoginRequest,
-    responses(
-        (status = 200, description = "Login successful", body = LoginResponse),
-        (status = 401, description = "Invalid credentials"),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 403, description = "Account not verified or locked"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Authentication"
-)]
-#[instrument(skip(state), level = "info")]
-async fn login_endpoint(
-    State(state): State<ApiState>,
-    Json(request): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, (StatusCode, String)> {
-    info!("🔐 API: Login attempt: email={}", request.email);
+// login_endpoint moved to authentication_handlers.rs
 
-    // Get user by email
-    let user = match get_identity_by_email(&state.pool, &request.email).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            warn!("❌ API: Login failed - user not found: {}", request.email);
-            return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
-        }
-        Err(e) => {
-            error!("❌ API: Database error during login: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Authentication error".to_string(),
-            ));
-        }
-    };
+// logout_endpoint moved to authentication_handlers.rs
 
-    // Check if user has a password set
-    let password_hash = user.password_hash.as_ref().ok_or_else(|| {
-        warn!("❌ API: User has no password set: {}", request.email);
-        (StatusCode::UNAUTHORIZED, "Invalid credentials".to_string())
-    })?;
-
-    // Verify password
-    let is_valid_password = match state
-        .auth_service
-        .verify_password(&request.password, password_hash)
-    {
-        Ok(valid) => valid,
-        Err(e) => {
-            error!("❌ API: Password verification error: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Authentication error".to_string(),
-            ));
-        }
-    };
-
-    if !is_valid_password {
-        warn!("❌ API: Login failed - invalid password: {}", request.email);
-        return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
-    }
-
-    // Check if email is verified (optional - can be disabled for development)
-    // DISABLED FOR DEMO/TESTING - uncomment when email sending is implemented
-    /*
-    if user.email_verified == Some(false) {
-        warn!(
-            "❌ API: Login failed - email not verified: {}",
-            request.email
-        );
-        return Err((
-            StatusCode::FORBIDDEN,
-            "Please verify your email address before logging in".to_string(),
-        ));
-    }
-    */
-
-    // Generate JWT token
-    let token = match state
-        .auth_service
-        .generate_token(user.id, &user.email, &user.user_type)
-    {
-        Ok(token) => token,
-        Err(e) => {
-            error!("❌ API: Token generation error: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Authentication error".to_string(),
-            ));
-        }
-    };
-
-    // Update last login timestamp
-    if let Err(e) = update_last_login(&state.pool, user.id).await {
-        warn!("⚠️ API: Failed to update last login: {}", e);
-        // Don't fail the login for this
-    }
-
-    info!("✅ API: Login successful: user_id={}", user.id);
-
-    Ok(Json(LoginResponse {
-        access_token: token,
-        token_type: "Bearer".to_string(),
-        expires_in: state.auth_service.token_expiry_seconds(),
-        user: UserSummary {
-            user_id: user.id.to_string(),
-            email: user.email,
-            user_type: user.user_type.parse().unwrap_or(UserType::User),
-            kyc_status: user.kyc_status,
-            email_verified: user.email_verified.unwrap_or(false),
-        },
-    }))
-}
-
-/// Logout endpoint (stateless JWT - mainly for logging)
-#[utoipa::path(
-    post,
-    path = "/api/auth/logout",
-    request_body = LogoutRequest,
-    responses(
-        (status = 200, description = "Logout successful", body = LogoutResponse),
-        (status = 401, description = "Invalid or expired token"),
-        (status = 500, description = "Internal server error")
-    ),
-    security(
-        ("Bearer" = [])
-    ),
-    tag = "Authentication"
-)]
-#[instrument(skip(_state), level = "info")]
-async fn logout_endpoint(
-    State(_state): State<ApiState>,
-    Json(_request): Json<LogoutRequest>,
-) -> Result<Json<LogoutResponse>, (StatusCode, String)> {
-    // For stateless JWT, we don't need to invalidate tokens on the server side
-    // In a production system, you might:
-    // 1. Add token to a blacklist with expiration
-    // 2. Use short-lived tokens with refresh tokens
-    // 3. Store active sessions in Redis
-
-    info!("📤 API: User logged out");
-
-    Ok(Json(LogoutResponse {
-        message: "Logout successful. Please remove the token from client storage.".to_string(),
-    }))
-}
-
-/// Validate invite code (doesn't mark as used)
-#[utoipa::path(
-    post,
-    path = "/api/v1/invite-code/{code}/validate",
-    responses(
-        (status = 200, description = "Invite code validation result", body = ValidateInviteCodeResponse),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("code" = String, Path, description = "Invite code to validate")
-    ),
-    tag = "Authentication"
-)]
-#[instrument(skip(state), level = "info")]
-async fn validate_invite_code_endpoint(
-    State(state): State<ApiState>,
-    Path(code): Path<String>,
-) -> Result<Json<ValidateInviteCodeResponse>, (StatusCode, String)> {
-    info!("🎫 API: Validating invite code: code={}", code);
-
-    // Validate input
-    if code.trim().is_empty() {
-        warn!("❌ API: Empty invite code provided");
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Invite code cannot be empty".to_string(),
-        ));
-    }
-
-    // Get detailed invite code information
-    match get_invite_code_info(&state.pool, &code).await {
-        Ok(invite_info) => {
-            let is_admin_code = invite_info
-                .user_type
-                .as_ref()
-                .map_or(false, |t| t == "admin");
-
-            let message = if invite_info.is_valid {
-                format!(
-                    "Invite code is valid for {} user registration",
-                    invite_info.user_type.as_deref().unwrap_or("regular")
-                )
-            } else {
-                "Invite code is invalid or expired".to_string()
-            };
-
-            info!(
-                "✅ API: Invite code validated: code={}, valid={}, user_type={:?}",
-                code, invite_info.is_valid, invite_info.user_type
-            );
-
-            Ok(Json(ValidateInviteCodeResponse {
-                code,
-                is_valid: invite_info.is_valid,
-                is_admin_code,
-                user_type: invite_info.user_type,
-                expires_at: invite_info.expires_at,
-                message,
-            }))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to validate invite code: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to validate invite code".to_string(),
-            ))
-        }
-    }
-}
+// validate_invite_code_endpoint moved to authentication_handlers.rs
 
 fn extract_authenticated_user_id(
     request: &axum::extract::Request<axum::body::Body>,
@@ -2575,92 +2050,7 @@ pub fn extract_authenticated_user(
     })
 }
 
-/// Generate new invite code
-#[utoipa::path(
-    post,
-    path = "/api/v1/invite-code",
-    request_body = GenerateInviteCodeRequest,
-    responses(
-        (status = 200, description = "New invite code generated successfully", body = GenerateInviteCodeResponse),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 401, description = "Unauthorized - authentication required"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Authentication"
-)]
-#[instrument(skip(state), level = "info")]
-async fn generate_invite_code_endpoint(
-    State(state): State<ApiState>,
-    Json(request_body): Json<GenerateInviteCodeRequest>,
-) -> Result<Json<GenerateInviteCodeResponse>, (StatusCode, String)> {
-    info!("🎫 API: Generating new invite code");
-
-    // For now, use a default user ID - TODO: Add proper authentication
-    let default_user_id =
-        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000000").expect("Valid UUID");
-
-    // Extract request parameters with defaults
-    let max_uses = request_body.max_uses.unwrap_or(1);
-    let expires_in_hours = request_body.expires_in_hours.unwrap_or(24 * 7); // Default 7 days
-    let user_type = request_body
-        .user_type
-        .unwrap_or_else(|| "regular".to_string());
-
-    // Validate user_type
-    if user_type != "admin" && user_type != "regular" {
-        warn!("❌ API: Invalid user_type provided: {}", user_type);
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "user_type must be either 'admin' or 'regular'".to_string(),
-        ));
-    }
-
-    info!(
-        "🎫 API: Generating {} invite code with max_uses={}, expires_in_hours={}",
-        user_type, max_uses, expires_in_hours
-    );
-
-    // Generate invite code
-    match generate_invite_code(
-        &state.pool,
-        default_user_id,
-        Some(max_uses),
-        Some(expires_in_hours),
-        Some(user_type.clone()),
-    )
-    .await
-    {
-        Ok(code) => {
-            let expires_at =
-                Some(chrono::Utc::now() + chrono::Duration::hours(expires_in_hours as i64));
-            let is_admin_code = user_type == "admin";
-
-            info!(
-                "✅ API: Generated {} invite code: {} for user: {}",
-                user_type, code, default_user_id
-            );
-
-            Ok(Json(GenerateInviteCodeResponse {
-                code,
-                max_uses,
-                expires_at,
-                user_type,
-                is_admin_code,
-                message: format!(
-                    "Invite code for {} users generated successfully",
-                    if is_admin_code { "admin" } else { "regular" }
-                ),
-            }))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to generate invite code: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to generate invite code".to_string(),
-            ))
-        }
-    }
-}
+// generate_invite_code_endpoint moved to authentication_handlers.rs
 
 /// List user identities
 #[utoipa::path(
@@ -3032,85 +2422,6 @@ async fn get_kyc_statistics_endpoint(
     }
 }
 
-/// Bulk approve KYC applications (admin only)
-#[utoipa::path(
-    post,
-    path = "/api/v1/admin/kyc/bulk-approve",
-    request_body = BulkKycApprovalRequest,
-    responses(
-        (status = 200, description = "Bulk KYC approval completed", body = BulkKycApprovalResponse),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Admin"
-)]
-#[instrument(skip(state), level = "info")]
-async fn bulk_kyc_approval_endpoint(
-    State(state): State<ApiState>,
-    Json(request): Json<BulkKycApprovalRequest>,
-) -> Result<Json<BulkKycApprovalResponse>, (StatusCode, String)> {
-    info!(
-        "🔄 API: Bulk approving {} KYC applications",
-        request.user_ids.len()
-    );
-
-    if request.user_ids.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "At least one user ID must be provided".to_string(),
-        ));
-    }
-
-    let mut approved_count = 0;
-    let mut failed_user_ids = Vec::new();
-
-    for user_id_str in &request.user_ids {
-        match parse_user_id(user_id_str) {
-            Ok(user_id) => {
-                match update_kyc_status(&state.pool, user_id, "approved", request.notes.as_deref())
-                    .await
-                {
-                    Ok(_) => {
-                        approved_count += 1;
-                        info!("✅ Approved KYC for user: {}", user_id);
-                    }
-                    Err(e) => {
-                        error!("❌ Failed to approve KYC for user {}: {}", user_id, e);
-                        failed_user_ids.push(user_id_str.clone());
-                    }
-                }
-            }
-            Err(_) => {
-                warn!("⚠️ Invalid user ID format: {}", user_id_str);
-                failed_user_ids.push(user_id_str.clone());
-            }
-        }
-    }
-
-    let failed_count = failed_user_ids.len();
-    let message = if failed_count == 0 {
-        format!("Successfully approved {} KYC applications", approved_count)
-    } else {
-        format!(
-            "Approved {} KYC applications, {} failed",
-            approved_count, failed_count
-        )
-    };
-
-    let response = BulkKycApprovalResponse {
-        approved_count,
-        failed_count,
-        failed_user_ids,
-        message,
-    };
-
-    info!(
-        "✅ API: Bulk KYC approval completed - Approved: {}, Failed: {}",
-        approved_count, failed_count
-    );
-    Ok(Json(response))
-}
-
 /// Update user profile
 #[utoipa::path(
     put,
@@ -3296,446 +2607,7 @@ async fn delete_user_endpoint(
     Ok(Json(response))
 }
 
-// ---- INVESTOR MANAGEMENT ENDPOINTS ----
-
-/// Register a new investor with profile
-#[utoipa::path(
-    post,
-    path = "/api/v1/auth/register/investor",
-    request_body = RegisterInvestorRequest,
-    responses(
-        (status = 201, description = "Investor registered successfully", body = RegisterInvestorResponse),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 409, description = "Email already exists"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Investors"
-)]
-#[instrument(skip(state), level = "info")]
-async fn register_investor_endpoint(
-    State(state): State<ApiState>,
-    Json(request): Json<RegisterInvestorRequest>,
-) -> Result<Json<RegisterInvestorResponse>, (StatusCode, String)> {
-    info!("🏗️ API: Registering investor: {}", request.email);
-
-    // Validate email using AuthService
-    if let Err(e) = state.auth_service.validate_email(&request.email) {
-        warn!("❌ API: Invalid email format for investor: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
-    }
-
-    // Register the user first as investor (no password required for investors)
-    match register_or_reregister_user(&state.pool, "investor", &request.email, "").await {
-        Ok(result) => {
-            let identity = match result {
-                RegisterResult::Created(identity) => identity,
-                RegisterResult::Reregistered(identity) => identity,
-                RegisterResult::AlreadyExists => {
-                    return Err((StatusCode::CONFLICT, "Email already exists".to_string()));
-                }
-            };
-
-            // Update additional profile fields if provided
-            if request.first_name.is_some()
-                || request.last_name.is_some()
-                || request.jurisdiction.is_some()
-            {
-                let update_request = UpdateUserRequest {
-                    email: None,
-                    user_type: None,
-                    first_name: request.first_name.clone(),
-                    last_name: request.last_name.clone(),
-                    jurisdiction: request.jurisdiction.clone(),
-                    wallet_address: None,
-                };
-
-                let user_type_str = update_request.user_type.as_ref().map(|t| t.to_string());
-                if let Err(e) = update_identity_profile(
-                    &state.pool,
-                    identity.id,
-                    update_request.email.as_deref(),
-                    user_type_str.as_deref(),
-                    update_request.jurisdiction.as_deref(),
-                    update_request.first_name.as_deref(),
-                    update_request.last_name.as_deref(),
-                    update_request.wallet_address.as_deref(),
-                )
-                .await
-                {
-                    warn!("Failed to update investor profile fields: {}", e);
-                }
-            }
-
-            // Create investor profile
-            let profile_request = CreateInvestorProfileRequest {
-                accredited_investor: request.accredited_investor,
-                investment_capacity: request.investment_capacity,
-                regulatory_jurisdiction: request.regulatory_jurisdiction,
-            };
-
-            match create_investor_profile(&state.pool, identity.id, &profile_request).await {
-                Ok(profile) => {
-                    info!(
-                        "✅ API: Investor {} registered with profile {}",
-                        identity.id, profile.id
-                    );
-
-                    Ok(Json(RegisterInvestorResponse {
-                        user_id: identity.id.to_string(),
-                        user_type: UserType::Investor,
-                        kyc_status: identity.kyc_status,
-                        created_at: identity.created_at,
-                        profile_id: profile.id.to_string(),
-                        accredited_investor: profile.accredited_investor,
-                        regulatory_jurisdiction: profile.regulatory_jurisdiction,
-                    }))
-                }
-                Err(e) => {
-                    error!("❌ API: Failed to create investor profile: {}", e);
-                    Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to create investor profile".to_string(),
-                    ))
-                }
-            }
-        }
-        Err(e) => {
-            error!("❌ API: Failed to register investor: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to register investor".to_string(),
-            ))
-        }
-    }
-}
-
-/// Register a new merchant with business information
-#[utoipa::path(
-    post,
-    path = "/api/v1/auth/register/merchant",
-    request_body = RegisterMerchantRequest,
-    responses(
-        (status = 200, description = "Merchant registered successfully", body = RegisterMerchantResponse),
-        (status = 400, description = "Invalid request parameters"),
-        (status =409, description = "Email already exists"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchants"
-)]
-#[instrument(skip(state), level = "info")]
-async fn register_merchant_endpoint(
-    State(state): State<ApiState>,
-    Json(request): Json<RegisterMerchantRequest>,
-) -> Result<Json<RegisterMerchantResponse>, (StatusCode, String)> {
-    info!("🏪 API: Registering merchant: {}", request.email);
-
-    // Validate email using AuthService
-    if let Err(e) = state.auth_service.validate_email(&request.email) {
-        warn!("❌ API: Invalid email format for merchant: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
-    }
-
-    // For merchants, use empty password (no authentication required)
-    let password_hash = String::new();
-
-    // Register the user first as merchant
-    match register_or_reregister_user(&state.pool, "merchant", &request.email, &password_hash).await
-    {
-        Ok(result) => {
-            let identity = match result {
-                RegisterResult::Created(identity) => identity,
-                RegisterResult::Reregistered(identity) => identity,
-                RegisterResult::AlreadyExists => {
-                    // Email exists - get the existing identity and check if merchant record exists
-                    let existing_identity =
-                        match get_identity_by_email(&state.pool, &request.email).await {
-                            Ok(Some(identity)) => identity,
-                            Ok(None) => {
-                                return Err((
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    "Identity not found after registration check".to_string(),
-                                ));
-                            }
-                            Err(e) => {
-                                error!("❌ API: Failed to get existing identity: {}", e);
-                                return Err((
-                                    StatusCode::INTERNAL_SERVER_ERROR,
-                                    "Failed to retrieve existing identity".to_string(),
-                                ));
-                            }
-                        };
-
-                    // Check if merchant already exists for this user
-                    match get_merchant_by_user_id(&state.pool, existing_identity.id).await {
-                        Ok(Some(merchant)) => {
-                            // Merchant already exists - return success
-                            info!(
-                                "✅ API: Merchant already exists for user: user_id={}, merchant_id={}",
-                                existing_identity.id, merchant.id
-                            );
-                            return Ok(Json(RegisterMerchantResponse {
-                                user_id: existing_identity.id.to_string(),
-                                merchant_id: merchant.id.to_string(),
-                                user_type: UserType::Merchant,
-                                legal_name: merchant.legal_name,
-                                kyc_status: existing_identity.kyc_status,
-                                created_at: existing_identity.created_at,
-                            }));
-                        }
-                        Ok(None) => {
-                            // Identity exists but merchant doesn't - create merchant record
-                            info!(
-                                "🔄 API: Identity exists but merchant missing - creating merchant record for user: {}",
-                                existing_identity.id
-                            );
-                            existing_identity
-                        }
-                        Err(e) => {
-                            error!("❌ API: Failed to check existing merchant: {}", e);
-                            return Err((
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                "Failed to check existing merchant".to_string(),
-                            ));
-                        }
-                    }
-                }
-            };
-
-            // Update additional profile fields if provided
-            if request.jurisdiction.is_some() {
-                let update_request = UpdateUserRequest {
-                    email: None,
-                    user_type: None,
-                    first_name: None,
-                    last_name: None,
-                    jurisdiction: request.jurisdiction.clone(),
-                    wallet_address: None,
-                };
-
-                let user_type_str = update_request.user_type.as_ref().map(|t| t.to_string());
-                if let Err(e) = update_identity_profile(
-                    &state.pool,
-                    identity.id,
-                    update_request.email.as_deref(),
-                    user_type_str.as_deref(),
-                    update_request.jurisdiction.as_deref(),
-                    update_request.first_name.as_deref(),
-                    update_request.last_name.as_deref(),
-                    update_request.wallet_address.as_deref(),
-                )
-                .await
-                {
-                    warn!("Failed to update merchant profile fields: {}", e);
-                }
-            }
-
-            // Create merchant account with business information
-            let merchant_request = CreateMerchantRequest {
-                legal_name: request.legal_name.clone(),
-                dba: request.dba.clone(),
-                tax_id: request.tax_id.clone(),
-                mcc: request.mcc.clone(),
-                country: request.country.clone(),
-                business_type: request.business_type.clone(),
-            };
-
-            match create_merchant(&state.pool, identity.id, &merchant_request).await {
-                Ok(merchant) => {
-                    info!(
-                        "✅ API: Merchant registered successfully: user_id={}, merchant_id={}, legal_name={}",
-                        identity.id, merchant.id, merchant.legal_name
-                    );
-
-                    Ok(Json(RegisterMerchantResponse {
-                        user_id: identity.id.to_string(),
-                        merchant_id: merchant.id.to_string(),
-                        user_type: UserType::Merchant,
-                        legal_name: merchant.legal_name,
-                        kyc_status: identity.kyc_status,
-                        created_at: identity.created_at,
-                    }))
-                }
-                Err(e) => {
-                    error!("❌ API: Failed to create merchant account: {}", e);
-                    Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to create merchant account".to_string(),
-                    ))
-                }
-            }
-        }
-        Err(e) => {
-            error!("❌ API: Failed to register merchant user: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to register merchant".to_string(),
-            ))
-        }
-    }
-}
-
-/// Get merchant profile
-#[utoipa::path(
-    get,
-    path = "/api/v1/merchant/profile",
-    params(MerchantProfileQuery),
-    responses(
-        (status = 200, description = "Merchant profile retrieved successfully", body = MerchantProfileResponse),
-        (status = 400, description = "Bad request - invalid parameters"),
-        (status = 404, description = "Merchant profile not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchants"
-)]
-#[instrument(skip(state), level = "info")]
-async fn get_merchant_profile_endpoint(
-    State(state): State<ApiState>,
-    Query(query): Query<MerchantProfileQuery>,
-) -> Result<Json<MerchantProfileResponse>, (StatusCode, String)> {
-    // Validate query parameters - exactly one of user_id or email must be provided
-    let (user_id, search_type) = match (query.user_id, query.email) {
-        (Some(user_id_str), None) => {
-            // Parse user_id as UUID
-            let user_id = uuid::Uuid::parse_str(&user_id_str).map_err(|_| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    "Invalid user_id format - must be a valid UUID".to_string(),
-                )
-            })?;
-            (user_id, format!("user_id: {}", user_id_str))
-        }
-        (None, Some(email)) => {
-            // For email, we need to get the user_id from the identity first
-            let identity = match get_identity_by_email(&state.pool, &email).await {
-                Ok(Some(identity)) => identity,
-                Ok(None) => {
-                    return Err((
-                        StatusCode::NOT_FOUND,
-                        format!("No user found with email: {}", email),
-                    ));
-                }
-                Err(e) => {
-                    error!("❌ API: Failed to get identity by email: {}", e);
-                    return Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to lookup user by email".to_string(),
-                    ));
-                }
-            };
-            (identity.id, format!("email: {}", email))
-        }
-        (Some(_), Some(_)) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Provide either user_id OR email, not both".to_string(),
-            ));
-        }
-        (None, None) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Either user_id or email parameter is required".to_string(),
-            ));
-        }
-    };
-
-    info!(
-        "🔍 API: Getting merchant profile for {} ({})",
-        search_type, user_id
-    );
-
-    // Get the merchant by user ID
-    match get_merchant_by_user_id(&state.pool, user_id).await {
-        Ok(Some(merchant)) => {
-            // Get the user identity for additional info
-            let identity = match get_identity_by_id(&state.pool, merchant.user_id).await {
-                Ok(Some(identity)) => identity,
-                Ok(None) => {
-                    warn!(
-                        "❌ API: Identity not found for merchant user: {}",
-                        merchant.user_id
-                    );
-                    return Err((StatusCode::NOT_FOUND, "User identity not found".to_string()));
-                }
-                Err(e) => {
-                    error!("❌ API: Failed to get identity for merchant: {}", e);
-                    return Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "Failed to get user identity".to_string(),
-                    ));
-                }
-            };
-
-            // Try to get the merchant profile (optional)
-            let profile = match get_merchant_profile_by_merchant_id(&state.pool, merchant.id).await
-            {
-                Ok(profile_opt) => profile_opt,
-                Err(e) => {
-                    warn!(
-                        "⚠️ API: Failed to get merchant profile (continuing without): {}",
-                        e
-                    );
-                    None
-                }
-            };
-
-            let response = MerchantProfileResponse {
-                profile_id: profile
-                    .as_ref()
-                    .map(|p| p.id.to_string())
-                    .unwrap_or_else(|| "N/A".to_string()),
-                merchant_id: merchant.id.to_string(),
-                user_id: merchant.user_id.to_string(),
-                email: identity.email,
-                user_type: UserType::Merchant,
-                kyc_status: identity.kyc_status,
-                kyc_submitted_at: identity.kyc_submitted_at,
-                kyc_verified_at: identity.kyc_verified_at,
-                legal_name: merchant.legal_name,
-                dba: merchant.dba,
-                tax_id: merchant.tax_id,
-                mcc: merchant.mcc,
-                country: merchant.country,
-                business_type: merchant.business_type,
-                industry: profile.as_ref().and_then(|p| p.industry.clone()),
-                years_in_business: profile.as_ref().and_then(|p| p.years_in_business),
-                employee_count: profile.as_ref().and_then(|p| p.employee_count),
-                monthly_revenue_estimate: profile.as_ref().and_then(|p| p.monthly_revenue_estimate),
-                business_description: profile
-                    .as_ref()
-                    .and_then(|p| p.business_description.clone()),
-                profile_completed: profile
-                    .as_ref()
-                    .map(|p| p.profile_completed)
-                    .unwrap_or(false),
-                merchant_created_at: merchant.created_at,
-                merchant_updated_at: merchant.updated_at,
-                profile_created_at: profile.as_ref().map(|p| p.created_at),
-                profile_updated_at: profile.as_ref().map(|p| p.updated_at),
-                jurisdiction: None, // This would come from identity if needed
-            };
-
-            info!(
-                "✅ API: Merchant profile retrieved successfully: {}",
-                merchant.id
-            );
-            Ok(Json(response))
-        }
-        Ok(None) => {
-            warn!("❌ API: Merchant not found for user: {}", user_id);
-            Err((
-                StatusCode::NOT_FOUND,
-                "Merchant profile not found".to_string(),
-            ))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to get merchant: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to retrieve merchant profile".to_string(),
-            ))
-        }
-    }
-}
+// ---- INVESTOR MANAGEMENT ENDPOINTS - MOVED TO merchant_handlers.rs ----
 
 /// Update merchant profile
 #[utoipa::path(
@@ -4574,106 +3446,8 @@ async fn list_loans_endpoint(
     tag = "Loans"
 )]
 #[instrument(skip(state), level = "info")]
-async fn get_loan_details_endpoint(
-    State(state): State<ApiState>,
-    Path(loan_id): Path<String>,
-) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting loan details: loan_id={}", loan_id);
-
-    // Parse loan ID
-    let loan_uuid = uuid::Uuid::parse_str(&loan_id).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid loan ID format".to_string(),
-        )
-    })?;
-
-    // Get loan from database
-    let loan = get_loan_by_id(&state.pool, loan_uuid).await.map_err(|e| {
-        error!("❌ Failed to get loan: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to get loan".to_string(),
-        )
-    })?;
-
-    match loan {
-        Some(loan) => {
-            let response = LoanDetailsResponse {
-                loan_id: loan.id.to_string(),
-                borrower_id: loan.borrower_id.to_string(),
-                lender_id: loan.lender_id.to_string(),
-                principal_amount: loan.principal_amount.to_string(),
-                outstanding_balance: loan.outstanding_balance.to_string(),
-                interest_rate_bps: loan.interest_rate_bps as u16,
-                loan_status: loan.loan_status,
-                originated_at: loan.originated_at,
-                last_updated: Some(loan.updated_at),
-            };
-
-            info!("✅ API: Loan details retrieved");
-            Ok(Json(response))
-        }
-        None => {
-            warn!("❌ API: Loan not found: {}", loan_id);
-            Err((StatusCode::NOT_FOUND, "Loan not found".to_string()))
-        }
-    }
-}
-
-/// Get loan statistics
-#[utoipa::path(
-    get,
-    path = "/api/v1/loans/stats",
-    responses(
-        (status = 200, description = "Loan statistics retrieved successfully", body = LoanStatsResponse),
-        (status = 500, description = "Internal server error")
-    ),
-    params(ListLoansQuery),
-    tag = "Loans"
-)]
-#[instrument(skip(_state), level = "info")]
-async fn get_loan_stats_endpoint(
-    State(_state): State<ApiState>,
-    Query(params): Query<ListLoansQuery>, // Reuse query params for filtering
-) -> Result<Json<LoanStatsResponse>, (StatusCode, String)> {
-    info!("📊 API: Getting loan statistics");
-
-    // TODO: Implement loan statistics with database integration
-    let mut status_breakdown = std::collections::HashMap::new();
-    status_breakdown.insert("Originated".to_string(), 10);
-    status_breakdown.insert("Active".to_string(), 120);
-    status_breakdown.insert("PaidOff".to_string(), 15);
-    status_breakdown.insert("Closed".to_string(), 5);
-
-    let response = LoanStatsResponse {
-        total_loans: 150,
-        total_principal: "50000000".to_string(), // $500,000.00
-        total_outstanding: "48500000".to_string(), // $485,000.00
-        average_interest_rate_bps: 475,
-        status_breakdown,
-    };
-
-    info!("✅ API: Loan statistics retrieved");
-    Ok(Json(response))
-}
 
 /// Update loan
-#[utoipa::path(
-    put,
-    path = "/api/v1/loan/{loan_id}",
-    request_body = UpdateLoanRequest,
-    responses(
-        (status = 200, description = "Loan updated successfully", body = UpdateLoanResponse),
-        (status = 400, description = "Invalid request data"),
-        (status = 404, description = "Loan not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("loan_id" = String, Path, description = "Loan ID")
-    ),
-    tag = "Loans"
-)]
 #[instrument(skip(state), level = "info")]
 async fn update_loan_endpoint(
     State(state): State<ApiState>,
@@ -4802,125 +3576,7 @@ async fn update_loan_endpoint(
     }
 }
 
-/// Delete/close loan
-#[utoipa::path(
-    delete,
-    path = "/api/v1/loan/{loan_id}",
-    responses(
-        (status = 200, description = "Loan closed successfully", body = DeleteLoanResponse),
-        (status = 404, description = "Loan not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("loan_id" = String, Path, description = "Loan ID")
-    ),
-    tag = "Loans"
-)]
-#[instrument(skip(_state), level = "info")]
-async fn delete_loan_endpoint(
-    State(_state): State<ApiState>,
-    Path(loan_id): Path<String>,
-) -> Result<Json<DeleteLoanResponse>, (StatusCode, String)> {
-    info!("🗑️ API: Closing loan: loan_id={}", loan_id);
-
-    let _loan_uuid = uuid::Uuid::parse_str(&loan_id).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid loan ID format".to_string(),
-        )
-    })?;
-
-    // TODO: Implement loan closure with database integration
-    // For now, simulate successful closure
-    let _updated_rows = 1; // Simulate one row updated
-
-    let response = DeleteLoanResponse {
-        loan_id,
-        deleted: true,
-        deleted_at: Utc::now(),
-        final_status: "closed".to_string(),
-    };
-
-    info!("✅ API: Loan closed successfully");
-    Ok(Json(response))
-}
-
 // ---- PAYMENT PROCESSING ENDPOINTS ----
-
-/// Record a loan payment
-#[instrument(skip(_state), level = "info")]
-async fn record_payment_endpoint(
-    State(_state): State<ApiState>,
-    Json(request): Json<RecordPaymentRequest>,
-) -> Result<Json<PaymentResponse>, (StatusCode, String)> {
-    info!(
-        "💳 API: Recording payment: loan_id={}, amount={}, type={}",
-        request.loan_id, request.amount, request.payment_type
-    );
-
-    // TODO: Implement payment recording with database integration
-    let transaction_id = uuid::Uuid::new_v4().to_string();
-
-    let response = PaymentResponse {
-        transaction_id,
-        loan_id: request.loan_id,
-        amount: request.amount,
-        payment_type: request.payment_type,
-        transaction_status: "Pending".to_string(), // Will be batched for ZK proof
-        created_at: Utc::now(),
-    };
-
-    info!("✅ API: Payment recorded successfully");
-    Ok(Json(response))
-}
-
-/// Get payment details
-#[instrument(skip(_state), level = "info")]
-async fn get_payment_details_endpoint(
-    State(_state): State<ApiState>,
-    Path(transaction_id): Path<String>,
-) -> Result<Json<PaymentDetailsResponse>, (StatusCode, String)> {
-    info!(
-        "🔍 API: Getting payment details: transaction_id={}",
-        transaction_id
-    );
-
-    // TODO: Implement payment lookup with database integration
-    let response = PaymentDetailsResponse {
-        transaction_id,
-        loan_id: uuid::Uuid::new_v4().to_string(),
-        amount: "25000".to_string(),
-        payment_type: "Principal".to_string(),
-        transaction_status: "Processed".to_string(),
-        batch_id: Some(uuid::Uuid::new_v4().to_string()),
-        created_at: Utc::now(),
-        processed_at: Some(Utc::now()),
-    };
-
-    info!("✅ API: Payment details retrieved");
-    Ok(Json(response))
-}
-
-/// Get loan payment history
-#[instrument(skip(_state), level = "info")]
-async fn get_loan_payment_history_endpoint(
-    State(_state): State<ApiState>,
-    Path(loan_id): Path<String>,
-    Query(params): Query<ListLoansQuery>, // Reuse query params for limit/offset
-) -> Result<Json<LoanPaymentHistoryResponse>, (StatusCode, String)> {
-    info!("📜 API: Getting payment history: loan_id={}", loan_id);
-
-    // TODO: Implement payment history lookup with database integration
-    let response = LoanPaymentHistoryResponse {
-        loan_id,
-        payments: vec![],
-        total_payments: 0,
-        total_amount_paid: "0".to_string(),
-    };
-
-    info!("✅ API: Payment history retrieved");
-    Ok(Json(response))
-}
 
 // ---- STATE MANAGEMENT & ZK PROOF ENDPOINTS ----
 
@@ -5703,10 +4359,10 @@ async fn get_pending_withdrawals_endpoint(
         get_contract_data_endpoint,
 
         // Authentication endpoints
-        login_endpoint,
-        logout_endpoint,
-        validate_invite_code_endpoint,
-        generate_invite_code_endpoint,
+        // login_endpoint, // moved to authentication_handlers.rs
+        // logout_endpoint, // moved to authentication_handlers.rs
+        // validate_invite_code_endpoint, // moved to authentication_handlers.rs
+        // generate_invite_code_endpoint, // moved to authentication_handlers.rs
 
         // User Management endpoints
         // register_user_endpoint, // moved to user_handlers.rs
@@ -5718,25 +4374,20 @@ async fn get_pending_withdrawals_endpoint(
         update_kyc_status_endpoint,
         // list_pending_kyc_endpoint, // moved to admin_handlers.rs
         // get_kyc_statistics_endpoint, // moved to admin_handlers.rs
-        bulk_kyc_approval_endpoint,
 
-        // Investor Management endpoints
-        register_investor_endpoint,
-        get_investor_profile_endpoint,
-        update_investor_profile_endpoint,
+        // Investor Management endpoints - MOVED to merchant_handlers.rs
+        // register_investor_endpoint,
+        // get_investor_profile_endpoint,
+        // update_investor_profile_endpoint,
 
-        // Merchant Management endpoints
-        register_merchant_endpoint,
-        get_merchant_profile_endpoint,
-        update_merchant_profile_endpoint,
+        // Merchant Management endpoints - MOVED to merchant_handlers.rs
+        // register_merchant_endpoint,
+        // get_merchant_profile_endpoint,
+        // update_merchant_profile_endpoint,
 
         // Loan Management endpoints
         create_loan_endpoint,
         list_loans_endpoint,
-        get_loan_details_endpoint,
-        update_loan_endpoint,
-        delete_loan_endpoint,
-        get_loan_stats_endpoint,
         // Liquidity Pool endpoints
         crate::pool_handlers::list_pools,
         crate::pool_handlers::get_pool_details,
@@ -5814,11 +4465,6 @@ async fn get_pending_withdrawals_endpoint(
             KycData,
             SubmitKycResponse,
             UpdateKycStatusRequest,
-            ListPendingKycQuery,
-            ListPendingKycResponse,
-            KycStatisticsResponse,
-            BulkKycApprovalRequest,
-            BulkKycApprovalResponse,
             UpdateUserRequest,
             UpdateUserResponse,
             DeleteUserResponse,
@@ -6413,718 +5059,11 @@ async fn find_matching_pools_endpoint(
 }
 
 // ============================================================================
-// MERCHANT TURNOVER REQUEST/RESPONSE TYPES (for OpenAPI)
-// ============================================================================
-
-/// Request to create/update daily turnover data
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
-pub struct TurnoverCreateRequest {
-    pub date: chrono::NaiveDate,
-    pub gross_receipts: String,  // Decimal as string for API
-    pub refunds: Option<String>, // Optional decimal as string
-    pub source: Option<String>,
-    pub verification_method: Option<String>,
-}
-
-impl From<TurnoverCreateRequest> for CreateTurnoverRequest {
-    fn from(req: TurnoverCreateRequest) -> Self {
-        Self {
-            date: req.date,
-            gross_receipts: req.gross_receipts.parse().unwrap_or_default(),
-            refunds: req.refunds.and_then(|s| s.parse().ok()),
-            source: req.source,
-            verification_method: req.verification_method,
-        }
-    }
-}
-
-/// Request to update existing turnover data
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, utoipa::ToSchema)]
-pub struct TurnoverUpdateRequest {
-    pub gross_receipts: Option<String>, // Optional decimal as string
-    pub refunds: Option<String>,
-    pub verification_method: Option<String>,
-}
-
-impl From<TurnoverUpdateRequest> for UpdateTurnoverRequest {
-    fn from(req: TurnoverUpdateRequest) -> Self {
-        Self {
-            gross_receipts: req.gross_receipts.and_then(|s| s.parse().ok()),
-            refunds: req.refunds.and_then(|s| s.parse().ok()),
-            verification_method: req.verification_method,
-        }
-    }
-}
 
 // ============================================================================
 // MERCHANT TURNOVER RESPONSE TYPES (for OpenAPI)
 // ============================================================================
 
-/// Turnover record response for API
-#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
-pub struct TurnoverResponse {
-    pub id: String,
-    pub merchant_id: String,
-    pub date: chrono::NaiveDate,
-    pub gross_receipts: String,
-    pub refunds: String,
-    pub net_receipts: String,
-    pub source: String,
-    pub verified: bool,
-    pub verification_method: Option<String>,
-    pub currency: String,
-    pub created_at: chrono::DateTime<chrono::Utc>,
-    pub updated_at: chrono::DateTime<chrono::Utc>,
-}
-
-impl From<MerchantTurnoverDaily> for TurnoverResponse {
-    fn from(turnover: MerchantTurnoverDaily) -> Self {
-        Self {
-            id: turnover.id.to_string(),
-            merchant_id: turnover.merchant_id.to_string(),
-            date: turnover.date,
-            gross_receipts: turnover.gross_receipts.to_string(),
-            refunds: turnover.refunds.to_string(),
-            net_receipts: turnover.net_receipts.to_string(),
-            source: turnover.source,
-            verified: turnover.verified,
-            verification_method: turnover.verification_method,
-            currency: turnover.currency,
-            created_at: turnover.created_at,
-            updated_at: turnover.updated_at,
-        }
-    }
-}
-
-/// Turnover analytics response for API
-#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
-pub struct TurnoverAnalyticsResponse {
-    pub merchant_id: String,
-    pub legal_name: String,
-    pub total_days_recorded: i64,
-    pub verified_days: i64,
-    pub total_net_receipts: Option<String>,
-    pub avg_daily_receipts: Option<String>,
-    pub last_turnover_date: Option<chrono::NaiveDate>,
-    pub first_turnover_date: Option<chrono::NaiveDate>,
-    pub monthly_estimate: Option<String>,
-    pub data_quality_score: i32,
-}
-
-impl From<MerchantTurnoverAnalytics> for TurnoverAnalyticsResponse {
-    fn from(analytics: MerchantTurnoverAnalytics) -> Self {
-        Self {
-            merchant_id: analytics.merchant_id.to_string(),
-            legal_name: analytics.legal_name,
-            total_days_recorded: analytics.total_days_recorded,
-            verified_days: analytics.verified_days,
-            total_net_receipts: analytics.total_net_receipts.map(|d| d.to_string()),
-            avg_daily_receipts: analytics.avg_daily_receipts.map(|d| d.to_string()),
-            last_turnover_date: analytics.last_turnover_date,
-            first_turnover_date: analytics.first_turnover_date,
-            monthly_estimate: analytics.monthly_estimate.map(|d| d.to_string()),
-            data_quality_score: analytics.data_quality_score,
-        }
-    }
-}
-
-/// Profile completion response for API
-#[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
-pub struct ProfileCompletionResponse {
-    pub merchant_id: String,
-    pub legal_name: String,
-    pub kyc_status: String,
-    pub has_legal_name: bool,
-    pub has_tax_id: bool,
-    pub has_mcc: bool,
-    pub has_industry: bool,
-    pub has_years_in_business: bool,
-    pub has_revenue_estimate: bool,
-    pub kyc_approved: bool,
-    pub has_sufficient_turnover_history: bool,
-    pub has_verified_turnover_data: bool,
-    pub has_bank_statement: bool,
-    pub completion_score: i32,
-}
-
-impl From<MerchantProfileCompletion> for ProfileCompletionResponse {
-    fn from(completion: MerchantProfileCompletion) -> Self {
-        Self {
-            merchant_id: completion.merchant_id.to_string(),
-            legal_name: completion.legal_name,
-            kyc_status: completion.kyc_status,
-            has_legal_name: completion.has_legal_name,
-            has_tax_id: completion.has_tax_id,
-            has_mcc: completion.has_mcc,
-            has_industry: completion.has_industry,
-            has_years_in_business: completion.has_years_in_business,
-            has_revenue_estimate: completion.has_revenue_estimate,
-            kyc_approved: completion.kyc_approved,
-            has_sufficient_turnover_history: completion.has_sufficient_turnover_history,
-            has_verified_turnover_data: completion.has_verified_turnover_data,
-            has_bank_statement: completion.has_bank_statement,
-            completion_score: completion.completion_score,
-        }
-    }
-}
-
 // ============================================================================
 // MERCHANT TURNOVER API ENDPOINTS
 // ============================================================================
-
-/// Submit or update daily turnover data for a merchant
-#[utoipa::path(
-    post,
-    path = "/api/merchant/turnover",
-    request_body = TurnoverCreateRequest,
-    responses(
-        (status = 201, description = "Turnover data submitted successfully", body = TurnoverResponse),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 401, description = "Authentication required"),
-        (status = 403, description = "Only merchants can submit turnover data"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant Turnover"
-)]
-#[instrument(skip(state), level = "info")]
-async fn create_turnover_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-    Json(request): Json<TurnoverCreateRequest>,
-) -> Result<Json<TurnoverResponse>, (StatusCode, String)> {
-    info!(
-        "💰 Creating turnover record for merchant: date={}",
-        request.date
-    );
-
-    // Extract user ID from X-User-ID header
-    let user_id_str = headers
-        .get("X-User-ID")
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Missing user ID header".to_string(),
-        ))?
-        .to_str()
-        .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                "Invalid user ID header".to_string(),
-            )
-        })?;
-
-    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid user ID format".to_string(),
-        )
-    })?;
-
-    // Get merchant record
-    let merchant = match get_merchant_by_user_id(&state.pool, user_id).await {
-        Ok(Some(merchant)) => merchant,
-        Ok(None) => {
-            warn!("Merchant profile not found for user {}", user_id);
-            return Err((
-                StatusCode::NOT_FOUND,
-                "Merchant profile not found. Please complete merchant registration first."
-                    .to_string(),
-            ));
-        }
-        Err(e) => {
-            error!("Database error fetching merchant: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to fetch merchant profile: {}", e),
-            ));
-        }
-    };
-
-    // Parse and validate turnover data
-    let gross_receipts: rust_decimal::Decimal = match request.gross_receipts.parse() {
-        Ok(val) => val,
-        Err(_) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Invalid gross_receipts format".to_string(),
-            ));
-        }
-    };
-
-    if gross_receipts < rust_decimal::Decimal::ZERO {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Gross receipts cannot be negative".to_string(),
-        ));
-    }
-
-    if let Some(ref refunds_str) = request.refunds {
-        let refunds: rust_decimal::Decimal = match refunds_str.parse() {
-            Ok(val) => val,
-            Err(_) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "Invalid refunds format".to_string(),
-                ));
-            }
-        };
-
-        if refunds < rust_decimal::Decimal::ZERO {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Refunds cannot be negative".to_string(),
-            ));
-        }
-        if refunds > gross_receipts {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Refunds cannot exceed gross receipts".to_string(),
-            ));
-        }
-    }
-
-    // Convert to database request type
-    let db_request = request.into();
-
-    // Create or update turnover record
-    let turnover = match create_or_update_turnover(&state.pool, merchant.id, &db_request).await {
-        Ok(turnover) => turnover,
-        Err(e) => {
-            error!("Failed to create/update turnover: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to save turnover data: {}", e),
-            ));
-        }
-    };
-
-    info!(
-        "✅ Turnover record created/updated for merchant: {}",
-        merchant.legal_name
-    );
-    Ok(Json(turnover.into()))
-}
-
-/// Get turnover data for a merchant with optional date filtering
-#[utoipa::path(
-    get,
-    path = "/api/merchant/turnover",
-    params(
-        ("start_date" = Option<String>, Query, description = "Start date filter (YYYY-MM-DD format)"),
-        ("end_date" = Option<String>, Query, description = "End date filter (YYYY-MM-DD format)"),
-        ("limit" = Option<i32>, Query, description = "Maximum number of records to return"),
-    ),
-    responses(
-        (status = 200, description = "Turnover data retrieved successfully", body = Vec<TurnoverResponse>),
-        (status = 401, description = "Authentication required"),
-        (status = 403, description = "Only merchants can access turnover data"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant Turnover"
-)]
-#[instrument(skip(state), level = "info")]
-async fn get_turnover_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<Vec<TurnoverResponse>>, (StatusCode, String)> {
-    // Extract user ID from X-User-ID header
-    let user_id_str = headers
-        .get("X-User-ID")
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Missing user ID header".to_string(),
-        ))?
-        .to_str()
-        .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                "Invalid user ID header".to_string(),
-            )
-        })?;
-
-    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid user ID format".to_string(),
-        )
-    })?;
-
-    info!(
-        "📊 Fetching turnover data for merchant: user_id={}",
-        user_id
-    );
-
-    // Get merchant record
-    let merchant = match get_merchant_by_user_id(&state.pool, user_id).await {
-        Ok(Some(merchant)) => merchant,
-        Ok(None) => {
-            warn!("Merchant profile not found for user {}", user_id);
-            return Err((
-                StatusCode::NOT_FOUND,
-                "Merchant profile not found".to_string(),
-            ));
-        }
-        Err(e) => {
-            error!("Database error fetching merchant: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to fetch merchant profile: {}", e),
-            ));
-        }
-    };
-
-    // Parse query parameters
-    let start_date = params
-        .get("start_date")
-        .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
-    let end_date = params
-        .get("end_date")
-        .and_then(|s| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok());
-    let limit = params.get("limit").and_then(|s| s.parse::<i32>().ok());
-
-    // Fetch turnover data
-    let turnover_data = match get_merchant_turnover(
-        &state.pool,
-        merchant.id,
-        start_date,
-        end_date,
-        None,
-        limit.map(|l| l as i64),
-        None,
-    )
-    .await
-    {
-        Ok(data) => data,
-        Err(e) => {
-            error!("Failed to fetch turnover data: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to retrieve turnover data: {}", e),
-            ));
-        }
-    };
-
-    info!("✅ Retrieved {} turnover records", turnover_data.len());
-    Ok(Json(turnover_data.into_iter().map(|t| t.into()).collect()))
-}
-
-/// Update specific turnover record by date
-#[utoipa::path(
-    put,
-    path = "/api/merchant/turnover/{date}",
-    params(
-        ("date" = String, Path, description = "Date of turnover record to update (YYYY-MM-DD format)")
-    ),
-    request_body = TurnoverUpdateRequest,
-    responses(
-        (status = 200, description = "Turnover data updated successfully", body = TurnoverResponse),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 401, description = "Authentication required"),
-        (status = 403, description = "Only merchants can update turnover data"),
-        (status = 404, description = "Turnover record not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant Turnover"
-)]
-#[instrument(skip(state), level = "info")]
-async fn update_turnover_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-    axum::extract::Path(date_str): axum::extract::Path<String>,
-    Json(request): Json<TurnoverUpdateRequest>,
-) -> Result<Json<TurnoverResponse>, (StatusCode, String)> {
-    info!("📝 Updating turnover record: date={}", date_str);
-
-    // Extract user ID from X-User-ID header
-    let user_id_str = headers
-        .get("X-User-ID")
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Missing user ID header".to_string(),
-        ))?
-        .to_str()
-        .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                "Invalid user ID header".to_string(),
-            )
-        })?;
-
-    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid user ID format".to_string(),
-        )
-    })?;
-
-    // Parse date parameter
-    let date = match chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d") {
-        Ok(date) => date,
-        Err(_) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Invalid date format. Use YYYY-MM-DD".to_string(),
-            ));
-        }
-    };
-
-    // Get merchant record
-    let merchant = match get_merchant_by_user_id(&state.pool, user_id).await {
-        Ok(Some(merchant)) => merchant,
-        Ok(None) => {
-            warn!("Merchant profile not found for user {}", user_id);
-            return Err((
-                StatusCode::NOT_FOUND,
-                "Merchant profile not found".to_string(),
-            ));
-        }
-        Err(e) => {
-            error!("Database error fetching merchant: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to fetch merchant profile: {}", e),
-            ));
-        }
-    };
-
-    // Parse and validate update request
-    if let Some(ref gross_receipts_str) = request.gross_receipts {
-        let gross_receipts: rust_decimal::Decimal = match gross_receipts_str.parse() {
-            Ok(val) => val,
-            Err(_) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "Invalid gross_receipts format".to_string(),
-                ));
-            }
-        };
-
-        if gross_receipts < rust_decimal::Decimal::ZERO {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Gross receipts cannot be negative".to_string(),
-            ));
-        }
-    }
-
-    if let Some(ref refunds_str) = request.refunds {
-        let refunds: rust_decimal::Decimal = match refunds_str.parse() {
-            Ok(val) => val,
-            Err(_) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "Invalid refunds format".to_string(),
-                ));
-            }
-        };
-
-        if refunds < rust_decimal::Decimal::ZERO {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                "Refunds cannot be negative".to_string(),
-            ));
-        }
-    }
-
-    // Convert to database request type
-    let db_request = request.into();
-
-    // Update turnover record
-    let turnover = match update_turnover(&state.pool, merchant.id, date, &db_request).await {
-        Ok(Some(turnover)) => turnover,
-        Ok(None) => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                format!("No turnover record found for date: {}", date_str),
-            ));
-        }
-        Err(e) => {
-            error!("Failed to update turnover: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to update turnover data: {}", e),
-            ));
-        }
-    };
-
-    info!("✅ Turnover record updated for date: {}", date_str);
-    Ok(Json(turnover.into()))
-}
-
-/// Get merchant turnover analytics and insights
-#[utoipa::path(
-    get,
-    path = "/api/merchant/turnover/analytics",
-    responses(
-        (status = 200, description = "Analytics retrieved successfully", body = TurnoverAnalyticsResponse),
-        (status = 401, description = "Authentication required"),
-        (status = 403, description = "Only merchants can access analytics"),
-        (status = 404, description = "Analytics not available"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant Analytics"
-)]
-#[instrument(skip(state), level = "info")]
-async fn get_turnover_analytics_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-) -> Result<Json<TurnoverAnalyticsResponse>, (StatusCode, String)> {
-    // Extract user ID from X-User-ID header
-    let user_id_str = headers
-        .get("X-User-ID")
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Missing user ID header".to_string(),
-        ))?
-        .to_str()
-        .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                "Invalid user ID header".to_string(),
-            )
-        })?;
-
-    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid user ID format".to_string(),
-        )
-    })?;
-
-    info!(
-        "📈 Fetching turnover analytics for merchant: user_id={}",
-        user_id
-    );
-
-    // Get merchant record
-    let merchant = match get_merchant_by_user_id(&state.pool, user_id).await {
-        Ok(Some(merchant)) => merchant,
-        Ok(None) => {
-            warn!("Merchant profile not found for user {}", user_id);
-            return Err((
-                StatusCode::NOT_FOUND,
-                "Merchant profile not found".to_string(),
-            ));
-        }
-        Err(e) => {
-            error!("Database error fetching merchant: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to fetch merchant profile: {}", e),
-            ));
-        }
-    };
-
-    // Get analytics
-    let analytics = match get_merchant_turnover_analytics(&state.pool, merchant.id).await {
-        Ok(Some(analytics)) => analytics,
-        Ok(None) => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                "No turnover data available for analytics".to_string(),
-            ));
-        }
-        Err(e) => {
-            error!("Failed to fetch analytics: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to retrieve analytics: {}", e),
-            ));
-        }
-    };
-
-    info!(
-        "✅ Analytics retrieved: quality_score={}%",
-        analytics.data_quality_score
-    );
-    Ok(Json(analytics.into()))
-}
-
-/// Get merchant profile completion status
-#[utoipa::path(
-    get,
-    path = "/api/merchant/profile/completion",
-    responses(
-        (status = 200, description = "Profile completion status retrieved", body = ProfileCompletionResponse),
-        (status = 401, description = "Authentication required"),
-        (status = 403, description = "Only merchants can access profile completion"),
-        (status = 404, description = "Profile completion data not available"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Merchant Profile"
-)]
-#[instrument(skip(state), level = "info")]
-async fn get_profile_completion_endpoint(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-) -> Result<Json<ProfileCompletionResponse>, (StatusCode, String)> {
-    // Extract user ID from X-User-ID header
-    let user_id_str = headers
-        .get("X-User-ID")
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Missing user ID header".to_string(),
-        ))?
-        .to_str()
-        .map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                "Invalid user ID header".to_string(),
-            )
-        })?;
-
-    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid user ID format".to_string(),
-        )
-    })?;
-
-    info!(
-        "🎯 Fetching profile completion for merchant: user_id={}",
-        user_id
-    );
-
-    // Get merchant record
-    let merchant = match get_merchant_by_user_id(&state.pool, user_id).await {
-        Ok(Some(merchant)) => merchant,
-        Ok(None) => {
-            warn!("Merchant profile not found for user {}", user_id);
-            return Err((
-                StatusCode::NOT_FOUND,
-                "Merchant profile not found".to_string(),
-            ));
-        }
-        Err(e) => {
-            error!("Database error fetching merchant: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to fetch merchant profile: {}", e),
-            ));
-        }
-    };
-
-    // Get profile completion data
-    let completion = match get_merchant_profile_completion(&state.pool, merchant.id).await {
-        Ok(Some(completion)) => completion,
-        Ok(None) => {
-            return Err((
-                StatusCode::NOT_FOUND,
-                "Profile completion data not available".to_string(),
-            ));
-        }
-        Err(e) => {
-            error!("Failed to fetch profile completion: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to retrieve profile completion: {}", e),
-            ));
-        }
-    };
-
-    info!(
-        "✅ Profile completion retrieved: score={}%",
-        completion.completion_score
-    );
-    Ok(Json(completion.into()))
-}

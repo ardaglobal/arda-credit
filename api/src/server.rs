@@ -520,18 +520,36 @@ pub fn create_new_router(state: ApiState) -> Router<ApiState> {
         // OpenAPI documentation
         .merge(swagger_ui)
         // User management endpoints from user_handlers.rs
-        .route(crate::paths::USER, post(crate::user_handlers::register_user_endpoint))
-        .route(crate::paths::USERS, get(crate::user_handlers::list_identities_endpoint))
-        .route(crate::paths::USER_BY_ID, get(crate::user_handlers::get_user_details_endpoint))
-        
-        // State management endpoints from state_handlers.rs  
-        .route(crate::paths::STATE_TRANSACTIONS, post(crate::state_handlers::submit_transaction_endpoint))
-        .route(crate::paths::STATE_TRANSACTIONS_PENDING, get(crate::state_handlers::get_pending_transactions_endpoint))
-        .route(crate::paths::STATE_BATCHES, post(crate::state_handlers::create_batch_endpoint))
-        
+        .route(
+            crate::paths::USER,
+            post(crate::user_handlers::register_user_endpoint),
+        )
+        .route(
+            crate::paths::USERS,
+            get(crate::user_handlers::list_identities_endpoint),
+        )
+        .route(
+            crate::paths::USER_BY_ID,
+            get(crate::user_handlers::get_user_details_endpoint),
+        )
+        // State management endpoints from state_handlers.rs
+        .route(
+            crate::paths::STATE_TRANSACTIONS,
+            post(crate::state_handlers::submit_transaction_endpoint),
+        )
+        .route(
+            crate::paths::STATE_TRANSACTIONS_PENDING,
+            get(crate::state_handlers::get_pending_transactions_endpoint),
+        )
+        .route(
+            crate::paths::STATE_BATCHES,
+            post(crate::state_handlers::create_batch_endpoint),
+        )
         // Admin endpoints from admin_handlers.rs
-        .route(crate::paths::ADMIN_KYC_PENDING, get(crate::admin_handlers::list_pending_kyc_endpoint))
-        
+        .route(
+            crate::paths::ADMIN_KYC_PENDING,
+            get(crate::admin_handlers::list_pending_kyc_endpoint),
+        )
         // TODO: Continue migrating remaining endpoints from rest.rs
         // For now, some endpoints are still handled by rest::create_router
         .with_state(state)

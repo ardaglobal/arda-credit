@@ -53,9 +53,11 @@ pub mod rest;
 pub mod server;
 pub mod state_handlers;
 pub mod telemetry;
+pub mod turnover_handlers;
 pub mod types;
 pub mod unified_batch_service;
 pub mod user_handlers;
+pub mod withdrawal_handlers;
 pub mod withdrawal_service;
 
 #[cfg(test)]
@@ -102,6 +104,7 @@ pub use admin_handlers::*;
 pub use merchant_handlers::*;
 pub use state_handlers::*;
 pub use user_handlers::*;
+pub use withdrawal_handlers::*;
 
 pub use server::{ApiServer, ApiServerBuilder, ApiServerConfig};
 
