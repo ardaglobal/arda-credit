@@ -149,7 +149,7 @@ pub mod database {
 /// # #[derive(Debug, Serialize, Deserialize)]
 /// # struct Identity { id: i32, email: String }
 /// # use db::instrument_db_fn;
-/// 
+///
 /// #[instrument_db_fn!("create_identity", "identities")]
 /// pub async fn create_identity(pool: &PgPool, email: String) -> Result<Identity, sqlx::Error> {
 ///     // function implementation would go here
@@ -183,7 +183,7 @@ macro_rules! instrument_db_fn {
 /// # #[derive(Debug, Serialize, Deserialize)]
 /// # struct Identity { id: i32, email: String }
 /// # use db::instrument_db_user_fn;
-/// 
+///
 /// #[instrument_db_user_fn!("get_identity_by_id", "identities", user_id)]
 /// async fn get_identity_by_id(pool: &PgPool, user_id: Uuid) -> Result<Option<Identity>, sqlx::Error> {
 ///     // function implementation would go here
@@ -214,7 +214,7 @@ macro_rules! instrument_db_user_fn {
 /// ```rust,ignore
 /// # use sqlx::PgPool;
 /// # use db::instrument_db_batch_fn;
-/// 
+///
 /// #[instrument_db_batch_fn!("bulk_insert_transactions", "loan_transactions", batch_size)]
 /// async fn bulk_insert_transactions(pool: &PgPool, batch_size: usize) -> Result<(), sqlx::Error> {
 ///     // function implementation would go here

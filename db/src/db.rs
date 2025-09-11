@@ -572,11 +572,15 @@ pub async fn submit_transaction(
 ///
 /// # Errors
 /// Returns error if database operation fails
-#[instrument(skip(pool), fields(
-    operation = "select",
-    table = "incoming_transactions",
-    layer = "database"
-), level = "info")]
+#[instrument(
+    skip(pool),
+    fields(
+        operation = "select",
+        table = "incoming_transactions",
+        layer = "database"
+    ),
+    level = "info"
+)]
 pub async fn get_pending_transactions(
     pool: &PgPool,
 ) -> Result<Vec<IncomingTransaction>, sqlx::Error> {
@@ -793,11 +797,11 @@ pub async fn get_current_counter_value(pool: &PgPool) -> Result<i64, sqlx::Error
 ///
 /// # Errors
 /// Returns error if database operation fails
-#[instrument(skip(pool), fields(
-    operation = "select",
-    table = "processor_state",
-    layer = "database"
-), level = "info")]
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "processor_state", layer = "database"),
+    level = "info"
+)]
 pub async fn get_current_state(pool: &PgPool) -> Result<CounterState, sqlx::Error> {
     debug!("Getting current counter state");
 
