@@ -23,11 +23,10 @@ use opentelemetry::{
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
+use crate::admin_handlers::{KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse};
 use crate::auth::AuthService;
-use crate::admin_handlers::{
-    KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse,
-};
 use crate::authentication_handlers::{
+    generate_invite_code_endpoint, login_endpoint, logout_endpoint, validate_invite_code_endpoint,
     GenerateInviteCodeRequest, GenerateInviteCodeResponse, InviteCodeResponse, LoginRequest,
     LoginResponse, LogoutRequest, LogoutResponse, UserSummary, ValidateInviteCodeResponse,
 };
@@ -71,9 +70,14 @@ use crate::pool_handlers::{
     list_pools, update_pool_status,
 };
 use crate::user_handlers::{
-    KycData, RegisterUserRequest, RegisterUserResponse, SubmitKycRequest,
-    SubmitKycResponse, UpdateKycStatusRequest, UserDetailsResponse,
+    DeleteUserResponse, KycData, RegisterUserRequest, RegisterUserResponse, SubmitKycRequest,
+    SubmitKycResponse, UpdateKycStatusRequest, UpdateUserRequest, UpdateUserResponse,
+    UserDetailsResponse,
 };
+
+// Import handler functions using fully qualified names to avoid conflicts
+use crate::health_handlers::EndpointInfo;
+use crate::loan_handlers::DeleteLoanResponse;
 use crate::merchant_handlers::{
     InvestorProfileQuery, InvestorProfileResponse, MerchantProfileResponse,
     RegisterInvestorRequest, RegisterInvestorResponse, RegisterMerchantRequest,
@@ -187,7 +191,6 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
         wallet_address: identity.wallet_address,
     }
 }
-
 
 // ============================================================================
 // API STATE
@@ -352,13 +355,6 @@ pub struct ApiInfoResponse {
     pub endpoints: Vec<EndpointInfo>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct EndpointInfo {
-    pub method: String,
-    pub path: String,
-    pub description: String,
-}
-
 /// Health check response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HealthResponse {
@@ -395,75 +391,9 @@ pub struct TriggerBatchResponse {
 // LOAN PROCESSING MODELS
 // ============================================================================
 
-/// User type enumeration for allowed user types
-#[derive(Debug, Serialize, Deserialize, ToSchema, Clone, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum UserType {
-    User,
-    Investor,
-    Originator,
-    Admin,
-    Merchant,
-}
-
-impl std::fmt::Display for UserType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::User => write!(f, "user"),
-            Self::Investor => write!(f, "investor"),
-            Self::Originator => write!(f, "originator"),
-            Self::Admin => write!(f, "admin"),
-            Self::Merchant => write!(f, "merchant"),
-        }
-    }
-}
-
-impl std::str::FromStr for UserType {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "user" => Ok(Self::User),
-            "investor" => Ok(Self::Investor),
-            "originator" => Ok(Self::Originator),
-            "merchant" => Ok(Self::Merchant),
-            "admin" => Ok(Self::Admin),
-            _ => Err(format!("Invalid user type: {}", s)),
-        }
-    }
-}
-
-/// Request to register a new user identity
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-
-
-
-
-
-
-
-
-
 // UpdateUserRequest moved to user_handlers.rs
 
 // UpdateUserResponse moved to user_handlers.rs
-
-/// Delete user response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct DeleteUserResponse {
-    pub user_id: String,
-    pub deleted: bool,
-    pub deleted_at: DateTime<Utc>,
-}
-
-/// Delete loan response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct DeleteLoanResponse {
-    pub loan_id: String,
-    pub deleted: bool,
-    pub deleted_at: DateTime<Utc>,
-    pub final_status: String,
-}
 
 /// List identities query parameters
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
@@ -902,17 +832,32 @@ pub fn create_router(state: ApiState) -> Router {
             paths::STATE_BATCHES,
             post(crate::state_handlers::create_batch_endpoint),
         )
-        .route(paths::STATE_BATCHES, get(get_batches_endpoint))
-        .route(paths::STATE_BATCH_BY_ID, get(get_batch_endpoint))
-        .route(paths::STATE_BATCH_PROOF, post(update_batch_proof_endpoint))
+        .route(
+            paths::STATE_BATCHES,
+            get(crate::state_handlers::get_batches_endpoint),
+        )
+        .route(
+            paths::STATE_BATCH_BY_ID,
+            get(crate::state_handlers::get_batch_details_endpoint),
+        )
+        .route(
+            paths::STATE_BATCH_PROOF,
+            post(crate::state_handlers::update_batch_proof_endpoint),
+        )
         .route(paths::STATE_BATCHES_TRIGGER, post(trigger_batch_endpoint))
         .route(
             paths::STATE_BATCHES_STATS,
             get(get_batch_processor_stats_endpoint),
         )
         // State operations
-        .route(paths::STATE_CURRENT, get(get_current_state_endpoint))
-        .route(paths::STATE_CONTRACT, get(get_contract_data_endpoint))
+        .route(
+            paths::STATE_CURRENT,
+            get(crate::state_handlers::get_current_state_endpoint),
+        )
+        .route(
+            paths::STATE_CONTRACT,
+            get(crate::state_handlers::get_contract_submission_data_endpoint),
+        )
         // ========================================================================
         // LOAN PROCESSING ENDPOINTS
         // ========================================================================
@@ -929,10 +874,22 @@ pub fn create_router(state: ApiState) -> Router {
             paths::USER_BY_ID,
             get(crate::user_handlers::get_user_details_endpoint),
         )
-        .route(paths::USER_BY_ID, put(update_user_endpoint))
-        .route(paths::USER_BY_ID, delete(delete_user_endpoint))
-        .route(paths::USER_KYC, post(submit_kyc_endpoint))
-        .route(paths::USER_KYC_STATUS, post(update_kyc_status_endpoint))
+        .route(
+            paths::USER_BY_ID,
+            put(crate::user_handlers::update_user_endpoint),
+        )
+        .route(
+            paths::USER_BY_ID,
+            delete(crate::user_handlers::delete_user_endpoint),
+        )
+        .route(
+            paths::USER_KYC,
+            post(crate::user_handlers::submit_kyc_endpoint),
+        )
+        .route(
+            paths::USER_KYC_STATUS,
+            post(crate::user_handlers::update_kyc_status_endpoint),
+        )
         // Investor Management endpoints
         .route(
             paths::REGISTER_INVESTOR,
@@ -959,15 +916,15 @@ pub fn create_router(state: ApiState) -> Router {
         // User Balance & Transaction endpoints
         .route(
             paths::USER_BALANCE_BY_ADDRESS,
-            get(get_user_balance_by_address_endpoint),
+            get(crate::user_handlers::get_user_balance_by_address_endpoint),
         )
         .route(
             paths::USER_BALANCE_BY_ID,
-            get(get_user_balance_by_id_endpoint),
+            get(crate::user_handlers::get_user_balance_by_id_endpoint),
         )
         .route(
             paths::USER_TRANSACTIONS_BY_ID,
-            get(get_user_transactions_endpoint),
+            get(crate::user_handlers::get_user_transactions_endpoint),
         )
         .route(
             paths::TRANSACTION_BY_HASH,
@@ -1203,117 +1160,6 @@ pub fn create_router(state: ApiState) -> Router {
     tag = "Info"
 )]
 #[instrument(skip(state), level = "info")]
-async fn health_check(
-    State(state): State<ApiState>,
-) -> Result<Json<HealthResponse>, (StatusCode, String)> {
-    // Get the global tracer
-    let tracer = global::tracer("arda-credit-api");
-
-    // Create a span for the health check operation
-    let span = tracer.start("health_check");
-    let cx = Context::current_with_span(span);
-
-    // Set attributes on the span
-    cx.span().set_attributes(vec![
-        KeyValue::new("endpoint", "/api/v1/health"),
-        KeyValue::new("operation", "health_check"),
-        KeyValue::new("component", "api"),
-    ]);
-
-    info!("🔍 API: Health check requested");
-
-    // Add event for the start of health check
-    cx.span().add_event(
-        "health_check_started",
-        vec![KeyValue::new("timestamp", Utc::now().to_rfc3339())],
-    );
-
-    // Test database connection with tracing
-    let db_connected = {
-        let db_span = tracer.start("database_health_check");
-        let db_cx = cx.with_span(db_span);
-
-        db_cx.span().set_attributes(vec![
-            KeyValue::new("db.system", "postgresql"),
-            KeyValue::new("db.operation", "health_check"),
-            KeyValue::new("db.statement", "SELECT 1"),
-        ]);
-
-        match sqlx::query("SELECT 1").fetch_one(&state.pool).await {
-            Ok(_) => {
-                db_cx
-                    .span()
-                    .set_attribute(KeyValue::new("db.success", true));
-                db_cx.span().add_event(
-                    "database_connection_success",
-                    vec![KeyValue::new("query", "SELECT 1")],
-                );
-                true
-            }
-            Err(e) => {
-                db_cx.span().set_attributes(vec![
-                    KeyValue::new("db.success", false),
-                    KeyValue::new("error.message", e.to_string()),
-                    KeyValue::new("error.type", "database_connection_error"),
-                ]);
-                db_cx.span().add_event(
-                    "database_connection_failed",
-                    vec![
-                        KeyValue::new("error", e.to_string()),
-                        KeyValue::new("query", "SELECT 1"),
-                    ],
-                );
-                error!("Database health check failed: {}", e);
-                false
-            }
-        }
-    };
-
-    let response = HealthResponse {
-        status: if db_connected {
-            "healthy".to_string()
-        } else {
-            "unhealthy".to_string()
-        },
-        timestamp: Utc::now(),
-        database_connected: db_connected,
-        api_version: state.config.version.clone(),
-        git_tag: env!("GIT_TAG").to_string(),
-        git_sha: env!("GIT_SHA").to_string(),
-        git_sha_short: env!("GIT_SHA_SHORT").to_string(),
-        git_dirty: env!("GIT_DIRTY").parse().unwrap_or(false),
-    };
-
-    // Final span attributes
-    cx.span().set_attributes(vec![
-        KeyValue::new("health.status", response.status.clone()),
-        KeyValue::new("database.connected", db_connected),
-        KeyValue::new("api.version", response.api_version.clone()),
-    ]);
-
-    if db_connected {
-        info!("✅ API: Health check passed");
-        cx.span().add_event(
-            "health_check_completed",
-            vec![KeyValue::new("result", "success")],
-        );
-        Ok(Json(response))
-    } else {
-        error!("❌ API: Health check failed - database not connected");
-        cx.span().set_attributes(vec![
-            KeyValue::new("error", true),
-            KeyValue::new("error.message", "Database not available"),
-        ]);
-        cx.span().add_event(
-            "health_check_completed",
-            vec![KeyValue::new("result", "failure")],
-        );
-        Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            "Database not available".to_string(),
-        ))
-    }
-}
 
 /// API information endpoint
 #[instrument(skip(state), level = "info")]
@@ -1326,21 +1172,6 @@ async fn health_check(
     ),
     tag = "Info"
 )]
-async fn api_info(State(state): State<ApiState>) -> Json<ApiInfoResponse> {
-    info!("📋 API: API info requested");
-
-    let endpoints = paths::get_all_endpoints();
-
-    let response = ApiInfoResponse {
-        server_name: state.config.server_name.clone(),
-        version: state.config.version.clone(),
-        timestamp: Utc::now(),
-        endpoints,
-    };
-
-    info!("✅ API: API info returned");
-    Json(response)
-}
 
 /// Submit a new transaction
 #[utoipa::path(
@@ -1542,46 +1373,6 @@ async fn create_batch_endpoint(
     tag = "Batches"
 )]
 #[instrument(skip(state), level = "info")]
-async fn get_batches_endpoint(
-    State(state): State<ApiState>,
-    Query(params): Query<BatchListQuery>,
-) -> Result<Json<BatchListResponse>, (StatusCode, String)> {
-    let limit = params.limit.unwrap_or(20);
-    info!("📋 API: Getting batches with limit: {}", limit);
-
-    match get_all_batches(&state.pool, Some(limit)).await {
-        Ok(batches) => {
-            let batch_infos: Vec<BatchInfo> = batches
-                .into_iter()
-                .map(|b| BatchInfo {
-                    id: b.id,
-                    previous_counter_value: b.previous_counter_value,
-                    final_counter_value: b.final_counter_value,
-                    transaction_count: b.transaction_ids.len(),
-                    proof_status: b.proof_status,
-                    sindri_proof_id: b.sindri_proof_id,
-                    created_at: b.created_at,
-                    proven_at: b.proven_at,
-                })
-                .collect();
-
-            let response = BatchListResponse {
-                total_count: batch_infos.len(),
-                batches: batch_infos,
-            };
-
-            info!("✅ API: Found {} batches", response.total_count);
-            Ok(Json(response))
-        }
-        Err(e) => {
-            error!("Failed to get batches: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get batches: {}", e),
-            ))
-        }
-    }
-}
 
 /// Get specific batch by ID
 #[utoipa::path(
@@ -1598,44 +1389,6 @@ async fn get_batches_endpoint(
     tag = "Batches"
 )]
 #[instrument(skip(state), level = "info")]
-async fn get_batch_endpoint(
-    State(state): State<ApiState>,
-    Path(batch_id): Path<i32>,
-) -> Result<Json<BatchInfo>, (StatusCode, String)> {
-    info!("🔍 API: Getting batch: id={}", batch_id);
-
-    match get_batch_by_id(&state.pool, batch_id).await {
-        Ok(batch) => {
-            let batch_info = BatchInfo {
-                id: batch.id,
-                previous_counter_value: batch.previous_counter_value,
-                final_counter_value: batch.final_counter_value,
-                transaction_count: batch.transaction_ids.len(),
-                proof_status: batch.proof_status,
-                sindri_proof_id: batch.sindri_proof_id,
-                created_at: batch.created_at,
-                proven_at: batch.proven_at,
-            };
-
-            info!("✅ API: Found batch: id={}", batch.id);
-            Ok(Json(batch_info))
-        }
-        Err(SqlxError::RowNotFound) => {
-            info!("❌ API: Batch not found: id={}", batch_id);
-            Err((
-                StatusCode::NOT_FOUND,
-                format!("Batch not found: {}", batch_id),
-            ))
-        }
-        Err(e) => {
-            error!("Failed to get batch: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to get batch: {}", e),
-            ))
-        }
-    }
-}
 
 /// Update batch with ZK proof information
 ///
@@ -1659,149 +1412,6 @@ async fn get_batch_endpoint(
     ),
     tag = "Batches"
 )]
-#[instrument(skip(state), level = "info")]
-async fn update_batch_proof_endpoint(
-    State(state): State<ApiState>,
-    Path(batch_id): Path<i32>,
-    Json(request): Json<UpdateBatchProofRequest>,
-) -> Result<Json<BatchInfo>, (StatusCode, String)> {
-    info!(
-        "🔐 API: Updating batch proof: id={}, proof={}",
-        batch_id, request.sindri_proof_id
-    );
-
-    // Validate status against allowed values
-    const ALLOWED_STATUSES: &[&str] = &["pending", "proven", "failed"];
-    if !ALLOWED_STATUSES.contains(&request.status.as_str()) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Invalid status '{}'. Allowed values: {}",
-                request.status,
-                ALLOWED_STATUSES.join(", ")
-            ),
-        ));
-    }
-
-    // Validate merkle_root requirements based on status
-    let validated_merkle_root = if request.status == "proven" {
-        // For "proven" status, merkle_root is required
-        match &request.merkle_root {
-            Some(merkle_root_hex) => {
-                // Decode hex string to bytes
-                let merkle_root =
-                    hex::decode(merkle_root_hex.trim_start_matches("0x")).map_err(|e| {
-                        (
-                            StatusCode::BAD_REQUEST,
-                            format!("Invalid merkle root hex: {}", e),
-                        )
-                    })?;
-
-                // Validate that merkle_root is exactly 32 bytes
-                if merkle_root.len() != 32 {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        format!(
-                            "Merkle root must be exactly 32 bytes, got {} bytes",
-                            merkle_root.len()
-                        ),
-                    ));
-                }
-
-                Some(merkle_root)
-            }
-            None => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "Merkle root is required when status is 'proven'".to_string(),
-                ));
-            }
-        }
-    } else {
-        // For other statuses, merkle_root is not required (but allowed)
-        if let Some(merkle_root_hex) = &request.merkle_root {
-            // If provided, still validate the format
-            let merkle_root =
-                hex::decode(merkle_root_hex.trim_start_matches("0x")).map_err(|e| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        format!("Invalid merkle root hex: {}", e),
-                    )
-                })?;
-
-            // Validate that merkle_root is exactly 32 bytes
-            if merkle_root.len() != 32 {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    format!(
-                        "Merkle root must be exactly 32 bytes, got {} bytes",
-                        merkle_root.len()
-                    ),
-                ));
-            }
-
-            Some(merkle_root)
-        } else {
-            None
-        }
-    };
-
-    // Update batch with proof
-    match update_batch_proof(
-        &state.pool,
-        batch_id,
-        &request.sindri_proof_id,
-        &request.status,
-    )
-    .await
-    {
-        Ok(()) => {
-            // Store Merkle root if validated and provided
-            if let Some(merkle_root) = validated_merkle_root {
-                if let Err(e) = store_ads_state_commit(&state.pool, batch_id, &merkle_root).await {
-                    error!("Failed to store ADS state commit: {}", e);
-                    return Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to store ADS state commit: {}", e),
-                    ));
-                }
-            }
-
-            // Return updated batch info
-            match get_batch_by_id(&state.pool, batch_id).await {
-                Ok(batch) => {
-                    let batch_info = BatchInfo {
-                        id: batch.id,
-                        previous_counter_value: batch.previous_counter_value,
-                        final_counter_value: batch.final_counter_value,
-                        transaction_count: batch.transaction_ids.len(),
-                        proof_status: batch.proof_status,
-                        sindri_proof_id: batch.sindri_proof_id,
-                        created_at: batch.created_at,
-                        proven_at: batch.proven_at,
-                    };
-
-                    info!("✅ API: Batch proof updated: id={}", batch_id);
-                    Ok(Json(batch_info))
-                }
-                Err(e) => {
-                    error!("Failed to get updated batch: {}", e);
-                    Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to get updated batch: {}", e),
-                    ))
-                }
-            }
-        }
-        Err(e) => {
-            error!("Failed to update batch proof: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to update batch proof: {}", e),
-            ))
-        }
-    }
-}
 
 /// Get current counter state
 #[utoipa::path(
@@ -2196,62 +1806,6 @@ async fn get_user_details_endpoint(
     tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
-async fn submit_kyc_endpoint(
-    State(state): State<ApiState>,
-    Path(user_id): Path<String>,
-    Json(request): Json<SubmitKycRequest>,
-) -> Result<Json<SubmitKycResponse>, (StatusCode, String)> {
-    info!(
-        "📄 API: KYC submission: user_id={}, doc_type={}",
-        user_id, request.kyc_data.document_type
-    );
-
-    let uuid = match parse_user_id(&user_id) {
-        Ok(uuid) => uuid,
-        Err(e) => {
-            warn!("❌ API: Invalid user ID format: {}", e);
-            return Err((StatusCode::BAD_REQUEST, e));
-        }
-    };
-
-    match submit_kyc_data(
-        &state.pool,
-        uuid,
-        &request.kyc_data.document_type,
-        &request.kyc_data.document_hash,
-        request.kyc_data.jurisdiction.as_deref(),
-        request.kyc_data.kyc_investor_type.as_deref(),
-    )
-    .await
-    {
-        Ok(identity) => {
-            info!(
-                "✅ API: KYC submitted successfully for user: {}",
-                identity.id
-            );
-            let response = SubmitKycResponse {
-                user_id: identity.id.to_string(),
-                kyc_status: identity.kyc_status,
-                submitted_at: identity.kyc_submitted_at.unwrap_or_else(Utc::now),
-            };
-            Ok(Json(response))
-        }
-        Err(e) => {
-            if e.to_string().contains("violates foreign key constraint")
-                || e.to_string().contains("not found")
-            {
-                warn!("❌ API: User not found: {}", user_id);
-                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-            } else {
-                error!("❌ API: Database error submitting KYC: {}", e);
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to submit KYC".to_string(),
-                ))
-            }
-        }
-    }
-}
 
 /// Update KYC status (admin only)
 #[utoipa::path(
@@ -2270,48 +1824,6 @@ async fn submit_kyc_endpoint(
     tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
-async fn update_kyc_status_endpoint(
-    State(state): State<ApiState>,
-    Path(user_id): Path<String>,
-    Json(request): Json<UpdateKycStatusRequest>,
-) -> Result<Json<UserDetailsResponse>, (StatusCode, String)> {
-    info!(
-        "⚖️ API: Updating KYC status: user_id={}, new_status={}",
-        user_id, request.status
-    );
-
-    let uuid = match parse_user_id(&user_id) {
-        Ok(uuid) => uuid,
-        Err(e) => {
-            warn!("❌ API: Invalid user ID format: {}", e);
-            return Err((StatusCode::BAD_REQUEST, e));
-        }
-    };
-
-    match update_kyc_status(&state.pool, uuid, &request.status, request.notes.as_deref()).await {
-        Ok(identity) => {
-            info!(
-                "✅ API: KYC status updated successfully for user: {}",
-                identity.id
-            );
-            Ok(Json(identity_to_user_details(identity)))
-        }
-        Err(e) => {
-            if e.to_string().contains("violates foreign key constraint")
-                || e.to_string().contains("not found")
-            {
-                warn!("❌ API: User not found: {}", user_id);
-                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-            } else {
-                error!("❌ API: Database error updating KYC status: {}", e);
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to update KYC status".to_string(),
-                ))
-            }
-        }
-    }
-}
 
 /// List pending KYC applications (admin only)
 #[utoipa::path(
@@ -2439,86 +1951,6 @@ async fn get_kyc_statistics_endpoint(
     tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
-async fn update_user_endpoint(
-    State(state): State<ApiState>,
-    Path(user_id): Path<String>,
-    Json(request): Json<UpdateUserRequest>,
-) -> Result<Json<UpdateUserResponse>, (StatusCode, String)> {
-    info!("🔄 API: Updating user profile: user_id={}", user_id);
-
-    let uuid = match parse_user_id(&user_id) {
-        Ok(uuid) => uuid,
-        Err(e) => {
-            warn!("❌ API: Invalid user ID format: {}", e);
-            return Err((StatusCode::BAD_REQUEST, e));
-        }
-    };
-
-    // Build list of fields being updated
-    let mut updated_fields = Vec::new();
-    if request.email.is_some() {
-        updated_fields.push("email".to_string());
-    }
-    if request.user_type.is_some() {
-        updated_fields.push("user_type".to_string());
-    }
-    if request.jurisdiction.is_some() {
-        updated_fields.push("jurisdiction".to_string());
-    }
-    if request.first_name.is_some() {
-        updated_fields.push("first_name".to_string());
-    }
-    if request.last_name.is_some() {
-        updated_fields.push("last_name".to_string());
-    }
-    if request.wallet_address.is_some() {
-        updated_fields.push("wallet_address".to_string());
-    }
-
-    match update_identity_profile(
-        &state.pool,
-        uuid,
-        request.email.as_deref(),
-        request
-            .user_type
-            .as_ref()
-            .map(std::string::ToString::to_string)
-            .as_deref(),
-        request.jurisdiction.as_deref(),
-        request.first_name.as_deref(),
-        request.last_name.as_deref(),
-        request.wallet_address.as_deref(),
-    )
-    .await
-    {
-        Ok(identity) => {
-            info!(
-                "✅ API: User profile updated successfully for ID: {}",
-                identity.id
-            );
-            let response = UpdateUserResponse {
-                user_id: identity.id.to_string(),
-                updated_fields,
-                updated_at: identity.updated_at,
-            };
-            Ok(Json(response))
-        }
-        Err(e) => {
-            if e.to_string().contains("violates foreign key constraint")
-                || e.to_string().contains("not found")
-            {
-                warn!("❌ API: User not found: {}", user_id);
-                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-            } else {
-                error!("❌ API: Database error updating user: {}", e);
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to update user".to_string(),
-                ))
-            }
-        }
-    }
-}
 
 /// Delete user
 #[utoipa::path(
@@ -2535,78 +1967,6 @@ async fn update_user_endpoint(
     tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
-async fn delete_user_endpoint(
-    State(state): State<ApiState>,
-    Path(user_id): Path<String>,
-) -> Result<Json<DeleteUserResponse>, (StatusCode, String)> {
-    info!("🗑️ API: Soft deleting user: user_id={}", user_id);
-
-    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid user ID format".to_string(),
-        )
-    })?;
-
-    // Check if user exists and is not already deleted
-    let existing_user = sqlx::query!(
-        "SELECT id, deleted_at FROM identities WHERE id = $1",
-        user_uuid
-    )
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| {
-        error!("Failed to check user existence: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to check user existence".to_string(),
-        )
-    })?;
-
-    let _user = match existing_user {
-        Some(user) if user.deleted_at.is_some() => {
-            return Err((StatusCode::CONFLICT, "User is already deleted".to_string()));
-        }
-        Some(user) => user,
-        None => {
-            return Err((StatusCode::NOT_FOUND, "User not found".to_string()));
-        }
-    };
-
-    // Perform soft delete by setting deleted_at timestamp
-    let deleted_at = Utc::now();
-    let update_result = sqlx::query!(
-        "UPDATE identities SET deleted_at = $1, updated_at = $1 WHERE id = $2",
-        deleted_at,
-        user_uuid
-    )
-    .execute(&state.pool)
-    .await
-    .map_err(|e| {
-        error!("Failed to soft delete user: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to delete user".to_string(),
-        )
-    })?;
-
-    if update_result.rows_affected() == 0 {
-        return Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to update user deletion status".to_string(),
-        ));
-    }
-
-    let response = DeleteUserResponse {
-        user_id,
-        deleted: true,
-        deleted_at,
-    };
-
-    info!("✅ API: User soft deleted successfully");
-    Ok(Json(response))
-}
-
 // ---- INVESTOR MANAGEMENT ENDPOINTS - MOVED TO merchant_handlers.rs ----
 
 /// Update merchant profile
@@ -2997,36 +2357,6 @@ async fn update_investor_profile_endpoint(
     tag = "User Management"
 )]
 #[instrument(skip(state), level = "info")]
-pub async fn get_user_balance_by_address_endpoint(
-    Path(address): Path<String>,
-    State(state): State<ApiState>,
-) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting user balance by address: {}", address);
-
-    match get_user_balance_by_address(&state.pool, &address).await {
-        Ok(Some(balance)) => {
-            let response = UserBalanceResponse {
-                user_id: None, // We don't have user_id when querying by address directly
-                wallet_address: address,
-                available_balance: balance.to_string(),
-                currency: "USDC".to_string(),
-            };
-            info!("✅ API: User balance retrieved successfully");
-            Ok(Json(response))
-        }
-        Ok(None) => {
-            warn!("⚠️ API: User not found for address: {}", address);
-            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to get user balance: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to retrieve user balance".to_string(),
-            ))
-        }
-    }
-}
 
 /// Get user balance by user ID
 #[utoipa::path(
@@ -3043,60 +2373,6 @@ pub async fn get_user_balance_by_address_endpoint(
     tag = "User Management"
 )]
 #[instrument(skip(state), level = "info")]
-pub async fn get_user_balance_by_id_endpoint(
-    Path(user_id): Path<String>,
-    State(state): State<ApiState>,
-) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting user balance by ID: {}", user_id);
-
-    let user_uuid = match parse_user_id(&user_id) {
-        Ok(id) => id,
-        Err(err) => {
-            warn!("⚠️ API: Invalid user ID format: {}", err);
-            return Err((StatusCode::BAD_REQUEST, err));
-        }
-    };
-
-    // First get user details to get wallet address
-    match get_identity_by_id(&state.pool, user_uuid).await {
-        Ok(Some(identity)) => match get_user_balance_by_id(&state.pool, user_uuid).await {
-            Ok(Some(balance)) => {
-                let response = UserBalanceResponse {
-                    user_id: Some(user_id),
-                    wallet_address: identity
-                        .wallet_address
-                        .unwrap_or_else(|| "Not set".to_string()),
-                    available_balance: balance.to_string(),
-                    currency: "USDC".to_string(),
-                };
-                info!("✅ API: User balance retrieved successfully");
-                Ok(Json(response))
-            }
-            Ok(None) => {
-                warn!("⚠️ API: Balance not found for user ID: {}", user_id);
-                Err((StatusCode::NOT_FOUND, "Balance not found".to_string()))
-            }
-            Err(e) => {
-                error!("❌ API: Failed to get user balance: {}", e);
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to retrieve user balance".to_string(),
-                ))
-            }
-        },
-        Ok(None) => {
-            warn!("⚠️ API: User not found: {}", user_id);
-            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to get user identity: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to retrieve user".to_string(),
-            ))
-        }
-    }
-}
 
 /// Get user transactions by user ID
 #[utoipa::path(
@@ -3113,82 +2389,6 @@ pub async fn get_user_balance_by_id_endpoint(
     tag = "User Management"
 )]
 #[instrument(skip(state), level = "info")]
-pub async fn get_user_transactions_endpoint(
-    Path(user_id): Path<String>,
-    State(state): State<ApiState>,
-) -> Result<Json<UserTransactionsResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting user transactions by ID: {}", user_id);
-
-    let user_uuid = match parse_user_id(&user_id) {
-        Ok(id) => id,
-        Err(err) => {
-            warn!("⚠️ API: Invalid user ID format: {}", err);
-            return Err((StatusCode::BAD_REQUEST, err));
-        }
-    };
-
-    // First get user details to get wallet address
-    match get_identity_by_id(&state.pool, user_uuid).await {
-        Ok(Some(identity)) => {
-            if let Some(wallet_address) = &identity.wallet_address {
-                match get_deposits_by_user_address(&state.pool, wallet_address).await {
-                    Ok(deposits) => {
-                        let transaction_infos: Vec<DepositTransactionInfo> = deposits
-                            .into_iter()
-                            .map(|deposit| DepositTransactionInfo {
-                                id: deposit.id,
-                                user_address: deposit.user_address,
-                                amount: deposit.amount.to_string(),
-                                deposit_amount_usdc: deposit
-                                    .deposit_amount_usdc
-                                    .map(|d| d.to_string()),
-                                transaction_hash: deposit.transaction_hash,
-                                status: deposit.status,
-                                confirmation_count: deposit.confirmation_count,
-                                required_confirmations: deposit.required_confirmations,
-                                block_number: deposit.block_number,
-                                created_at: deposit.created_at,
-                                processed_at: deposit.processed_at,
-                            })
-                            .collect();
-
-                        let response = UserTransactionsResponse {
-                            total_count: transaction_infos.len(),
-                            transactions: transaction_infos,
-                        };
-
-                        info!("✅ API: User transactions retrieved successfully");
-                        Ok(Json(response))
-                    }
-                    Err(e) => {
-                        error!("❌ API: Failed to get user transactions: {}", e);
-                        Err((
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "Failed to retrieve user transactions".to_string(),
-                        ))
-                    }
-                }
-            } else {
-                warn!("⚠️ API: User has no wallet address set: {}", user_id);
-                Err((
-                    StatusCode::BAD_REQUEST,
-                    "User has no wallet address set".to_string(),
-                ))
-            }
-        }
-        Ok(None) => {
-            warn!("⚠️ API: User not found: {}", user_id);
-            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to get user identity: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to retrieve user".to_string(),
-            ))
-        }
-    }
-}
 
 /// Get transaction by hash
 #[utoipa::path(
@@ -4348,9 +3548,9 @@ async fn get_pending_withdrawals_endpoint(
 
         // Batch endpoints
         // create_batch_endpoint, // moved to state_handlers.rs
+        // update_batch_proof_endpoint, // moved to state_handlers.rs
         get_batches_endpoint,
         get_batch_endpoint,
-        update_batch_proof_endpoint,
         trigger_batch_endpoint,
         get_batch_processor_stats_endpoint,
 

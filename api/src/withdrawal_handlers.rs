@@ -256,15 +256,30 @@ pub async fn get_pending_withdrawals_endpoint(
 pub fn withdrawal_routes() -> Vec<axum::Router<ApiState>> {
     vec![
         axum::Router::new()
-            .route(paths::WITHDRAWALS, axum::routing::post(initiate_withdrawal_endpoint))
-            .route(paths::WITHDRAWAL_BY_ID, axum::routing::get(get_withdrawal_status_endpoint))
-            .route(paths::WITHDRAWAL_CANCEL, axum::routing::post(cancel_withdrawal_endpoint)),
-
+            .route(
+                paths::WITHDRAWALS,
+                axum::routing::post(initiate_withdrawal_endpoint),
+            )
+            .route(
+                paths::WITHDRAWAL_BY_ID,
+                axum::routing::get(get_withdrawal_status_endpoint),
+            )
+            .route(
+                paths::WITHDRAWAL_CANCEL,
+                axum::routing::post(cancel_withdrawal_endpoint),
+            ),
         axum::Router::new()
-            .route(paths::USER_AVAILABLE_BALANCE, axum::routing::get(get_user_available_balance_endpoint))
-            .route(paths::USER_WITHDRAWALS, axum::routing::get(get_user_withdrawal_history_endpoint)),
-
-        axum::Router::new()
-            .route(paths::ADMIN_PENDING_WITHDRAWALS, axum::routing::get(get_pending_withdrawals_endpoint)),
+            .route(
+                paths::USER_AVAILABLE_BALANCE,
+                axum::routing::get(get_user_available_balance_endpoint),
+            )
+            .route(
+                paths::USER_WITHDRAWALS,
+                axum::routing::get(get_user_withdrawal_history_endpoint),
+            ),
+        axum::Router::new().route(
+            paths::ADMIN_PENDING_WITHDRAWALS,
+            axum::routing::get(get_pending_withdrawals_endpoint),
+        ),
     ]
 }

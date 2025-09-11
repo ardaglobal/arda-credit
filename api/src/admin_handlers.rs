@@ -23,7 +23,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::openapi::PaginationParams;
 use crate::paths;
-use crate::rest::UserType;
+use crate::types::UserType;
 use crate::user_handlers::UserDetailsResponse;
 
 // Re-export types for OpenAPI documentation

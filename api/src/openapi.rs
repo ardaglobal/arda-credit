@@ -17,6 +17,7 @@ pub use crate::authentication_handlers::{
     GenerateInviteCodeRequest, GenerateInviteCodeResponse, LoginRequest, LoginResponse,
     LogoutResponse, ValidateInviteCodeResponse,
 };
+pub use crate::balance_service::AvailableBalance;
 pub use crate::credit_line_handlers::{
     AvailablePoolResponse, CreditLineErrorResponse, CreditLineRequestListResponse,
     CreditLineRequestQuery, CreditLineRequestResponse, EligibilityCheckDetail,
@@ -25,9 +26,9 @@ pub use crate::credit_line_handlers::{
 pub use crate::financial_transaction_handlers::{
     AccountFinancialTransactionResponse, CreateAccountFinancialTransactionRequest,
     CreateCreditLineFinancialTransactionRequest, CreatePoolFinancialTransactionRequest,
-    CreditLineFinancialTransactionResponse, FinancialSummaryResponse,
-    FinancialTransactionQuery, PaginatedFinancialTransactionsResponse,
-    PoolFinancialTransactionResponse, UnifiedFinancialTransactionResponse,
+    CreditLineFinancialTransactionResponse, FinancialSummaryResponse, FinancialTransactionQuery,
+    PaginatedFinancialTransactionsResponse, PoolFinancialTransactionResponse,
+    UnifiedFinancialTransactionResponse,
 };
 pub use crate::loan_handlers::{
     CreateLoanRequest, DeleteLoanResponse, ListLoansQuery, ListLoansResponse, LoanDetailsResponse,
@@ -35,22 +36,19 @@ pub use crate::loan_handlers::{
     RecordPaymentRequest, UpdateLoanRequest, UpdateLoanResponse,
 };
 pub use crate::merchant_handlers::{
+    InvestorProfileQuery, InvestorProfileResponse, MerchantProfileQuery, MerchantProfileResponse,
     RegisterInvestorRequest, RegisterInvestorResponse, RegisterMerchantRequest,
-    RegisterMerchantResponse, MerchantProfileQuery, MerchantProfileResponse,
-    InvestorProfileQuery, InvestorProfileResponse, UpdateMerchantProfileRequest,
-    UpdateInvestorProfileRequest,
+    RegisterMerchantResponse, UpdateInvestorProfileRequest, UpdateMerchantProfileRequest,
 };
 pub use crate::pool_api::{
     BenchmarkData, CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
-    InvestorMetrics, InvestorPoolSummariesResponse, InvestorPoolSummary,
-    MarketOverviewResponse, PageInfo, PlatformMetrics, PoolDetailsResponse,
-    PoolListQuery, PoolListResponse, PoolMatchRequest, PoolPerformanceData,
-    PoolPerformanceMetrics, PoolPerformanceResponse, PoolSummaryInfo,
-    PoolTransactionInfo, PoolTransactionsResponse, PoolUtilizationResponse,
-    RecentActivity, StandardPoolObject, TransactionHistoryQuery,
-    UpdatePoolStatusRequest, UtilizationDataPoint, UtilizationHistoryQuery,
+    InvestorMetrics, InvestorPoolSummariesResponse, InvestorPoolSummary, MarketOverviewResponse,
+    PageInfo, PlatformMetrics, PoolDetailsResponse, PoolListQuery, PoolListResponse,
+    PoolMatchRequest, PoolPerformanceData, PoolPerformanceMetrics, PoolPerformanceResponse,
+    PoolSummaryInfo, PoolTransactionInfo, PoolTransactionsResponse, PoolUtilizationResponse,
+    RecentActivity, StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest,
+    UtilizationDataPoint, UtilizationHistoryQuery,
 };
-pub use crate::rest::UserType;
 pub use crate::state_handlers::{
     BatchInfo, BatchListResponse, BatchProcessorStatsResponse, ContractSubmissionData,
     CreateBatchRequest, CreateBatchResponse, CurrentStateResponse, PendingTransactionsResponse,
@@ -61,6 +59,7 @@ pub use crate::turnover_handlers::{
     ProfileCompletionResponse, TurnoverAnalyticsResponse, TurnoverCreateRequest, TurnoverResponse,
     TurnoverUpdateRequest,
 };
+pub use crate::types::UserType;
 pub use crate::user_handlers::{
     ListIdentitiesQuery, ListIdentitiesResponse, RegisterUserRequest, RegisterUserResponse,
     SubmitKycRequest, SubmitKycResponse, UpdateKycStatusRequest, UpdateUserRequest,
@@ -69,7 +68,6 @@ pub use crate::user_handlers::{
 pub use crate::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
 };
-pub use crate::balance_service::AvailableBalance;
 
 /// Pagination parameters for list endpoints
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]

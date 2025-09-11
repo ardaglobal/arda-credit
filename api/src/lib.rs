@@ -41,6 +41,7 @@ pub mod batch_processor;
 pub mod client;
 pub mod credit_line_handlers;
 pub mod financial_transaction_handlers;
+pub mod health_handlers;
 pub mod kyc_service;
 pub mod loan_handlers;
 pub mod merchant_handlers;
@@ -89,11 +90,12 @@ pub use client::{
     UserTransactionsResponse,
 };
 
+pub use health_handlers::EndpointInfo;
 pub use rest::{
     create_router, ApiConfig, ApiInfoResponse, ApiState, BatchListQuery,
     BatchListResponse as RestBatchListResponse, CreateBatchRequest as RestCreateBatchRequest,
     CreateBatchResponse as RestCreateBatchResponse,
-    CurrentStateResponse as RestCurrentStateResponse, EndpointInfo,
+    CurrentStateResponse as RestCurrentStateResponse,
     PendingTransactionsResponse as RestPendingTransactionsResponse,
     SubmitTransactionRequest as RestSubmitTransactionRequest,
     SubmitTransactionResponse as RestSubmitTransactionResponse, UpdateBatchProofRequest,

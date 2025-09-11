@@ -18,8 +18,7 @@ use tracing::{error, info, instrument, warn};
 use utoipa::ToSchema;
 
 use crate::paths;
-use crate::rest::UserType;
-use crate::types::ApiState;
+use crate::types::{ApiState, UserType};
 
 // Use Axum's built-in response types for Axum 0.8 compatibility
 use arda_credit_db::{
@@ -144,7 +143,10 @@ pub async fn login_endpoint(
         }
         Err(e) => {
             error!("❌ API: Database error during login: {}", e);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Authentication error".to_string()));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Authentication error".to_string(),
+            ));
         }
     };
 
@@ -162,7 +164,10 @@ pub async fn login_endpoint(
         Ok(valid) => valid,
         Err(e) => {
             error!("❌ API: Password verification error: {}", e);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Authentication error".to_string()));
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Authentication error".to_string(),
+            ));
         }
     };
 
@@ -182,7 +187,7 @@ pub async fn login_endpoint(
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Authentication error".to_string(),
-            ))
+            ));
         }
     };
 
@@ -265,7 +270,10 @@ pub async fn validate_invite_code_endpoint(
     // Validate input
     if code.trim().is_empty() {
         warn!("❌ API: Empty invite code provided");
-        return Err((StatusCode::BAD_REQUEST, "Invite code cannot be empty".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Invite code cannot be empty".to_string(),
+        ));
     }
 
     // Get detailed invite code information
@@ -343,7 +351,10 @@ pub async fn generate_invite_code_endpoint(
     // Validate user_type
     if user_type != "admin" && user_type != "regular" {
         warn!("❌ API: Invalid user_type provided: {}", user_type);
-        return Err((StatusCode::BAD_REQUEST, "user_type must be either 'admin' or 'regular'".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "user_type must be either 'admin' or 'regular'".to_string(),
+        ));
     }
 
     info!(

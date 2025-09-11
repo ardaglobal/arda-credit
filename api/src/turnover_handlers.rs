@@ -20,9 +20,9 @@ use crate::paths;
 use crate::types::ApiState;
 use arda_credit_db::{
     create_or_update_turnover, get_merchant_by_user_id, get_merchant_profile_completion,
-    get_merchant_turnover, get_merchant_turnover_analytics, update_turnover,
-    CreateTurnoverRequest, MerchantTurnoverDaily, MerchantTurnoverAnalytics,
-    MerchantProfileCompletion, UpdateTurnoverRequest,
+    get_merchant_turnover, get_merchant_turnover_analytics, update_turnover, CreateTurnoverRequest,
+    MerchantProfileCompletion, MerchantTurnoverAnalytics, MerchantTurnoverDaily,
+    UpdateTurnoverRequest,
 };
 use uuid::Uuid;
 

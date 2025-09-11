@@ -18,14 +18,14 @@ use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::paths;
-use crate::rest::UserType;
-use crate::types::ApiState;
+use crate::types::{ApiState, UserType};
 use arda_credit_db::{
     get_deposits_by_user_address, get_identity_by_id, get_invite_code_info,
     get_user_balance_by_address, get_user_balance_by_id, register_or_reregister_user,
-    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code, Identity,
-    RegisterResult,
+    store_ads_state_commit, submit_kyc_data, update_identity_profile, update_kyc_status,
+    use_invite_code, Identity, RegisterResult,
 };
+use sqlx::Error as SqlxError;
 
 // ============================================================================
 // USER MANAGEMENT TYPES (MOVED FROM rest.rs)
@@ -187,32 +187,6 @@ pub struct DepositTransactionInfo {
 // ============================================================================
 
 /// Helper function to parse UUID from string
-fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
-    uuid::Uuid::parse_str(user_id).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid user ID format: {}", user_id),
-        )
-    })
-}
-
-/// Convert database Identity to API UserDetailsResponse
-fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
-    UserDetailsResponse {
-        user_id: identity.id.to_string(),
-        email: identity.email,
-        user_type: identity.user_type.parse().unwrap_or(UserType::User),
-        kyc_status: identity.kyc_status,
-        kyc_submitted_at: identity.kyc_submitted_at,
-        kyc_verified_at: identity.kyc_verified_at,
-        created_at: identity.created_at,
-        updated_at: Some(identity.updated_at),
-        first_name: identity.first_name,
-        last_name: identity.last_name,
-        jurisdiction: identity.jurisdiction,
-        wallet_address: identity.wallet_address,
-    }
-}
 
 /// Convert database Identity to API RegisterUserResponse
 fn identity_to_register_response(identity: Identity) -> RegisterUserResponse {
@@ -537,6 +511,605 @@ pub async fn list_identities_endpoint(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to list identities: {}", e),
             ))
+        }
+    }
+}
+
+// ============================================================================
+// USER BALANCE AND TRANSACTION TYPES
+// ============================================================================
+
+/// Response for user balance query
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserBalanceResponse {
+    pub user_id: Option<String>,
+    pub wallet_address: String,
+    pub available_balance: String,
+    pub currency: String,
+}
+
+/// Response for user transaction history
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UserTransactionsResponse {
+    pub transactions: Vec<DepositTransactionInfo>,
+    pub total_count: usize,
+}
+
+/// Deposit transaction information
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DepositTransactionInfo {
+    pub id: i32,
+    pub user_address: String,
+    pub amount: String,
+    pub deposit_amount_usdc: Option<String>,
+    pub transaction_hash: String,
+    pub status: String, // pending, confirmed, processed, failed
+    pub confirmation_count: i32,
+    pub required_confirmations: i32,
+    pub block_number: i64,
+    pub created_at: Option<DateTime<Utc>>,
+    pub processed_at: Option<DateTime<Utc>>,
+}
+
+// ============================================================================
+// USER ENDPOINTS FROM rest.rs
+// ============================================================================
+
+/// Update user profile
+#[utoipa::path(
+    put,
+    path = "/api/v1/user/{user_id}",
+    request_body = UpdateUserRequest,
+    responses(
+        (status = 200, description = "User profile updated successfully", body = UpdateUserResponse),
+        (status = 404, description = "User not found"),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn update_user_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+    Json(request): Json<UpdateUserRequest>,
+) -> Result<Json<UpdateUserResponse>, (StatusCode, String)> {
+    info!("🔄 API: Updating user profile: user_id={}", user_id);
+
+    let uuid = match parse_user_id(&user_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            warn!("❌ API: Invalid user ID format: {}", e);
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid user ID format: {}", e),
+            ));
+        }
+    };
+
+    // Build list of fields being updated
+    let mut updated_fields = Vec::new();
+    if request.email.is_some() {
+        updated_fields.push("email".to_string());
+    }
+    if request.user_type.is_some() {
+        updated_fields.push("user_type".to_string());
+    }
+    if request.jurisdiction.is_some() {
+        updated_fields.push("jurisdiction".to_string());
+    }
+    if request.first_name.is_some() {
+        updated_fields.push("first_name".to_string());
+    }
+    if request.last_name.is_some() {
+        updated_fields.push("last_name".to_string());
+    }
+    if request.wallet_address.is_some() {
+        updated_fields.push("wallet_address".to_string());
+    }
+
+    match update_identity_profile(
+        &state.pool,
+        uuid,
+        request.email.as_deref(),
+        request
+            .user_type
+            .as_ref()
+            .map(std::string::ToString::to_string)
+            .as_deref(),
+        request.jurisdiction.as_deref(),
+        request.first_name.as_deref(),
+        request.last_name.as_deref(),
+        request.wallet_address.as_deref(),
+    )
+    .await
+    {
+        Ok(identity) => {
+            info!(
+                "✅ API: User profile updated successfully for ID: {}",
+                identity.id
+            );
+            let response = UpdateUserResponse {
+                user_id: identity.id.to_string(),
+                updated_fields,
+                updated_at: identity.updated_at,
+            };
+            Ok(Json(response))
+        }
+        Err(e) => {
+            if e.to_string().contains("violates foreign key constraint")
+                || e.to_string().contains("not found")
+            {
+                warn!("❌ API: User not found: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+            } else {
+                error!("❌ API: Database error updating user: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to update user".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+/// Delete user
+#[utoipa::path(
+    delete,
+    path = "/api/v1/user/{user_id}",
+    responses(
+        (status = 200, description = "User deleted successfully", body = DeleteUserResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn delete_user_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<DeleteUserResponse>, (StatusCode, String)> {
+    info!("🗑️ API: Soft deleting user: user_id={}", user_id);
+
+    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid user ID format".to_string(),
+        )
+    })?;
+
+    // Check if user exists and is not already deleted
+    let existing_user = sqlx::query!(
+        "SELECT id, deleted_at FROM identities WHERE id = $1",
+        user_uuid
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to check user existence: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to check user existence".to_string(),
+        )
+    })?;
+
+    let _user = match existing_user {
+        Some(user) if user.deleted_at.is_some() => {
+            return Err((StatusCode::CONFLICT, "User is already deleted".to_string()));
+        }
+        Some(user) => user,
+        None => {
+            return Err((StatusCode::NOT_FOUND, "User not found".to_string()));
+        }
+    };
+
+    // Perform soft delete by setting deleted_at timestamp
+    let deleted_at = Utc::now();
+    let update_result = sqlx::query!(
+        "UPDATE identities SET deleted_at = $1, updated_at = $1 WHERE id = $2",
+        deleted_at,
+        user_uuid
+    )
+    .execute(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to soft delete user: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to delete user".to_string(),
+        )
+    })?;
+
+    if update_result.rows_affected() == 0 {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to update user deletion status".to_string(),
+        ));
+    }
+
+    let response = DeleteUserResponse {
+        user_id,
+        deleted: true,
+        deleted_at,
+    };
+
+    info!("✅ API: User soft deleted successfully");
+    Ok(Json(response))
+}
+
+/// Get user balance by address
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/balance/{address}",
+    responses(
+        (status = 200, description = "User balance retrieved successfully", body = UserBalanceResponse),
+        (status =404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("address" = String, Path, description = "Wallet address")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_balance_by_address_endpoint(
+    Path(address): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user balance by address: {}", address);
+
+    match get_user_balance_by_address(&state.pool, &address).await {
+        Ok(Some(balance)) => {
+            let response = UserBalanceResponse {
+                user_id: None, // We don't have user_id when querying by address directly
+                wallet_address: address,
+                available_balance: balance.to_string(),
+                currency: "USDC".to_string(),
+            };
+            info!("✅ API: User balance retrieved successfully");
+            Ok(Json(response))
+        }
+        Ok(None) => {
+            warn!("⚠️ API: User not found for address: {}", address);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user balance: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user balance".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get user balance by user ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{user_id}/balance",
+    responses(
+        (status = 200, description = "User balance retrieved successfully", body = UserBalanceResponse),
+        (status =404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID (UUID)")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_balance_by_id_endpoint(
+    Path(user_id): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user balance by ID: {}", user_id);
+
+    let user_uuid = match parse_user_id(&user_id) {
+        Ok(id) => id,
+        Err(err) => {
+            warn!("⚠️ API: Invalid user ID format: {}", err);
+            return Err((StatusCode::BAD_REQUEST, err));
+        }
+    };
+
+    // First get user details to get wallet address
+    match get_identity_by_id(&state.pool, user_uuid).await {
+        Ok(Some(identity)) => match get_user_balance_by_id(&state.pool, user_uuid).await {
+            Ok(Some(balance)) => {
+                let response = UserBalanceResponse {
+                    user_id: Some(user_id),
+                    wallet_address: identity
+                        .wallet_address
+                        .unwrap_or_else(|| "Not set".to_string()),
+                    available_balance: balance.to_string(),
+                    currency: "USDC".to_string(),
+                };
+                info!("✅ API: User balance retrieved successfully");
+                Ok(Json(response))
+            }
+            Ok(None) => {
+                warn!("⚠️ API: Balance not found for user ID: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "Balance not found".to_string()))
+            }
+            Err(e) => {
+                error!("❌ API: Failed to get user balance: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to retrieve user balance".to_string(),
+                ))
+            }
+        },
+        Ok(None) => {
+            warn!("⚠️ API: User not found: {}", user_id);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user identity: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user".to_string(),
+            ))
+        }
+    }
+}
+
+/// Get user transactions by user ID
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/{user_id}/transactions",
+    responses(
+        (status = 200, description = "User transactions retrieved successfully", body = UserTransactionsResponse),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID (UUID)")
+    ),
+    tag = "User Management"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_user_transactions_endpoint(
+    Path(user_id): Path<String>,
+    State(state): State<ApiState>,
+) -> Result<Json<UserTransactionsResponse>, (StatusCode, String)> {
+    info!("🔍 API: Getting user transactions by ID: {}", user_id);
+
+    let user_uuid = match parse_user_id(&user_id) {
+        Ok(id) => id,
+        Err(err) => {
+            warn!("⚠️ API: Invalid user ID format: {}", err);
+            return Err((StatusCode::BAD_REQUEST, err));
+        }
+    };
+
+    // First get user details to get wallet address
+    match get_identity_by_id(&state.pool, user_uuid).await {
+        Ok(Some(identity)) => {
+            if let Some(wallet_address) = &identity.wallet_address {
+                match get_deposits_by_user_address(&state.pool, wallet_address).await {
+                    Ok(deposits) => {
+                        let transaction_infos: Vec<DepositTransactionInfo> = deposits
+                            .into_iter()
+                            .map(|deposit| DepositTransactionInfo {
+                                id: deposit.id,
+                                user_address: deposit.user_address,
+                                amount: deposit.amount.to_string(),
+                                deposit_amount_usdc: deposit
+                                    .deposit_amount_usdc
+                                    .map(|d| d.to_string()),
+                                transaction_hash: deposit.transaction_hash,
+                                status: deposit.status,
+                                confirmation_count: deposit.confirmation_count,
+                                required_confirmations: deposit.required_confirmations,
+                                block_number: deposit.block_number,
+                                created_at: deposit.created_at,
+                                processed_at: deposit.processed_at,
+                            })
+                            .collect();
+
+                        let response = UserTransactionsResponse {
+                            total_count: transaction_infos.len(),
+                            transactions: transaction_infos,
+                        };
+
+                        info!("✅ API: User transactions retrieved successfully");
+                        Ok(Json(response))
+                    }
+                    Err(e) => {
+                        error!("❌ API: Failed to get user transactions: {}", e);
+                        Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "Failed to retrieve user transactions".to_string(),
+                        ))
+                    }
+                }
+            } else {
+                warn!("⚠️ API: User has no wallet address set: {}", user_id);
+                Err((
+                    StatusCode::BAD_REQUEST,
+                    "User has no wallet address set".to_string(),
+                ))
+            }
+        }
+        Ok(None) => {
+            warn!("⚠️ API: User not found: {}", user_id);
+            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+        }
+        Err(e) => {
+            error!("❌ API: Failed to get user identity: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve user".to_string(),
+            ))
+        }
+    }
+}
+
+/// Parse user ID string to UUID
+fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
+    uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
+}
+
+/// Convert database Identity to API UserDetailsResponse
+fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
+    UserDetailsResponse {
+        user_id: identity.id.to_string(),
+        email: identity.email,
+        user_type: identity.user_type.parse().unwrap_or(UserType::User),
+        kyc_status: identity.kyc_status,
+        kyc_submitted_at: identity.kyc_submitted_at,
+        kyc_verified_at: identity.kyc_verified_at,
+        created_at: identity.created_at,
+        updated_at: Some(identity.updated_at),
+        first_name: identity.first_name,
+        last_name: identity.last_name,
+        jurisdiction: identity.jurisdiction,
+        wallet_address: identity.wallet_address,
+    }
+}
+
+/// Submit KYC information
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/{user_id}/kyc",
+    request_body = SubmitKycRequest,
+    responses(
+        (status = 200, description = "KYC submitted successfully", body = SubmitKycResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn submit_kyc_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+    Json(request): Json<SubmitKycRequest>,
+) -> Result<Json<SubmitKycResponse>, (StatusCode, String)> {
+    info!(
+        "📄 API: KYC submission: user_id={}, doc_type={}",
+        user_id, request.kyc_data.document_type
+    );
+
+    let uuid = match parse_user_id(&user_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            warn!("❌ API: Invalid user ID format: {}", e);
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid user ID format: {}", e),
+            ));
+        }
+    };
+
+    match submit_kyc_data(
+        &state.pool,
+        uuid,
+        &request.kyc_data.document_type,
+        &request.kyc_data.document_hash,
+        request.kyc_data.jurisdiction.as_deref(),
+        request.kyc_data.kyc_investor_type.as_deref(),
+    )
+    .await
+    {
+        Ok(identity) => {
+            info!(
+                "✅ API: KYC submitted successfully for user: {}",
+                identity.id
+            );
+            let response = SubmitKycResponse {
+                user_id: identity.id.to_string(),
+                kyc_status: identity.kyc_status,
+                submitted_at: identity.kyc_submitted_at.unwrap_or_else(Utc::now),
+            };
+            Ok(Json(response))
+        }
+        Err(e) => {
+            if e.to_string().contains("violates foreign key constraint")
+                || e.to_string().contains("not found")
+            {
+                warn!("❌ API: User not found: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+            } else {
+                error!("❌ API: Database error submitting KYC: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to submit KYC".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+/// Update KYC status (admin only)
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/{user_id}/kyc-status",
+    request_body = UpdateKycStatusRequest,
+    responses(
+        (status = 200, description = "KYC status updated successfully", body = UserDetailsResponse),
+        (status = 400, description = "Invalid request parameters"),
+        (status = 404, description = "User not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    params(
+        ("user_id" = String, Path, description = "User ID")
+    ),
+    tag = "Users"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn update_kyc_status_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+    Json(request): Json<UpdateKycStatusRequest>,
+) -> Result<Json<UserDetailsResponse>, (StatusCode, String)> {
+    info!(
+        "⚖️ API: Updating KYC status: user_id={}, new_status={}",
+        user_id, request.status
+    );
+
+    let uuid = match parse_user_id(&user_id) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+            warn!("❌ API: Invalid user ID format: {}", e);
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid user ID format: {}", e),
+            ));
+        }
+    };
+
+    match update_kyc_status(&state.pool, uuid, &request.status, request.notes.as_deref()).await {
+        Ok(identity) => {
+            info!(
+                "✅ API: KYC status updated successfully for user: {}",
+                identity.id
+            );
+            Ok(Json(identity_to_user_details(identity)))
+        }
+        Err(e) => {
+            if e.to_string().contains("violates foreign key constraint")
+                || e.to_string().contains("not found")
+            {
+                warn!("❌ API: User not found: {}", user_id);
+                Err((StatusCode::NOT_FOUND, "User not found".to_string()))
+            } else {
+                error!("❌ API: Database error updating KYC status: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to update KYC status".to_string(),
+                ))
+            }
         }
     }
 }

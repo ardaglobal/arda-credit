@@ -15,8 +15,54 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use utoipa::{IntoParams, ToSchema};
 
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
+
 // Re-export the core types from rest.rs for now
 pub use crate::rest::{ApiConfig, ApiState};
+
+// ============================================================================
+// CORE TYPES MOVED FROM REST.RS
+// ============================================================================
+
+/// User type enumeration for allowed user types
+#[derive(Debug, Serialize, Deserialize, ToSchema, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum UserType {
+    User,
+    Investor,
+    Originator,
+    Admin,
+    Merchant,
+}
+
+impl std::fmt::Display for UserType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::User => write!(f, "user"),
+            Self::Investor => write!(f, "investor"),
+            Self::Originator => write!(f, "originator"),
+            Self::Admin => write!(f, "admin"),
+            Self::Merchant => write!(f, "merchant"),
+        }
+    }
+}
+
+impl std::str::FromStr for UserType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "user" => Ok(Self::User),
+            "investor" => Ok(Self::Investor),
+            "originator" => Ok(Self::Originator),
+            "merchant" => Ok(Self::Merchant),
+            "admin" => Ok(Self::Admin),
+            _ => Err(format!("Invalid user type: {}", s)),
+        }
+    }
+}
 
 // Note: All types are now imported from rest.rs to avoid duplication
 // This file serves as a bridge during the transition period
