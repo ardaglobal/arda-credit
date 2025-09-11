@@ -572,7 +572,11 @@ pub async fn submit_transaction(
 ///
 /// # Errors
 /// Returns error if database operation fails
-#[instrument(skip(pool), fields(table = "incoming_transactions", layer = "database", operation = "select"), level = "info")]
+#[instrument(skip(pool), fields(
+    operation = "select",
+    table = "incoming_transactions",
+    layer = "database"
+), level = "info")]
 pub async fn get_pending_transactions(
     pool: &PgPool,
 ) -> Result<Vec<IncomingTransaction>, sqlx::Error> {
@@ -636,7 +640,12 @@ pub async fn create_batch(
 ///
 /// # Errors
 /// Returns error if database operation fails or batch not found
-#[instrument(skip(pool), fields(table = "proof_batches", layer = "database", batch_id = %batch_id, operation = "select"), level = "info")]
+#[instrument(skip(pool), fields(
+    operation = "select",
+    table = "proof_batches",
+    layer = "database",
+    batch_id = %batch_id
+), level = "info")]
 pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch, sqlx::Error> {
     debug!("Getting batch: id={batch_id}");
 
@@ -674,7 +683,12 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
 ///
 /// # Errors
 /// Returns error if database operation fails
-#[instrument(skip(pool), fields(table = "proof_batches", layer = "database", limit = ?limit, operation = "select"), level = "info")]
+#[instrument(skip(pool), fields(
+    operation = "select",
+    table = "proof_batches",
+    layer = "database",
+    limit = ?limit
+), level = "info")]
 pub async fn get_all_batches(
     pool: &PgPool,
     limit: Option<i32>,
@@ -779,7 +793,11 @@ pub async fn get_current_counter_value(pool: &PgPool) -> Result<i64, sqlx::Error
 ///
 /// # Errors
 /// Returns error if database operation fails
-#[instrument(skip(pool), fields(table = "processor_state", layer = "database", operation = "select"), level = "info")]
+#[instrument(skip(pool), fields(
+    operation = "select",
+    table = "processor_state",
+    layer = "database"
+), level = "info")]
 pub async fn get_current_state(pool: &PgPool) -> Result<CounterState, sqlx::Error> {
     debug!("Getting current counter state");
 
@@ -864,7 +882,12 @@ pub async fn store_ads_state_commit(
 ///
 /// # Errors
 /// Returns error if database operation fails or batch not found
-#[instrument(skip(pool), fields(table = "proof_batches", layer = "database", batch_id = %batch_id, operation = "select"), level = "info")]
+#[instrument(skip(pool), fields(
+    operation = "select",
+    table = "proof_batches",
+    layer = "database",
+    batch_id = %batch_id
+), level = "info")]
 pub async fn get_contract_submission_data(
     pool: &PgPool,
     batch_id: i32,
