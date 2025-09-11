@@ -321,7 +321,12 @@ impl BackgroundBatchProcessor {
     }
 
     /// Process a batch of transactions using unified ADS-integrated service
-    #[instrument(skip(self), level = "info")]
+    #[instrument(skip(self), fields(
+        stage = "batch_creation",
+        batch.trigger_source = %trigger_type,
+        batch.max_batch_size = %self.config.max_batch_size,
+        layer = "zk_pipeline"
+    ), level = "info")]
     async fn process_batch(&self, trigger_type: &str) -> Result<Option<i32>, String> {
         info!(
             "🔄 UNIFIED: Processing batch via {} trigger (using unified service)",
@@ -532,7 +537,13 @@ impl BackgroundBatchProcessor {
     }
 
     /// Fast proof submission that immediately stores the proof ID
+    #[instrument(skip(pool), fields(
+        stage = "sindri_submission",
+        batch.id = %batch_id,
+        layer = "zk_pipeline"
+    ), level = "info")]
     async fn submit_proof_fast(pool: &PgPool, batch_id: i32) -> Result<(), String> {
+        let start_time = std::time::Instant::now();
         info!("🚀 Fast proof submission for batch {}", batch_id);
 
         // Get batch details and transaction amounts
@@ -552,22 +563,38 @@ impl BackgroundBatchProcessor {
         .collect();
 
         let initial_balance = batch.previous_counter_value as i32;
+        
+        // Record batch details in span
+        tracing::Span::current().record("batch.transaction_count", transaction_amounts.len());
+        tracing::Span::current().record("batch.initial_balance", initial_balance);
+        tracing::Span::current().record("batch.final_balance", 
+            initial_balance + transaction_amounts.iter().sum::<i32>());
 
         // Create proof request
         let proof_request = BatchProofGenerationRequest {
             initial_balance,
-            transactions: transaction_amounts,
+            transactions: transaction_amounts.clone(),
             proof_system: ProofSystem::default(),
             generate_fixtures: false,
         };
+        
+        tracing::Span::current().record("sindri.proof_system", "groth16");
+        
+        debug!("📊 Batch {} proof parameters: initial={}, transactions={:?}, final={}",
+               batch_id, initial_balance, transaction_amounts, 
+               initial_balance + transaction_amounts.iter().sum::<i32>());
 
         // Submit to Sindri and immediately store the proof ID
         match generate_batch_proof(proof_request).await {
             Ok(proof_response) => {
-                info!(
-                    "✅ Got Sindri proof ID for batch {}: {}",
-                    batch_id, proof_response.proof_id
-                );
+                let submission_time = start_time.elapsed().as_millis();
+                tracing::Span::current().record("sindri.submission_time_ms", submission_time);
+                tracing::Span::current().record("sindri.proof_id", &proof_response.proof_id);
+                tracing::Span::current().record("sindri.status", &proof_response.status);
+                tracing::Span::current().record("sindri.success", true);
+                
+                info!("✅ Got Sindri proof ID for batch {} in {}ms: {}", 
+                      batch_id, submission_time, proof_response.proof_id);
 
                 // Immediately store the proof ID in database
                 let status = match proof_response.status.as_str() {
@@ -580,27 +607,31 @@ impl BackgroundBatchProcessor {
                     update_batch_proof(pool, batch_id, &proof_response.proof_id, status).await
                 {
                     error!("❌ Failed to store proof ID for batch {}: {}", batch_id, e);
+                    tracing::Span::current().record("error.type", "database_error");
+                    tracing::Span::current().record("error.message", e.to_string());
                     return Err(format!("Failed to store proof ID: {}", e));
                 }
 
-                info!(
-                    "📝 Stored proof ID {} for batch {} with status {}",
-                    proof_response.proof_id, batch_id, status
-                );
+                info!("📝 Stored proof ID {} for batch {} with status {} (total time: {}ms)",
+                      proof_response.proof_id, batch_id, status, submission_time);
                 Ok(())
             }
             Err(e) => {
-                error!("❌ Sindri submission failed for batch {}: {}", batch_id, e);
+                let submission_time = start_time.elapsed().as_millis();
+                tracing::Span::current().record("sindri.submission_time_ms", submission_time);
+                tracing::Span::current().record("sindri.success", false);
+                tracing::Span::current().record("error.type", "sindri_submission_error");
+                tracing::Span::current().record("error.message", e.to_string());
+                
+                error!("❌ Sindri submission failed for batch {} after {}ms: {}", 
+                       batch_id, submission_time, e);
 
                 // Store error state
                 let error_id = format!("error_{}", batch_id);
                 if let Err(update_err) =
                     update_batch_proof(pool, batch_id, &error_id, "failed").await
                 {
-                    error!(
-                        "❌ Failed to store error state for batch {}: {}",
-                        batch_id, update_err
-                    );
+                    error!("❌ Failed to store error state for batch {}: {}", batch_id, update_err);
                 }
 
                 Err(format!("Sindri submission failed: {}", e))
@@ -609,15 +640,27 @@ impl BackgroundBatchProcessor {
     }
 
     /// Check proof status on Sindri and update database
+    #[instrument(skip(pool), fields(
+        stage = "proof_status_check",
+        batch.id = %batch_id,
+        sindri.proof_id = %proof_id,
+        layer = "zk_pipeline"
+    ), level = "info")]
     async fn check_and_update_proof_status(
         pool: &PgPool,
         batch_id: i32,
         proof_id: &str,
     ) -> Result<(), String> {
         use arda_credit_lib::proof::get_sindri_proof_info;
+        
+        let start_time = std::time::Instant::now();
 
         match get_sindri_proof_info(proof_id).await {
             Ok(proof_info) => {
+                let check_time = start_time.elapsed().as_millis();
+                tracing::Span::current().record("sindri.status_check_time_ms", check_time);
+                tracing::Span::current().record("sindri.current_status", format!("{:?}", proof_info.status));
+                
                 let new_status = match proof_info.status {
                     sindri::JobStatus::Ready => "proven",
                     sindri::JobStatus::Failed => "failed",
@@ -626,16 +669,29 @@ impl BackgroundBatchProcessor {
 
                 // Only update if status changed
                 if new_status != "pending" {
+                    tracing::Span::current().record("sindri.status_changed", true);
+                    tracing::Span::current().record("sindri.new_status", new_status);
+                    
                     if let Err(e) = update_batch_proof(pool, batch_id, proof_id, new_status).await {
                         error!("❌ Failed to update status for batch {}: {}", batch_id, e);
+                        tracing::Span::current().record("error.type", "database_update_error");
+                        tracing::Span::current().record("error.message", e.to_string());
                         return Err(format!("Failed to update status: {}", e));
                     }
-                    info!("📝 Updated batch {} status to {}", batch_id, new_status);
+                    info!("📝 Updated batch {} status to {} in {}ms", batch_id, new_status, check_time);
+                } else {
+                    tracing::Span::current().record("sindri.status_changed", false);
+                    debug!("📊 Batch {} status unchanged (still pending) after {}ms", batch_id, check_time);
                 }
                 Ok(())
             }
             Err(e) => {
-                error!("❌ Failed to check proof status for {}: {}", proof_id, e);
+                let check_time = start_time.elapsed().as_millis();
+                tracing::Span::current().record("sindri.status_check_time_ms", check_time);
+                tracing::Span::current().record("error.type", "sindri_status_check_error");
+                tracing::Span::current().record("error.message", e.to_string());
+                
+                error!("❌ Failed to check proof status for {} after {}ms: {}", proof_id, check_time, e);
                 Err(format!("Failed to check proof status: {}", e))
             }
         }
@@ -953,11 +1009,19 @@ impl BackgroundBatchProcessor {
     }
 
     /// Submit a single batch to the smart contract and wait for confirmation
+    #[instrument(skip(pool, eth_client, batch), fields(
+        stage = "smart_contract_submission",
+        batch.id = %batch.id,
+        blockchain.network = "ethereum",
+        blockchain.method = "updateState",
+        layer = "blockchain_integration"
+    ), level = "info")]
     async fn submit_batch_to_contract_with_confirmation(
         pool: &PgPool,
         eth_client: &EthereumClient,
         batch: &arda_credit_db::ProofBatch,
     ) -> Result<FixedBytes<32>, String> {
+        let start_time = std::time::Instant::now();
         info!("🚀 Submitting batch {} to smart contract", batch.id);
 
         // Get the Sindri proof ID from the batch
@@ -966,22 +1030,35 @@ impl BackgroundBatchProcessor {
             .as_ref()
             .ok_or_else(|| "Batch has no Sindri proof ID".to_string())?;
 
+        tracing::Span::current().record("sindri.proof_id", sindri_proof_id);
+        tracing::Span::current().record("batch.transaction_count", batch.transaction_ids.len());
+
         // Fetch actual proof data from Sindri
-        info!(
-            "📥 Fetching real proof data from Sindri for proof ID: {}",
-            sindri_proof_id
-        );
+        let proof_fetch_start = std::time::Instant::now();
+        info!("📥 Fetching real proof data from Sindri for proof ID: {}", sindri_proof_id);
+        
         let proof_data = match arda_credit_lib::proof::get_sindri_proof_data(sindri_proof_id).await
         {
             Ok(data) => {
-                info!("✅ Successfully retrieved proof data from Sindri");
-                info!("   Proof size: {} bytes", data.proof_bytes.len());
-                info!("   Public values size: {} bytes", data.public_values.len());
-                info!("   Verifying key size: {} bytes", data.verifying_key.len());
+                let fetch_time = proof_fetch_start.elapsed().as_millis();
+                tracing::Span::current().record("sindri.proof_fetch_time_ms", fetch_time);
+                tracing::Span::current().record("sindri.proof_size_bytes", data.proof_bytes.len());
+                tracing::Span::current().record("sindri.public_values_size_bytes", data.public_values.len());
+                tracing::Span::current().record("sindri.verifying_key_size_bytes", data.verifying_key.len());
+                
+                info!("✅ Successfully retrieved proof data from Sindri in {}ms", fetch_time);
+                debug!("   Proof size: {} bytes", data.proof_bytes.len());
+                debug!("   Public values size: {} bytes", data.public_values.len());
+                debug!("   Verifying key size: {} bytes", data.verifying_key.len());
                 data
             }
             Err(e) => {
-                error!("❌ Failed to retrieve proof data from Sindri: {}", e);
+                let fetch_time = proof_fetch_start.elapsed().as_millis();
+                tracing::Span::current().record("sindri.proof_fetch_time_ms", fetch_time);
+                tracing::Span::current().record("error.type", "proof_data_fetch_error");
+                tracing::Span::current().record("error.message", e.to_string());
+                
+                error!("❌ Failed to retrieve proof data from Sindri after {}ms: {}", fetch_time, e);
                 return Err(format!("Failed to fetch proof data from Sindri: {}", e));
             }
         };
@@ -1104,35 +1181,52 @@ impl BackgroundBatchProcessor {
         info!("   New state root: {}", new_state_root);
 
         // Submit to smart contract and wait for confirmation
+        let contract_submit_start = std::time::Instant::now();
+        
         match eth_client
             .update_state(state_id, new_state_root, proof_bytes, public_values)
             .await
         {
             Ok(result) => {
+                let contract_time = contract_submit_start.elapsed().as_millis();
+                let total_time = start_time.elapsed().as_millis();
+                
                 // Extract transaction hash from result
                 let tx_hash = result
                     .transaction_hash
                     .ok_or_else(|| "Transaction hash not available in result".to_string())?;
 
-                info!(
-                    "✅ Batch {} submitted to contract successfully with REAL ADS state roots!",
-                    batch.id
-                );
-                info!("   Transaction hash: {}", hex::encode(tx_hash));
+                // Record success metrics
+                tracing::Span::current().record("blockchain.contract_submission_time_ms", contract_time);
+                tracing::Span::current().record("blockchain.total_time_ms", total_time);
+                tracing::Span::current().record("blockchain.tx_hash", hex::encode(tx_hash));
+                tracing::Span::current().record("blockchain.block_number", result.block_number.unwrap_or(0));
+                tracing::Span::current().record("blockchain.success", true);
+                tracing::Span::current().record("proof.verification_success", true);
+
+                info!("✅ Batch {} submitted to contract successfully in {}ms with REAL ADS state roots!",
+                      batch.id, total_time);
+                info!("   Transaction hash: 0x{}", hex::encode(tx_hash));
                 info!("   Block number: {:?}", result.block_number);
-                info!(
-                    "   Previous state root: 0x{}",
-                    hex::encode(previous_state_root)
-                );
-                info!("   New state root: 0x{}", hex::encode(new_state_root));
-                info!("   Used Sindri proof ID: {}", sindri_proof_id);
-                info!("   🎉 No more placeholder state roots - using real ADS-generated Merkle roots!");
+                info!("   Contract submission time: {}ms", contract_time);
+                debug!("   Previous state root: 0x{}", hex::encode(previous_state_root));
+                debug!("   New state root: 0x{}", hex::encode(new_state_root));
+                debug!("   Used Sindri proof ID: {}", sindri_proof_id);
 
                 // Return the transaction hash for tracking
                 Ok(tx_hash)
             }
             Err(e) => {
-                error!("❌ Failed to submit batch {} to contract: {}", batch.id, e);
+                let contract_time = contract_submit_start.elapsed().as_millis();
+                let total_time = start_time.elapsed().as_millis();
+                
+                tracing::Span::current().record("blockchain.contract_submission_time_ms", contract_time);
+                tracing::Span::current().record("blockchain.total_time_ms", total_time);
+                tracing::Span::current().record("blockchain.success", false);
+                tracing::Span::current().record("error.type", "contract_submission_error");
+                tracing::Span::current().record("error.message", e.to_string());
+                
+                error!("❌ Failed to submit batch {} to contract after {}ms: {}", batch.id, total_time, e);
                 Err(format!("Smart contract submission failed: {}", e))
             }
         }

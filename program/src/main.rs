@@ -37,9 +37,14 @@ pub fn main() {
     // Read the complete input structure with ADS state
     let input = sp1_zkvm::io::read::<ZkVMBatchInput>();
 
+    // Record zkVM execution metrics
+    let transaction_count = input.batch.transactions.len();
+    let batch_timestamp = input.batch.created_at;
+    
     // Validate all transactions in the batch first
-    for transaction in &input.batch.transactions {
-        validate_transaction(transaction).expect("Invalid transaction in batch");
+    for (i, transaction) in input.batch.transactions.iter().enumerate() {
+        validate_transaction(transaction)
+            .unwrap_or_else(|_| panic!("Invalid transaction at index {}", i));
     }
 
     // Process the loan batch for business logic validation and balance computation

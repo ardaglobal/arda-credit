@@ -845,24 +845,51 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
     type Proof = MerkleProof;
     type StateCommitment = StateCommitment;
 
-    #[instrument(skip(self), level = "info")]
+    #[instrument(skip(self), fields(
+        ads.operation = "insert_nullifier",
+        ads.nullifier_value = %value,
+        ads.tree_type = "indexed_merkle_tree",
+        layer = "ads_operations"
+    ), level = "info")]
     async fn insert(&mut self, value: i64) -> Result<StateTransition, AdsError> {
-        info!("🔄 Inserting nullifier: {}", value);
         let start_time = std::time::Instant::now();
+        info!("🔄 Inserting nullifier: {}", value);
 
         // Get exclusive access to tree for modification
         let mut tree_guard = self.tree.write().await;
+        let lock_time = start_time.elapsed().as_millis();
+        tracing::Span::current().record("ads.lock_wait_time_ms", lock_time);
 
         // Check if nullifier already exists
+        let exists_check_start = Instant::now();
         if tree_guard.db.nullifiers.exists(value).await? {
+            let check_time = exists_check_start.elapsed().as_millis();
+            tracing::Span::current().record("ads.exists_check_time_ms", check_time);
+            tracing::Span::current().record("ads.nullifier_exists", true);
             return Err(AdsError::NullifierExists(value));
         }
+        let check_time = exists_check_start.elapsed().as_millis();
+        tracing::Span::current().record("ads.exists_check_time_ms", check_time);
+        tracing::Span::current().record("ads.nullifier_exists", false);
 
         // Perform insertion using 7-step algorithm
+        let insertion_start = Instant::now();
         let insertion_result = tree_guard
             .insert_nullifier(value)
             .await
-            .map_err(|e| AdsError::InsertionFailed(e.to_string()))?;
+            .map_err(|e| {
+                let insertion_time = insertion_start.elapsed().as_millis();
+                tracing::Span::current().record("ads.insertion_time_ms", insertion_time);
+                tracing::Span::current().record("ads.insertion_success", false);
+                tracing::Span::current().record("error.type", "insertion_failed");
+                tracing::Span::current().record("error.message", e.to_string());
+                AdsError::InsertionFailed(e.to_string())
+            })?;
+        
+        let insertion_time = insertion_start.elapsed().as_millis();
+        tracing::Span::current().record("ads.insertion_time_ms", insertion_time);
+        tracing::Span::current().record("ads.insertion_success", true);
+        tracing::Span::current().record("ads.tree_height", insertion_result.tree_height);
 
         drop(tree_guard); // Release lock early
 
@@ -1186,36 +1213,82 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
         Ok(true)
     }
 
-    #[instrument(skip(self, values), level = "info")]
+    #[instrument(skip(self, values), fields(
+        ads.operation = "batch_insert",
+        ads.batch_size = %values.len(),
+        ads.tree_type = "indexed_merkle_tree",
+        ads.batch_size_limit = %self.config.batch_size_limit,
+        layer = "ads_operations"
+    ), level = "info")]
     async fn batch_insert(&mut self, values: &[i64]) -> Result<Vec<StateTransition>, AdsError> {
+        let start_time = Instant::now();
         info!("📦 Batch inserting {} nullifiers", values.len());
+        
+        tracing::Span::current().record("ads.nullifier_values", format!("{:?}", values));
 
         if values.len() > self.config.batch_size_limit {
+            tracing::Span::current().record("error.type", "batch_size_exceeded");
+            tracing::Span::current().record("ads.batch_size_exceeded", true);
             return Err(AdsError::InvalidRange(format!(
                 "Batch size {} exceeds limit {}",
                 values.len(),
                 self.config.batch_size_limit
             )));
         }
+        
+        tracing::Span::current().record("ads.batch_size_exceeded", false);
 
         let mut transitions = Vec::with_capacity(values.len());
+        let mut total_insertion_time = 0u128;
+        let mut successful_insertions = 0usize;
 
         // Process each insertion sequentially for now
         // Could be optimized with true batch operations in the future
-        for &value in values {
+        for (index, &value) in values.iter().enumerate() {
+            let insertion_start = Instant::now();
+            debug!("Processing nullifier {} of {}: {}", index + 1, values.len(), value);
+            
             match self.insert(value).await {
-                Ok(transition) => transitions.push(transition),
+                Ok(transition) => {
+                    let insertion_time = insertion_start.elapsed().as_millis();
+                    total_insertion_time += insertion_time;
+                    successful_insertions += 1;
+                    transitions.push(transition);
+                    
+                    debug!("✅ Inserted nullifier {} in {}ms", value, insertion_time);
+                }
                 Err(e) => {
-                    warn!("Batch insertion failed for value {}: {:?}", value, e);
+                    let insertion_time = insertion_start.elapsed().as_millis();
+                    total_insertion_time += insertion_time;
+                    
+                    warn!("❌ Batch insertion failed for value {} after {}ms: {:?}", value, insertion_time, e);
+                    tracing::Span::current().record("ads.failed_insertions", values.len() - successful_insertions);
+                    tracing::Span::current().record("error.type", "partial_batch_failure");
                     return Err(e);
                 }
             }
         }
 
-        info!(
-            "✅ Batch insertion completed: {} transitions",
-            transitions.len()
-        );
+        // Record final metrics
+        let total_time = start_time.elapsed().as_millis();
+        let avg_insertion_time = if successful_insertions > 0 {
+            total_insertion_time / successful_insertions as u128
+        } else {
+            0
+        };
+        let throughput = if total_time > 0 {
+            (successful_insertions as f64 * 1000.0) / total_time as f64
+        } else {
+            0.0
+        };
+        
+        tracing::Span::current().record("ads.total_time_ms", total_time);
+        tracing::Span::current().record("ads.avg_insertion_time_ms", avg_insertion_time);
+        tracing::Span::current().record("ads.successful_insertions", successful_insertions);
+        tracing::Span::current().record("ads.throughput_ops_per_sec", throughput);
+
+        info!("✅ Batch insertion completed: {} transitions in {}ms (avg: {}ms/op, throughput: {:.2} ops/sec)",
+              transitions.len(), total_time, avg_insertion_time, throughput);
         Ok(transitions)
     }
 

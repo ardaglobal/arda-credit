@@ -252,23 +252,43 @@ impl UnifiedBatchService {
     /// Create a batch with full ADS integration
     ///
     /// This method provides unified processing for loan transactions with prefix-based nullifier generation
-    #[instrument(skip(self), level = "info")]
+    #[instrument(skip(self), fields(
+        stage = "unified_batch_creation",
+        batch.trigger_source = %trigger_source,
+        batch.requested_size = ?requested_batch_size,
+        batch.max_size = %self.max_batch_size,
+        layer = "batch_processing"
+    ), level = "info")]
     pub async fn create_batch_with_ads(
         &self,
         requested_batch_size: Option<i32>,
         trigger_source: &str,
     ) -> Result<Option<BatchCreationResult>, String> {
-        let _batch_start_time = Instant::now();
+        let batch_start_time = Instant::now();
 
         info!("🔄 UNIFIED: Creating batch via {} trigger", trigger_source);
 
         // Step 1: Get pending transactions
+        let tx_fetch_start = Instant::now();
         let pending_transactions = match get_pending_transactions(&self.pool).await {
-            Ok(transactions) => transactions,
-            Err(e) => return Err(format!("Failed to get pending transactions: {}", e)),
+            Ok(transactions) => {
+                let fetch_time = tx_fetch_start.elapsed().as_millis();
+                tracing::Span::current().record("batch.tx_fetch_time_ms", fetch_time);
+                tracing::Span::current().record("batch.pending_transactions", transactions.len());
+                debug!("📊 Fetched {} pending transactions in {}ms", transactions.len(), fetch_time);
+                transactions
+            }
+            Err(e) => {
+                let fetch_time = tx_fetch_start.elapsed().as_millis();
+                tracing::Span::current().record("batch.tx_fetch_time_ms", fetch_time);
+                tracing::Span::current().record("error.type", "transaction_fetch_error");
+                tracing::Span::current().record("error.message", e.to_string());
+                return Err(format!("Failed to get pending transactions: {}", e));
+            }
         };
 
         if pending_transactions.is_empty() {
+            tracing::Span::current().record("batch.result", "no_transactions");
             debug!("No pending transactions to batch");
             return Ok(None);
         }
@@ -281,11 +301,11 @@ impl UnifiedBatchService {
             .min(pending_transactions.len());
 
         let batch_transactions = &pending_transactions[..batch_size];
+        
+        tracing::Span::current().record("batch.actual_size", batch_size);
+        tracing::Span::current().record("batch.transaction_count", batch_size);
 
-        info!(
-            "📦 UNIFIED: Processing {} transactions through unified ADS integration",
-            batch_size
-        );
+        info!("📦 UNIFIED: Processing {} transactions through unified ADS integration", batch_size);
 
         // Step 3: Start atomic database transaction
         let db_tx = self
@@ -318,10 +338,7 @@ impl UnifiedBatchService {
 
         // Step 5: Process transactions with prefix-based nullifiers
         let processing_start = Instant::now();
-        info!(
-            "🔄 Processing {} transactions with prefix-based nullifiers",
-            batch_size
-        );
+        info!("🔄 Processing {} transactions with prefix-based nullifiers", batch_size);
 
         let mut nullifiers = Vec::new();
         for transaction in batch_transactions {
@@ -329,29 +346,35 @@ impl UnifiedBatchService {
             nullifiers.push(nullifier);
         }
 
-        let processing_time = processing_start.elapsed().as_millis() as f64;
-        info!(
-            "✅ Generated {} nullifiers in {:.2}ms",
-            nullifiers.len(),
-            processing_time
-        );
+        let nullifier_time = processing_start.elapsed().as_millis();
+        tracing::Span::current().record("batch.nullifier_generation_time_ms", nullifier_time);
+        tracing::Span::current().record("batch.nullifiers_generated", nullifiers.len());
+        
+        debug!("✅ Generated {} nullifiers in {}ms", nullifiers.len(), nullifier_time);
 
         // Step 6: Apply nullifiers through ADS
-        info!(
-            "🔐 UNIFIED: Applying {} nullifiers through ADS service",
-            nullifiers.len()
-        );
+        let ads_start = Instant::now();
+        info!("🔐 UNIFIED: Applying {} nullifiers through ADS service", nullifiers.len());
+        
         let mut ads_guard = self.ads_service.write().await;
 
         let state_transitions = ads_guard
             .batch_insert(&nullifiers)
             .await
-            .map_err(|e| format!("Failed to process nullifiers through ADS: {}", e))?;
+            .map_err(|e| {
+                let ads_time = ads_start.elapsed().as_millis();
+                tracing::Span::current().record("ads.processing_time_ms", ads_time);
+                tracing::Span::current().record("error.type", "ads_processing_error");
+                tracing::Span::current().record("error.message", e.to_string());
+                format!("Failed to process nullifiers through ADS: {}", e)
+            })?;
 
-        info!(
-            "✅ UNIFIED: Successfully processed {} state transitions through ADS",
-            state_transitions.len()
-        );
+        let ads_time = ads_start.elapsed().as_millis();
+        tracing::Span::current().record("ads.processing_time_ms", ads_time);
+        tracing::Span::current().record("ads.state_transitions", state_transitions.len());
+        
+        info!("✅ UNIFIED: Successfully processed {} state transitions through ADS in {}ms",
+              state_transitions.len(), ads_time);
 
         // Step 7: Get the final merkle root
         let merkle_root = if let Some(last_transition) = state_transitions.last() {
@@ -392,14 +415,29 @@ impl UnifiedBatchService {
             return Err(format!("Failed to commit batch transaction: {}", e));
         }
 
-        let total_time = _batch_start_time.elapsed().as_millis() as f64;
+        let total_time = batch_start_time.elapsed().as_millis();
+        
+        // Calculate throughput metrics
+        let tps = if total_time > 0 {
+            (batch_size as f64 * 1000.0) / total_time as f64
+        } else {
+            0.0
+        };
+        
+        // Record final metrics
+        tracing::Span::current().record("batch.total_time_ms", total_time);
+        tracing::Span::current().record("batch.transactions_per_second", tps);
+        tracing::Span::current().record("batch.merkle_root", hex::encode(&merkle_root));
+        tracing::Span::current().record("batch.result", "success");
+        tracing::Span::current().record("batch.id", batch.id);
 
         info!("🎉 UNIFIED: Batch processing completed successfully!");
         info!("   📊 Batch ID: {}", batch.id);
         info!("   🔢 Total Transactions: {}", batch_size);
         info!("   🔢 Total Nullifiers: {}", state_transitions.len());
-        info!("   ⏱️ Processing Time: {:.2}ms", total_time);
-        info!("   🌳 Merkle Root: 0x{}", hex::encode(&merkle_root));
+        info!("   ⏱️ Processing Time: {}ms", total_time);
+        info!("   ⚡ Throughput: {:.2} TPS", tps);
+        debug!("   🌳 Merkle Root: 0x{}", hex::encode(&merkle_root));
 
         let result = BatchCreationResult {
             batch_id: batch.id,
@@ -408,10 +446,10 @@ impl UnifiedBatchService {
             transaction_count: batch_size,
             merkle_root: merkle_root.to_vec(),
             nullifier_count: state_transitions.len(),
-            processing_time_ms: total_time,
+            processing_time_ms: total_time as f64,
             loan_metrics: None,
             lifecycle_validation: None,
-            achieved_tps: 0.0,
+            achieved_tps: tps,
         };
 
         Ok(Some(result))

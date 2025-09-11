@@ -20,6 +20,9 @@ mod zkvm_ads_consistency_tests; // Consistency tests for zkVM ADS
 #[cfg(feature = "sp1")]
 pub mod proof;
 
+// Tracing utilities for comprehensive observability
+pub mod tracing_utils;
+
 sol! {
     /// Loan batch public values - what gets committed on-chain for loan processing
     /// Individual loan details, amounts, and user identities remain private.
