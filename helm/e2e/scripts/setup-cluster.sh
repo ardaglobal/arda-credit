@@ -205,6 +205,10 @@ build_and_push_images() {
 install_dependencies() {
     log_info "Installing cluster dependencies..."
     
+    # Create arda-credit namespace first (needed for secrets)
+    log_info "Creating arda-credit namespace..."
+    kubectl create namespace arda-credit --dry-run=client -o yaml | kubectl apply -f - || true
+    
     # Apply MetalLB
     log_info "Installing MetalLB..."
     kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
@@ -327,7 +331,6 @@ deploy_arda_credit() {
     
     # Deploy to arda-credit namespace for proper isolation
     NAMESPACE="arda-credit"
-    kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f - || true
     
     helm upgrade --install arda-credit \
         "${CHART_PATH}" \

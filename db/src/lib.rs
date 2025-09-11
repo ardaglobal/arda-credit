@@ -39,6 +39,7 @@ pub mod background_processor;
 pub mod credit_line_operations;
 pub mod merkle_tree;
 pub mod merkle_tree_32;
+pub mod telemetry;
 pub mod vapp_integration;
 
 pub mod ccr;
