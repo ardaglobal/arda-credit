@@ -2,7 +2,7 @@
 
 PostgreSQL integration for arithmetic computation storage and ADS (Authenticated Data Structure) operations with Indexed Merkle Trees.
 
-## Features
+## Overview
 
 - **Arithmetic Storage**: Transaction storage with duplicate prevention
 - **ADS Integration**: Indexed Merkle Tree (IMT) with 32-level optimization
@@ -163,7 +163,7 @@ curl -X POST http://localhost:8080/api/v1/batches/trigger
 
 #### 2. Debug Logging
 ```bash
-RUST_LOG=debug cargo run --bin server
+make server    # Run with debug logging
 ```
 
 **Expected debug logs:**

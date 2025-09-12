@@ -1,6 +1,8 @@
 # Arda Credit Loan vApp Architecture Plan
 
-## Core Data Structures
+This document provides detailed technical specifications for the Arda Credit loan system. For a high-level overview of the three-component architecture (smart contracts, ZKVM program, and web server), see [`docs/architecture/three-component-overview.md`](../architecture/three-component-overview.md).
+
+## Overview
 
 ### User Management
 ```rust
@@ -156,34 +158,29 @@ CREATE TABLE loan_transactions (
 ### User Operations
 ```bash
 # Register users
-cargo run --bin cli -- register-user --user-type lender --email alice@example.com
-cargo run --bin cli -- register-user --user-type investor --email bob@example.com
+make cli ARGS="register-user --user-type lender --email alice@example.com"
+make cli ARGS="register-user --user-type investor --email bob@example.com"
 
 # KYC operations
-cargo run --bin cli -- submit-kyc --user-id <uuid>
-cargo run --bin cli -- verify-kyc --user-id <uuid>  # Admin operation
-cargo run --bin cli -- get-user --user-id <uuid>
+make cli ARGS="submit-kyc --user-id <uuid>"
+make cli ARGS="verify-kyc --user-id <uuid>"  # Admin operation
+make cli ARGS="get-user --user-id <uuid>"
 ```
 
 ### Loan Operations
 ```bash
 # Loan origination (requires KYC'd users)
-cargo run --bin cli -- originate-loan \
-  --borrower-id <uuid> \
-  --lender-id <uuid> \
-  --amount 50000 \
-  --rate 0.075 \
-  --term-months 36
+make cli ARGS="originate-loan --borrower-id <uuid> --lender-id <uuid> --amount 50000 --rate 0.075 --term-months 36"
 
 # Loan payments
-cargo run --bin cli -- make-payment --loan-id <uuid> --amount 2500
+make cli ARGS="make-payment --loan-id <uuid> --amount 2500"
 
 # Loan closeout
-cargo run --bin cli -- closeout-loan --loan-id <uuid>
+make cli ARGS="closeout-loan --loan-id <uuid>"
 
 # Loan queries
-cargo run --bin cli -- get-loan --loan-id <uuid>
-cargo run --bin cli -- list-loans --user-id <uuid>
+make cli ARGS="get-loan --loan-id <uuid>"
+make cli ARGS="list-loans --user-id <uuid>"
 ```
 
 ## Zero-Knowledge Properties

@@ -2,7 +2,7 @@
 
 This file provides guidance to AI agents when working with code in this repository.
 
-## Project Overview
+## Overview
 
 **Arda Credit** is a privacy-preserving loan vApp (verifiable app) built on SP1 zero-knowledge proofs. The MVP enables loan origination, payments, and closeouts with KYC verification, plus **liquidity pool creation and management** for investors. All operations maintain transaction privacy through batch processing and ZK proofs.
 
@@ -22,7 +22,7 @@ This file provides guidance to AI agents when working with code in this reposito
 
 **Loan Operations:**
 - **Loan Origination** - create new loans between parties
-- **Loan Payments** - make payments toward outstanding loans  
+- **Loan Payments** - make payments toward outstanding loans
 - **Loan Closeout** - final settlement and loan completion
 
 **Liquidity Pool Management:**
@@ -38,15 +38,22 @@ This file provides guidance to AI agents when working with code in this reposito
 
 ### Core Architecture
 
-**Clean separation of concerns:**
-- **`program/`** - RISC-V program for SP1 zkVM loan transaction processing
-- **`script/`** - Local SP1 testing with fast Core proofs (development)
-- **`cli/`** - Unified CLI for loan operations + local verification tool
-- **`api/`** - Production server with loan processing, ZK proof generation via Sindri
-- **`db/`** - PostgreSQL with loan tables, KYC data, and Merkle tree state management
-- **`contracts/`** - Solidity proof verification with loan state management
+**Three-Component Architecture:**
+- **Smart Contracts** (`contracts/`) - On-chain proof verification and state management
+- **ZKVM Program** (`program/`) - Zero-knowledge transaction processing
+- **Web Server Application** (Main repo) - User interface, API, and orchestration
+
+For detailed architecture information, see [`docs/architecture/three-component-overview.md`](docs/architecture/three-component-overview.md).
+
+**Component Structure:**
+- **`program/`** - SP1 zkVM program for privacy-preserving computations
+- **`script/`** - Local testing with fast SP1 Core proofs
+- **`cli/`** - Command-line interface for loan operations and verification
+- **`api/`** - REST/GraphQL API server with ZK proof generation
+- **`db/`** - PostgreSQL database with ADS (Authenticated Data Structures)
+- **`contracts/`** - Solidity contracts for on-chain proof verification
 - **`lib/`** - Shared computation logic (zkVM compatible)
-- **`ethereum-client/`** - Ethereum integration for automated contract posting
+- **`ethereum-client/`** - Ethereum integration utilities
 
 ## Essential Development Commands
 
@@ -67,7 +74,7 @@ make deploy                         # Deploy circuit using SINDRI_CIRCUIT_TAG fr
 ### Development Workflow
 ```bash
 # Fast local SP1 development (no database required)
-cargo run --release                 # ~8s Core proofs: test loan operations
+make run                           # ~8s Core proofs: test loan operations
 
 # Full stack development
 make up                             # Start database + server (uses pre-built image)
@@ -76,90 +83,88 @@ make down                           # Stop all services
 
 # Local API server (alternative to Docker)
 docker-compose up postgres -d      # Start just database
-cargo run -p api --bin server --release  # Run server locally
+make server                         # Run server locally with debug logging
 ```
 
 ### CLI Commands (Primary Interface)
+
+**Make-based CLI usage:**
 ```bash
-# Health check
-cargo run --bin cli -- health-check
-
-# Liquidity Pool Management (ZK-integrated)
-# Create and manage liquidity pools with full ZK proof integration
-cargo run --bin cli -- create-pool --name "My Pool" --max-ltv-ratio 0.8 --max-interest-rate 0.12 --repayment-period-days 365
-cargo run --bin cli -- list-pools --verbose
-cargo run --bin cli -- get-pool --pool-id <pool-id> --verbose
-cargo run --bin cli -- get-investor-pool-metrics --investor-id <investor-id> --verbose
-cargo run --bin cli -- update-pool-status --pool-id <pool-id> --status ACTIVE
-cargo run --bin cli -- find-matching-pools --required-liquidity 10000 --max-ltv 0.8 --max-rate 0.12 --min-repayment-days 30
-
-# User & KYC Management
-cargo run --bin cli -- register-user --user-type investor --email user@example.com
-cargo run --bin cli -- submit-kyc --user-id 123
-cargo run --bin cli -- get-user --user-id 123
-
-# USDC Balance Management
-cargo run --bin cli -- get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
-cargo run --bin cli -- get-user-balance-by-id --user-id 123
-cargo run --bin cli -- link-wallet --user-id 123 --wallet-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
-
-# USDC Withdrawal Management
-cargo run --bin cli -- get-available-balance --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
-cargo run --bin cli -- initiate-withdrawal --user-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB --recipient-address 0x123... --amount 100.50
-cargo run --bin cli -- get-withdrawal-status --request-id 1
-cargo run --bin cli -- get-withdrawal-history --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
-cargo run --bin cli -- cancel-withdrawal --request-id 1
-cargo run --bin cli -- get-pending-withdrawals --limit 10  # Admin command
-
-# Loan Operations
-cargo run --bin cli -- originate-loan --borrower-id 123 --lender-id 456 --amount 10000
-cargo run --bin cli -- make-payment --loan-id 789 --amount 1000
-cargo run --bin cli -- closeout-loan --loan-id 789
-
-# Batch management
-cargo run --bin cli -- view-pending          # View unbatched transactions
-cargo run --bin cli -- trigger-batch --verbose  # Create batch + trigger ZK proof
-cargo run --bin cli -- list-batches         # List all batches
-cargo run --bin cli -- get-batch --batch-id 1  # Get batch details
-
-# Transaction Inclusion Proofs (trustless verification)
-cargo run --bin cli -- download-proof --batch-id 1  # Download proof data
-cargo run --bin cli -- verify-transaction-inclusion \
-  --proof-file proof_batch_1.json \
-  --transaction-id abc123 \
-  --transaction-type loan_payment
+# Pattern: make cli ARGS="command arguments"
+make cli ARGS="health-check"
+make cli ARGS="register-user --user-type investor --email user@example.com"
+make cli ARGS="create-pool --name \"My Pool\" --max-ltv-ratio 0.8"
 ```
 
-### Testing
+**Key CLI commands:**
 ```bash
-# All tests
-cargo test
+# Health and user management
+make cli ARGS="health-check"
+make cli ARGS="register-user --user-type investor --email user@example.com"
+make cli ARGS="submit-kyc --user-id 123"
+make cli ARGS="get-user --user-id 123"
 
-# Database tests (requires PostgreSQL)
-cd db && cargo test
+# Liquidity pools
+make cli ARGS="create-pool --name \"My Pool\" --max-ltv-ratio 0.8 --max-interest-rate 0.12 --repayment-period-days 365"
+make cli ARGS="list-pools --verbose"
+make cli ARGS="get-pool --pool-id <pool-id> --verbose"
+
+# USDC operations
+make cli ARGS="get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
+make cli ARGS="initiate-withdrawal --user-address 0x742E... --recipient-address 0x123... --amount 100.50"
+make cli ARGS="get-withdrawal-status --request-id 1"
+
+# Loan operations
+make cli ARGS="originate-loan --borrower-id 123 --lender-id 456 --amount 10000"
+make cli ARGS="make-payment --loan-id 789 --amount 1000"
+make cli ARGS="closeout-loan --loan-id 789"
+
+# Batch management
+make cli ARGS="view-pending"
+make cli ARGS="trigger-batch --verbose"
+make cli ARGS="list-batches"
+make cli ARGS="download-proof --batch-id 1"
+
+# Transaction verification
+make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id abc123 --transaction-type loan_payment"
+```
+
+**Complete command reference:** Run `make help` to see all available commands.
+
+### Testing & Building
+```bash
+# Test suites
+make test                           # All tests with database
+cargo test                          # Unit tests only (no database)
+make cover                          # Generate code coverage report
 
 # Smart contracts
-make forge-build                    # Build contracts  
+make forge-build                    # Build contracts
 make forge-test                     # Run contract tests
 cd contracts && forge test --match-contract LoanManagementTest  # Specific tests
+
+# Code quality
+make fmt                            # Format code
+make lint                           # Lint code
+make lint-rust                      # Rust-specific linting
 ```
 
 ### Smart Contract Deployment
 
-#### Production Deployment
+**Production deployment:**
 ```bash
 # Deploy Arda Credit loan contract (set env vars first)
 make deploy-contract
 make deploy-contract-help           # Show required environment variables
 ```
 
-#### Local Development with Anvil
+**Local development with Anvil:**
 ```bash
 # Start local Ethereum testnet
 cd contracts
 anvil                               # Runs on http://127.0.0.1:8545 (Chain ID: 31337)
 
-# In a new terminal, build and deploy contracts
+# Build and deploy contracts
 cd contracts
 forge build                         # Compile all contracts
 
@@ -181,15 +186,17 @@ cast call CONTRACT_ADDRESS "verifier()" --rpc-url http://127.0.0.1:8545
 cast call CONTRACT_ADDRESS "owner()" --rpc-url http://127.0.0.1:8545
 ```
 
-#### Contract Testing
-```bash
-# Build and test contracts
-cd contracts && forge build
-cd contracts && forge test
-forge test --fork-url http://127.0.0.1:8545  # Test against local testnet
-```
-
 ## High-Level Architecture
+
+### Three-Component Architecture
+
+Arda Credit implements a **three-component architecture** with clean separation of concerns:
+
+1. **Smart Contracts** (`contracts/`) - On-chain proof verification and state management
+2. **ZKVM Program** (`program/`) - Zero-knowledge transaction processing
+3. **Web Server Application** (Main repo) - User interface, API, and orchestration
+
+For detailed architecture information, see [`docs/architecture/three-component-overview.md`](docs/architecture/three-component-overview.md).
 
 ### Loan Processing Flow
 1. **User Registration**: Users register as investors/lenders with optional KYC
@@ -200,102 +207,34 @@ forge test --fork-url http://127.0.0.1:8545  # Test against local testnet
 6. **State Transitions**: Loan states (active, paid, closed) updated with cryptographic verification
 7. **Contract Posting**: Background process posts proven loan state changes to Ethereum
 
-### ZK Program Withdrawal Flow Integration
-The ZK program in `program/src/main.rs` fully supports the withdrawal flow through:
-
-**Transaction Processing:**
-- `UserWithdrawal` (TransactionType = 8) transactions are processed in mixed batches
-- KYC verification required for all withdrawal transactions
-- Balance validation ensures sufficient funds before processing
-- Withdrawal metadata contains recipient address for smart contract execution
-
-**ADS Integration:**
-- All withdrawal transactions are converted to nullifiers using `transaction_to_nullifier()` 
-- Nullifiers are inserted into the Indexed Merkle Tree (IMT) for cryptographic consistency
-- State root transitions (`previous_state_root` → `new_state_root`) include withdrawal proofs
-- Off-chain and ZK program state roots remain synchronized through ADS operations
-
-**Balance State Tracking:**
-- `DebitFromWithdrawal` balance updates automatically created for each withdrawal
-- Balance updates include recipient wallet address in metadata for audit trail
-- Total system balance decreases correctly when USDC exits the system via withdrawals
-- Individual user balances updated atomically with withdrawal processing
-
-**Privacy Guarantees:**
-- Withdrawal amounts and recipient addresses remain private within ZK execution
-- Only state root changes and transaction counts are published on-chain
-- Users can prove withdrawal inclusion without revealing other batch transactions
-- Batch processing maintains privacy while enabling regulatory compliance
-
 ### Zero-Knowledge Properties
-```rust
-// Public values (visible on-chain) 
-struct LoanBatchPublicValues {
-    bytes32 previous_state_root;       // Previous Merkle root
-    bytes32 new_state_root;            // New Merkle root  
-    uint32 transaction_count;          // Number of transactions in batch
-    uint64 batch_timestamp;            // Timestamp when batch was processed
-    bytes32 transaction_types_hash;    // Hash of transaction types in batch
-    uint128 previousTotalBalance;      // Previous total balance across all loans
-    uint128 currentTotalBalance;       // Current total balance across all loans
-    // Individual loan amounts, KYC status, user details remain private
-}
-```
 
-**Privacy Guarantees**: 
+For detailed privacy guarantees and ZK properties, see [`docs/architecture/three-component-overview.md#zero-knowledge-properties`](docs/architecture/three-component-overview.md#zero-knowledge-properties).
+
+**Core Privacy Guarantees:**
 - Individual loan amounts, payments, and user details remain hidden
 - Only state root transitions and transaction counts are public
 - Users can prove their specific transaction was included without revealing others
-
-### Key Components Integration
-
-**Unified CLI Tool**: Single binary for complete loan workflow:
-- User registration and KYC submission
-- Loan origination, payments, and closeouts
-- Local verification of transaction inclusion proofs
-- Environment configuration via `ARDA_CREDIT_API_URL`
-
-**API Server** (`api/src/bin/server.rs`):
-- Loan transaction processing and batching
-- KYC verification and user management
-- Sindri integration for ZK proof generation
-- Background processing with automated Ethereum posting
-- Contract data generation (public/private split)
-
-**Database Layer** (`db/`):
-- User accounts with KYC status tracking
-- Loan records with payment history
-- 32-level indexed Merkle trees for state commitments
-- Complete audit trail for all loan operations
-
-**Smart Contracts** (`contracts/src/ArdaCredit.sol`):
-- SP1 proof verification with loan state storage
-- Automated background posting of proven loan batches
-- Gas-optimized loan state operations
+- Batch processing maintains privacy while enabling regulatory compliance
 
 ## Environment Configuration
 
-### Required Environment Variables
+**Setup environment variables:**
 ```bash
-# Database (Docker default)
-DATABASE_URL=postgresql://postgres:password@127.0.0.1:5432/arda_credit_db
-
-# Sindri (required for proof generation)
-SINDRI_API_KEY=your_sindri_api_key_here     # Get from https://sindri.app
-SINDRI_CIRCUIT_TAG=latest                   # Circuit version
-
-# Server
-RUST_LOG=info
-SERVER_PORT=8080
-
-# Smart contract integration (optional)
-ETHEREUM_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/demo
-ETHEREUM_CONTRACT_ADDRESS=0x...
-ETHEREUM_WALLET_PRIVATE_KEY=...
-ETHEREUM_DEPLOYER_ADDRESS=0x...
-VERIFIER_CONTRACT_ADDRESS=0x...
-PROGRAM_VKEY=0x...
+# Copy and configure environment file
+make env                            # Copies .env.example to .env
+# Edit .env to add your SINDRI_API_KEY and other required variables
 ```
+
+**Configuration details:** See `.env.example` for complete configuration options and required environment variables.
+
+**Key variables for development:**
+- `DATABASE_URL` - PostgreSQL connection string
+- `SINDRI_API_KEY` - API key for proof generation (get from https://sindri.app)
+- `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
+- `ETHEREUM_RPC_URL` - Ethereum RPC endpoint for contract interactions
+
+For production deployment, see [`docs/deployment/security-production.md`](docs/deployment/security-production.md).
 
 ## Loan Data Structures
 
@@ -361,7 +300,7 @@ struct UserDepositBalance {
 2. Implement handler in `api/src/loan_handlers.rs`
 3. Add CLI command in `cli/src/bin/cli.rs`
 4. Add database migration if needed
-5. Test with `cargo run --bin cli -- your-loan-command`
+5. Test with `make cli ARGS="your-loan-command"`
 
 ### KYC Integration
 1. KYC status tracked in `users` table
@@ -371,19 +310,18 @@ struct UserDepositBalance {
 
 ### Database Changes
 1. Create migration in `db/migrations/`
-2. Run `sqlx migrate run` to apply
-3. Regenerate SQLx cache: `make initDB` or `cargo sqlx prepare --workspace`
-4. Update relevant structs in `db/src/`
+2. Run `make initDB` to apply and regenerate SQLx cache
+3. Update relevant structs in `db/src/`
 
 ### Smart Contract Updates
 1. Modify contracts in `contracts/src/`
-2. Test: `cd contracts && forge test`
+2. Test: `make forge-test`
 3. Deploy: `make deploy-contract` (after setting env vars)
 4. Update `ETHEREUM_CONTRACT_ADDRESS` in environment
 
 ### Circuit Changes
 1. Modify SP1 program in `program/src/main.rs` for loan transaction processing
-2. Test locally: `cargo run --release`
+2. Test locally: `make run`
 3. Deploy to Sindri: `make deploy`
 4. Update `SINDRI_CIRCUIT_TAG` if using specific version
 
@@ -393,154 +331,93 @@ struct UserDepositBalance {
 ```bash
 # 1. User deposits USDC to smart contract (triggers database update)
 # 2. Check deposit balance
-cargo run --bin cli -- get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+make cli ARGS="get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
 
 # 3. Link wallet to user account
-cargo run --bin cli -- link-wallet --user-id user-uuid --wallet-address 0x742E...
+make cli ARGS="link-wallet --user-id user-uuid --wallet-address 0x742E..."
 
 # 4. View deposit history (database queries)
 psql $DATABASE_URL -c "SELECT * FROM usdc_deposits WHERE user_address = '0x742E...';"
 psql $DATABASE_URL -c "SELECT * FROM user_deposit_balances WHERE user_address = '0x742E...';"
 ```
 
-### Complete Loan Lifecycle  
+### Complete Loan Lifecycle
 ```bash
 # 1. Register users
-cargo run --bin cli -- register-user --user-type lender --email lender@example.com
-cargo run --bin cli -- register-user --user-type investor --email investor@example.com
+make cli ARGS="register-user --user-type lender --email lender@example.com"
+make cli ARGS="register-user --user-type investor --email investor@example.com"
 
 # 2. Submit KYC (both users)
-cargo run --bin cli -- submit-kyc --user-id lender-uuid
-cargo run --bin cli -- submit-kyc --user-id investor-uuid
+make cli ARGS="submit-kyc --user-id lender-uuid"
+make cli ARGS="submit-kyc --user-id investor-uuid"
 
 # 3. Originate loan (KYC required)
-cargo run --bin cli -- originate-loan \
-  --borrower-id investor-uuid \
-  --lender-id lender-uuid \
-  --amount 50000
+make cli ARGS="originate-loan --borrower-id investor-uuid --lender-id lender-uuid --amount 50000"
 
 # 4. Make payments
-cargo run --bin cli -- make-payment --loan-id loan-uuid --amount 5000
-cargo run --bin cli -- make-payment --loan-id loan-uuid --amount 5000
+make cli ARGS="make-payment --loan-id loan-uuid --amount 5000"
+make cli ARGS="make-payment --loan-id loan-uuid --amount 5000"
 
 # 5. Create batch and generate proofs
-cargo run --bin cli -- trigger-batch --verbose
+make cli ARGS="trigger-batch --verbose"
 
 # 6. Verify payment inclusion (trustless)
-cargo run --bin cli -- verify-transaction-inclusion \
-  --proof-file proof_batch_1.json \
-  --transaction-id payment-uuid \
-  --transaction-type loan_payment
+make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id payment-uuid --transaction-type loan_payment"
 ```
 
 ### Complete Liquidity Pool Lifecycle
 ```bash
 # 1. Register as investor and get KYC approval
-cargo run --bin cli -- register-user --user-type investor --email investor@example.com
-cargo run --bin cli -- submit-kyc --user-id <investor-uuid>
+make cli ARGS="register-user --user-type investor --email investor@example.com"
+make cli ARGS="submit-kyc --user-id <investor-uuid>"
 
 # 2. Create a new liquidity pool with deployment terms
-cargo run --bin cli -- create-pool \
-  --name "Conservative Credit Pool" \
-  --max-ltv-ratio 0.75 \
-  --max-interest-rate 0.10 \
-  --repayment-period-days 180
+make cli ARGS="create-pool --name \"Conservative Credit Pool\" --max-ltv-ratio 0.75 --max-interest-rate 0.10 --repayment-period-days 180"
 
 # 3. List all pools (with status filter)
-cargo run --bin cli -- list-pools --status ACTIVE --verbose
+make cli ARGS="list-pools --status ACTIVE --verbose"
 
 # 4. Check specific pool details
-cargo run --bin cli -- get-pool --pool-id <pool-uuid> --verbose
+make cli ARGS="get-pool --pool-id <pool-uuid> --verbose"
 
 # 5. Update pool status (pause/reactivate)
-cargo run --bin cli -- update-pool-status --pool-id <pool-uuid> --status PAUSED
+make cli ARGS="update-pool-status --pool-id <pool-uuid> --status PAUSED"
 
 # 6. Find matching pools for credit deployment
-cargo run --bin cli -- find-matching-pools \
-  --required-liquidity 50000 \
-  --max-ltv 0.80 \
-  --max-rate 0.12 \
-  --min-repayment-days 90
+make cli ARGS="find-matching-pools --required-liquidity 50000 --max-ltv 0.80 --max-rate 0.12 --min-repayment-days 90"
 
 # 7. Pool operations are included in batch processing for ZK proofs
-cargo run --bin cli -- trigger-batch --verbose
+make cli ARGS="trigger-batch --verbose"
 
 # 8. Verify pool creation was included in ZK proof (trustless verification)
-cargo run --bin cli -- verify-transaction-inclusion \
-  --proof-file proof_batch_1.json \
-  --transaction-id <pool-creation-uuid> \
-  --transaction-type pool_creation
+make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id <pool-creation-uuid> --transaction-type pool_creation"
 ```
 
 ### Complete Withdrawal Lifecycle with ZK Proof Integration
 ```bash
 # 1. Check available balance for withdrawals
-cargo run --bin cli -- get-available-balance --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+make cli ARGS="get-available-balance --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
 
 # 2. Initiate withdrawal (requires KYC approval + sufficient balance)
-cargo run --bin cli -- initiate-withdrawal \
-  --user-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB \
-  --recipient-address 0x123456789012345678901234567890123456789 \
-  --amount 100.50
+make cli ARGS="initiate-withdrawal --user-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB --recipient-address 0x123456789012345678901234567890123456789 --amount 100.50"
 
 # 3. Check withdrawal status
-cargo run --bin cli -- get-withdrawal-status --request-id 1
+make cli ARGS="get-withdrawal-status --request-id 1"
 
 # 4. View withdrawal history
-cargo run --bin cli -- get-withdrawal-history --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+make cli ARGS="get-withdrawal-history --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
 
 # 5. Cancel withdrawal (only if not yet submitted to blockchain)
-cargo run --bin cli -- cancel-withdrawal --request-id 1
+make cli ARGS="cancel-withdrawal --request-id 1"
 
 # 6. Admin: View pending withdrawals
-cargo run --bin cli -- get-pending-withdrawals --limit 10
+make cli ARGS="get-pending-withdrawals --limit 10"
 
 # 7. Create batch and generate ZK proof (includes withdrawal transactions)
-cargo run --bin cli -- trigger-batch --verbose
+make cli ARGS="trigger-batch --verbose"
 
 # 8. Verify withdrawal inclusion in ZK proof (trustless verification)
-cargo run --bin cli -- verify-transaction-inclusion \
-  --proof-file proof_batch_1.json \
-  --transaction-id withdrawal-transaction-uuid \
-  --transaction-type user_withdrawal
-
-# 9. View withdrawal database records with ZK proof data
-psql $DATABASE_URL -c "SELECT * FROM withdrawal_requests WHERE user_address = '0x742E...';"
-psql $DATABASE_URL -c "SELECT * FROM withdrawal_request_history WHERE withdrawal_request_id = 1;"
-psql $DATABASE_URL -c "SELECT * FROM loan_transactions WHERE transaction_type = 'UserWithdrawal';"
-```
-
-### ZK Program State Changes for Withdrawals
-The withdrawal flow integrates completely with the ZK program's ADS operations:
-
-**Core Flow Verification:**
-1. User requests withdrawal → Creates `UserWithdrawal` transaction (type 8)
-2. System performs boolean KYC check → Validated in `validate_transaction_with_state()`
-3. Validate sufficient balance → Checked in `BalanceState::create_withdrawal_update()`
-4. Smart contract transfers USDC → External to ZK program (triggered by withdrawal processing)
-5. Database balance updated → `DebitFromWithdrawal` balance update applied
-6. Balance reflects in CLI → ZK-verified state transition with privacy preservation
-
-**ZK Program Processing (lib/src/loan_processor.rs:225-242):**
-```rust
-TransactionType::UserWithdrawal => {
-    // Extract recipient address from metadata
-    let metadata = transaction.metadata.as_bytes();
-    let mut recipient_address = [0u8; 32];
-    recipient_address.copy_from_slice(&metadata[0..32]);
-
-    // Create balance update (validates sufficient balance)
-    let balance_update = self.balance_state.create_withdrawal_update(
-        transaction.transaction_id,
-        transaction.user_id,
-        recipient_address,
-        u128::from(transaction.amount),
-        transaction.created_at,
-    )?;
-
-    // Apply balance update atomically
-    self.balance_state.apply_update(balance_update)?;
-}
+make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id withdrawal-transaction-uuid --transaction-type user_withdrawal"
 ```
 
 ## Debugging Tips
@@ -554,7 +431,7 @@ cargo check --workspace     # Works without PostgreSQL
 
 ### Common Issues
 - **Proof generation fails**: Check `SINDRI_API_KEY` and circuit deployment
-- **Database connection errors**: Ensure PostgreSQL running via `docker-compose up postgres -d`
+- **Database connection errors**: Ensure PostgreSQL running via `make up`
 - **CLI errors**: Verify `ARDA_CREDIT_API_URL` environment variable
 - **KYC validation errors**: Check user KYC status before loan operations
 - **Contract deployment fails**: Check all Ethereum environment variables are set
@@ -564,3 +441,27 @@ cargo check --workspace     # Works without PostgreSQL
 - API Server: `http://localhost:8080`
 - Health Check: `http://localhost:8080/api/v1/health`
 - GraphQL Playground: `http://localhost:8080/playground` (dev only)
+
+## Documentation References
+
+For detailed information on specific topics, see the [`docs/`](docs/) directory:
+
+### Development & Setup
+- **Local Development Setup**: [`docs/deployment/development-setup.md`](docs/deployment/development-setup.md)
+- **Local Testing with GitHub Actions**: [`docs/development/local-testing.md`](docs/development/local-testing.md)
+
+### Architecture & Design
+- **Three-Component Architecture**: [`docs/architecture/three-component-overview.md`](docs/architecture/three-component-overview.md)
+- **Loan System Architecture**: [`docs/architecture/loan-system.md`](docs/architecture/loan-system.md)
+- **Performance Targets**: [`docs/architecture/performance-targets.md`](docs/architecture/performance-targets.md)
+
+### Integration & APIs
+- **API Documentation**: [`docs/integrations/api-swagger.md`](docs/integrations/api-swagger.md)
+- **Authentication Integration**: [`docs/integrations/authentication.md`](docs/integrations/authentication.md)
+- **Frontend Examples**: [`docs/integrations/frontend-examples.md`](docs/integrations/frontend-examples.md)
+
+### Deployment & Operations
+- **Production Security**: [`docs/deployment/security-production.md`](docs/deployment/security-production.md)
+- **Monitoring Setup**: [`docs/deployment/monitoring.md`](docs/deployment/monitoring.md)
+
+See [`docs/README.md`](docs/README.md) for the complete documentation hub.

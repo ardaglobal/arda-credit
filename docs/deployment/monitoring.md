@@ -1,8 +1,8 @@
 # OpenTelemetry Setup Guide
 
-This guide explains how to set up OpenTelemetry tracing for the Arda Credit API using SigNoz Cloud for both local development and production environments.
+This guide explains how to set up OpenTelemetry tracing for the Arda Credit API using SigNoz Cloud for both local development and production environments. For security setup and production deployment, see [`docs/deployment/security-production.md`](../deployment/security-production.md).
 
-## Quick Start
+## Overview
 
 ### Unified SigNoz Cloud Setup
 
@@ -22,7 +22,7 @@ This guide explains how to set up OpenTelemetry tracing for the Arda Credit API 
 
 3. **Run the Arda Credit API server:**
    ```bash
-   cd api && cargo run --bin server
+   make server
    ```
 
 4. **View traces in SigNoz Cloud:**
@@ -44,7 +44,7 @@ This guide explains how to set up OpenTelemetry tracing for the Arda Credit API 
 ┌─────────────────┐    ┌──────────────────┐
 │   Arda Credit   │───▶│   SigNoz Cloud   │
 │      API        │    │   (Port 443)     │
-│ (cargo run)     │    │                  │
+│ (make server)   │    │                  │
 └─────────────────┘    └──────────────────┘
          │
          ▼
@@ -104,14 +104,14 @@ Environment configuration:
 4. Invalid ingestion key - Check your SigNoz Cloud settings
 5. Network connectivity issues - Check internet connection
 6. Application not generating traces - Make requests to trigger spans
-7. Server not running - Run `cd api && cargo run --bin server`
+7. Server not running - Run `make server`
 
 ### Debugging Steps
 
 1. **Check application logs**:
    ```bash
    # Look for OpenTelemetry initialization messages
-   cd api && cargo run --bin server
+   make server
    # Should see: "✅ OpenTelemetry tracer initialized for SigNoz Cloud"
    ```
 
