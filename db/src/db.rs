@@ -4106,7 +4106,7 @@ pub async fn get_investor_pool_metrics(
             COALESCE(SUM(lp.utilized_liquidity), 0) as "total_capital_deployed!",
             -- Lifetime percentage yield: total interest earned / total capital provided
             CASE
-                WHEN SUM(lp.total_deposits) > 0 THEN 
+                WHEN SUM(lp.total_deposits) > 0 THEN
                     (COALESCE((
                         SELECT SUM(amount)
                         FROM pool_financial_transactions pft
@@ -4152,8 +4152,8 @@ pub async fn get_investor_pool_metrics(
                 )
             ), 0)::int8 as "total_loans_originated!",
             COALESCE((
-                SELECT 
-                    CASE 
+                SELECT
+                    CASE
                         WHEN COUNT(*) > 0 THEN (COUNT(CASE WHEN cl.status = 'DEFAULTED' THEN 1 END)::decimal / COUNT(*)::decimal) * 100
                         ELSE 0
                     END
@@ -5579,6 +5579,55 @@ pub async fn create_pool_financial_transaction(
     };
 
     Ok(transaction)
+}
+
+/// Update pool balances after financial transaction
+pub async fn update_pool_balance_after_transaction(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    transaction_type: &str,
+    amount: rust_decimal::Decimal,
+) -> Result<(), sqlx::Error> {
+    match transaction_type {
+        "FUND" => {
+            // Increase total_deposits and available_liquidity
+            sqlx::query!(
+                r#"
+                UPDATE liquidity_pools
+                SET total_deposits = total_deposits + $1,
+                    available_liquidity = available_liquidity + $1,
+                    updated_at = NOW()
+                WHERE id = $2
+                "#,
+                amount,
+                pool_id
+            )
+            .execute(pool)
+            .await?;
+        }
+        "WITHDRAW" => {
+            // Decrease total_deposits and available_liquidity
+            sqlx::query!(
+                r#"
+                UPDATE liquidity_pools
+                SET total_deposits = GREATEST(total_deposits - $1, 0),
+                    available_liquidity = GREATEST(available_liquidity - $1, 0),
+                    updated_at = NOW()
+                WHERE id = $2
+                "#,
+                amount,
+                pool_id
+            )
+            .execute(pool)
+            .await?;
+        }
+        _ => {
+            // For other transaction types (INTEREST, RETURN), don't modify balances
+            return Ok(());
+        }
+    }
+
+    Ok(())
 }
 
 /// Create credit line financial transaction

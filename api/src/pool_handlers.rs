@@ -2,6 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
+    Json as JsonExtractor,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -11,6 +12,7 @@ use uuid::Uuid;
 
 use crate::pool_api::*;
 use crate::types::ApiState;
+use crate::BalanceVerificationService;
 use arda_credit_db::{
     get_all_liquidity_pools,
     /* get_enhanced_investor_metrics, */ get_investor_dashboard_metrics,
@@ -138,20 +140,25 @@ pub async fn get_pool_details(
         }
     };
 
-    // Get pool summary
-    let _summary = match get_pool_summary(&state.pool, pool_uuid).await {
-        Ok(Some(_summary)) => PoolSummaryInfo::from(_summary),
+    // Get pool summary with metrics
+    let summary = match get_pool_summary(&state.pool, pool_uuid).await {
+        Ok(Some(summary)) => summary,
         Ok(None) => {
-            // Return default summary if none exists
-            PoolSummaryInfo {
-                total_loans: 0,
-                active_loans: 0,
-                total_loan_volume: "0".to_string(),
-                average_loan_amount: None,
-                default_rate: "0".to_string(),
-                total_interest_earned: "0".to_string(),
-                total_principal_repaid: "0".to_string(),
-            }
+            // Return pool data with zero metrics if summary doesn't exist yet
+            return Ok(Json(PoolDetailsResponse {
+                pool_id: pool.id.to_string(),
+                name: pool.name,
+                investor_id: pool.investor_id.to_string(),
+                total_deposits: pool.total_deposits.to_string(),
+                available_liquidity: pool.available_liquidity.to_string(),
+                utilized_liquidity: pool.utilized_liquidity.to_string(),
+                max_ltv_ratio: pool.max_ltv_ratio.to_string(),
+                max_interest_rate: pool.max_interest_rate.to_string(),
+                repayment_period_days: pool.repayment_period_days,
+                status: pool.status,
+                created_at: pool.created_at,
+                updated_at: pool.updated_at,
+            }));
         }
         Err(e) => {
             error!("Database error getting pool summary: {}", e);
@@ -169,9 +176,9 @@ pub async fn get_pool_details(
         pool_id: pool.id.to_string(),
         name: pool.name,
         investor_id: pool.investor_id.to_string(),
-        total_deposits: "0".to_string(), // TODO: Calculate from database
-        available_liquidity: "0".to_string(), // TODO: Calculate from database
-        utilized_liquidity: "0".to_string(), // TODO: Calculate from database
+        total_deposits: summary.total_deposits.to_string(),
+        available_liquidity: summary.available_liquidity.to_string(),
+        utilized_liquidity: summary.utilized_liquidity.to_string(),
         max_ltv_ratio: pool.max_ltv_ratio.to_string(),
         max_interest_rate: pool.max_interest_rate.to_string(),
         repayment_period_days: pool.repayment_period_days,
@@ -517,9 +524,9 @@ pub async fn update_pool_status(
                 pool_id: pool.id.to_string(),
                 name: pool.name,
                 investor_id: pool.investor_id.to_string(),
-                total_deposits: "0".to_string(), // TODO: Calculate from database
-                available_liquidity: "0".to_string(), // TODO: Calculate from database
-                utilized_liquidity: "0".to_string(), // TODO: Calculate from database
+                total_deposits: pool.total_deposits.to_string(),
+                available_liquidity: pool.available_liquidity.to_string(),
+                utilized_liquidity: pool.utilized_liquidity.to_string(),
                 max_ltv_ratio: pool.max_ltv_ratio.to_string(),
                 max_interest_rate: pool.max_interest_rate.to_string(),
                 repayment_period_days: pool.repayment_period_days,
@@ -535,6 +542,227 @@ pub async fn update_pool_status(
                 Json(ErrorResponse::new(
                     "database_error",
                     "Failed to update pool status",
+                )),
+            ))
+        }
+    }
+}
+
+/// POST /api/pools/{pool_id}/deposit - Deposit funds from user account to pool
+#[utoipa::path(
+    post,
+    path = "/api/v1/pools/{pool_id}/deposit",
+    params(
+        ("pool_id" = String, Path, description = "Pool ID (UUID)")
+    ),
+    request_body = DepositToPoolRequest,
+    responses(
+        (status = 201, description = "Deposit to pool successful", body = DepositToPoolResponse),
+        (status = 400, description = "Invalid request parameters", body = ErrorResponse),
+        (status = 403, description = "Insufficient balance", body = ErrorResponse),
+        (status = 404, description = "Pool not found or user not authorized", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Liquidity Pools"
+)]
+#[instrument(skip(state))]
+pub async fn deposit_to_pool(
+    State(state): State<ApiState>,
+    Path(pool_id): Path<String>,
+    JsonExtractor(request): JsonExtractor<DepositToPoolRequest>,
+) -> Result<Json<DepositToPoolResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let pool_uuid = match Uuid::parse_str(&pool_id) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "invalid_pool_id",
+                    "Invalid pool ID format",
+                )),
+            ));
+        }
+    };
+
+    let user_uuid = match Uuid::parse_str(&request.user_id) {
+        Ok(uuid) => uuid,
+        Err(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "invalid_user_id",
+                    "Invalid user ID format",
+                )),
+            ));
+        }
+    };
+
+    info!(
+        "Depositing {} USDC from user {} to pool {}",
+        request.amount_usdc, user_uuid, pool_uuid
+    );
+
+    // Parse amount
+    let amount = match Decimal::from_str(&request.amount_usdc) {
+        Ok(amount) if amount > Decimal::ZERO => amount,
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::new(
+                    "invalid_amount",
+                    "Amount must be a positive decimal number",
+                )),
+            ));
+        }
+    };
+
+    // Check if user has sufficient balance
+    let balance_service = BalanceVerificationService::new(state.pool.clone());
+    let has_sufficient_balance = match balance_service
+        .has_sufficient_balance(user_uuid, amount)
+        .await
+    {
+        Ok(sufficient) => sufficient,
+        Err(e) => {
+            error!("Error checking user balance: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "balance_check_error",
+                    "Failed to verify user balance",
+                )),
+            ));
+        }
+    };
+
+    if !has_sufficient_balance {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse::new(
+                "insufficient_balance",
+                "User does not have sufficient balance for this deposit",
+            )),
+        ));
+    }
+
+    // Verify pool exists and user owns it
+    let pool = match get_liquidity_pool_by_id(&state.pool, pool_uuid).await {
+        Ok(pool) => pool,
+        Err(sqlx::Error::RowNotFound) => {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse::new("pool_not_found", "Pool not found")),
+            ));
+        }
+        Err(e) => {
+            error!("Database error getting pool: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "database_error",
+                    "Failed to retrieve pool information",
+                )),
+            ));
+        }
+    };
+
+    // Verify user owns the pool
+    if pool.investor_id != user_uuid {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse::new(
+                "unauthorized",
+                "User does not own this pool",
+            )),
+        ));
+    }
+
+    // Create the pool funding transaction
+    let db_request = arda_credit_db::CreatePoolFinancialTransactionRequest {
+        pool_id: pool_uuid,
+        user_id: user_uuid,
+        transaction_type: "FUND".to_string(),
+        amount,
+        currency: "USDC".to_string(),
+        state_transaction_id: None,
+        transaction_hash: request.transaction_hash.clone(),
+        description: Some(format!("Deposit {} USDC to pool", request.amount_usdc)),
+    };
+
+    match arda_credit_db::create_pool_financial_transaction(&state.pool, &db_request).await {
+        Ok(transaction) => {
+            // Update pool balances
+            if let Err(e) = arda_credit_db::update_pool_balance_after_transaction(
+                &state.pool,
+                pool_uuid,
+                "FUND",
+                amount,
+            )
+            .await
+            {
+                error!("Failed to update pool balance after deposit: {}", e);
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse::new(
+                        "balance_update_error",
+                        "Deposit recorded but pool balance update failed",
+                    )),
+                ));
+            }
+
+            // Create corresponding account withdrawal transaction to debit user's account
+            let account_withdrawal_request =
+                arda_credit_db::CreateAccountFinancialTransactionRequest {
+                    user_id: user_uuid,
+                    transaction_type: "WITHDRAWAL".to_string(),
+                    amount,
+                    currency: "USDC".to_string(),
+                    transaction_hash: request
+                        .transaction_hash
+                        .clone()
+                        .unwrap_or_else(|| "pool_deposit_internal".to_string()),
+                    blockchain_status: "CONFIRMED".to_string(),
+                    block_number: request.block_number,
+                };
+
+            if let Err(e) = arda_credit_db::create_account_financial_transaction(
+                &state.pool,
+                &account_withdrawal_request,
+            )
+            .await
+            {
+                error!("Failed to create account withdrawal transaction: {}", e);
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse::new(
+                        "account_transaction_error",
+                        "Pool deposit recorded but account withdrawal failed",
+                    )),
+                ));
+            }
+
+            info!(
+                "Successfully deposited {} USDC from user {} to pool {}",
+                request.amount_usdc, user_uuid, pool_uuid
+            );
+
+            Ok(Json(DepositToPoolResponse {
+                success: true,
+                pool_id: pool_id.clone(),
+                user_id: request.user_id.clone(),
+                amount_deposited: request.amount_usdc.clone(),
+                new_pool_balance: (pool.total_deposits + amount).to_string(),
+                transaction_id: transaction.id.to_string(),
+                message: "Deposit to pool completed successfully".to_string(),
+            }))
+        }
+        Err(e) => {
+            error!("Database error recording pool deposit: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse::new(
+                    "database_error",
+                    "Failed to record pool deposit",
                 )),
             ))
         }

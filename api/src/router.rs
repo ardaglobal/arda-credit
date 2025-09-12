@@ -40,7 +40,8 @@ use crate::merchant_handlers::{
 use crate::openapi::ApiDoc;
 use crate::paths;
 use crate::pool_handlers::{
-    create_pool, /* get_enhanced_investor_metrics_handler, */ get_investor_dashboard,
+    create_pool, deposit_to_pool,
+    /* get_enhanced_investor_metrics_handler, */ get_investor_dashboard,
     get_investor_pool_metrics_handler, get_investor_pool_metrics_overview,
     get_investor_pool_summaries, get_market_overview, get_pool_details, get_pool_metrics_overview,
     get_pool_performance, get_pool_transactions, get_pool_utilization, list_pools,
@@ -415,6 +416,7 @@ pub fn create_router(state: ApiState) -> Router {
             paths::POOL_BY_ID,
             get(get_pool_details).put(update_pool_status),
         )
+        .route(paths::POOL_DEPOSIT, post(deposit_to_pool))
         .route(paths::POOL_UTILIZATION, get(get_pool_utilization))
         .route(paths::POOL_TRANSACTIONS, get(get_pool_transactions))
         // ========================================================================

@@ -625,3 +625,35 @@ pub struct PoolMatchRequest {
     pub max_rate: String,
     pub min_repayment_days: i32,
 }
+
+/// Request to deposit funds from user account to pool
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct DepositToPoolRequest {
+    /// User ID (UUID)
+    pub user_id: String,
+    /// Amount to deposit as USDC (human readable, e.g., "100.50")
+    pub amount_usdc: String,
+    /// Optional blockchain transaction hash
+    pub transaction_hash: Option<String>,
+    /// Optional block number
+    pub block_number: Option<i64>,
+}
+
+/// Response from pool deposit operation
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DepositToPoolResponse {
+    /// Success flag
+    pub success: bool,
+    /// Pool ID
+    pub pool_id: String,
+    /// User ID
+    pub user_id: String,
+    /// Amount deposited as USDC string
+    pub amount_deposited: String,
+    /// New pool balance after deposit
+    pub new_pool_balance: String,
+    /// Transaction ID of the deposit
+    pub transaction_id: String,
+    /// Success message
+    pub message: String,
+}
