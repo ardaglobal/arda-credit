@@ -106,6 +106,12 @@ server:
     serverPort: "8080"
     sindriCircuitTag: "latest"
   
+  # Environment variables for OpenTelemetry integration
+  env:
+    ENABLE_OPENTELEMETRY: "true"
+    OTEL_SERVICE_NAME: "arda-credit-api"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://arda-credit-opentelemetry-collector:4317"
+  
   service:
     type: ClusterIP
     port: 8080
@@ -541,3 +547,198 @@ monitoring:
         memory: 256Mi
 
 # Component-specific node selectors are defined within each component section above
+
+# Production monitoring stack configuration (based on working deployment)
+# This section contains the OpenTelemetry collector and PostgreSQL exporter
+# configuration that matches the working values-local.yaml patterns
+
+# Direct configuration for opentelemetry-collector subchart
+opentelemetry-collector:
+  # Set required image repository
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+    tag: "0.134.1"
+  
+  # Deployment mode
+  mode: "deployment"
+  
+  # Environment variables sourced from secrets
+  extraEnvs:
+    - name: POSTGRESQL_ENDPOINT
+      valueFrom:
+        secretKeyRef:
+          name: arda-credit-otel-collector-env
+          key: POSTGRESQL_ENDPOINT
+    - name: POSTGRESQL_USERNAME
+      valueFrom:
+        secretKeyRef:
+          name: arda-credit-otel-collector-env
+          key: POSTGRESQL_USERNAME
+    - name: POSTGRESQL_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: arda-credit-otel-collector-env
+          key: POSTGRESQL_PASSWORD
+    - name: OTLP_DESTINATION_ENDPOINT
+      valueFrom:
+        secretKeyRef:
+          name: arda-credit-otel-collector-env
+          key: OTLP_DESTINATION_ENDPOINT
+    - name: SIGNOZ_INGESTION_KEY
+      valueFrom:
+        secretKeyRef:
+          name: arda-credit-otel-collector-env
+          key: SIGNOZ_INGESTION_KEY
+
+  # Collector configuration with SigNoz integration
+  config:
+    receivers:
+      # Direct PostgreSQL metrics collection
+      postgresql:
+        endpoint: "${env:POSTGRESQL_ENDPOINT}"
+        collection_interval: 60s
+        username: "${env:POSTGRESQL_USERNAME}"
+        password: "${env:POSTGRESQL_PASSWORD}"
+        databases: ["arda_credit_db"]
+        tls:
+          insecure: true
+        metrics:
+          postgresql.database.locks:
+            enabled: true
+          postgresql.deadlocks:
+            enabled: true
+          postgresql.sequential_scans:
+            enabled: true
+          postgresql.database.count:
+            enabled: true
+          postgresql.backends:
+            enabled: true
+      
+      # Scrape from prometheus-postgres-exporter
+      prometheus/postgres-exporter:
+        config:
+          scrape_configs:
+            - job_name: 'postgres-exporter'
+              static_configs:
+                - targets: ['arda-credit-prometheus-postgres-exporter:9187']
+              scrape_interval: 30s
+              metrics_path: /metrics
+
+    processors:
+      # Resource detection processor
+      resourcedetection/system:
+        detectors: ["system"]
+        system:
+          hostname_sources: ["os"]
+      
+      # Memory limiter processor
+      memory_limiter:
+        limit_mib: 400
+        spike_limit_mib: 100
+        check_interval: 5s
+      
+      # Batch processor
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+
+    exporters:
+      # Export to SigNoz Cloud (PostgreSQL metrics)
+      otlp/postgres:
+        endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
+        tls:
+          insecure: false
+        headers:
+          "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+        sending_queue:
+          enabled: true
+          num_consumers: 10
+          queue_size: 5000
+      
+      # Export to SigNoz Cloud (Arda Credit traces)
+      otlp/arda-credit:
+        endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
+        tls:
+          insecure: false
+        headers:
+          "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+        sending_queue:
+          enabled: true
+          queue_size: 5000
+          num_consumers: 10
+      
+      # Debug exporter for troubleshooting
+      debug:
+        verbosity: detailed
+        sampling_initial: 2
+        sampling_thereafter: 10
+
+    service:
+      # Enable debug logging
+      telemetry:
+        logs:
+          level: "debug"
+        metrics:
+          readers:
+          - pull:
+              exporter:
+                prometheus:
+                  host: ${env:MY_POD_IP}
+                  port: 8888
+      
+      pipelines:
+        # PostgreSQL metrics pipeline
+        metrics/postgresql:
+          receivers: [postgresql]
+          processors: [resourcedetection/system]
+          exporters: [otlp/postgres, debug]
+        
+        # Prometheus postgres exporter metrics pipeline
+        metrics/postgres-exporter:
+          receivers: [prometheus/postgres-exporter]
+          processors: [resourcedetection/system]
+          exporters: [otlp/postgres, debug]
+        
+        # Arda Credit traces pipeline
+        traces/arda-credit:
+          receivers: [otlp, jaeger, zipkin]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/arda-credit, debug]
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# Direct configuration for prometheus-postgres-exporter subchart
+prometheus-postgres-exporter:
+  config:
+    datasource:
+      host: arda-credit-postgresql
+      user: postgres
+      password: change-me-in-production
+      port: "5432"
+      database: arda_credit_db
+      sslmode: disable
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
