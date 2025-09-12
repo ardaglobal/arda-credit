@@ -4,18 +4,45 @@ This document outlines the standardized file structure and coding conventions fo
 
 ## 📁 File Structure Overview
 
+### Core Infrastructure (Fixed Structure)
 ```
 cli/src/
 ├── lib.rs                           # Main library exports and module declarations
 ├── cli.rs                           # Core CLI setup and middleware configuration
-├── balance.rs                       # Balance and wallet operations
-├── batch.rs                         # Batch processing and proof operations
-├── loans.rs                         # Credit and loan operations
-├── pools.rs                         # Liquidity pool operations
-├── testing.rs                       # Testing and performance operations
-├── user.rs                          # User management and KYC operations
 └── bin/
     └── cli.rs                       # Main CLI entry point
+```
+
+### Module Organization Examples
+
+**Single-File Modules** (when under 1000 lines):
+```
+├── balance.rs                       # Balance and wallet operations
+├── batch.rs                         # Batch processing and proof operations
+├── pools.rs                         # Liquidity pool operations
+├── user.rs                          # User management and KYC operations
+```
+
+**Directory Modules** (when functionality requires multiple files):
+```
+├── loans/                           # Credit and loan operations
+│   ├── mod.rs                       # Main module with command routing
+│   ├── investors.rs                 # Investor registration and profiles
+│   ├── merchants.rs                 # Merchant registration and turnover
+│   ├── credit.rs                    # Credit line eligibility and requests
+│   └── operations.rs                # Loan origination, payments, closeouts
+```
+
+**Feature-Gated Modules** (optional functionality):
+```
+├── benchmarks/                      # Performance benchmarks (requires --features testing)
+│   ├── mod.rs                       # Main benchmark module
+│   ├── analytics.rs                 # Analytics and statistics
+│   ├── performance.rs               # Performance testing
+│   ├── stress.rs                    # Stress testing
+│   └── verification.rs              # Proof verification
+├── tests/                           # Integration tests
+│   └── integration_tests.rs         # End-to-end workflow tests
 ```
 
 ## 🎯 File Organization Standards
@@ -38,23 +65,40 @@ Each module exports:
 - **Handler function** (`handle_module_command`) for command routing
 - **Individual operation functions** for specific business logic
 
-Example structure:
+### 4. Module Splitting Pattern
+
+When a module grows beyond 1000 lines, split it into a directory structure. The `loans` module demonstrates this pattern:
+
+**Before**: `loans.rs` (1,585 lines)
+**After**: `loans/` directory with focused sub-modules:
+
 ```rust
+// loans/mod.rs - Main module with command enum and routing
+pub mod investors;
+pub mod merchants; 
+pub mod credit;
+pub mod operations;
+
+pub use investors::*;
+pub use merchants::*;
+pub use credit::*;
+pub use operations::*;
+
 #[derive(Subcommand)]
-pub enum UserCommands {
-    Create { /* fields */ },
-    Get { /* fields */ },
-    // ... other commands
+pub enum LoanCommands {
+    // All loan-related commands
 }
 
-pub async fn handle_user_command(
-    client: &BatchApiClient,
-    command: UserCommands,
-    verbose: bool,
-) -> Result<()> { /* routing logic */ }
-
-pub async fn create_user(/* params */) -> Result<()> { /* implementation */ }
+pub async fn handle_loan_command(/* ... */) -> Result<()> {
+    // Route to appropriate sub-module
+}
 ```
+
+**Sub-modules by responsibility**:
+- `investors.rs` (343 lines) - Investor registration and profiles
+- `merchants.rs` (287 lines) - Merchant registration and turnover data
+- `credit.rs` (283 lines) - Credit line eligibility and requests  
+- `operations.rs` (286 lines) - Loan origination, payments, closeouts
 
 ## 📝 Coding Standards
 

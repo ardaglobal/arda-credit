@@ -8,7 +8,7 @@
 //! - [`cli`] - Core CLI setup and middleware configuration
 //! - [`loans`] - Credit/loan operations (investor, merchant, credit lines)
 //! - [`pools`] - Liquidity pool operations
-//! - [`testing`] - Testing, performance, and analytics operations
+//! - [`benchmarks`] - Performance benchmarks and analytics operations (feature-gated)
 //! - [`user`] - User management, KYC, and invite code operations
 //!
 //! Each module contains focused functionality and should not exceed 1000 lines of code.
