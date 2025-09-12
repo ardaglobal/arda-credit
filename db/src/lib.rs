@@ -187,6 +187,7 @@ pub use db::{
     update_liquidity_pool_status,
     update_loan,
     update_merchant_profile,
+    update_pool_balance_after_transaction,
     update_turnover,
     update_user_balance_from_deposit,
     update_user_balance_from_deposit_tx,

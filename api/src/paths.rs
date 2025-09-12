@@ -176,6 +176,9 @@ pub const POOLS: &str = api_path!("/pools");
 /// Individual pool operations
 pub const POOL_BY_ID: &str = api_path!("/pools/{pool_id}");
 
+/// Pool deposit operation
+pub const POOL_DEPOSIT: &str = api_path!("/pools/{pool_id}/deposit");
+
 /// Pool utilization
 pub const POOL_UTILIZATION: &str = api_path!("/pools/{pool_id}/utilization");
 

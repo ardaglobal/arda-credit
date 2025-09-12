@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE liquidity_pools\n                SET total_deposits = GREATEST(total_deposits - $1, 0),\n                    available_liquidity = GREATEST(available_liquidity - $1, 0),\n                    updated_at = NOW()\n                WHERE id = $2\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Numeric",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "efb53edc97ea5f125a0b8186eb9f0bfdc3fea03db623d0988d28b9f5a3b25cee"
+}

@@ -776,6 +776,28 @@ enum Commands {
         verbose: bool,
     },
 
+    /// Deposit funds from user balance to a liquidity pool
+    DepositToPool {
+        /// Pool ID to deposit to
+        #[arg(long)]
+        pool_id: String,
+        /// User ID making the deposit
+        #[arg(long)]
+        user_id: String,
+        /// Amount to deposit in USDC (e.g., "100.50")
+        #[arg(long)]
+        amount_usdc: String,
+        /// Optional blockchain transaction hash
+        #[arg(long)]
+        transaction_hash: Option<String>,
+        /// Optional block number
+        #[arg(long)]
+        block_number: Option<i64>,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
     /// Get investor pool metrics for dashboard
     GetInvestorPoolMetrics {
         /// Investor ID to retrieve metrics for
@@ -1338,6 +1360,26 @@ async fn main() -> Result<()> {
             verbose,
         } => {
             update_pool_status(&client, &pool_id, &status, verbose).await?;
+        }
+
+        Commands::DepositToPool {
+            pool_id,
+            user_id,
+            amount_usdc,
+            transaction_hash,
+            block_number,
+            verbose,
+        } => {
+            deposit_to_pool(
+                &client,
+                &pool_id,
+                &user_id,
+                &amount_usdc,
+                transaction_hash.as_deref(),
+                block_number,
+                verbose,
+            )
+            .await?;
         }
 
         Commands::FindMatchingPools {
@@ -5397,6 +5439,113 @@ async fn find_matching_pools(
         }
         Err(e) => {
             return Err(eyre::eyre!("Failed to find matching pools: {}", e));
+        }
+    }
+
+    Ok(())
+}
+
+/// Deposit funds from user balance to a liquidity pool
+async fn deposit_to_pool(
+    client: &BatchApiClient,
+    pool_id: &str,
+    user_id: &str,
+    amount_usdc: &str,
+    transaction_hash: Option<&str>,
+    block_number: Option<i64>,
+    verbose: bool,
+) -> Result<()> {
+    println!("💰 Depositing {} USDC to pool {}...", amount_usdc, pool_id);
+
+    if verbose {
+        println!("   User ID: {}", user_id);
+        println!("   Amount: {} USDC", amount_usdc);
+        if let Some(hash) = transaction_hash {
+            println!("   Transaction Hash: {}", hash);
+        }
+        if let Some(block) = block_number {
+            println!("   Block Number: {}", block);
+        }
+        println!();
+    }
+
+    let deposit_request = serde_json::json!({
+        "user_id": user_id,
+        "amount_usdc": amount_usdc,
+        "transaction_hash": transaction_hash,
+        "block_number": block_number
+    });
+
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let url = format!("{}/api/v1/pools/{}/deposit", api_url, pool_id);
+
+    let http_client = client.http_client().clone();
+    let response = http_client.post(&url).json(&deposit_request).send().await?;
+
+    match response.status() {
+        reqwest::StatusCode::CREATED => {
+            let deposit_response: serde_json::Value = response.json().await?;
+
+            println!("✅ Pool deposit successful!");
+            println!(
+                "   Pool ID: {}",
+                deposit_response["pool_id"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   Amount Deposited: {} USDC",
+                deposit_response["amount_deposited"]
+                    .as_str()
+                    .unwrap_or("N/A")
+            );
+            println!(
+                "   New Pool Balance: ${}",
+                deposit_response["new_pool_balance"].as_str().unwrap_or("0")
+            );
+            println!(
+                "   Transaction ID: {}",
+                deposit_response["transaction_id"].as_str().unwrap_or("N/A")
+            );
+            println!(
+                "   Message: {}",
+                deposit_response["message"].as_str().unwrap_or("Success")
+            );
+
+            if verbose {
+                println!();
+                println!("Full Response: {:#?}", deposit_response);
+            }
+        }
+        reqwest::StatusCode::BAD_REQUEST => {
+            let error_response: serde_json::Value = response.json().await?;
+            return Err(eyre::eyre!(
+                "Invalid request: {}",
+                error_response["message"].as_str().unwrap_or("Bad request")
+            ));
+        }
+        reqwest::StatusCode::FORBIDDEN => {
+            let error_response: serde_json::Value = response.json().await?;
+            return Err(eyre::eyre!(
+                "Insufficient balance or unauthorized: {}",
+                error_response["message"]
+                    .as_str()
+                    .unwrap_or("Access denied")
+            ));
+        }
+        reqwest::StatusCode::NOT_FOUND => {
+            return Err(eyre::eyre!("Pool not found or user not authorized"));
+        }
+        _ => {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(eyre::eyre!(
+                "Request failed with status {}: {}",
+                status,
+                error_text
+            ));
         }
     }
 

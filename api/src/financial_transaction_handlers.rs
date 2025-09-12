@@ -585,6 +585,19 @@ pub async fn record_pool_funding(
 
     match arda_credit_db::create_pool_financial_transaction(&state.pool, &db_request).await {
         Ok(transaction) => {
+            // Update pool balances after successful transaction recording
+            if let Err(e) = arda_credit_db::update_pool_balance_after_transaction(
+                &state.pool,
+                pool_uuid,
+                &request.transaction_type,
+                amount,
+            )
+            .await
+            {
+                error!("Failed to update pool balance after funding: {}", e);
+                // Don't fail the transaction, just log the error
+            }
+
             info!(
                 transaction_id = %transaction.id,
                 pool_id = %pool_id,
@@ -723,6 +736,19 @@ pub async fn record_pool_withdrawal(
 
     match arda_credit_db::create_pool_financial_transaction(&state.pool, &db_request).await {
         Ok(transaction) => {
+            // Update pool balances after successful transaction recording
+            if let Err(e) = arda_credit_db::update_pool_balance_after_transaction(
+                &state.pool,
+                pool_uuid,
+                &request.transaction_type,
+                amount,
+            )
+            .await
+            {
+                error!("Failed to update pool balance after withdrawal: {}", e);
+                // Don't fail the transaction, just log the error
+            }
+
             info!(
                 transaction_id = %transaction.id,
                 pool_id = %pool_id,
