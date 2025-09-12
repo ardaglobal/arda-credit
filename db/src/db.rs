@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::env;
 use std::str::FromStr;
-use tracing::debug;
+use tracing::{debug, instrument};
 
 #[cfg(all(not(target_env = "msvc"), feature = "tikv-jemallocator"))]
 use tikv_jemallocator::Jemalloc;
@@ -540,12 +540,16 @@ async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool), fields(
+    operation = "submit_transaction",
+    table = "incoming_transactions",
+    layer = "database",
+    amount = %amount
+), level = "info")]
 pub async fn submit_transaction(
     pool: &PgPool,
     amount: i32,
 ) -> Result<IncomingTransaction, sqlx::Error> {
-    debug!("Submitting transaction: amount={amount}");
-
     let row = sqlx::query!(
         "INSERT INTO incoming_transactions (amount) VALUES ($1) RETURNING id, amount, included_in_batch_id, created_at",
         amount
@@ -568,6 +572,15 @@ pub async fn submit_transaction(
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(
+        operation = "select",
+        table = "incoming_transactions",
+        layer = "database"
+    ),
+    level = "info"
+)]
 pub async fn get_pending_transactions(
     pool: &PgPool,
 ) -> Result<Vec<IncomingTransaction>, sqlx::Error> {
@@ -601,12 +614,17 @@ pub async fn get_pending_transactions(
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool), fields(
+    operation = "create_batch",
+    table = "batches",
+    layer = "database",
+    batch_size = %batch_size.unwrap_or(10)
+), level = "info")]
 pub async fn create_batch(
     pool: &PgPool,
     batch_size: Option<i32>,
 ) -> Result<Option<ProofBatch>, sqlx::Error> {
     let size = batch_size.unwrap_or(10);
-    debug!("Creating batch with size: {size}");
 
     let batch_id: i32 = sqlx::query_scalar!("SELECT create_batch($1)", size)
         .fetch_one(pool)
@@ -626,6 +644,12 @@ pub async fn create_batch(
 ///
 /// # Errors
 /// Returns error if database operation fails or batch not found
+#[instrument(skip(pool), fields(
+    operation = "select",
+    table = "proof_batches",
+    layer = "database",
+    batch_id = %batch_id
+), level = "info")]
 pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch, sqlx::Error> {
     debug!("Getting batch: id={batch_id}");
 
@@ -663,6 +687,12 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool), fields(
+    operation = "select",
+    table = "proof_batches",
+    layer = "database",
+    limit = ?limit
+), level = "info")]
 pub async fn get_all_batches(
     pool: &PgPool,
     limit: Option<i32>,
@@ -705,14 +735,20 @@ pub async fn get_all_batches(
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool), fields(
+    operation = "update_batch_proof",
+    table = "batches",
+    layer = "database",
+    batch_id = %batch_id,
+    proof_id = %proof_id,
+    status = %status
+), level = "info")]
 pub async fn update_batch_proof(
     pool: &PgPool,
     batch_id: i32,
     proof_id: &str,
     status: &str,
 ) -> Result<(), sqlx::Error> {
-    debug!("Updating batch {batch_id} with proof {proof_id}, status: {status}");
-
     let proven_at = if status == "proven" {
         Some(Utc::now())
     } else {
@@ -761,6 +797,11 @@ pub async fn get_current_counter_value(pool: &PgPool) -> Result<i64, sqlx::Error
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "processor_state", layer = "database"),
+    level = "info"
+)]
 pub async fn get_current_state(pool: &PgPool) -> Result<CounterState, sqlx::Error> {
     debug!("Getting current counter state");
 
@@ -806,13 +847,18 @@ pub async fn get_current_state(pool: &PgPool) -> Result<CounterState, sqlx::Erro
 ///
 /// # Errors
 /// Returns error if database operation fails
+#[instrument(skip(pool, merkle_root), fields(
+    operation = "store_ads_state_commit",
+    table = "ads_state_commits",
+    layer = "database",
+    batch_id = %batch_id,
+    merkle_root_len = %merkle_root.len()
+), level = "info")]
 pub async fn store_ads_state_commit(
     pool: &PgPool,
     batch_id: i32,
     merkle_root: &[u8],
 ) -> Result<AdsStateCommit, sqlx::Error> {
-    debug!("Storing ADS state commit for batch {batch_id}");
-
     let row = sqlx::query!(
         r"
         INSERT INTO ads_state_commits (batch_id, merkle_root)
@@ -840,6 +886,12 @@ pub async fn store_ads_state_commit(
 ///
 /// # Errors
 /// Returns error if database operation fails or batch not found
+#[instrument(skip(pool), fields(
+    operation = "select",
+    table = "proof_batches",
+    layer = "database",
+    batch_id = %batch_id
+), level = "info")]
 pub async fn get_contract_submission_data(
     pool: &PgPool,
     batch_id: i32,
@@ -1085,6 +1137,13 @@ pub async fn get_potential_stuck_batches(
 // ============================================================================
 
 /// Create a new identity (user registration)
+#[instrument(skip(pool), fields(
+    operation = "create_identity",
+    table = "identities",
+    layer = "database",
+    user_type = %user_type,
+    email = %email
+), level = "info")]
 pub async fn create_identity(
     pool: &PgPool,
     user_type: &str,
@@ -1133,6 +1192,13 @@ pub async fn create_identity(
 }
 
 /// Create identity with password (for registration)
+#[instrument(skip(pool, password_hash), fields(
+    operation = "create_identity_with_password",
+    table = "identities",
+    layer = "database",
+    user_type = %user_type,
+    email = %email
+), level = "info")]
 pub async fn create_identity_with_password(
     pool: &PgPool,
     user_type: &str,
@@ -1334,6 +1400,12 @@ pub enum RegisterResult {
 }
 
 /// Get identity by ID
+#[instrument(skip(pool), fields(
+    operation = "get_identity_by_id",
+    table = "identities",
+    layer = "database",
+    user_id = %id
+), level = "info")]
 pub async fn get_identity_by_id(
     pool: &PgPool,
     id: uuid::Uuid,
@@ -3932,20 +4004,45 @@ pub async fn get_investor_dashboard_metrics(
         InvestorDashboardMetrics,
         r#"
         SELECT
-            COUNT(*)::int8 as "total_pools!",
-            COUNT(CASE WHEN status = 'active' THEN 1 END)::int8 as "active_pools!",
-            COALESCE(SUM(total_deposits), 0) as "total_liquidity_provided!",
-            COALESCE(SUM(utilized_liquidity), 0) as "total_utilized_liquidity!",
+            COUNT(lp.*)::int8 as "total_pools!",
+            COUNT(CASE WHEN lp.status = 'ACTIVE' THEN 1 END)::int8 as "active_pools!",
+            COALESCE(SUM(lp.total_deposits), 0) as "total_liquidity_provided!",
+            COALESCE(SUM(lp.utilized_liquidity), 0) as "total_utilized_liquidity!",
             CASE
-                WHEN SUM(total_deposits) > 0 THEN SUM(utilized_liquidity) / SUM(total_deposits)
+                WHEN SUM(lp.total_deposits) > 0 THEN SUM(lp.utilized_liquidity) / SUM(lp.total_deposits)
                 ELSE 0
             END as "average_utilization_rate!",
-            -- TODO: Calculate from actual loan data when available
-            0::decimal as "total_interest_earned!",
-            0::int8 as "total_loans_originated!",
-            0::decimal as "total_loan_volume!"
-        FROM liquidity_pools
-        WHERE investor_id = $1
+            -- Calculate total interest earned from pool financial transactions
+            COALESCE((
+                SELECT SUM(amount)
+                FROM pool_financial_transactions pft
+                WHERE pft.transaction_type = 'INTEREST'
+                AND pft.pool_id IN (
+                    SELECT id FROM liquidity_pools WHERE investor_id = $1
+                )
+            ), 0) as "total_interest_earned!",
+            -- Calculate total loans originated from credit line draws linked to investor's pools
+            COALESCE((
+                SELECT COUNT(DISTINCT clft.id)
+                FROM credit_line_financial_transactions clft
+                JOIN credit_lines cl ON clft.credit_line_id = cl.id
+                WHERE clft.transaction_type = 'DRAW'
+                AND cl.pool_id IN (
+                    SELECT id FROM liquidity_pools WHERE investor_id = $1
+                )
+            ), 0)::int8 as "total_loans_originated!",
+            -- Calculate total loan volume from credit line draws
+            COALESCE((
+                SELECT SUM(clft.amount)
+                FROM credit_line_financial_transactions clft
+                JOIN credit_lines cl ON clft.credit_line_id = cl.id
+                WHERE clft.transaction_type = 'DRAW'
+                AND cl.pool_id IN (
+                    SELECT id FROM liquidity_pools WHERE investor_id = $1
+                )
+            ), 0) as "total_loan_volume!"
+        FROM liquidity_pools lp
+        WHERE lp.investor_id = $1
         "#,
         investor_id
     )
@@ -3954,6 +4051,266 @@ pub async fn get_investor_dashboard_metrics(
 
     Ok(metrics)
 }
+
+/// Enhanced investor metrics including APR and yield calculations
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct EnhancedInvestorMetrics {
+    pub investor_id: uuid::Uuid,
+    pub total_pools: i64,
+    pub active_pools: i64,
+    pub total_liquidity_provided: rust_decimal::Decimal,
+    pub total_utilized_liquidity: rust_decimal::Decimal,
+    pub average_utilization_rate: rust_decimal::Decimal,
+    pub total_interest_earned: rust_decimal::Decimal,
+    pub total_loans_originated: i64,
+    pub total_loan_volume: rust_decimal::Decimal,
+    pub lifetime_apr: Option<rust_decimal::Decimal>, // Annual Percentage Rate
+    pub lifetime_yield: Option<rust_decimal::Decimal>, // Total return percentage
+    pub average_loan_apr: Option<rust_decimal::Decimal>, // Average APR across all loans
+    pub average_loan_duration_days: Option<i32>,     // Average loan duration in days
+    pub total_principal_repaid: rust_decimal::Decimal,
+    pub total_outstanding_principal: rust_decimal::Decimal,
+    pub default_rate: rust_decimal::Decimal,
+}
+
+/// Investor pool metrics dashboard structure
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct InvestorPoolMetrics {
+    pub investor_id: uuid::Uuid,
+    pub total_pools: i64,
+    pub active_pools: i64,
+    pub paused_pools: i64,
+    pub active_total_capital: rust_decimal::Decimal,
+    pub total_capital_deployed: rust_decimal::Decimal,
+    pub lifetime_percentage_yield: Option<rust_decimal::Decimal>,
+    pub current_annual_yield_apr: Option<rust_decimal::Decimal>,
+    pub total_interest_earned: rust_decimal::Decimal,
+    pub average_utilization_rate: rust_decimal::Decimal,
+    pub total_loans_originated: i64,
+    pub default_rate: rust_decimal::Decimal,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Get investor pool metrics for dashboard display
+pub async fn get_investor_pool_metrics(
+    pool: &PgPool,
+    investor_id: uuid::Uuid,
+) -> Result<InvestorPoolMetrics, sqlx::Error> {
+    let row = sqlx::query!(
+        r#"
+        SELECT
+            COUNT(lp.*)::int8 as "total_pools!",
+            COUNT(CASE WHEN lp.status = 'ACTIVE' THEN 1 END)::int8 as "active_pools!",
+            COUNT(CASE WHEN lp.status = 'PAUSED' THEN 1 END)::int8 as "paused_pools!",
+            COALESCE(SUM(CASE WHEN lp.status = 'ACTIVE' THEN lp.total_deposits ELSE 0 END), 0) as "active_total_capital!",
+            COALESCE(SUM(lp.utilized_liquidity), 0) as "total_capital_deployed!",
+            -- Lifetime percentage yield: total interest earned / total capital provided
+            CASE
+                WHEN SUM(lp.total_deposits) > 0 THEN 
+                    (COALESCE((
+                        SELECT SUM(amount)
+                        FROM pool_financial_transactions pft
+                        WHERE pft.transaction_type = 'INTEREST'
+                        AND pft.pool_id IN (
+                            SELECT id FROM liquidity_pools WHERE investor_id = $1
+                        )
+                    ), 0) / SUM(lp.total_deposits)) * 100
+                ELSE NULL
+            END as "lifetime_percentage_yield",
+            -- Current annual yield (APR): annualized based on average pool age
+            CASE
+                WHEN SUM(lp.total_deposits) > 0 AND AVG(EXTRACT(EPOCH FROM (NOW() - lp.created_at)) / 86400) > 0 THEN
+                    (COALESCE((
+                        SELECT SUM(amount)
+                        FROM pool_financial_transactions pft
+                        WHERE pft.transaction_type = 'INTEREST'
+                        AND pft.pool_id IN (
+                            SELECT id FROM liquidity_pools WHERE investor_id = $1
+                        )
+                    ), 0) / SUM(lp.total_deposits)) * (365 / AVG(EXTRACT(EPOCH FROM (NOW() - lp.created_at)) / 86400)) * 100
+                ELSE NULL
+            END as "current_annual_yield_apr",
+            COALESCE((
+                SELECT SUM(amount)
+                FROM pool_financial_transactions pft
+                WHERE pft.transaction_type = 'INTEREST'
+                AND pft.pool_id IN (
+                    SELECT id FROM liquidity_pools WHERE investor_id = $1
+                )
+            ), 0) as "total_interest_earned!",
+            CASE
+                WHEN SUM(lp.total_deposits) > 0 THEN (SUM(lp.utilized_liquidity) / SUM(lp.total_deposits)) * 100
+                ELSE 0
+            END as "average_utilization_rate!",
+            COALESCE((
+                SELECT COUNT(DISTINCT clft.id)
+                FROM credit_line_financial_transactions clft
+                JOIN credit_lines cl ON clft.credit_line_id = cl.id
+                WHERE clft.transaction_type = 'DRAW'
+                AND cl.pool_id IN (
+                    SELECT id FROM liquidity_pools WHERE investor_id = $1
+                )
+            ), 0)::int8 as "total_loans_originated!",
+            COALESCE((
+                SELECT 
+                    CASE 
+                        WHEN COUNT(*) > 0 THEN (COUNT(CASE WHEN cl.status = 'DEFAULTED' THEN 1 END)::decimal / COUNT(*)::decimal) * 100
+                        ELSE 0
+                    END
+                FROM credit_line_financial_transactions clft
+                JOIN credit_lines cl ON clft.credit_line_id = cl.id
+                WHERE clft.transaction_type = 'DRAW'
+                AND cl.pool_id IN (
+                    SELECT id FROM liquidity_pools WHERE investor_id = $1
+                )
+            ), 0) as "default_rate!",
+            COALESCE(MIN(lp.created_at), NOW()) as "created_at!: DateTime<Utc>"
+        FROM liquidity_pools lp
+        WHERE lp.investor_id = $1
+        "#,
+        investor_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(InvestorPoolMetrics {
+        investor_id,
+        total_pools: row.total_pools,
+        active_pools: row.active_pools,
+        paused_pools: row.paused_pools,
+        active_total_capital: row.active_total_capital,
+        total_capital_deployed: row.total_capital_deployed,
+        lifetime_percentage_yield: row.lifetime_percentage_yield,
+        current_annual_yield_apr: row.current_annual_yield_apr,
+        total_interest_earned: row.total_interest_earned,
+        average_utilization_rate: row.average_utilization_rate,
+        total_loans_originated: row.total_loans_originated,
+        default_rate: row.default_rate,
+        created_at: row.created_at,
+    })
+}
+
+/// Get enhanced investor metrics with APR and yield calculations
+/* pub async fn get_enhanced_investor_metrics(
+    pool: &PgPool,
+    investor_id: uuid::Uuid,
+) -> Result<EnhancedInvestorMetrics, sqlx::Error> {
+    let metrics = sqlx::query_as!(
+        EnhancedInvestorMetrics,
+        r#"
+        WITH pool_stats AS (
+            SELECT
+                lp.id,
+                lp.total_deposits,
+                lp.utilized_liquidity,
+                lp.created_at,
+                EXTRACT(EPOCH FROM (NOW() - lp.created_at)) / 86400 as pool_age_days
+            FROM liquidity_pools lp
+            WHERE lp.investor_id = $1
+        ),
+        loan_stats AS (
+            SELECT
+                cl.pool_id,
+                clft.amount as draw_amount,
+                clft.processed_at as draw_date,
+                -- Calculate interest payments for this loan
+                COALESCE((
+                    SELECT SUM(amount)
+                    FROM credit_line_financial_transactions clft2
+                    WHERE clft2.credit_line_id = cl.id
+                    AND clft2.transaction_type = 'INTEREST'
+                ), 0) as interest_earned,
+                -- Calculate principal repayments
+                COALESCE((
+                    SELECT SUM(amount)
+                    FROM credit_line_financial_transactions clft2
+                    WHERE clft2.credit_line_id = cl.id
+                    AND clft2.transaction_type = 'PAYMENT'
+                ), 0) as principal_repaid,
+                -- Current outstanding balance
+                GREATEST(cl.utilized_amount, 0) as outstanding_balance,
+                -- Loan duration in days
+                EXTRACT(EPOCH FROM (NOW() - cl.opened_at)) / 86400 as loan_age_days,
+                -- Default flag (simplified - loan with no payments for 90+ days)
+                CASE
+                    WHEN cl.status = 'DEFAULTED' THEN 1
+                    WHEN cl.status = 'ACTIVE' AND EXTRACT(EPOCH FROM (NOW() - cl.opened_at)) / 86400 > 90
+                         AND NOT EXISTS (
+                             SELECT 1 FROM credit_line_financial_transactions clft3
+                             WHERE clft3.credit_line_id = cl.id
+                             AND clft3.transaction_type IN ('PAYMENT', 'INTEREST')
+                             AND clft3.processed_at > NOW() - INTERVAL '90 days'
+                         ) THEN 1
+                    ELSE 0
+                END as is_defaulted
+            FROM credit_lines cl
+            JOIN credit_line_financial_transactions clft ON cl.id = clft.credit_line_id
+            WHERE cl.pool_id IN (SELECT id FROM pool_stats)
+            AND clft.transaction_type = 'DRAW'
+        ),
+        aggregate_metrics AS (
+            SELECT
+                COUNT(ps.*)::int8 as total_pools,
+                COUNT(CASE WHEN ps.total_deposits > 0 THEN 1 END)::int8 as active_pools,
+                COALESCE(SUM(ps.total_deposits), 0) as total_liquidity_provided,
+                COALESCE(SUM(ps.utilized_liquidity), 0) as total_utilized_liquidity,
+                CASE
+                    WHEN SUM(ps.total_deposits) > 0 THEN SUM(ps.utilized_liquidity) / SUM(ps.total_deposits)
+                    ELSE 0
+                END as average_utilization_rate,
+                COALESCE(SUM(ls.interest_earned), 0) as total_interest_earned,
+                COUNT(DISTINCT ls.pool_id)::int8 as total_loans_originated,
+                COALESCE(SUM(ls.draw_amount), 0) as total_loan_volume,
+                COALESCE(SUM(ls.principal_repaid), 0) as total_principal_repaid,
+                COALESCE(SUM(ls.outstanding_balance), 0) as total_outstanding_principal,
+                CASE
+                    WHEN COUNT(ls.*) > 0 THEN (SUM(ls.is_defaulted)::decimal / COUNT(ls.*)::decimal) * 100
+                    ELSE 0
+                END as default_rate_percentage,
+                AVG(ls.loan_age_days) as average_loan_duration_days
+            FROM pool_stats ps
+            LEFT JOIN loan_stats ls ON ps.id = ls.pool_id
+        )
+        SELECT
+            $1::uuid as investor_id,
+            am.total_pools,
+            am.active_pools,
+            am.total_liquidity_provided,
+            am.total_utilized_liquidity,
+            am.average_utilization_rate,
+            am.total_interest_earned,
+            am.total_loans_originated,
+            am.total_loan_volume,
+            am.total_principal_repaid,
+            am.total_outstanding_principal,
+            am.default_rate_percentage as default_rate,
+            am.average_loan_duration_days::int4 as average_loan_duration_days,
+            -- Calculate lifetime APR: (total interest earned / total liquidity provided) * (365 / average pool age)
+            CASE
+                WHEN am.total_liquidity_provided > 0 AND (SELECT AVG(pool_age_days) FROM pool_stats) > 0 THEN
+                    (am.total_interest_earned / am.total_liquidity_provided) * (365 / (SELECT AVG(pool_age_days) FROM pool_stats))
+                ELSE NULL
+            END as lifetime_apr,
+            -- Calculate lifetime yield: total interest earned / total liquidity provided
+            CASE
+                WHEN am.total_liquidity_provided > 0 THEN am.total_interest_earned / am.total_liquidity_provided
+                ELSE NULL
+            END as lifetime_yield,
+            -- Calculate average loan APR: (total interest earned / total loan volume) * (365 / average loan duration)
+            CASE
+                WHEN am.total_loan_volume > 0 AND am.average_loan_duration_days > 0 THEN
+                    (am.total_interest_earned / am.total_loan_volume) * (365 / am.average_loan_duration_days)
+                ELSE NULL
+            END as average_loan_apr
+        FROM aggregate_metrics am
+        "#,
+        investor_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(metrics)
+} */
 
 /// Pool utilization data point for historical analysis
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]

@@ -39,6 +39,7 @@ pub mod background_processor;
 pub mod credit_line_operations;
 pub mod merkle_tree;
 pub mod merkle_tree_32;
+pub mod telemetry;
 pub mod vapp_integration;
 
 pub mod ccr;
@@ -102,10 +103,12 @@ pub use db::{
     get_deposit_by_tx_hash,
     get_deposits_by_user_address,
 
+    // get_enhanced_investor_metrics,
     get_identity_by_email,
     get_identity_by_id,
     get_identity_by_reset_token,
     get_investor_dashboard_metrics,
+    get_investor_pool_metrics,
     get_investor_pool_summaries,
     get_investor_profile_by_user_id,
     get_investor_profile_by_user_id_or_email,
@@ -221,10 +224,12 @@ pub use db::{
     CreatePoolFinancialTransactionRequest,
     CreateTurnoverRequest,
     CreditLineFinancialTransaction,
+    EnhancedInvestorMetrics,
     // CCR Domain types
     Identity,
     IncomingTransaction,
     InvestorDashboardMetrics,
+    InvestorPoolMetrics,
     InvestorProfile,
     InviteCodeInfo,
     KycInvestorType,

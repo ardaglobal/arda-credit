@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            COUNT(lp.*)::int8 as \"total_pools!\",\n            COUNT(CASE WHEN lp.status = 'ACTIVE' THEN 1 END)::int8 as \"active_pools!\",\n            COUNT(CASE WHEN lp.status = 'PAUSED' THEN 1 END)::int8 as \"paused_pools!\",\n            COALESCE(SUM(CASE WHEN lp.status = 'ACTIVE' THEN lp.total_deposits ELSE 0 END), 0) as \"active_total_capital!\",\n            COALESCE(SUM(lp.utilized_liquidity), 0) as \"total_capital_deployed!\",\n            -- Lifetime percentage yield: total interest earned / total capital provided\n            CASE\n                WHEN SUM(lp.total_deposits) > 0 THEN \n                    (COALESCE((\n                        SELECT SUM(amount)\n                        FROM pool_financial_transactions pft\n                        WHERE pft.transaction_type = 'INTEREST'\n                        AND pft.pool_id IN (\n                            SELECT id FROM liquidity_pools WHERE investor_id = $1\n                        )\n                    ), 0) / SUM(lp.total_deposits)) * 100\n                ELSE NULL\n            END as \"lifetime_percentage_yield\",\n            -- Current annual yield (APR): annualized based on average pool age\n            CASE\n                WHEN SUM(lp.total_deposits) > 0 AND AVG(EXTRACT(EPOCH FROM (NOW() - lp.created_at)) / 86400) > 0 THEN\n                    (COALESCE((\n                        SELECT SUM(amount)\n                        FROM pool_financial_transactions pft\n                        WHERE pft.transaction_type = 'INTEREST'\n                        AND pft.pool_id IN (\n                            SELECT id FROM liquidity_pools WHERE investor_id = $1\n                        )\n                    ), 0) / SUM(lp.total_deposits)) * (365 / AVG(EXTRACT(EPOCH FROM (NOW() - lp.created_at)) / 86400)) * 100\n                ELSE NULL\n            END as \"current_annual_yield_apr\",\n            COALESCE((\n                SELECT SUM(amount)\n                FROM pool_financial_transactions pft\n                WHERE pft.transaction_type = 'INTEREST'\n                AND pft.pool_id IN (\n                    SELECT id FROM liquidity_pools WHERE investor_id = $1\n                )\n            ), 0) as \"total_interest_earned!\",\n            CASE\n                WHEN SUM(lp.total_deposits) > 0 THEN (SUM(lp.utilized_liquidity) / SUM(lp.total_deposits)) * 100\n                ELSE 0\n            END as \"average_utilization_rate!\",\n            COALESCE((\n                SELECT COUNT(DISTINCT clft.id)\n                FROM credit_line_financial_transactions clft\n                JOIN credit_lines cl ON clft.credit_line_id = cl.id\n                WHERE clft.transaction_type = 'DRAW'\n                AND cl.pool_id IN (\n                    SELECT id FROM liquidity_pools WHERE investor_id = $1\n                )\n            ), 0)::int8 as \"total_loans_originated!\",\n            COALESCE((\n                SELECT \n                    CASE \n                        WHEN COUNT(*) > 0 THEN (COUNT(CASE WHEN cl.status = 'DEFAULTED' THEN 1 END)::decimal / COUNT(*)::decimal) * 100\n                        ELSE 0\n                    END\n                FROM credit_line_financial_transactions clft\n                JOIN credit_lines cl ON clft.credit_line_id = cl.id\n                WHERE clft.transaction_type = 'DRAW'\n                AND cl.pool_id IN (\n                    SELECT id FROM liquidity_pools WHERE investor_id = $1\n                )\n            ), 0) as \"default_rate!\",\n            COALESCE(MIN(lp.created_at), NOW()) as \"created_at!: DateTime<Utc>\"\n        FROM liquidity_pools lp\n        WHERE lp.investor_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total_pools!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "active_pools!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "paused_pools!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "active_total_capital!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "total_capital_deployed!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "lifetime_percentage_yield",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "current_annual_yield_apr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "total_interest_earned!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "average_utilization_rate!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 9,
+        "name": "total_loans_originated!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "default_rate!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "bc1a81701d1972717c5b35e315d9a148edd11bd2a90cec325dfc137ff9bec741"
+}

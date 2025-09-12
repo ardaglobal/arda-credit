@@ -60,6 +60,16 @@ pub enum PoolCommands {
         verbose: bool,
     },
 
+    /// Get investor pool metrics for dashboard
+    GetInvestorMetrics {
+        /// Investor ID to retrieve metrics for
+        #[arg(long)]
+        investor_id: String,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
     /// Update pool status
     UpdateStatus {
         /// Pool ID to update
@@ -180,6 +190,10 @@ pub async fn handle_pool_command(
             pool_id,
             verbose: cmd_verbose,
         } => get_pool(client, &pool_id, cmd_verbose || verbose).await,
+        PoolCommands::GetInvestorMetrics {
+            investor_id,
+            verbose: cmd_verbose,
+        } => get_investor_pool_metrics(client, &investor_id, cmd_verbose || verbose).await,
         PoolCommands::UpdateStatus {
             pool_id,
             status,
@@ -1290,6 +1304,136 @@ pub async fn test_pool_operations(
         println!("   Success rate: 100%");
         println!("   Average pool creation time: 1.2s");
         println!("   Average funding time: 3.5s");
+    }
+
+    Ok(())
+}
+
+/// Get investor pool metrics for dashboard
+pub async fn get_investor_pool_metrics(
+    client: &BatchApiClient,
+    investor_id: &str,
+    verbose: bool,
+) -> Result<()> {
+    println!("📊 Getting pool metrics for investor: {}", investor_id);
+
+    let http_client = Client::new();
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let url = format!(
+        "{}/api/investor/pool-metrics?investor_id={}",
+        api_url, investor_id
+    );
+
+    match http_client.get(&url).send().await {
+        Ok(response) => {
+            if !response.status().is_success() {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                eprintln!("❌ API request failed: {}", error_text);
+                return Err(eyre::eyre!("API request failed: {}", error_text));
+            }
+
+            let response_text = response.text().await?;
+            let metrics: serde_json::Value = serde_json::from_str(&response_text)?;
+
+            if let Some(data) = metrics.get("data") {
+                println!("✅ Investor Pool Metrics:");
+                println!();
+
+                // Pool counts
+                if let (Some(total), Some(active), Some(paused)) = (
+                    data.get("total_pools"),
+                    data.get("active_pools"),
+                    data.get("paused_pools"),
+                ) {
+                    println!("   📈 Pool Portfolio:");
+                    println!("      Total Pools: {}", total);
+                    println!("      Active Pools: {}", active);
+                    println!("      Paused Pools: {}", paused);
+                    println!();
+                }
+
+                // Capital metrics
+                if let (Some(active_capital), Some(deployed_capital)) = (
+                    data.get("active_total_capital"),
+                    data.get("total_capital_deployed"),
+                ) {
+                    println!("   💰 Capital Metrics:");
+                    println!(
+                        "      Active Total Capital: ${}",
+                        active_capital.as_str().unwrap_or("0")
+                    );
+                    println!(
+                        "      Total Capital Deployed: ${}",
+                        deployed_capital.as_str().unwrap_or("0")
+                    );
+                    println!();
+                }
+
+                // Performance metrics
+                if let (Some(lifetime_yield), Some(annual_yield)) = (
+                    data.get("lifetime_percentage_yield"),
+                    data.get("current_annual_yield_apr"),
+                ) {
+                    println!("   📊 Performance Metrics:");
+                    if let Some(yield_val) = lifetime_yield.as_str() {
+                        println!("      Lifetime Percentage Yield: {}%", yield_val);
+                    }
+                    if let Some(apr_val) = annual_yield.as_str() {
+                        println!("      Current Annual Yield (APR): {}%", apr_val);
+                    }
+                    println!();
+                }
+
+                // Interest and utilization
+                if let (Some(interest), Some(utilization)) = (
+                    data.get("total_interest_earned"),
+                    data.get("average_utilization_rate"),
+                ) {
+                    println!("   🔄 Utilization & Earnings:");
+                    println!(
+                        "      Total Interest Earned: ${}",
+                        interest.as_str().unwrap_or("0")
+                    );
+                    println!(
+                        "      Average Utilization Rate: {}%",
+                        utilization.as_str().unwrap_or("0")
+                    );
+                    println!();
+                }
+
+                // Loan metrics
+                if let (Some(loans), Some(default_rate)) =
+                    (data.get("total_loans_originated"), data.get("default_rate"))
+                {
+                    println!("   📋 Loan Metrics:");
+                    println!("      Total Loans Originated: {}", loans);
+                    println!(
+                        "      Default Rate: {}%",
+                        default_rate.as_str().unwrap_or("0")
+                    );
+                    println!();
+                }
+
+                if let Some(created_at) = data.get("created_at") {
+                    println!("   Started: {}", created_at.as_str().unwrap_or("Unknown"));
+                }
+
+                if verbose {
+                    println!();
+                    println!("Full Response: {:#?}", metrics);
+                }
+            } else {
+                println!("❌ No metrics data found for investor: {}", investor_id);
+            }
+        }
+        Err(e) => {
+            eprintln!("❌ Network error: {}", e);
+            return Err(e.into());
+        }
     }
 
     Ok(())
