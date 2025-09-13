@@ -276,42 +276,186 @@ class UniversalASTPatternGenerator:
         return ast_queries
     
     def _initialize_language_patterns(self) -> Dict:
-        """Initialize AST pattern templates for each language"""
+        """Initialize AST-grep compatible patterns for arda-credit architecture"""
         return {
             'rust': {
-                'function_def': 'fn $NAME($$$) { $$$ }',
-                'struct_def': 'struct $NAME { $$$ }',
-                'impl_block': 'impl $NAME { $$$ }',
-                'use_statement': 'use $$$;',
-                'method_call': '$OBJ.$METHOD($$$)',
-                'connection_pool': '$VAR::PgPoolOptions::new()',
-                'max_connections': '$OBJ.max_connections($$$)',
-                'async_function': 'async fn $NAME($$$) -> $RETURN { $$$ }',
-                'trait_def': 'trait $NAME { $$$ }',
-                'router_pattern': 'Router::new()',
-                'auth_service': 'AuthService',
-                'result_type': 'Result<$OK, $ERR>'
+                # Core Rust patterns with proper ast-grep syntax
+                'function_def': 'fn $NAME($$$PARAMS) -> $RETURN { $$$BODY }',
+                'async_function': 'async fn $NAME($$$PARAMS) -> $RETURN { $$$BODY }',
+                'struct_def': 'struct $NAME { $$$FIELDS }',
+                'impl_block': 'impl $NAME { $$$METHODS }',
+                'use_statement': 'use $MODULE::$ITEM;',
+                'method_call': '$OBJ.$METHOD($$$ARGS)',
+                'result_type': 'Result<$OK, $ERR>',
+                'trait_def': 'trait $NAME { $$$METHODS }',
+                'macro_call': '$MACRO!($$$ARGS)',
+                
+                # SP1/zkVM specific patterns for arda-credit
+                'sp1_derive': '#[sp1_derive::AlignedBorrow]',
+                'sp1_program': 'sp1_sdk::utils::setup_logger()',
+                'proof_with_values': 'ProofWithPublicValues<$TYPE>',
+                'sp1_public_values': 'SP1PublicValues',
+                'zkvm_read': 'sp1_zkvm::io::read::<$TYPE>()',
+                'zkvm_commit': 'sp1_zkvm::io::commit(&$VALUE)',
+                'sp1_client_setup': 'SP1ProverClient::new()',
+                'sp1_verifier_setup': 'SP1VerifyingKey::from_bytes($BYTES)',
+                'sp1_prove_call': '$CLIENT.prove($PROGRAM, $STDIN)',
+                'sp1_verify_call': '$CLIENT.verify(&$PROOF, &$VK)',
+                'zkvm_execution_env': 'sp1_zkvm::utils::setup_logger()',
+                'zkvm_program_entrypoint': 'sp1_zkvm::entrypoint!($FUNC)',
+                'zkvm_io_operations': 'sp1_zkvm::io::$OPERATION::<$TYPE>($$$ARGS)',
+                'sp1_stdin_write': '$STDIN.write(&$DATA)',
+                'sp1_core_proof': 'SP1ProofMode::Core',
+                'sp1_compressed_proof': 'SP1ProofMode::Compressed',
+                'sp1_plonk_proof': 'SP1ProofMode::Plonk',
+                'zkvm_cycle_tracking': 'sp1_zkvm::utils::cycle_tracker::start($LABEL)',
+                'zkvm_cycle_end': 'sp1_zkvm::utils::cycle_tracker::end($LABEL)',
+                
+                # Database patterns specific to arda-credit
+                'sqlx_pool': 'PgPoolOptions::new()',
+                'sqlx_query': 'sqlx::query!($QUERY)',
+                'database_transaction': 'pool.begin().await',
+                'connection_pool': '$POOL.acquire().await',
+                'max_connections': '$POOL.max_connections($SIZE)',
+                
+                # API/Server patterns for arda-credit
+                'axum_router': 'Router::new()',
+                'axum_handler': 'async fn $NAME($$$) -> $RESPONSE',
+                'tracing_instrument': '#[instrument($$$ARGS)]',
+                'api_endpoint': '.route("$PATH", $METHOD($HANDLER))',
+                
+                # ZK/Proof patterns specific to arda-credit
+                'batch_processor': 'BatchProcessor::process_batch($$$)',
+                'sindri_client': 'sindri_client.prove($$$ARGS)',
+                'proof_generation': 'generate_batch_proof($$$)',
+                'loan_transaction': 'LoanTransaction { transaction_type: $TYPE, $$$ }',
+                'batch_creation': 'create_batch_with_ads($$$ARGS)',
+                'proof_polling': 'poll_sindri_status($PROOF_ID)',
+                'proof_submission': 'submit_batch_to_sindri($BATCH)',
+                'nullifier_generation': 'transaction_to_nullifier($TRANSACTION)',
+                'merkle_tree_update': 'imt.insert($NULLIFIER)',
+                'state_root_transition': 'previous_state_root -> new_state_root',
+                'ads_service_call': 'ads_service.$METHOD($$$ARGS)',
+                'loan_processor_execute': 'LoanProcessor::process_transactions($TRANSACTIONS)',
+                'balance_state_update': 'balance_state.apply_update($UPDATE)',
+                'transaction_validation': 'validate_transaction_with_state($TRANSACTION, $STATE)',
+                
+                # Error handling patterns
+                'thiserror': '#[derive(Error, Debug)]',
+                'error_enum': 'enum $NAME { $$$VARIANTS }',
+                'anyhow_result': 'anyhow::Result<$TYPE>',
+                
+                # Authentication patterns for arda-credit
+                'jwt_decode': 'decode::<$CLAIMS>($TOKEN, $KEY, $VALIDATION)',
+                'kyc_verification': 'verify_kyc_status($USER)',
+                'auth_middleware': 'auth_middleware($$$)'
             },
-            'javascript': {
-                'function_def': 'function $name($$$) { $$$ }',
-                'class_def': 'class $name { $$$ }',
-                'import_statement': 'import $item from $module',
-                'method_call': '$obj.$method($$$)',
-                'async_function': 'async function $name($$$) { $$$ }',
-                'export_statement': 'export $item'
-            },
-            'python': {
-                'function_def': 'def $name($$$): $$$',
-                'class_def': 'class $name: $$$',
-                'import_statement': 'import $module',
-                'method_call': '$obj.$method($$$)',
-                'async_function': 'async def $name($$$): $$$'
-            },
+            
             'solidity': {
-                'contract_def': 'contract $name { $$$ }',
-                'function_def': 'function $name($$$) { $$$ }',
-                'modifier_def': 'modifier $name($$$) { $$$ }',
-                'event_def': 'event $name($$$);'
+                # Enhanced Solidity patterns for arda-credit contracts
+                'contract_def': 'contract $NAME { $$$BODY }',
+                'function_def': 'function $NAME($$$PARAMS) $VISIBILITY returns($RETURN) { $$$BODY }',
+                'modifier_def': 'modifier $NAME($$$PARAMS) { $$$BODY }',
+                'event_def': 'event $NAME($$$PARAMS);',
+                'state_var': '$TYPE $VISIBILITY $NAME;',
+                'constructor': 'constructor($$$PARAMS) { $$$BODY }',
+                'interface_def': 'interface $NAME { $$$FUNCTIONS }',
+                'library_def': 'library $NAME { $$$FUNCTIONS }',
+                
+                # SP1 verification patterns for arda-credit
+                'sp1_verifier': 'ISP1Verifier($VERIFIER)',
+                'proof_verification': 'verifyProof($PROOF, $PUBLIC_VALUES)',
+                'loan_state_update': 'updateLoanState($$$PARAMS)',
+                'sp1_verifier_interface': 'interface ISP1Verifier { $$$FUNCTIONS }',
+                'sp1_proof_struct': 'struct SP1Proof { $$$FIELDS }',
+                'sp1_public_values': 'struct SP1PublicValues { $$$FIELDS }',
+                'proof_verification_call': '$VERIFIER.verifyProof($VK, $PUBLIC_VALUES, $PROOF)',
+                'vkey_validation': 'require($VK != bytes32(0), "Invalid verification key")',
+                'proof_validation': 'require($PROOF.length > 0, "Invalid proof")',
+                
+                # USDC/ERC20 patterns for arda-credit
+                'erc20_transfer': 'IERC20($TOKEN).transfer($TO, $AMOUNT)',
+                'usdc_deposit': 'usdcToken.transferFrom($FROM, address(this), $AMOUNT)',
+                'balance_check': 'balanceOf($ACCOUNT)',
+                'erc20_interface': 'interface IERC20 { $$$FUNCTIONS }',
+                'usdc_token_setup': 'IERC20 public immutable usdcToken',
+                'safe_transfer': 'SafeERC20.safeTransfer($TOKEN, $TO, $AMOUNT)',
+                'safe_transfer_from': 'SafeERC20.safeTransferFrom($TOKEN, $FROM, $TO, $AMOUNT)',
+                'token_approval': '$TOKEN.approve($SPENDER, $AMOUNT)',
+                'allowance_check': '$TOKEN.allowance($OWNER, $SPENDER)',
+                
+                # Loan contract patterns
+                'loan_origination': 'originateLoan($$$PARAMS)',
+                'loan_payment': 'makeLoanPayment($$$PARAMS)',
+                'loan_closeout': 'closeoutLoan($$$PARAMS)',
+                'loan_state_enum': 'enum LoanState { $$$STATES }',
+                'loan_struct': 'struct Loan { $$$FIELDS }',
+                'loan_event': 'event Loan$ACTION($$$PARAMS)',
+                'loan_modifier': 'modifier onlyValidLoan($LOAN_ID) { $$$BODY }',
+                'loan_storage': 'mapping($KEY => $VALUE) public $NAME',
+                
+                # Access control patterns for arda-credit
+                'ownable_modifier': 'modifier onlyOwner() { $$$BODY }',
+                'role_based_access': 'modifier onlyRole($ROLE) { $$$BODY }',
+                'access_control_import': 'import "@openzeppelin/contracts/access/AccessControl.sol"',
+                'pausable_modifier': 'modifier whenNotPaused() { $$$BODY }',
+                'reentrancy_guard': 'modifier nonReentrant() { $$$BODY }',
+                
+                # Error handling patterns for Solidity
+                'custom_error': 'error $NAME($$$PARAMS)',
+                'revert_with_error': 'revert $ERROR($$$ARGS)',
+                'require_check': 'require($CONDITION, "$MESSAGE")',
+                'assert_check': 'assert($CONDITION)',
+                
+                # State management patterns
+                'state_variable_update': '$STATE_VAR = $NEW_VALUE',
+                'mapping_update': '$MAPPING[$KEY] = $VALUE',
+                'array_push': '$ARRAY.push($ELEMENT)',
+                'struct_initialization': '$STRUCT_TYPE({$$$FIELDS})',
+                
+                # Liquidity pool patterns for arda-credit
+                'pool_creation': 'createLiquidityPool($$$PARAMS)',
+                'pool_deposit': 'depositToPool($POOL_ID, $AMOUNT)',
+                'pool_withdrawal': 'withdrawFromPool($POOL_ID, $AMOUNT)',
+                'pool_matching': 'findMatchingPools($CRITERIA)',
+                'yield_calculation': 'calculateYield($POOL_ID, $PRINCIPAL, $TIME)',
+                'ltv_validation': 'validateLTV($COLLATERAL, $LOAN_AMOUNT, $MAX_LTV)'
+            },
+            
+            'javascript': {
+                'function_def': 'function $NAME($$$PARAMS) { $$$BODY }',
+                'arrow_function': '($$$PARAMS) => $BODY',
+                'async_function': 'async function $NAME($$$PARAMS) { $$$BODY }',
+                'class_def': 'class $NAME { $$$METHODS }',
+                'import_statement': 'import $ITEM from "$MODULE"',
+                'export_statement': 'export $ITEM',
+                'method_call': '$OBJ.$METHOD($$$ARGS)',
+                'await_call': 'await $EXPRESSION',
+                'promise_all': 'Promise.all([$$$PROMISES])',
+                'try_catch': 'try { $$$TRY } catch ($ERR) { $$$CATCH }'
+            },
+            
+            'typescript': {
+                'function_def': 'function $NAME($$$PARAMS): $RETURN { $$$BODY }',
+                'async_function': 'async function $NAME($$$PARAMS): Promise<$RETURN> { $$$BODY }',
+                'interface_def': 'interface $NAME { $$$PROPERTIES }',
+                'type_alias': 'type $NAME = $TYPE',
+                'class_def': 'class $NAME { $$$MEMBERS }',
+                'import_statement': 'import { $ITEMS } from "$MODULE"',
+                'export_type': 'export type $NAME = $TYPE',
+                'generic_function': 'function $NAME<$GENERICS>($$$PARAMS): $RETURN { $$$BODY }'
+            },
+            
+            'python': {
+                'function_def': 'def $NAME($$$PARAMS): $$$BODY',
+                'async_function': 'async def $NAME($$$PARAMS): $$$BODY',
+                'class_def': 'class $NAME: $$$BODY',
+                'import_statement': 'import $MODULE',
+                'from_import': 'from $MODULE import $ITEMS',
+                'method_call': '$OBJ.$METHOD($$$ARGS)',
+                'try_except': 'try: $$$TRY except $EXCEPTION: $$$EXCEPT',
+                'with_statement': 'with $CONTEXT: $$$BODY',
+                'list_comprehension': '[$EXPR for $VAR in $ITER]'
             }
         }
     
@@ -770,31 +914,92 @@ class DynamicI2P:
                 "business_metrics": ["error_rate", "recovery_time", "user_impact", "system_stability"],
                 "implementation_sections": ["error_types", "logging_strategy", "recovery_mechanisms"],
                 "critical_functions": ["handle_error", "log_error", "recover_from_failure", "validate_input"]
+            },
+            
+            "loan_lifecycle_management": {
+                "keywords": ["loan", "originate", "payment", "closeout", "borrower", "lender", "principal", "interest", "balance"],
+                "required_patterns": ["loan_state_management", "payment_processing", "interest_calculation", "kyc_validation"],
+                "business_metrics": ["loan_origination_time", "payment_success_rate", "outstanding_balance_accuracy", "closeout_efficiency"],
+                "implementation_sections": ["loan_handlers", "payment_validation", "state_transitions", "balance_updates"],
+                "critical_functions": ["originate_loan", "make_payment", "closeout_loan", "calculate_interest", "update_loan_status"]
+            },
+            
+            "usdc_operations": {
+                "keywords": ["usdc", "deposit", "withdrawal", "balance", "ethereum", "contract", "wallet", "transfer"],
+                "required_patterns": ["deposit_monitoring", "withdrawal_processing", "balance_synchronization", "ethereum_integration"],
+                "business_metrics": ["deposit_confirmation_time", "withdrawal_success_rate", "balance_accuracy", "gas_efficiency"],
+                "implementation_sections": ["deposit_handlers", "withdrawal_service", "ethereum_client", "balance_tracking"],
+                "critical_functions": ["process_deposit", "initiate_withdrawal", "update_balance", "monitor_ethereum", "validate_transaction"]
+            },
+            
+            "liquidity_pool_management": {
+                "keywords": ["pool", "liquidity", "investor", "yield", "ltv", "credit", "matching", "deployment"],
+                "required_patterns": ["pool_creation", "liquidity_matching", "yield_calculation", "risk_assessment"],
+                "business_metrics": ["pool_utilization_rate", "matching_efficiency", "yield_accuracy", "investor_returns"],
+                "implementation_sections": ["pool_handlers", "matching_algorithms", "yield_engine", "risk_monitoring"],
+                "critical_functions": ["create_pool", "find_matching_pools", "calculate_yield", "assess_risk", "deploy_credit"]
+            },
+            
+            "kyc_compliance": {
+                "keywords": ["kyc", "compliance", "verification", "identity", "aml", "regulatory", "audit", "documentation"],
+                "required_patterns": ["identity_verification", "compliance_checking", "audit_trail", "regulatory_reporting"],
+                "business_metrics": ["kyc_completion_rate", "verification_time", "compliance_score", "audit_readiness"],
+                "implementation_sections": ["kyc_service", "compliance_engine", "audit_logging", "regulatory_reports"],
+                "critical_functions": ["submit_kyc", "verify_identity", "check_compliance", "generate_audit_trail", "validate_regulatory_status"]
+            },
+            
+            "sp1_zkvm_integration": {
+                "keywords": ["sp1", "zkvm", "proof", "program", "risc", "circuit", "verification", "nullifier"],
+                "required_patterns": ["zkvm_execution", "proof_generation", "circuit_deployment", "verification_logic"],
+                "business_metrics": ["proof_generation_time", "verification_success_rate", "circuit_efficiency", "zkvm_performance"],
+                "implementation_sections": ["zkvm_program", "proof_service", "circuit_management", "verification_handlers"],
+                "critical_functions": ["execute_zkvm_program", "generate_sp1_proof", "verify_proof", "deploy_circuit", "process_nullifiers"]
             }
         }
     
     def _initialize_business_mapping(self) -> Dict:
-        """Initialize business impact mapping for technical changes"""
+        """Initialize business impact mapping for arda-credit specific technical changes"""
         return {
             "zk_proof_pipeline": {
-                "cost_drivers": ["sindri_api_calls", "proof_generation_time", "failed_retries", "batch_frequency"],
-                "performance_kpis": ["end_to_end_latency", "throughput", "success_rate", "user_satisfaction"],
-                "revenue_impact": ["transaction_fees", "user_experience", "scalability", "competitive_advantage"],
-                "typical_costs": {"sindri_monthly": 2000, "failure_cost": 100, "downtime_hourly": 5000}
+                "cost_drivers": ["sindri_api_calls", "proof_generation_latency", "batch_processing_failures", "sp1_program_complexity"],
+                "performance_kpis": ["proof_generation_time", "batch_throughput", "verification_success_rate", "loan_settlement_latency"],
+                "revenue_impact": ["loan_processing_capacity", "user_trust_in_privacy", "regulatory_compliance", "scalable_credit_operations"],
+                "typical_costs": {"sindri_proof_cost": 0.50, "batch_failure_cost": 25, "proof_timeout_cost": 10, "monthly_sindri_budget": 500}
             },
             
             "database_operations": {
-                "cost_drivers": ["connection_overhead", "slow_queries", "lock_contention", "resource_usage"],
-                "performance_kpis": ["response_time", "concurrent_users", "data_consistency", "availability"],
-                "revenue_impact": ["user_experience", "system_capacity", "operational_costs"],
-                "typical_costs": {"query_optimization": 500, "connection_pooling": 200, "monitoring": 300}
+                "cost_drivers": ["postgresql_connection_limits", "loan_query_performance", "merkle_tree_updates", "kyc_data_access"],
+                "performance_kpis": ["loan_transaction_latency", "concurrent_user_capacity", "data_consistency", "usdc_balance_accuracy"],
+                "revenue_impact": ["loan_origination_throughput", "user_experience_quality", "operational_efficiency"],
+                "typical_costs": {"db_optimization": 300, "connection_pool_tuning": 150, "indexing_improvements": 200, "monitoring_setup": 100}
             },
             
-            "api_endpoints": {
-                "cost_drivers": ["security_incidents", "ddos_attacks", "authentication_overhead", "rate_limiting"],
-                "performance_kpis": ["request_latency", "security_score", "uptime", "scalability"],
-                "revenue_impact": ["user_trust", "compliance", "system_reliability"],
-                "typical_costs": {"security_breach": 50000, "rate_limiting": 100, "auth_optimization": 300}
+            "api_security": {
+                "cost_drivers": ["kyc_verification_overhead", "jwt_token_validation", "rate_limiting_complexity", "audit_trail_storage"],
+                "performance_kpis": ["authentication_latency", "security_incident_count", "api_uptime", "compliance_score"],
+                "revenue_impact": ["regulatory_compliance", "user_trust", "system_availability", "audit_readiness"],
+                "typical_costs": {"security_audit": 5000, "kyc_integration": 1000, "auth_optimization": 400, "compliance_monitoring": 600}
+            },
+            
+            "loan_lifecycle_management": {
+                "cost_drivers": ["loan_state_transitions", "payment_processing_complexity", "closeout_verification", "interest_calculations"],
+                "performance_kpis": ["loan_origination_time", "payment_processing_speed", "closeout_accuracy", "outstanding_balance_precision"],
+                "revenue_impact": ["loan_volume_capacity", "payment_reliability", "investor_confidence", "lender_satisfaction"],
+                "typical_costs": {"loan_processing_optimization": 800, "payment_verification": 300, "state_management": 400, "reporting_automation": 250}
+            },
+            
+            "usdc_operations": {
+                "cost_drivers": ["ethereum_gas_costs", "deposit_confirmation_delays", "withdrawal_processing_time", "balance_synchronization"],
+                "performance_kpis": ["deposit_confirmation_time", "withdrawal_success_rate", "balance_accuracy", "blockchain_sync_reliability"],
+                "revenue_impact": ["user_liquidity_confidence", "deposit_conversion_rate", "withdrawal_satisfaction", "platform_trust"],
+                "typical_costs": {"gas_optimization": 200, "ethereum_monitoring": 150, "deposit_automation": 300, "withdrawal_security": 400}
+            },
+            
+            "liquidity_pool_management": {
+                "cost_drivers": ["pool_matching_algorithms", "yield_calculation_complexity", "ltv_monitoring", "investor_reporting"],
+                "performance_kpis": ["pool_utilization_rate", "matching_efficiency", "yield_accuracy", "risk_assessment_speed"],
+                "revenue_impact": ["investor_returns", "platform_fee_revenue", "pool_growth_rate", "credit_deployment_efficiency"],
+                "typical_costs": {"matching_optimization": 600, "yield_calculation": 200, "risk_monitoring": 350, "investor_dashboard": 400}
             }
         }
     
@@ -881,15 +1086,20 @@ class DynamicI2P:
             
             print(f"📁 Discovered {len(selected_files)} relevant files: {selected_files}")
             
-            # Stage 2: Extract comprehensive code context using code2prompt
-            code_context = self._extract_code_context_with_code2prompt(selected_files)
+            # Stage 2: Detect domain early for optimized extraction
+            domain = self._detect_domain(issue, selected_files)
+            
+            # Stage 2a: Apply domain-specific code extraction optimization
+            extraction_strategy = self._get_domain_specific_extraction_strategy(domain, selected_files)
+            
+            # Stage 2b: Extract comprehensive code context using optimized code2prompt
+            code_context = self._extract_code_context_with_domain_optimization(selected_files, extraction_strategy, domain)
             
             if not code_context:
                 print("⚠️ Failed to extract code context, using fallback")  
                 return self._fallback_structure_analysis(issue, start_time)
             
-            # Stage 3: Code Pattern Analysis (New Intelligence Layer)
-            domain = self._detect_domain(issue, selected_files)
+            # Stage 3: Code Pattern Analysis (Enhanced Intelligence Layer)
             pattern_analysis = self._analyze_code_patterns(code_context, domain, issue) if self.enable_llm_enhancement else {}
             
             # Stage 4: Hybrid LLM Enhancement Layer (Now domain-aware)
@@ -1009,25 +1219,120 @@ class DynamicI2P:
         issue_lower = issue.lower()
         selected_files = []
         
-        # Priority 1: Issue-specific keyword matching
-        keyword_mappings = {
-            # ZK/Proof keywords
-            'zk|proof|batch|sindri|sp1|zkvm': ['api/src/batch_processor.rs', 'api/src/unified_batch_service.rs', 'lib/src/proof.rs', 'program/src/main.rs'],
-            # Database keywords  
-            'database|sql|connection|pool|migration': ['db/src/db.rs', 'db/src/lib.rs', 'api/src/db.rs'],
-            # API/Server keywords
-            'api|endpoint|handler|route|server': ['api/src/router.rs', 'api/src/lib.rs', 'api/src/main.rs'],
-            # Authentication/Security
-            'auth|security|jwt|login|kyc': ['api/src/auth.rs', 'api/src/authentication_handlers.rs'],
-            # Smart contracts
-            'contract|solidity|ethereum|blockchain': ['contracts/src/Loan.sol', 'contracts/src/ArdaCredit.sol'],
-            # Error handling
-            'error|exception|panic|result': ['api/src/error.rs', 'db/src/error.rs', 'lib/src/error.rs'],
-            # CLI/Tools
-            'cli|command|tool': ['cli/src/main.rs', 'cli/src/lib.rs'],
-            # Observability/Monitoring 
-            'observability|metrics|tracing|logging|monitor': ['api/src/telemetry.rs', 'api/src/health_handlers.rs'],
-        }
+        # Priority 1: Dynamic file discovery with existence checking and filesystem search
+        def get_existing_files(file_list):
+            """Filter file list to only include files that actually exist"""
+            existing = []
+            for file_path in file_list:
+                full_path = Path(self.root_path) / file_path
+                if full_path.exists():
+                    existing.append(file_path)
+            return existing
+        
+        def discover_files_by_pattern(directory: str, patterns: List[str]) -> List[str]:
+            """Dynamically discover files in directory matching naming patterns"""
+            discovered = []
+            dir_path = Path(self.root_path) / directory
+            if not dir_path.exists():
+                return discovered
+            
+            for file_path in dir_path.rglob("*.rs"):
+                file_name = file_path.name.lower()
+                if any(pattern in file_name or pattern in str(file_path).lower() for pattern in patterns):
+                    rel_path = str(file_path.relative_to(Path(self.root_path)))
+                    discovered.append(rel_path)
+            
+            # Also check for Solidity files
+            for file_path in dir_path.rglob("*.sol"):
+                file_name = file_path.name.lower()
+                if any(pattern in file_name or pattern in str(file_path).lower() for pattern in patterns):
+                    rel_path = str(file_path.relative_to(Path(self.root_path)))
+                    discovered.append(rel_path)
+            
+            return discovered[:3]  # Limit to top 3 matches per directory
+
+        # Combine hardcoded known files with dynamic discovery
+        keyword_mappings = {}
+        
+        # ZK/Proof keywords - combine known files + dynamic discovery
+        zk_files = get_existing_files([
+            'api/src/batch_processor.rs', 'api/src/unified_batch_service.rs', 
+            'lib/src/proof.rs', 'program/src/main.rs'
+        ])
+        zk_files.extend(discover_files_by_pattern('api/src', ['batch', 'proof', 'sindri']))
+        zk_files.extend(discover_files_by_pattern('lib/src', ['proof', 'zkvm']))
+        zk_files.extend(discover_files_by_pattern('program/src', ['main', 'zkvm']))
+        keyword_mappings['zk|proof|batch|sindri|sp1|zkvm'] = list(dict.fromkeys(zk_files))
+        
+        # Database keywords - combine known files + dynamic discovery
+        db_files = get_existing_files([
+            'db/src/db.rs', 'db/src/lib.rs', 'db/src/ads_service.rs', 'db/src/merkle_tree.rs'
+        ])
+        db_files.extend(discover_files_by_pattern('db/src', ['db', 'connection', 'pool', 'service']))
+        keyword_mappings['database|sql|connection|pool|migration'] = list(dict.fromkeys(db_files))
+        
+        # API/Server keywords - combine known files + dynamic discovery
+        api_files = get_existing_files([
+            'api/src/router.rs', 'api/src/server.rs', 'api/src/lib.rs'
+        ])
+        api_files.extend(discover_files_by_pattern('api/src', ['handler', 'route', 'server', 'endpoint']))
+        keyword_mappings['api|endpoint|handler|route|server'] = list(dict.fromkeys(api_files))
+        
+        # Authentication/Security/KYC - combine known files + dynamic discovery
+        auth_files = get_existing_files([
+            'api/src/auth.rs', 'api/src/authentication_handlers.rs', 'api/src/kyc_service.rs'
+        ])
+        auth_files.extend(discover_files_by_pattern('api/src', ['auth', 'kyc', 'security', 'jwt']))
+        keyword_mappings['auth|security|jwt|login|kyc'] = list(dict.fromkeys(auth_files))
+        
+        # Smart contracts - combine known files + dynamic discovery
+        contract_files = get_existing_files([
+            'contracts/src/Loan.sol', 'contracts/src/EventHelpers.sol', 
+            'contracts/src/interfaces/IStateManager.sol', 'ethereum-client/src/client.rs'
+        ])
+        contract_files.extend(discover_files_by_pattern('contracts/src', ['loan', 'event', 'state', 'manager']))
+        contract_files.extend(discover_files_by_pattern('ethereum-client/src', ['client', 'ethereum', 'contract']))
+        keyword_mappings['contract|solidity|ethereum|blockchain'] = list(dict.fromkeys(contract_files))
+        
+        # USDC/Deposit/Withdrawal - combine known files + dynamic discovery
+        usdc_files = get_existing_files([
+            'api/src/balance_service.rs', 'api/src/withdrawal_service.rs',
+            'ethereum-client/src/deposit_monitor.rs', 'ethereum-client/src/withdrawal_monitor.rs'
+        ])
+        usdc_files.extend(discover_files_by_pattern('api/src', ['balance', 'withdrawal', 'deposit']))
+        usdc_files.extend(discover_files_by_pattern('ethereum-client/src', ['deposit', 'withdrawal', 'monitor']))
+        keyword_mappings['usdc|deposit|withdrawal|balance|wallet'] = list(dict.fromkeys(usdc_files))
+        
+        # Liquidity Pool operations - combine known files + dynamic discovery
+        pool_files = get_existing_files([
+            'api/src/pool_handlers.rs', 'lib/src/pool.rs', 'lib/src/credit_evaluation.rs'
+        ])
+        pool_files.extend(discover_files_by_pattern('api/src', ['pool', 'liquidity', 'credit']))
+        pool_files.extend(discover_files_by_pattern('lib/src', ['pool', 'credit', 'evaluation']))
+        keyword_mappings['pool|liquidity|investor|yield|ltv|credit'] = list(dict.fromkeys(pool_files))
+        
+        # Error handling - combine known files + dynamic discovery
+        error_files = get_existing_files([
+            'api/src/error.rs', 'db/src/error.rs', 'lib/src/lib.rs'
+        ])
+        error_files.extend(discover_files_by_pattern('api/src', ['error', 'exception']))
+        error_files.extend(discover_files_by_pattern('db/src', ['error']))
+        error_files.extend(discover_files_by_pattern('lib/src', ['error']))
+        keyword_mappings['error|exception|panic|result'] = list(dict.fromkeys(error_files))
+        
+        # CLI/Tools - combine known files + dynamic discovery
+        cli_files = get_existing_files([
+            'cli/src/bin/cli.rs', 'cli/src/lib.rs'
+        ])
+        cli_files.extend(discover_files_by_pattern('cli/src', ['cli', 'command', 'tool']))
+        keyword_mappings['cli|command|tool'] = list(dict.fromkeys(cli_files))
+        
+        # Observability/Monitoring - combine known files + dynamic discovery
+        obs_files = get_existing_files([
+            'api/src/telemetry.rs', 'api/src/health_handlers.rs'
+        ])
+        obs_files.extend(discover_files_by_pattern('api/src', ['telemetry', 'health', 'metrics', 'tracing']))
+        keyword_mappings['observability|metrics|tracing|logging|monitor'] = list(dict.fromkeys(obs_files))
         
         # Find files matching issue keywords
         for pattern, files in keyword_mappings.items():
@@ -1069,41 +1374,317 @@ class DynamicI2P:
         return unique_files
     
     def _extract_code_context_with_code2prompt(self, selected_files: List[str]) -> str:
-        """Extract comprehensive code context using code2prompt"""
-        print("📄 Extracting code context with code2prompt...")
+        """Extract comprehensive code context using optimized code2prompt patterns"""
+        print("📄 Extracting code context with optimized code2prompt...")
         
         try:
-            # Build include pattern for selected files
+            # Build optimized include pattern for selected files
             include_pattern = ",".join(selected_files)
             
-            # Use code2prompt to extract context
+            # Get initial token count for optimization
+            token_check_cmd = [
+                'code2prompt', str(self.root_path),
+                '--include', include_pattern,
+                '--tokens', 'raw',
+                '--no-clipboard'
+            ]
+            
+            print(f"🔍 Checking token count for {len(selected_files)} files...")
+            token_result = subprocess.run(token_check_cmd, capture_output=True, text=True, timeout=30)
+            
+            estimated_tokens = 0
+            if token_result.returncode == 0 and token_result.stdout.strip().isdigit():
+                estimated_tokens = int(token_result.stdout.strip())
+                print(f"📊 Estimated tokens: {estimated_tokens:,}")
+            
+            # Build optimized code2prompt command
             cmd = [
                 'code2prompt', str(self.root_path),
                 '--include', include_pattern,
                 '--line-numbers',
+                '--encoding', 'cl100k',  # GPT-4/ChatGPT tokenizer
+                '--no-clipboard',  # Performance optimization
                 '--output-file', '/tmp/intelligent_i2p_context.md'
             ]
             
-            print(f"🔧 Running: code2prompt with {len(selected_files)} files")
-            result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent, timeout=60)
+            # Add performance exclusions for arda-credit
+            arda_exclusions = [
+                '**/target/**',
+                '**/lib/sp1-contracts/**', 
+                '**/lib/forge-std/**',
+                '**/lib/openzeppelin-contracts/**',
+                '**/examples/**',
+                '**/tests/**',
+                '**/benches/**'
+            ]
+            
+            for exclusion in arda_exclusions:
+                cmd.extend(['--exclude', exclusion])
+            
+            print(f"🔧 Running optimized code2prompt: {len(selected_files)} files, ~{estimated_tokens:,} tokens")
+            start_time = time.time()
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=Path(__file__).parent, timeout=120)
+            
+            extraction_time = time.time() - start_time
             
             if result.returncode == 0:
                 with open('/tmp/intelligent_i2p_context.md', 'r') as f:
                     context = f.read()
                     
-                print(f"✅ Successfully extracted {len(context):,} characters of context")
+                print(f"✅ Successfully extracted {len(context):,} characters in {extraction_time:.2f}s")
+                print(f"   Performance: {len(context)/extraction_time:.0f} chars/sec")
+                
+                # Warn if context is very large
+                if estimated_tokens > 150000:
+                    print(f"⚠️  Large context ({estimated_tokens:,} tokens) may exceed LLM limits")
+                
                 return context
             else:
-                print(f"❌ code2prompt failed: {result.stderr}")
+                print(f"❌ Optimized code2prompt failed: {result.stderr}")
                 print(f"📜 stdout: {result.stdout}")
-                return ""
+                
+                # Fallback to basic extraction
+                return self._extract_code_context_fallback(selected_files)
                 
         except subprocess.TimeoutExpired:
-            print("⏰ code2prompt timed out after 60 seconds")
-            return ""
+            print("⏰ Optimized code2prompt timed out after 120 seconds")
+            return self._extract_code_context_fallback(selected_files)
         except Exception as e:
-            print(f"❌ Context extraction error: {e}")
+            print(f"❌ Optimized context extraction error: {e}")
+            return self._extract_code_context_fallback(selected_files)
+    
+    def _extract_code_context_fallback(self, selected_files: List[str]) -> str:
+        """Fallback code extraction with minimal options"""
+        print("🔄 Using fallback code2prompt extraction...")
+        
+        try:
+            include_pattern = ",".join(selected_files)
+            
+            cmd = [
+                'code2prompt', str(self.root_path),
+                '--include', include_pattern,
+                '--line-numbers',
+                '--output-file', '/tmp/fallback_i2p_context.md'
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0:
+                with open('/tmp/fallback_i2p_context.md', 'r') as f:
+                    context = f.read()
+                print(f"✅ Fallback extraction: {len(context):,} characters")
+                return context
+            else:
+                print(f"❌ Fallback extraction failed: {result.stderr}")
+                return ""
+                
+        except Exception as e:
+            print(f"❌ Fallback extraction error: {e}")
             return ""
+    
+    def _get_domain_specific_extraction_strategy(self, domain: str, selected_files: List[str]) -> Dict[str, any]:
+        """Get optimized code2prompt strategy based on detected domain"""
+        
+        base_exclusions = [
+            '**/target/**',
+            '**/lib/sp1-contracts/**', 
+            '**/lib/forge-std/**',
+            '**/lib/openzeppelin-contracts/**',
+            '**/examples/**',
+            '**/tests/**',
+            '**/benches/**'
+        ]
+        
+        domain_strategies = {
+            "zk_observability": {
+                "additional_includes": [
+                    "api/src/telemetry.rs",
+                    "api/src/health_handlers.rs", 
+                    "**/tracing*.rs"
+                ],
+                "exclusions": base_exclusions + ["**/migrations/**"],
+                "token_limit": 150000,
+                "focus": "ZK proof pipeline instrumentation"
+            },
+            
+            "sp1_zkvm_integration": {
+                "additional_includes": [
+                    "program/src/**/*.rs",
+                    "**/zkvm*.rs",
+                    "**/sp1*.rs"
+                ],
+                "exclusions": base_exclusions + ["**/api/src/handlers/**"],
+                "token_limit": 120000,
+                "focus": "SP1 zkVM execution and proof generation"
+            },
+            
+            "database_optimization": {
+                "additional_includes": [
+                    "db/src/**/*.rs",
+                    "api/src/**/*pool*.rs",
+                    "**/*connection*.rs"
+                ],
+                "exclusions": base_exclusions + ["**/contracts/**", "**/program/**"],
+                "token_limit": 100000,
+                "focus": "Database connection pooling and query optimization"
+            },
+            
+            "loan_lifecycle_management": {
+                "additional_includes": [
+                    "api/src/*loan*.rs",
+                    "lib/src/loan*.rs",
+                    "db/src/*loan*.rs"
+                ],
+                "exclusions": base_exclusions + ["**/ethereum-client/**"],
+                "token_limit": 130000,
+                "focus": "Loan origination, payments, and lifecycle"
+            },
+            
+            "usdc_operations": {
+                "additional_includes": [
+                    "api/src/balance_service.rs",
+                    "api/src/withdrawal_service.rs",
+                    "ethereum-client/**/*.rs",
+                    "contracts/src/*.sol"
+                ],
+                "exclusions": base_exclusions,
+                "token_limit": 140000,
+                "focus": "USDC deposit/withdrawal and Ethereum integration"
+            },
+            
+            "api_security": {
+                "additional_includes": [
+                    "api/src/auth*.rs",
+                    "api/src/kyc*.rs",
+                    "api/src/middleware.rs",
+                    "**/*security*.rs"
+                ],
+                "exclusions": base_exclusions + ["**/contracts/**", "**/program/**"],
+                "token_limit": 90000,
+                "focus": "Authentication, KYC, and security middleware"
+            }
+        }
+        
+        strategy = domain_strategies.get(domain, {
+            "additional_includes": [],
+            "exclusions": base_exclusions,
+            "token_limit": 100000,
+            "focus": "General code analysis"
+        })
+        
+        print(f"📋 Domain strategy: {strategy['focus']}")
+        print(f"🎯 Token limit: {strategy['token_limit']:,}")
+        
+        return strategy
+    
+    def _extract_code_context_with_domain_optimization(self, selected_files: List[str], strategy: Dict[str, any], domain: str) -> str:
+        """Extract code context using domain-specific optimization strategy"""
+        print("🎯 Extracting code context with domain optimization...")
+        
+        try:
+            # Combine selected files with domain-specific additional includes
+            all_includes = selected_files.copy()
+            
+            # Add domain-specific files that exist
+            for additional_pattern in strategy.get("additional_includes", []):
+                # Use glob to find matching files
+                matching_files = []
+                for file_path in Path(self.root_path).rglob("*"):
+                    if file_path.is_file():
+                        rel_path = str(file_path.relative_to(Path(self.root_path)))
+                        # Simple pattern matching (could be enhanced with proper glob)
+                        pattern_parts = additional_pattern.replace("**/", "").replace("/**", "").replace("*", "")
+                        if pattern_parts in rel_path:
+                            matching_files.append(rel_path)
+                
+                # Add unique matches (limit to prevent explosion)
+                for match in matching_files[:3]:
+                    if match not in all_includes:
+                        all_includes.append(match)
+            
+            # Build optimized include pattern
+            include_pattern = ",".join(all_includes)
+            
+            print(f"📊 Domain-optimized files: {len(all_includes)} total ({len(selected_files)} base + {len(all_includes) - len(selected_files)} domain-specific)")
+            
+            # Get token count for optimization
+            token_check_cmd = [
+                'code2prompt', str(self.root_path),
+                '--include', include_pattern,
+                '--tokens', 'raw',
+                '--no-clipboard'
+            ]
+            
+            # Add domain-specific exclusions
+            for exclusion in strategy.get("exclusions", []):
+                token_check_cmd.extend(['--exclude', exclusion])
+            
+            token_result = subprocess.run(token_check_cmd, capture_output=True, text=True, timeout=30)
+            
+            estimated_tokens = 0
+            if token_result.returncode == 0 and token_result.stdout.strip().isdigit():
+                estimated_tokens = int(token_result.stdout.strip())
+                print(f"📊 Domain-optimized tokens: {estimated_tokens:,} (limit: {strategy.get('token_limit', 100000):,})")
+            
+            # Check if we exceed domain token limit
+            token_limit = strategy.get('token_limit', 100000)
+            if estimated_tokens > token_limit:
+                print(f"⚠️  Token count {estimated_tokens:,} exceeds domain limit {token_limit:,}, using selective extraction")
+                # Fall back to just selected files for token management
+                all_includes = selected_files
+                include_pattern = ",".join(all_includes)
+            
+            # Build optimized extraction command
+            cmd = [
+                'code2prompt', str(self.root_path),
+                '--include', include_pattern,
+                '--line-numbers',
+                '--encoding', 'cl100k',
+                '--no-clipboard',
+                '--output-file', '/tmp/domain_optimized_context.md'
+            ]
+            
+            # Add domain-specific exclusions
+            for exclusion in strategy.get("exclusions", []):
+                cmd.extend(['--exclude', exclusion])
+            
+            # Add domain-specific template if available, fallback to general template
+            domain_template_path = Path(__file__).parent / 'templates' / f'{domain}.hbs'
+            general_template_path = Path(__file__).parent / 'templates' / 'arda_analysis.hbs'
+            
+            if domain_template_path.exists():
+                cmd.extend(['--template', str(domain_template_path)])
+                print(f"📝 Using domain-specific template: {domain}.hbs")
+            elif general_template_path.exists():
+                cmd.extend(['--template', str(general_template_path)])
+                print(f"📝 Using general template: arda_analysis.hbs")
+            
+            print(f"🔧 Running domain-optimized extraction: {strategy['focus']}")
+            start_time = time.time()
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            
+            extraction_time = time.time() - start_time
+            
+            if result.returncode == 0:
+                with open('/tmp/domain_optimized_context.md', 'r') as f:
+                    context = f.read()
+                    
+                print(f"✅ Domain-optimized extraction: {len(context):,} characters in {extraction_time:.2f}s")
+                print(f"   Focus: {strategy['focus']}")
+                print(f"   Performance: {len(context)/extraction_time:.0f} chars/sec")
+                
+                return context
+            else:
+                print(f"❌ Domain-optimized extraction failed: {result.stderr}")
+                # Fallback to basic extraction
+                return self._extract_code_context_with_code2prompt(selected_files)
+                
+        except Exception as e:
+            print(f"❌ Domain optimization error: {e}")
+            # Fallback to basic extraction
+            return self._extract_code_context_with_code2prompt(selected_files)
     
     def _analyze_code_patterns(self, code_context: str, domain: str, issue: str) -> Dict:
         """Analyze code patterns to extract existing implementations and identify gaps"""
