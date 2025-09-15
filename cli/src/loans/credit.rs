@@ -135,40 +135,104 @@ pub async fn submit_credit_line_request(
         return Ok(());
     }
 
-    // Placeholder implementation - would need to call actual API
-    let request_id = chrono::Utc::now().timestamp() % 1000000;
+    // Submit credit line request via API
+    let request_body = serde_json::json!({
+        "requested_amount": requested_amount,
+        "requested_rate_apr": requested_rate_bps,
+        "requested_tenor_days": requested_tenor_days,
+        "request_description": format!("Credit line request for ${:.2}", amount_usd)
+    });
 
-    println!();
-    println!("✅ Credit line request submitted!");
-    println!("   Request ID: CR-{}", request_id);
-    println!("   Status: SUBMITTED");
-    println!("   Estimated Review Time: 2-5 business days");
+    match client
+        .post("/api/v1/credit-lines/request", &request_body)
+        .await
+    {
+        Ok(response) => {
+            if let Some(request_obj) = response.as_object() {
+                println!();
+                println!("✅ Credit line request submitted!");
 
-    println!();
-    println!("📋 Request Details:");
-    println!("   Amount: ${:.2}", amount_usd);
-    println!("   Term: {} days", requested_tenor_days);
-    println!(
-        "   Submitted: {}",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
-    );
+                if let Some(request_id) = request_obj.get("request_id") {
+                    println!(
+                        "   Request ID: {}",
+                        request_id.as_str().unwrap_or("Unknown")
+                    );
+                }
 
-    if verbose {
-        println!();
-        println!("🔧 Processing Pipeline:");
-        println!("   1. Automated Screening - ✅ Complete");
-        println!("   2. Risk Assessment - 🔄 In progress");
-        println!("   3. Pool Matching - ⏸️  Pending");
-        println!("   4. Terms Negotiation - ⏸️  Pending");
-        println!("   5. Final Approval - ⏸️  Pending");
+                if let Some(status) = request_obj.get("status") {
+                    println!("   Status: {}", status.as_str().unwrap_or("UNKNOWN"));
+                }
+
+                println!("   Estimated Review Time: 2-5 business days");
+
+                println!();
+                println!("📋 Request Details:");
+
+                if let Some(amount) = request_obj.get("requested_amount") {
+                    println!(
+                        "   Amount: {}",
+                        amount.as_str().unwrap_or(&format!("${:.2}", amount_usd))
+                    );
+                }
+
+                if let Some(tenor) = request_obj.get("requested_tenor_days") {
+                    println!(
+                        "   Term: {} days",
+                        tenor.as_u64().unwrap_or(requested_tenor_days as u64)
+                    );
+                }
+
+                if let Some(created_at) = request_obj.get("created_at") {
+                    println!("   Submitted: {}", created_at.as_str().unwrap_or("Unknown"));
+                }
+
+                if verbose {
+                    println!();
+                    println!("🔧 Processing Pipeline:");
+                    println!("   1. Pool Balance Validation - ✅ Complete");
+                    println!("   2. Automated Screening - 🔄 In progress");
+                    println!("   3. Risk Assessment - ⏸️  Pending");
+                    println!("   4. Pool Matching - ⏸️  Pending");
+                    println!("   5. Terms Negotiation - ⏸️  Pending");
+                    println!("   6. Final Approval - ⏸️  Pending");
+                }
+
+                println!();
+                println!("💡 Track your request:");
+                println!(
+                    "   • Check status: cli loan list-credit-line-requests --merchant-id {}",
+                    merchant_id
+                );
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to submit credit line request");
+
+            if let Ok(error_text) = e.to_string().parse::<serde_json::Value>() {
+                if let Some(error_obj) = error_text.as_object() {
+                    if let Some(error_msg) = error_obj.get("error") {
+                        println!(
+                            "   Error: {}",
+                            error_msg.as_str().unwrap_or("Unknown error")
+                        );
+                    }
+                    if let Some(details) = error_obj.get("details") {
+                        println!("   Details: {}", details.as_str().unwrap_or(""));
+                    }
+                }
+            } else {
+                println!("   Error: {}", e);
+            }
+
+            println!();
+            println!("💡 Suggestions:");
+            println!("   • Check if you're requesting an amount below available pool liquidity");
+            println!("   • Ensure your merchant profile is complete and KYC is approved");
+            println!("   • Try requesting a smaller amount or check available pools first");
+
+            return Err(e.into());
+        }
     }
-
-    println!();
-    println!("💡 Track your request:");
-    println!(
-        "   • Check status: cli loan list-credit-line-requests --merchant-id {}",
-        merchant_id
-    );
 
     Ok(())
 }
@@ -190,45 +254,122 @@ pub async fn browse_available_pools(
     println!("   Max Rate: {:.2}%", max_rate_bps as f64 / 100.0);
     println!("   Min Repayment: {} days", min_repayment_days);
 
-    // Placeholder implementation - would search actual pools
-    println!();
-    println!("✅ Found 3 matching pools:");
+    // Build query parameters
+    let mut query_params = Vec::new();
+    if required_liquidity > 0 {
+        query_params.push(format!("min_amount={}", required_liquidity));
+    }
+    if max_ltv_bps > 0 {
+        query_params.push(format!("max_ltv={}", max_ltv_bps));
+    }
+    if max_rate_bps > 0 {
+        query_params.push(format!("max_rate={}", max_rate_bps));
+    }
+    if min_repayment_days > 0 {
+        query_params.push(format!("min_repayment_days={}", min_repayment_days));
+    }
 
-    println!("   1. Institutional Credit Pool I");
-    println!("      Pool ID: pool-inst-001");
-    println!("      Available: ${:.2}", 2500000.00);
-    println!("      LTV: {:.1}% ✅", 80.0);
-    println!("      Rate: {:.2}% ✅", 9.5);
-    println!("      Min Term: {} days ✅", 90);
-    println!("      Match Score: 95%");
+    let query_string = if query_params.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", query_params.join("&"))
+    };
 
-    println!();
-    println!("   2. Growth Capital Pool");
-    println!("      Pool ID: pool-growth-002");
-    println!("      Available: ${:.2}", 1800000.00);
-    println!("      LTV: {:.1}% ✅", 85.0);
-    println!("      Rate: {:.2}% ✅", 11.0);
-    println!("      Min Term: {} days ✅", 60);
-    println!("      Match Score: 88%");
+    let endpoint = format!("/api/v1/pools/available{}", query_string);
 
-    println!();
-    println!("   3. SMB Opportunity Fund");
-    println!("      Pool ID: pool-smb-003");
-    println!("      Available: ${:.2}", 950000.00);
-    println!("      LTV: {:.1}% ✅", 75.0);
-    println!("      Rate: {:.2}% ✅", 8.25);
-    println!("      Min Term: {} days ✅", 120);
-    println!("      Match Score: 92%");
+    match client.get(&endpoint).await {
+        Ok(response) => {
+            if let Some(pools_array) = response.as_array() {
+                if pools_array.is_empty() {
+                    println!();
+                    println!("❌ No matching pools found");
+                    println!("   Try adjusting your criteria:");
+                    println!("   • Lower the required liquidity amount");
+                    println!("   • Increase the maximum LTV ratio");
+                    println!("   • Increase the maximum interest rate");
+                    println!("   • Reduce the minimum repayment days");
+                } else {
+                    println!();
+                    println!("✅ Found {} matching pool(s):", pools_array.len());
 
-    if verbose {
-        println!();
-        println!("🔧 Pool Analysis:");
-        println!("   Total Pools Evaluated: 12");
-        println!("   Matching Pools: 3");
-        println!("   Best Match: pool-inst-001");
-        println!("   Total Available: ${:.2}", 5250000.00);
-        println!("   Weighted Avg Rate: 9.58%");
-        println!("   Recommended Split: Single pool deployment");
+                    for (index, pool) in pools_array.iter().enumerate() {
+                        if let Some(pool_obj) = pool.as_object() {
+                            println!();
+                            println!(
+                                "   {}. {}",
+                                index + 1,
+                                pool_obj
+                                    .get("pool_name")
+                                    .and_then(|n| n.as_str())
+                                    .unwrap_or("Unknown Pool")
+                            );
+
+                            if let Some(pool_id) = pool_obj.get("pool_id") {
+                                println!(
+                                    "      Pool ID: {}",
+                                    pool_id.as_str().unwrap_or("Unknown")
+                                );
+                            }
+
+                            if let Some(available) = pool_obj.get("available_liquidity") {
+                                println!(
+                                    "      Available: {}",
+                                    available.as_str().unwrap_or("Unknown")
+                                );
+                            }
+
+                            if let Some(ltv) = pool_obj.get("max_ltv_ratio") {
+                                println!("      Max LTV: {} ✅", ltv.as_str().unwrap_or("Unknown"));
+                            }
+
+                            if let Some(rate) = pool_obj.get("max_interest_rate") {
+                                println!(
+                                    "      Max Rate: {} ✅",
+                                    rate.as_str().unwrap_or("Unknown")
+                                );
+                            }
+
+                            if let Some(days) = pool_obj.get("repayment_period_days") {
+                                println!(
+                                    "      Repayment Period: {} days ✅",
+                                    days.as_u64().unwrap_or(0)
+                                );
+                            }
+
+                            if let Some(match_score) = pool_obj.get("match_score") {
+                                println!(
+                                    "      Match Score: {}%",
+                                    match_score.as_u64().unwrap_or(0)
+                                );
+                            }
+                        }
+                    }
+
+                    if verbose {
+                        println!();
+                        println!("🔧 Pool Analysis:");
+                        println!("   Total Matching Pools: {}", pools_array.len());
+
+                        // Calculate total available liquidity
+                        let total_available: f64 = pools_array
+                            .iter()
+                            .filter_map(|pool| pool.get("available_liquidity"))
+                            .filter_map(|val| val.as_str())
+                            .filter_map(|s| s.trim_start_matches('$').parse::<f64>().ok())
+                            .sum();
+
+                        println!("   Total Available: ${:.2}", total_available);
+                    }
+                }
+            } else {
+                println!("❌ Invalid response format from server");
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to browse available pools");
+            println!("   Error: {}", e);
+            return Err(e.into());
+        }
     }
 
     Ok(())

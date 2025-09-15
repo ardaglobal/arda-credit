@@ -429,6 +429,50 @@ pub async fn submit_credit_line_request(
         }
     };
 
+    // Validate against pool availability - find matching pools with sufficient liquidity
+    let matching_pools =
+        get_all_liquidity_pools(&state.pool, Some("ACTIVE"), None, None, None, None)
+            .await
+            .map_err(|e| {
+                error!("Failed to get liquidity pools: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(CreditLineErrorResponse {
+                        error: "Failed to check pool availability".to_string(),
+                        code: "POOL_CHECK_FAILED".to_string(),
+                        details: None,
+                    }),
+                )
+            })?;
+
+    // Check if any pool has sufficient available liquidity for the requested amount
+    let has_sufficient_liquidity = matching_pools.iter().any(|pool| {
+        pool.available_liquidity >= rust_decimal::Decimal::from(body.requested_amount as i64)
+    });
+
+    if !has_sufficient_liquidity {
+        let max_available = matching_pools
+            .iter()
+            .map(|pool| pool.available_liquidity.to_f64().unwrap_or(0.0))
+            .fold(0.0f64, f64::max);
+
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(CreditLineErrorResponse {
+                error: format!(
+                    "Insufficient pool liquidity. Requested ${:.2}, maximum available ${:.2}",
+                    body.requested_amount as f64 / 100.0,
+                    max_available / 100.0
+                ),
+                code: "INSUFFICIENT_POOL_LIQUIDITY".to_string(),
+                details: Some(format!(
+                    "No active pools have sufficient liquidity to fund ${:.2}. Consider requesting a smaller amount or wait for more liquidity to become available.",
+                    body.requested_amount as f64 / 100.0
+                )),
+            }),
+        ));
+    }
+
     // Create credit line request in database
     let request_data = arda_credit_db::CreateCreditLineRequestData {
         merchant_id: merchant.id,

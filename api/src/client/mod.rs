@@ -830,6 +830,46 @@ impl BatchApiClient {
         self.handle_response(response).await
     }
 
+    // ============================================================================
+    // GENERIC HTTP METHODS
+    // ============================================================================
+
+    /// Generic POST method for API calls
+    pub async fn post(
+        &self,
+        endpoint: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, endpoint);
+        let response = self.client.post(&url).json(body).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Generic GET method for API calls
+    pub async fn get(&self, endpoint: &str) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, endpoint);
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Generic PUT method for API calls
+    pub async fn put(
+        &self,
+        endpoint: &str,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, endpoint);
+        let response = self.client.put(&url).json(body).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Generic DELETE method for API calls
+    pub async fn delete(&self, endpoint: &str) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, endpoint);
+        let response = self.client.delete(&url).send().await?;
+        self.handle_response(response).await
+    }
+
     /// Generic response handler
     async fn handle_response<T: for<'de> Deserialize<'de>>(
         &self,
