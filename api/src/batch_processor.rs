@@ -11,8 +11,10 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
-use tokio::time::{interval, Instant};
+use tokio::time::interval;
 use tracing::{debug, error, info, instrument, warn};
+use std::time::Instant;
+use metrics::{counter, histogram};
 
 use crate::types::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
@@ -321,8 +323,25 @@ impl BackgroundBatchProcessor {
     }
 
     /// Process a batch of transactions using unified ADS-integrated service
-    #[instrument(skip(self), level = "info")]
+    #[instrument(
+        skip(self),
+        level = "info",
+        fields(
+            trigger_type = %trigger_type,
+            batch_id = tracing::field::Empty,
+            transaction_count = tracing::field::Empty,
+            duration_ms = tracing::field::Empty,
+            sindri_cost_usd = tracing::field::Empty,
+            success = tracing::field::Empty
+        )
+    )]
     async fn process_batch(&self, trigger_type: &str) -> Result<Option<i32>, String> {
+        let start_time = Instant::now();
+        let span = tracing::Span::current();
+        
+        // Count trigger attempts
+        counter!("batch_processor.triggers.total", 1, "type" => trigger_type);
+        
         info!(
             "🔄 UNIFIED: Processing batch via {} trigger (using unified service)",
             trigger_type
@@ -340,13 +359,28 @@ impl BackgroundBatchProcessor {
             .await
         {
             Ok(Some(result)) => {
+                let duration = start_time.elapsed();
+                histogram!("batch_processor.duration_ms", duration.as_millis() as f64);
+                
+                // Record span fields
+                span.record("batch_id", &result.batch_id);
+                span.record("transaction_count", &result.transaction_count);
+                span.record("duration_ms", &duration.as_millis());
+                span.record("success", &true);
+                
+                // Estimate Sindri cost (if applicable)
+                let estimated_sindri_cost = result.transaction_count as f64 * 0.001; // $0.001 per transaction
+                span.record("sindri_cost_usd", &estimated_sindri_cost);
+                
                 info!(
-                    "✅ UNIFIED: Batch processed successfully via {}: id={}, transactions={}, nullifiers={}, merkle_root=0x{}",
+                    "✅ UNIFIED: Batch processed successfully via {}: id={}, transactions={}, nullifiers={}, merkle_root=0x{}, duration={:.2}ms, estimated_cost=${:.4}",
                     trigger_type,
                     result.batch_id,
                     result.transaction_count,
                     result.nullifier_count,
-                    hex::encode(&result.merkle_root[..8])
+                    hex::encode(&result.merkle_root[..8]),
+                    duration.as_millis(),
+                    estimated_sindri_cost
                 );
 
                 // Update statistics
@@ -356,17 +390,36 @@ impl BackgroundBatchProcessor {
                 // Trigger proof generation asynchronously
                 self.trigger_proof_generation(result.batch_id);
 
+                // Record success metrics
+                counter!("batch_processor.batches.success", 1, "trigger_type" => trigger_type);
+                histogram!("batch_processor.transactions_per_batch", result.transaction_count as f64);
+                histogram!("batch_processor.sindri_cost_usd", estimated_sindri_cost);
+
                 Ok(Some(result.batch_id))
             }
             Ok(None) => {
+                let duration = start_time.elapsed();
+                span.record("duration_ms", &duration.as_millis());
+                span.record("success", &true);
+                
                 debug!("UNIFIED: No transactions available to batch");
+                counter!("batch_processor.batches.no_transactions", 1, "trigger_type" => trigger_type);
                 Ok(None)
             }
             Err(e) => {
+                let duration = start_time.elapsed();
+                span.record("duration_ms", &duration.as_millis());
+                span.record("success", &false);
+                
                 error!(
-                    "UNIFIED: Failed to process batch via {}: {}",
-                    trigger_type, e
+                    "UNIFIED: Failed to process batch via {} in {:.2}ms: {}",
+                    trigger_type, duration.as_millis(), e
                 );
+                
+                // Record error metrics
+                counter!("batch_processor.batches.error", 1, "trigger_type" => trigger_type);
+                histogram!("batch_processor.error_duration_ms", duration.as_millis() as f64);
+                
                 Err(e)
             }
         }
