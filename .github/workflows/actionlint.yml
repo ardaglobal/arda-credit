@@ -2,8 +2,15 @@ name: GitHub Actions Lint
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+  release:
+    types: [published]
   push:
-    branches: [main, develop]
+    tags:
+      - 'v*'
+      - 'program-v*'
+      - 'contracts-v*'
   merge_group:
 
 concurrency:

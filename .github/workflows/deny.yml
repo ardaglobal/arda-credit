@@ -1,7 +1,14 @@
 name: deny
 on:
+  schedule:
+    - cron: '15 0 * * *'
+  release:
+    types: [published]
   push:
-    branches: [main]
+    tags:
+      - 'v*'
+      - 'program-v*'
+      - 'contracts-v*'
 
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.

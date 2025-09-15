@@ -1,9 +1,15 @@
 name: format
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '10 0 * * *'
+  release:
+    types: [published]
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
+      - 'program-v*'
+      - 'contracts-v*'
   merge_group:
 
 concurrency:

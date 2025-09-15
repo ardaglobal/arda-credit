@@ -5,10 +5,15 @@ permissions:
   contents: read
   security-events: write
 on:
+  schedule:
+    - cron: '20 0 * * *'
+  release:
+    types: [published]
   push:
-    paths:
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
+    tags:
+      - 'v*'
+      - 'program-v*'
+      - 'contracts-v*'
 
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.

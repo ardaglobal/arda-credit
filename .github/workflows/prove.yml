@@ -2,8 +2,15 @@ name: Build Program
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '50 0 * * *'
+  release:
+    types: [published]
   push:
-    branches: [main]
+    tags:
+      - 'v*'
+      - 'program-v*'
+      - 'contracts-v*'
 
 env:
   FOUNDRY_PROFILE: ci
