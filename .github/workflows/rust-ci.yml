@@ -1,0 +1,272 @@
+name: Rust CI
+
+on:
+  # Combine triggers from all three original workflows
+  workflow_dispatch:
+  pull_request:
+  schedule:
+    - cron: '35 0 * * *'  # From test.yml timing
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+      - 'program-v*'
+      - 'contracts-v*'
+  merge_group:
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: true
+  FOUNDRY_PROFILE: ci
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Shared setup job that handles all toolchain installation and caching
+  setup:
+    name: Setup Toolchains
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=large
+    outputs:
+      cache-key: ${{ steps.cache.outputs.cache-hit }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools, rustc-dev, rustfmt, clippy
+
+      - name: Cache dependencies
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/
+            program/target/
+          key: rust-1.81.0-sp1-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-sp1-
+
+      - name: Install SP1 toolchain
+        run: |
+          # Only install if not cached
+          if [ ! -f ~/.sp1/bin/cargo-prove ]; then
+            echo "Installing SP1 toolchain..."
+            curl -L https://sp1up.succinct.xyz | bash
+            ~/.sp1/bin/sp1up --token "${{ secrets.SP1_PAT }}"
+          else
+            echo "SP1 toolchain found in cache"
+          fi
+          ~/.sp1/bin/cargo-prove prove --version
+
+      - name: Build SP1 program (shared across jobs)
+        run: |
+          cd program
+          ~/.sp1/bin/cargo-prove prove build
+
+      - name: Upload SP1 program artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp1-program-${{ github.run_id }}
+          path: |
+            program/target/
+            build/
+          retention-days: 1
+
+  # Format and linting job
+  format-and-lint:
+    name: Format & Lint
+    needs: setup
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=large
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Restore cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/
+          key: rust-1.81.0-sp1-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-sp1-
+
+      - name: Download SP1 program artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sp1-program-${{ github.run_id }}
+          path: .
+
+      - name: Cargo format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: |
+          cargo clippy \
+            --all-targets \
+            -- \
+            -W clippy::pedantic \
+            -W clippy::nursery \
+            -W clippy::style \
+            -W clippy::complexity \
+            -W clippy::perf \
+            -W clippy::suspicious \
+            -W clippy::correctness
+
+  # TOML formatting job (can run in parallel with other format checks)
+  toml-format:
+    name: TOML Format
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=small
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Taplo
+        env:
+          version: "0.9.3"
+        run: |
+          curl -Ls "https://github.com/tamasfe/taplo/releases/download/${{ env.version }}/taplo-full-linux-x86_64.gz" | \
+          gzip -d > taplo && \
+          chmod +x taplo && \
+          sudo mv taplo /usr/local/bin/taplo
+
+      - name: Run Taplo format check
+        run: taplo fmt --check
+
+  # SP1 program execution job
+  prove:
+    name: Execute SP1 Program
+    needs: setup
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - run-id=${{ github.run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/
+          key: rust-1.81.0-sp1-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-sp1-
+
+      - name: Download SP1 program artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sp1-program-${{ github.run_id }}
+          path: .
+
+      - name: Install SP1 toolchain
+        run: |
+          # Only install if not cached
+          if [ ! -f ~/.sp1/bin/cargo-prove ]; then
+            echo "Installing SP1 toolchain..."
+            curl -L https://sp1up.succinct.xyz | bash
+            ~/.sp1/bin/sp1up --token "${{ secrets.SP1_PAT }}"
+          else
+            echo "SP1 toolchain found in cache"
+          fi
+
+      - name: Execute SP1 program
+        run: cargo run --release
+
+  # Test job with database
+  test:
+    name: Run Tests
+    # Tests can run independently since they don't need SP1 program build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools, rustc-dev
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+            ~/.rustup/
+            ~/.sp1/
+          key: rust-1.81.0-sp1-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: rust-1.81.0-sp1-
+
+      - name: Install SP1 toolchain
+        run: |
+          # Only install if not cached
+          if [ ! -f ~/.sp1/bin/cargo-prove ]; then
+            echo "Installing SP1 toolchain..."
+            curl -L https://sp1up.succinct.xyz | bash
+            ~/.sp1/bin/sp1up --token "${{ secrets.SP1_PAT }}"
+          else
+            echo "SP1 toolchain found in cache"
+          fi
+          ~/.sp1/bin/cargo-prove prove --version
+
+      - name: Run all tests
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres?pool_max_size=20&connection_timeout=60
+        run: |
+          cargo test --verbose -- --test-threads=1 --nocapture
