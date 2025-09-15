@@ -2,15 +2,11 @@ name: Foundry Test
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '45 0 * * *'
-  release:
-    types: [published]
   push:
     tags:
-      - 'v*'
-      - 'program-v*'
-      - 'contracts-v*'
+      - 'contracts-v*-rc*'
+    paths:
+      - "contracts/**"
 
 env:
   FOUNDRY_PROFILE: ci

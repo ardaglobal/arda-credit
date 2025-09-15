@@ -3,7 +3,6 @@ name: Deploy Smart Contracts
 on:
   workflow_dispatch:
   push:
-    branches: [main]
     tags:
       - 'contracts-v*-rc*'
     paths:

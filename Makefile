@@ -20,6 +20,11 @@ help: Makefile
 install:
 	./install-dependencies.sh
 
+## build-program: Build SP1 program
+.PHONY: build-program
+build-program:
+	cd program && cargo prove build --output-directory ../build
+
 ## fmt: Format code
 .PHONY: fmt
 fmt: yamllint-fix actionlint-fix docker-lint-fix
