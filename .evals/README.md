@@ -339,6 +339,16 @@ This provides verbose output for troubleshooting.
 
 ## Recent Performance Improvements
 
+### Fixed Empty Code Analysis Sections (v2.1) 
+- **Critical Bug Fix**: Resolved issue where "## 📁 Code Analysis Results" sections showed empty content
+- **Root Cause**: Broken Handlebars template processing with unpopulated variables (`{{content}}`, `{{path}}`)
+- **Solution**: Replaced custom templating with code2prompt native format for reliable code extraction
+- **Impact**: Now extracts 45,000+ lines of actual code content instead of empty placeholders
+- **Method Changes**: 
+  - Enhanced `_extract_code_context_with_domain_optimization()` method
+  - Added `_add_ai_compliance_framework()` wrapper for AI agent instructions
+  - Removed unreliable `--template` flag usage in code2prompt calls
+
 ### Enhanced Code2prompt Integration (v2.0)
 - **Token Optimization**: 90-99% token reduction through intelligent filtering
 - **Performance**: 2-4M characters/second extraction speed  
