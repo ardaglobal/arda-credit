@@ -9,6 +9,10 @@ on:
       - 'v*'
       - 'program-v*'
       - 'contracts-v*'
+  pull_request:
+    paths:
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
 
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.

@@ -2,16 +2,7 @@ name: GitHub Actions Lint
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'
-  release:
-    types: [published]
-  push:
-    tags:
-      - 'v*'
-      - 'program-v*'
-      - 'contracts-v*'
-  merge_group:
+  pull_request:
 
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.

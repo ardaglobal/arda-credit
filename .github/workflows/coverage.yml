@@ -5,12 +5,7 @@ on:
     - cron: '40 0 * * *'
   release:
     types: [published]
-  push:
-    tags:
-      - 'v*'
-      - 'program-v*'
-      - 'contracts-v*'
-
+ 
 env:
   CARGO_TERM_COLOR: always
   SQLX_OFFLINE: true
