@@ -1,16 +1,6 @@
 name: format
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: '10 0 * * *'
-  release:
-    types: [published]
-  push:
-    tags:
-      - 'v*'
-      - 'program-v*'
-      - 'contracts-v*'
-  merge_group:
+  pull_request:
 
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.
