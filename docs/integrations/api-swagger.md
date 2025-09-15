@@ -1,8 +1,8 @@
 # Swagger Documentation Implementation
 
-This document outlines the Swagger/OpenAPI documentation that has been successfully added to the Arda Credit API.
+This document outlines the Swagger/OpenAPI documentation that has been successfully added to the Arda Credit API. For authentication integration details, see [`docs/integrations/authentication.md`](../integrations/authentication.md).
 
-## Implementation Summary
+## Overview
 
 I have successfully implemented comprehensive Swagger documentation for the API server using the Rust `utoipa` ecosystem. Here's what was completed:
 

@@ -83,6 +83,15 @@ spec:
                 secretKeyRef:
                   name: {{ include "arda-credit.fullname" . }}-secrets
                   key: ethereum-deployer-address
+            {{- if .Values.server.opentelemetry.enabled }}
+            # OpenTelemetry configuration with dynamic service discovery
+            - name: ENABLE_OPENTELEMETRY
+              value: "{{ .Values.server.opentelemetry.enabled }}"
+            - name: OTEL_SERVICE_NAME
+              value: "{{ .Values.server.opentelemetry.serviceName }}"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ include "arda-credit.fullname" . }}-opentelemetry-collector:4317"
+            {{- end }}
             {{- range $key, $value := .Values.server.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -97,6 +106,17 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
+          {{- if .Values.server.persistence.enabled }}
+          volumeMounts:
+            - name: server-data
+              mountPath: {{ .Values.server.persistence.mountPath }}
+          {{- end }}
+      {{- if .Values.server.persistence.enabled }}
+      volumes:
+        - name: server-data
+          persistentVolumeClaim:
+            claimName: {{ include "arda-credit.fullname" . }}-server-data
+      {{- end }}
       {{- $nodeSelector := coalesce .Values.server.nodeSelector .Values.global.nodeSelector }}
       {{- with $nodeSelector }}
       nodeSelector:

@@ -1,8 +1,8 @@
 # Security Setup & Production Deployment Guide
 
-This guide covers security best practices and production deployment for the Arda Credit API with authentication.
+This guide covers security best practices and production deployment for the Arda Credit API with authentication. For monitoring and observability setup, see [`docs/deployment/monitoring.md`](../deployment/monitoring.md).
 
-## Environment Configuration
+## Overview
 
 Create a `.env` file in your project root with the following configuration:
 

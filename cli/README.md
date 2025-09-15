@@ -2,7 +2,7 @@
 
 This document outlines the standardized file structure and coding conventions for the Arda Credit CLI package.
 
-## 📁 File Structure Overview
+## Overview
 
 ### Core Infrastructure (Fixed Structure)
 ```

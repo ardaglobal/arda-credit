@@ -9,8 +9,8 @@ global:
   tolerations: []
   affinity: {}
 
-# Namespace creation
-namespaceCreate: true
+# Namespace creation (handled by deployment script)
+# namespaceCreate: true
 
 # PostgreSQL configuration
 # Can use either bundled PostgreSQL (enabled: true) or external instance (enabled: false)
@@ -37,7 +37,9 @@ postgresql:
     persistence:
       enabled: true
       size: 8Gi
-      # storageClass: ""  # Leave empty for default, or specify for cloud providers (e.g., "gp2", "gp3" for EKS)
+      storageClass: "gp2"
+      annotations:
+        "helm.sh/resource-policy": "keep"
 
     # Initialize monitoring user for SigNoz integration
     initdb:
@@ -100,12 +102,28 @@ server:
   
   replicaCount: 1
   
+  # OpenTelemetry configuration (dynamic service discovery)
+  opentelemetry:
+    enabled: true
+    serviceName: "arda-credit-api"
+    # OTEL collector endpoint will be templated dynamically
+  
   # Configuration for ConfigMap (non-sensitive)
   config:
     rustLog: "debug"
     serverPort: "8080"
     sindriCircuitTag: "latest"
   
+  # Persistence configuration for server data
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: "gp2"
+    accessMode: ReadWriteOnce
+    mountPath: /app/data
+    annotations:
+      "helm.sh/resource-policy": "keep"
+
   service:
     type: ClusterIP
     port: 8080
@@ -239,23 +257,24 @@ app:
 # Ingress configuration
 ingress:
   enabled: true
-  className: "nginx"  # Options: "nginx", "alb"
+  className: "alb"  # Using ALB ingress that was working before
   
   annotations:
-    # nginx ingress annotations (used when className: "nginx")
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # ALB ingress annotations (matching working SigNoz pattern)
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/load-balancer-name: arda-credit-alb
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:788391084262:certificate/4b588a3b-134e-49dc-9a2d-79d96427ead1
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
+    alb.ingress.kubernetes.io/healthcheck-path: /api/v1/health
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
     
-    # ALB ingress annotations (used when className: "alb")  
-    # alb.ingress.kubernetes.io/scheme: internet-facing
-    # alb.ingress.kubernetes.io/target-type: ip
-    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    # alb.ingress.kubernetes.io/ssl-redirect: '443'
-    # alb.ingress.kubernetes.io/certificate-arn: ""  # ACM certificate ARN
-    # alb.ingress.kubernetes.io/load-balancer-name: ""
-    
-    # External DNS (works with both nginx and ALB)
-    # external-dns.alpha.kubernetes.io/hostname: ""
+    # External DNS for automatic Route53 management
+    external-dns.alpha.kubernetes.io/hostname: app.stag.aws.arda.xyz
   
   hosts:
     - host: app.stag.aws.arda.xyz
@@ -276,8 +295,12 @@ ingress:
       hosts:
         - app.stag.aws.arda.xyz
 
-# Application secrets - these should be overridden in environment-specific values
+# Application secrets - supports both external secrets (.env) and direct values
 secrets:
+  # For production: use external secret created from .env
+  existingSecret: "arda-credit-secrets-external"  # Points to secret created from .env
+  
+  # Fallback values (used when no external secret)
   app:
     sindriApiKey: "your-sindri-api-key"
     ethereumRpcUrl: "https://eth-mainnet.alchemyapi.io/v2/demo"
@@ -321,7 +344,7 @@ rbac:
 monitoring:
   # PostgreSQL Prometheus Exporter configuration
   postgresExporter:
-    enabled: false
+    enabled: true
     
     # Configuration for the prometheus-postgres-exporter subchart
     config:
@@ -410,7 +433,7 @@ monitoring:
 
   # OpenTelemetry Collector configuration
   otelCollector:
-    enabled: false
+    enabled: true
     
     # Configuration for collecting metrics from multiple sources
     config:
@@ -541,3 +564,159 @@ monitoring:
         memory: 256Mi
 
 # Component-specific node selectors are defined within each component section above
+
+# EKS Storage Configuration - PVC Retention
+storage:
+  createStorageClass: false  # Storage class already exists
+
+# Direct configuration for prometheus-postgres-exporter subchart
+prometheus-postgres-exporter:
+  config:
+    datasource:
+      host: arda-credit-postgresql
+      user: postgres
+      password: change-me-in-production
+      port: "5432"
+      database: arda_credit_db
+      sslmode: disable
+  
+  service:
+    type: ClusterIP
+    port: 9187
+    targetPort: 9187
+    annotations:
+      prometheus.io/scrape: "true"
+      prometheus.io/port: "9187"
+      prometheus.io/path: "/metrics"
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Direct configuration for opentelemetry-collector subchart  
+opentelemetry-collector:
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+    tag: "0.134.1"
+  
+  mode: "deployment"
+  
+  # Environment variables with dynamic service discovery
+  extraEnvs:
+    - name: POSTGRESQL_ENDPOINT
+      value: "arda-credit-postgresql:5432"
+    - name: POSTGRESQL_USERNAME
+      value: "postgres"
+    - name: POSTGRESQL_PASSWORD
+      value: "change-me-in-production"
+    - name: POSTGRESQL_DATABASE
+      value: "arda_credit_db"
+    - name: OTLP_DESTINATION_ENDPOINT
+      value: "ingest.us.signoz.cloud:443"
+    - name: SIGNOZ_INGESTION_KEY
+      valueFrom:
+        secretKeyRef:
+          name: arda-credit-secrets
+          key: signoz-ingestion-key
+
+  config:
+    receivers:
+      postgresql:
+        endpoint: "${env:POSTGRESQL_ENDPOINT}"
+        collection_interval: 60s
+        username: "${env:POSTGRESQL_USERNAME}"
+        password: "${env:POSTGRESQL_PASSWORD}"
+        databases: ["${env:POSTGRESQL_DATABASE}"]
+        tls:
+          insecure: true
+        metrics:
+          postgresql.database.locks:
+            enabled: true
+          postgresql.deadlocks:
+            enabled: true
+          postgresql.sequential_scans:
+            enabled: true
+          postgresql.database.count:
+            enabled: true
+          postgresql.backends:
+            enabled: true
+          postgresql.connection.max:
+            enabled: true
+          postgresql.blocks_read:
+            enabled: true
+      
+      prometheus/postgres-exporter:
+        config:
+          scrape_configs:
+            - job_name: 'postgres-exporter'
+              static_configs:
+                - targets: ['arda-credit-prometheus-postgres-exporter:9187']
+              scrape_interval: 30s
+              metrics_path: /metrics
+
+    processors:
+      resourcedetection/system:
+        detectors: ["system"]
+        system:
+          hostname_sources: ["os"]
+      
+      memory_limiter:
+        limit_mib: 400
+        spike_limit_mib: 100
+        check_interval: 5s
+      
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+
+    exporters:
+      otlp/signoz:
+        endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
+        tls:
+          insecure: false
+        headers:
+          "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
+        retry_on_failure:
+          enabled: true
+          initial_interval: 5s
+          max_interval: 30s
+          max_elapsed_time: 300s
+        sending_queue:
+          enabled: true
+          num_consumers: 10
+          queue_size: 5000
+      
+      debug:
+        verbosity: detailed
+
+    service:
+      telemetry:
+        logs:
+          level: "info"
+      pipelines:
+        metrics/postgresql:
+          receivers: [postgresql]
+          processors: [resourcedetection/system]
+          exporters: [otlp/signoz, debug]
+        
+        metrics/postgres-exporter:
+          receivers: [prometheus/postgres-exporter]
+          processors: [resourcedetection/system]
+          exporters: [otlp/signoz, debug]
+        
+        traces/arda-credit:
+          receivers: [otlp, jaeger, zipkin]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/signoz, debug]
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi

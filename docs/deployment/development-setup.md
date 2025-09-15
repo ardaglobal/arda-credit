@@ -1,8 +1,8 @@
 # Development Setup Guide
 
-This guide explains how to set up your local development environment for the Arda Credit API.
+This guide explains how to set up your local development environment for the Arda Credit API. For production deployment and security setup, see [`docs/deployment/security-production.md`](../deployment/security-production.md). For monitoring configuration, see [`docs/deployment/monitoring.md`](../deployment/monitoring.md).
 
-## Quick Start
+## Overview
 
 ### 1. Start Background Services
 
@@ -22,27 +22,18 @@ This will start:
 
 ### 2. Configure Environment
 
-Create a `.env` file in the project root with:
-
+Copy and configure the environment file:
 ```bash
-# Database
-DATABASE_URL=postgresql://postgres:password@localhost:5432/arda_credit_db
-
-# OpenTelemetry with SigNoz Cloud
-ENABLE_OPENTELEMETRY=true
-OTEL_SERVICE_NAME=arda-credit-api
-OTEL_EXPORTER_OTLP_ENDPOINT=https://ingest.{region}.signoz.cloud:443
-SIGNOZ_INGESTION_KEY=your-signoz-ingestion-key
-
-# Other configuration...
-JWT_SECRET=your-super-secure-jwt-secret-key-at-least-32-characters-long
+make env    # Copies .env.example to .env
+# Edit .env to add your SINDRI_API_KEY and other required variables
 ```
+
+**Configuration details:** See `.env.example` for complete configuration options and required environment variables.
 
 ### 3. Run the API Server
 
 ```bash
-cd api
-cargo run --bin server
+make server    # Run API server with debug logging
 ```
 
 The server will start on http://localhost:8080
@@ -59,8 +50,8 @@ View traces in your SigNoz Cloud dashboard (if OpenTelemetry is enabled)
 ## Development Workflow
 
 ### Daily Development
-1. `docker-compose up -d` (if not already running)
-2. `cd api && cargo run --bin server`
+1. `make up` (starts database and services)
+2. `make server` (runs API server with debug logging)
 3. Make your changes
 4. Test with `curl` or your frontend
 5. View traces in SigNoz Cloud dashboard if needed
@@ -92,8 +83,7 @@ psql -h localhost -p 5432 -U postgres -d arda_credit_db
 
 **Run migrations:**
 ```bash
-cd db
-cargo run --bin migrate
+make initDB    # Runs migrations and generates SQLx cache
 ```
 
 ## Services Overview
@@ -134,7 +124,7 @@ lsof -i :5432
 
 ## Production Differences
 
-- **Development**: PostgreSQL in Docker, API server via `cargo run`
+- **Development**: PostgreSQL in Docker, API server via `make server`
 - **Production**: Everything deployed to Kubernetes
 - **Tracing**: SigNoz Cloud for both development and production (consistent setup)
 

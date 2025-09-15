@@ -553,3 +553,40 @@ kind-rebuild:
 kind-test:
 	@echo "🧪 Running deployment validation tests..."
 	cd helm/e2e && ./tests/test-deployment.sh
+
+# =============================================================================
+# Universal Kubernetes/Helm Deployment (Works with Kind & EKS)
+# =============================================================================
+
+## helm-deploy: Deploy or upgrade Arda Credit (auto-detects Kind/EKS)
+.PHONY: helm-deploy
+helm-deploy:
+	@chmod +x ./helm/scripts/helm-deploy.sh
+	@./helm/scripts/helm-deploy.sh deploy
+
+## helm-status: Check deployment status
+.PHONY: helm-status
+helm-status:
+	@chmod +x ./helm/scripts/helm-deploy.sh
+	@./helm/scripts/helm-deploy.sh status
+
+## helm-clean: Clean up deployment
+.PHONY: helm-clean
+helm-clean:
+	@chmod +x ./helm/scripts/helm-deploy.sh
+	@./helm/scripts/helm-deploy.sh clean
+
+## helm-help: Show deployment commands
+.PHONY: helm-help
+helm-help:
+	@echo "🎯 Universal Deployment Commands (Kind & EKS):"
+	@echo ""
+	@echo "  make helm-deploy   - Deploy/upgrade application (auto-detects environment)"
+	@echo "  make helm-status   - Check deployment status"
+	@echo "  make helm-clean    - Clean up deployment"
+	@echo ""
+	@echo "📝 Requirements:"
+	@echo "  - .env file with secrets (SINDRI_API_KEY, ETHEREUM_*, SIGNOZ_INGESTION_KEY, etc.)"
+	@echo "  - kubectl context set to target cluster"
+	@echo "  - For Kind: GHCR_USERNAME/GHCR_TOKEN in .env"
+	@echo "  - For EKS: Proper AWS credentials and cluster access"
