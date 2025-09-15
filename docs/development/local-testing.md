@@ -1,8 +1,8 @@
 # ACT - Local GitHub Actions Testing
 
-This project uses [act](https://nektosact.com/usage/index.html) to run GitHub Actions workflows locally for testing.
+This project uses [act](https://nektosact.com/usage/index.html) to run GitHub Actions workflows locally for testing. For general development environment setup, see [`docs/deployment/development-setup.md`](../deployment/development-setup.md).
 
-## Setup
+## Overview
 
 1. **Install act** (see [official docs](https://nektosact.com/usage/index.html))
 

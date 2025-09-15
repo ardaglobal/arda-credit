@@ -28,9 +28,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔧 Running migrations...");
     sqlx::migrate!("./migrations").run(&pool).await?;
 
-    println!("🎲 Starting fake data population based on PERFORMANCE.md...");
+    println!(
+        "🎲 Starting fake data population based on docs/architecture/performance-targets.md..."
+    );
 
-    // Based on PERFORMANCE.md:
+    // Based on docs/architecture/performance-targets.md:
     // - 100 new users per day (U=100)
     // - 10 new loans per day (L=10)
     // Mix of investors, lenders, and merchants
