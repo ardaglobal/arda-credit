@@ -50,10 +50,12 @@ pub mod error;
 pub use credit_line_operations::{
     approve_credit_line_request, close_credit_line, create_credit_line, create_credit_line_request,
     get_credit_line_by_id, get_credit_line_request_by_id, get_credit_line_requests_by_merchant,
-    get_merchant_credit_line_stats, list_active_credit_lines, list_credit_lines_by_merchant,
-    update_credit_line_request_evaluation, update_credit_line_request_status,
-    update_credit_line_utilization, CreateCreditLineRequestData, CreditLine, CreditLineRequest,
-    CreditLineStatus, MerchantCreditLineStats,
+    get_merchant_credit_line_stats, list_active_credit_lines, list_active_credit_lines_with_pools,
+    list_credit_lines_by_merchant, list_merchant_active_credit_lines_with_pools,
+    list_pool_active_credit_lines_with_details, update_credit_line_request_evaluation,
+    update_credit_line_request_status, update_credit_line_utilization, ActiveCreditLineWithPool,
+    CreateCreditLineRequestData, CreditLine, CreditLineRequest, CreditLineStatus,
+    MerchantCreditLineStats,
 };
 
 // Re-export batch processing types and functions
@@ -88,6 +90,7 @@ pub use db::{
     create_withdrawal_request,
     delete_identity,
 
+    delete_pool_borough_limit,
     find_matching_liquidity_pools,
     generate_invite_code,
     get_all_batches,
@@ -134,6 +137,8 @@ pub use db::{
     get_pending_transactions,
 
     get_pending_withdrawal_requests,
+    get_pool_borough_limits,
+    get_pool_borough_summary,
     get_pool_financial_transactions,
     get_pool_summary,
     get_pool_transactions,
@@ -169,6 +174,8 @@ pub use db::{
     reset_password_with_token,
     set_email_verification_token,
     set_password_reset_token,
+    // Pool borough limit functions
+    set_pool_borough_limit,
     // ADS/Merkle functions
     store_ads_state_commit,
     submit_kyc_data,
@@ -176,6 +183,7 @@ pub use db::{
     submit_transaction,
     update_balance,
     update_batch_proof,
+    update_borough_allocation,
     update_deposit_status,
     update_deposit_status_tx,
     // Merchant update functions
@@ -201,6 +209,7 @@ pub use db::{
     update_withdrawal_status,
     update_withdrawal_status_tx,
     use_invite_code,
+    validate_borough_borrowing_limit,
     validate_pool_parameters,
     verify_email_with_token,
     // Financial transaction types
@@ -208,6 +217,7 @@ pub use db::{
     // Types
     AdsStateCommit,
     Balance,
+    BoroughValidationResult,
     BusinessType,
     ContractPrivateData,
     ContractPublicData,
@@ -248,6 +258,9 @@ pub use db::{
     MerchantTurnoverAnalytics,
     MerchantTurnoverDaily,
     Payment,
+    // Pool borough limit types
+    PoolBoroughLimit,
+    PoolBoroughSummary,
     PoolFinancialTransaction,
     PoolMatchingCriteria,
     // Pool query types
@@ -257,6 +270,7 @@ pub use db::{
     ProofBatch,
 
     RegisterResult,
+    SetPoolBoroughLimitRequest,
     StateSnapshot,
     UpdateInvestorProfileRequest,
     UpdateMerchantProfileRequest,
