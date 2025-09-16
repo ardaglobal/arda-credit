@@ -15,9 +15,9 @@ name = "arda-credit"
 path = "src/bin/main.rs"
 
 [features]
-default = []
-sindri = []
-benchmark = []
+benchmark = [  ]
+default   = [  ]
+sindri    = [  ]
 
 [dependencies]
 # Core computation (for types)
@@ -29,12 +29,12 @@ sp1-sdk = { workspace = true }
 # Sindri integration
 sindri = { workspace = true }
 
-# Command line argument parsing (optional for feature-based builds)
-clap = { workspace = true, features = [ "derive" ], optional = true }
+# Command line argument parsing 
+clap = { workspace = true, features = [ "derive" ] }
 
 # Benchmarking and metrics
-metrics = { workspace = true }
 futures = { workspace = true }
+metrics = { workspace = true }
 
 # Utilities
 alloy-sol-types    = { workspace = true }

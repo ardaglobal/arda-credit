@@ -202,10 +202,14 @@ pub async fn generate_batch_proof(
     );
 
     // Enable benchmark mode to get cycle counts in response
-    let benchmark_mode = Some(true);
-    
+    let benchmark_meta = {
+        let mut meta = std::collections::HashMap::new();
+        meta.insert("benchmark".to_string(), "true".to_string());
+        Some(meta)
+    };
+
     let proof_info = client
-        .prove_circuit(&circuit_name, proof_input, benchmark_mode, None, None)
+        .prove_circuit(&circuit_name, proof_input, benchmark_meta, None, None)
         .await
         .map_err(|e| {
             error!("❌ Sindri API call failed: {}", e);
@@ -216,16 +220,12 @@ pub async fn generate_batch_proof(
         "✅ Sindri API call successful! Proof ID: {}, Status: {:?}",
         proof_info.proof_id, proof_info.status
     );
-    
-    // Log cycle counts if available in benchmark mode
-    if let Some(ref sp1_info) = proof_info.sp1_info {
-        if let Some(cycle_count) = sp1_info.cycle_count {
-            info!("🔢 SP1 Cycle Count: {} cycles", cycle_count);
-        }
-        if let Some(execution_duration) = sp1_info.execution_duration_ms {
-            info!("⏱️ SP1 Execution Duration: {}ms", execution_duration);
-        }
-    }
+
+    // Log cycle counts if available in benchmark mode (check available fields)
+    info!("🔍 Available proof info fields: {:?}", proof_info);
+
+    // Note: sp1_info field may not be available in current Sindri client version
+    // The benchmark metadata should still enable enhanced monitoring
 
     let status = match proof_info.status {
         JobStatus::Ready => "Ready".to_string(),

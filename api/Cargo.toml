@@ -99,7 +99,3 @@ tempfile           = "3.21"
 tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
 uuid               = { version = "1.0", features = [ "v4" ] }
-
-[patch.crates-io]
-# Force all axum versions to use 0.8.4 to resolve version conflicts
-axum = "0.8.4"
