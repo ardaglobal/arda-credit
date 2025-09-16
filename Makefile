@@ -561,20 +561,20 @@ kind-test:
 ## helm-deploy: Deploy or upgrade Arda Credit (auto-detects Kind/EKS)
 .PHONY: helm-deploy
 helm-deploy:
-	@chmod +x ./helm/scripts/helm-deploy.sh
-	@./helm/scripts/helm-deploy.sh deploy
+	@chmod +x ./script/helm-deploy.sh
+	@./script/helm-deploy.sh deploy
 
 ## helm-status: Check deployment status
 .PHONY: helm-status
 helm-status:
-	@chmod +x ./helm/scripts/helm-deploy.sh
-	@./helm/scripts/helm-deploy.sh status
+	@chmod +x ./script/helm-deploy.sh
+	@./script/helm-deploy.sh status
 
 ## helm-clean: Clean up deployment
 .PHONY: helm-clean
 helm-clean:
-	@chmod +x ./helm/scripts/helm-deploy.sh
-	@./helm/scripts/helm-deploy.sh clean
+	@chmod +x ./script/helm-deploy.sh
+	@./script/helm-deploy.sh clean
 
 ## helm-help: Show deployment commands
 .PHONY: helm-help
