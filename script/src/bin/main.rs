@@ -18,8 +18,11 @@ use arda_credit_lib::{
     hash_uuid, LoanBatch, LoanBatchPublicValues, LoanState, LoanTransaction, MetadataArray,
     TransactionType, UserType, ZkVMAds, ZkVMBatchInput,
 };
-use clap::Parser;
 use eyre::Result;
+use futures::future::join_all;
+use metrics::{counter, histogram};
+use std::env;
+use std::time::Instant;
 use sindri::{client::SindriClient, ProofInput};
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
 use tracing::{error, info};
@@ -28,26 +31,46 @@ use tracing::{error, info};
 /// This is built by build.rs from the program/ directory.
 pub const LOAN_PROGRAM_ELF: &[u8] = include_elf!("program");
 
-#[derive(Parser, Debug)]
-#[command(name = "arda-credit")]
-#[command(about = "SP1 Loan Processing Test with optional Sindri integration")]
+#[derive(Debug)]
 struct Args {
-    /// Submit the circuit to Sindri for verification
-    #[arg(long)]
     sindri: bool,
+    benchmark: bool,
+    num_proofs: u32,
+    num_transactions: u32,
 }
 
 #[allow(clippy::cognitive_complexity)]
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Parse command line arguments
-    let args = Args::parse();
-
     // Load environment variables from .env file if present
     dotenv::dotenv().ok();
 
     // Setup logging
     tracing_subscriber::fmt().with_env_filter("info").init();
+
+    // Feature-based configuration
+    let num_proofs = env::var("NUM_PROOFS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+        
+    let num_transactions = env::var("NUM_TRANSACTIONS")
+        .ok()  
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(9);
+
+    let args = Args {
+        sindri: cfg!(feature = "sindri"),
+        benchmark: cfg!(feature = "benchmark"),
+        num_proofs,
+        num_transactions,
+    };
+
+    if args.benchmark {
+        info!("🚀 Starting ZK Observability benchmark suite");
+        info!("📊 Configuration: {} proofs with {} transactions each", args.num_proofs, args.num_transactions);
+        return run_benchmark_suite(&args).await;
+    }
 
     if args.sindri {
         info!("🌐 Starting SP1 loan processing test with Sindri integration");
@@ -482,4 +505,272 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     };
 
     (initial_state, batch, alice_id, bob_id)
+}
+
+// Essential benchmarking structures and functions
+
+#[derive(Debug, Default)]
+struct ThroughputAnalysis {
+    concurrent_proofs: u32,
+    successful_submissions: u32,
+    failed_submissions: u32,
+    total_duration_ms: f64,
+    avg_queue_time_ms: f64,
+    proofs_per_minute: f64,
+    transactions_per_proof: u32,
+    total_transactions: u32,
+    proof_ids: Vec<String>,
+}
+
+async fn run_benchmark_suite(args: &Args) -> Result<()> {
+    let start_time = Instant::now();
+    
+    info!("🔧 Creating benchmark scenario with {} transactions per proof", args.num_transactions);
+    let (initial_state, batch) = create_benchmark_scenario(args.num_transactions);
+    
+    if args.sindri {
+        info!("🌐 Running Sindri HIGH-THROUGHPUT test");
+        let analysis = run_sindri_throughput_test(&initial_state, &batch, args).await?;
+        
+        info!("🎯 **SINDRI THROUGHPUT RESULTS**");
+        info!("   📊 Concurrent Proofs Attempted: {}", analysis.concurrent_proofs);
+        info!("   ✅ Successful Submissions: {}", analysis.successful_submissions);
+        info!("   ❌ Failed Submissions: {}", analysis.failed_submissions);
+        info!("   ⏱️ Total Duration: {:.2}s", analysis.total_duration_ms / 1000.0);
+        info!("   🚀 Effective Throughput: {:.2} proofs/minute", analysis.proofs_per_minute);
+        info!("   📈 Transaction Throughput: {:.2} txs/minute", 
+              analysis.proofs_per_minute * analysis.transactions_per_proof as f64);
+        info!("   🔢 Total Transactions Processed: {}", analysis.total_transactions);
+        
+        counter!("arda_credit.benchmark.sindri.total_proofs", analysis.concurrent_proofs as u64);
+        counter!("arda_credit.benchmark.sindri.total_transactions", analysis.total_transactions as u64);
+        histogram!("arda_credit.benchmark.sindri.throughput_proofs_per_minute", analysis.proofs_per_minute);
+    } else {
+        info!("🏠 Running local benchmark test");
+        let client = ProverClient::from_env();
+        let mut stdin = SP1Stdin::new();
+        
+        let zkvm_input = ZkVMBatchInput {
+            initial_loan_state: initial_state,
+            initial_ads_state: ZkVMAds::new(),
+            batch,
+        };
+        stdin.write(&zkvm_input);
+        
+        let (_public_values, _execution_report) = client.execute(LOAN_PROGRAM_ELF, stdin)?;
+        info!("✅ Local benchmark completed successfully");
+    }
+    
+    let total_duration = start_time.elapsed();
+    info!("✅ Benchmark suite completed in {:.2}s", total_duration.as_secs_f64());
+    
+    Ok(())
+}
+
+async fn run_sindri_throughput_test(initial_state: &LoanState, batch: &LoanBatch, args: &Args) -> Result<ThroughputAnalysis> {
+    let start_time = Instant::now();
+    
+    info!("🚀 Submitting {} concurrent proofs to test Sindri capacity", args.num_proofs);
+    
+    let mut tasks = Vec::new();
+    
+    for i in 0..args.num_proofs {
+        let initial_state_clone = initial_state.clone();
+        let mut batch_clone = batch.clone();
+        
+        // Scale batch to requested transaction count with timestamp bounds checking
+        if args.num_transactions != batch_clone.transactions.len() as u32 {
+            scale_batch_transactions(&mut batch_clone, args.num_transactions, i);
+        }
+        
+        let task = tokio::spawn(async move {
+            submit_sindri_proof(initial_state_clone, batch_clone, i).await
+        });
+        
+        tasks.push(task);
+    }
+    
+    info!("⏳ Waiting for all {} proofs to complete...", args.num_proofs);
+    let results = join_all(tasks).await;
+    
+    let mut successful_proofs = 0;
+    let mut failed_proofs = 0;
+    let mut proof_ids = Vec::new();
+    
+    for result in results {
+        match result {
+            Ok(Ok(proof_id)) => {
+                successful_proofs += 1;
+                proof_ids.push(proof_id);
+            }
+            _ => failed_proofs += 1,
+        }
+    }
+    
+    let total_duration = start_time.elapsed();
+    let proofs_per_minute = (successful_proofs as f64 / total_duration.as_secs_f64()) * 60.0;
+    
+    Ok(ThroughputAnalysis {
+        concurrent_proofs: args.num_proofs,
+        successful_submissions: successful_proofs,
+        failed_submissions: failed_proofs,
+        total_duration_ms: total_duration.as_millis() as f64,
+        avg_queue_time_ms: total_duration.as_millis() as f64 / successful_proofs.max(1) as f64,
+        proofs_per_minute,
+        transactions_per_proof: args.num_transactions,
+        total_transactions: successful_proofs * args.num_transactions,
+        proof_ids,
+    })
+}
+
+async fn submit_sindri_proof(initial_state: LoanState, batch: LoanBatch, _proof_index: u32) -> Result<String> {
+    let mut stdin = SP1Stdin::new();
+    let zkvm_input = ZkVMBatchInput {
+        initial_loan_state: initial_state,
+        initial_ads_state: ZkVMAds::new(),
+        batch,
+    };
+    stdin.write(&zkvm_input);
+    
+    info!("🔑 Submitting proof with {} transactions", zkvm_input.batch.transactions.len());
+    
+    let client = SindriClient::default();
+    let stdin_json = serde_json::to_string(&stdin)?;
+    let proof_input = ProofInput::from(stdin_json);
+    
+    let circuit_tag = std::env::var("SINDRI_CIRCUIT_TAG").unwrap_or("latest".to_string());
+    let circuit_name = format!("arda-credit:{circuit_tag}");
+    
+    let proof_info = client
+        .prove_circuit(&circuit_name, proof_input, Some(true), None, None)
+        .await
+        .map_err(|e| eyre::eyre!("Sindri API call failed: {}", e))?;
+    
+    // Log cycle counts if available
+    if let Some(ref sp1_info) = proof_info.sp1_info {
+        if let Some(cycle_count) = sp1_info.cycle_count {
+            info!("🔢 Cycle Count: {} cycles", cycle_count);
+        }
+    }
+    
+    Ok(proof_info.proof_id)
+}
+
+fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
+    let initial_state = LoanState::new();
+    let batch_timestamp = 1_700_000_000u64;
+    let batch_id = [1u8; 32];
+    
+    // Start with basic valid transactions
+    let mut transactions = vec![
+        // User registration
+        LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [0u8; 32],
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: batch_timestamp + 100,
+            metadata: MetadataArray::empty(),
+        },
+        // Loan origination  
+        LoanTransaction {
+            transaction_id: [2u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [1u8; 32],
+            transaction_type: TransactionType::LoanOrigination,
+            amount: 100_000,
+            created_at: batch_timestamp + 200,
+            metadata: MetadataArray::empty(),
+        },
+    ];
+    
+    // Add payment transactions up to requested count with timestamp bounds checking
+    let base_timestamp = batch_timestamp + 300;
+    const MAX_VALID_TIMESTAMP: u64 = 1893456000; // Maximum valid timestamp
+    
+    for i in 2..num_transactions {
+        let increment = (i - 2) as u64 + 1;
+        let timestamp = base_timestamp + increment;
+        
+        // Ensure we don't exceed maximum valid timestamp
+        let safe_timestamp = if timestamp > MAX_VALID_TIMESTAMP {
+            MAX_VALID_TIMESTAMP - (increment % 1000)
+        } else {
+            timestamp
+        };
+        
+        transactions.push(LoanTransaction {
+            transaction_id: [i as u8; 32],
+            user_id: [1u8; 32],
+            loan_id: [1u8; 32],
+            transaction_type: TransactionType::LoanPayment,
+            amount: (i as u64 % 10) + 1, // Small payments: $0.01 to $0.10
+            created_at: safe_timestamp,
+            metadata: MetadataArray::empty(),
+        });
+    }
+    
+    let batch = LoanBatch {
+        batch_id,
+        transactions,
+        previous_state_root: initial_state.compute_state_hash(),
+        created_at: batch_timestamp,
+    };
+    
+    (initial_state, batch)
+}
+
+fn scale_batch_transactions(batch: &mut LoanBatch, target_count: u32, proof_index: u32) {
+    let current_count = batch.transactions.len();
+    
+    if target_count as usize <= current_count {
+        batch.transactions.truncate(target_count as usize);
+        return;
+    }
+    
+    // Find valid payment transactions to duplicate
+    let payment_txs: Vec<LoanTransaction> = batch.transactions
+        .iter()
+        .filter(|tx| tx.transaction_type == TransactionType::LoanPayment)
+        .cloned()
+        .collect();
+    
+    if payment_txs.is_empty() {
+        return; // Can't scale without valid payments
+    }
+    
+    // Add more payment transactions with unique IDs and safe timestamps
+    for i in current_count..(target_count as usize) {
+        let base_payment = &payment_txs[i % payment_txs.len()];
+        let mut new_payment = base_payment.clone();
+        
+        // Make transaction ID unique using proof index and transaction index
+        new_payment.transaction_id[0] = (i % 256) as u8;
+        new_payment.transaction_id[1] = ((i / 256) % 256) as u8;
+        new_payment.transaction_id[2] = (proof_index % 256) as u8;
+        new_payment.transaction_id[3] = ((proof_index / 256) % 256) as u8;
+        
+        // Small payment amounts to avoid balance issues
+        new_payment.amount = ((i % 10) + 1) as u64;
+        
+        // Safe timestamp calculation with bounds checking
+        let increment = (i - current_count + 1) as u64;
+        let max_existing_timestamp = batch.transactions
+            .iter()
+            .map(|tx| tx.created_at)
+            .max()
+            .unwrap_or(base_payment.created_at);
+        
+        const MAX_VALID_TIMESTAMP: u64 = 1893456000;
+        let next_timestamp = max_existing_timestamp + increment;
+        
+        new_payment.created_at = if next_timestamp > MAX_VALID_TIMESTAMP {
+            MAX_VALID_TIMESTAMP - (increment % 1000)
+        } else {
+            next_timestamp
+        };
+        
+        batch.transactions.push(new_payment);
+    }
 }
