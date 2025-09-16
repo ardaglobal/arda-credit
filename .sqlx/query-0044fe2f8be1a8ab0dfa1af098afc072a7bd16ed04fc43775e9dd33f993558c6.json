@@ -1,0 +1,58 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, pool_id, borough, max_percentage, current_allocated, created_at, updated_at\n        FROM pool_borough_limits\n        WHERE pool_id = $1\n        ORDER BY borough ASC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "pool_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "borough",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "max_percentage",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "current_allocated",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "0044fe2f8be1a8ab0dfa1af098afc072a7bd16ed04fc43775e9dd33f993558c6"
+}

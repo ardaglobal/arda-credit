@@ -111,6 +111,27 @@ make test         # Run all tests
 make forge-test   # Test smart contracts
 ```
 
+### 🎲 Test Data Population
+
+To populate your database with realistic test data for development and testing:
+
+```bash
+# Start the database
+docker compose up postgres -d
+
+# Populate with comprehensive test dataset
+cargo run -p db --bin populate_fake_data
+```
+
+This creates:
+- **200 users**: 67 investors, 66 merchants across 9 boroughs, 67 lenders
+- **20 liquidity pools**: $1M-$10M each with borough percentage limits
+- **40 credit requests**: Revenue-based amounts from merchants in different boroughs
+- **Geographic distribution**: Manhattan, Brooklyn, Queens, Bronx, Staten Island, Long Island, Westchester, New Jersey, Connecticut
+- **Borough limits**: Realistic percentage thresholds for risk diversification testing
+
+Perfect for testing the borough percentage system, credit line requests, and pool management features.
+
 ## Documentation
 
 ### 📚 Getting Started

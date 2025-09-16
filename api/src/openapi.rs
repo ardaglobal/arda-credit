@@ -12,6 +12,7 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 pub use crate::admin_handlers::{
     AdminUserIdentity, AdminUserListResponse, BulkKycApprovalRequest, BulkKycApprovalResponse,
     BulkOperationResponse, KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse,
+    PlatformMetricsResponse,
 };
 pub use crate::authentication_handlers::{
     GenerateInviteCodeRequest, GenerateInviteCodeResponse, LoginRequest, LoginResponse,
@@ -19,9 +20,11 @@ pub use crate::authentication_handlers::{
 };
 pub use crate::balance_service::AvailableBalance;
 pub use crate::credit_line_handlers::{
-    AvailablePoolResponse, CreditLineErrorResponse, CreditLineRequestListResponse,
-    CreditLineRequestQuery, CreditLineRequestResponse, EligibilityCheckDetail,
-    EligibilityCheckResponse, PoolBrowsingQuery, SubmitCreditLineRequestBody,
+    ActiveCreditLineResponse, ActiveCreditLinesListResponse, ActiveCreditLinesQuery,
+    ActivePoolDetails, AvailablePoolResponse, CreditLineErrorResponse,
+    CreditLineRequestListResponse, CreditLineRequestQuery, CreditLineRequestResponse,
+    EligibilityCheckDetail, EligibilityCheckResponse, PoolBrowsingQuery,
+    SubmitCreditLineRequestBody,
 };
 pub use crate::financial_transaction_handlers::{
     AccountFinancialTransactionResponse, CreateAccountFinancialTransactionRequest,
@@ -49,6 +52,10 @@ pub use crate::pool_api::{
     PoolTransactionInfo, PoolTransactionsResponse, PoolUtilizationResponse, RecentActivity,
     StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
     UtilizationHistoryQuery,
+};
+pub use crate::pool_borough_handlers::{
+    BoroughErrorResponse, BoroughLimitResponse, BoroughSummaryResponse, BoroughValidationResponse,
+    SetBoroughLimitRequest, ValidateBoroughQuery,
 };
 pub use crate::state_handlers::{
     BatchInfo, BatchListResponse, BatchProcessorStatsResponse, ContractSubmissionData,
@@ -131,6 +138,7 @@ fn default_limit() -> u32 {
         crate::admin_handlers::list_pending_kyc_endpoint,
         crate::admin_handlers::get_kyc_statistics_endpoint,
         crate::admin_handlers::bulk_kyc_approval_endpoint,
+        crate::admin_handlers::get_platform_metrics_endpoint,
 
         // State Management endpoints
         crate::state_handlers::submit_transaction_endpoint,
@@ -171,6 +179,13 @@ fn default_limit() -> u32 {
         crate::pool_handlers::get_pool_metrics_overview,
         crate::pool_handlers::get_investor_pool_metrics_overview,
 
+        // Pool Borough Limit endpoints
+        crate::pool_borough_handlers::set_borough_limit,
+        crate::pool_borough_handlers::get_borough_limits,
+        crate::pool_borough_handlers::get_borough_summary,
+        crate::pool_borough_handlers::validate_borough_limit,
+        crate::pool_borough_handlers::delete_borough_limit,
+
         // Withdrawal endpoints
         crate::withdrawal_handlers::initiate_withdrawal_endpoint,
         crate::withdrawal_handlers::get_withdrawal_status_endpoint,
@@ -199,6 +214,7 @@ fn default_limit() -> u32 {
         crate::credit_line_handlers::submit_credit_line_request,
         crate::credit_line_handlers::list_credit_line_requests,
         crate::credit_line_handlers::browse_available_pools,
+        crate::credit_line_handlers::list_active_credit_lines_with_pool_details,
 
         // Turnover endpoints
         crate::turnover_handlers::create_turnover_endpoint,
@@ -375,7 +391,15 @@ fn default_limit() -> u32 {
         InvestorProfileQuery,
         InvestorProfileResponse,
         UpdateMerchantProfileRequest,
-        UpdateInvestorProfileRequest
+        UpdateInvestorProfileRequest,
+
+        // Borough limit types
+        SetBoroughLimitRequest,
+        BoroughLimitResponse,
+        BoroughSummaryResponse,
+        ValidateBoroughQuery,
+        BoroughValidationResponse,
+        BoroughErrorResponse
     ))
 )]
 pub struct ApiDoc;

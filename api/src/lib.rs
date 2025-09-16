@@ -49,6 +49,7 @@ pub mod middleware;
 pub mod openapi;
 pub mod paths;
 pub mod pool_api;
+pub mod pool_borough_handlers;
 pub mod pool_handlers;
 pub mod router;
 pub mod server;

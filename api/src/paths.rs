@@ -69,6 +69,9 @@ pub const ADMIN_KYC_STATS: &str = api_path!("/admin/kyc/stats");
 /// Bulk KYC approval (admin)
 pub const ADMIN_KYC_BULK_APPROVE: &str = api_path!("/admin/kyc/bulk-approve");
 
+/// Platform metrics (admin)
+pub const ADMIN_PLATFORM_METRICS: &str = api_path!("/admin/platform-metrics");
+
 /// User balance by wallet address
 pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/user/{user_id}/{address}/balance");
 
@@ -93,6 +96,24 @@ pub const REGISTER_MERCHANT: &str = api_path!("/auth/register/merchant");
 
 /// Investor profile operations
 pub const INVESTOR_PROFILE: &str = api_path!("/investor/profile");
+
+/// Investor dashboard
+pub const INVESTOR_DASHBOARD: &str = api_path!("/investor/dashboard");
+
+/// Investor pool summaries
+pub const INVESTOR_POOL_SUMMARIES: &str = api_path!("/investor/pools/summary");
+
+/// Investor pool metrics
+pub const INVESTOR_POOL_METRICS: &str = api_path!("/investor/pool-metrics");
+
+/// Investor enhanced metrics (commented out in router)
+pub const INVESTOR_METRICS: &str = api_path!("/investor/metrics");
+
+/// Authentication login
+pub const AUTH_LOGIN: &str = api_path!("/auth/login");
+
+/// Authentication logout
+pub const AUTH_LOGOUT: &str = api_path!("/auth/logout");
 
 /// Merchant profile operations
 pub const MERCHANT_PROFILE: &str = api_path!("/merchant/profile");
@@ -194,6 +215,25 @@ pub const POOL_METRICS_OVERVIEW: &str = api_path!("/pools/metrics/overview");
 /// Investor-specific pool metrics endpoint
 pub const POOL_METRICS_INVESTOR: &str = api_path!("/pools/metrics/investor/{investor_id}");
 
+/// Pool borough limits endpoint
+pub const POOL_BOROUGH_LIMITS: &str = api_path!("/pools/{pool_id}/borough-limits");
+
+/// Individual pool borough limit endpoint
+pub const POOL_BOROUGH_LIMIT_BY_BOROUGH: &str =
+    api_path!("/pools/{pool_id}/borough-limits/{borough}");
+
+/// Pool borough summary endpoint
+pub const POOL_BOROUGH_SUMMARY: &str = api_path!("/pools/{pool_id}/borough-summary");
+
+/// Pool borough validation endpoint
+pub const POOL_BOROUGH_VALIDATION: &str = api_path!("/pools/{pool_id}/borough-validation");
+
+/// Analytics market overview
+pub const ANALYTICS_MARKET_OVERVIEW: &str = api_path!("/analytics/market-overview");
+
+/// Analytics pool performance
+pub const ANALYTICS_POOL_PERFORMANCE: &str = api_path!("/analytics/pool-performance");
+
 // ============================================================================
 // CREDIT LINE MANAGEMENT PATHS
 // ============================================================================
@@ -212,6 +252,9 @@ pub const CREDIT_LINES_REQUEST: &str = api_path!("/credit-lines/request");
 
 /// Submit credit line request (v2)
 pub const CREDIT_LINES_REQUEST_V2: &str = api_path!("/credit-lines/request-v2");
+
+/// List active credit lines with pool details
+pub const CREDIT_LINES_ACTIVE: &str = api_path!("/credit-lines/active");
 
 // ============================================================================
 // FINANCIAL TRANSACTION PATHS
@@ -525,6 +568,28 @@ pub fn pool_financial_withdraw_path(pool_id: &str) -> String {
 /// Build pool financial transactions path with pool_id parameter
 pub fn pool_financial_transactions_path(pool_id: &str) -> String {
     replace_param(POOL_FINANCIAL_TRANSACTIONS, "pool_id", pool_id)
+}
+
+// Pool Borough Management Helper Functions
+/// Build pool borough limits path with pool_id parameter
+pub fn pool_borough_limits_path(pool_id: &str) -> String {
+    replace_param(POOL_BOROUGH_LIMITS, "pool_id", pool_id)
+}
+
+/// Build pool borough limit by borough path with pool_id and borough parameters
+pub fn pool_borough_limit_by_borough_path(pool_id: &str, borough: &str) -> String {
+    let path = replace_param(POOL_BOROUGH_LIMIT_BY_BOROUGH, "pool_id", pool_id);
+    replace_param(&path, "borough", borough)
+}
+
+/// Build pool borough summary path with pool_id parameter
+pub fn pool_borough_summary_path(pool_id: &str) -> String {
+    replace_param(POOL_BOROUGH_SUMMARY, "pool_id", pool_id)
+}
+
+/// Build pool borough validation path with pool_id parameter
+pub fn pool_borough_validation_path(pool_id: &str) -> String {
+    replace_param(POOL_BOROUGH_VALIDATION, "pool_id", pool_id)
 }
 
 /// Build credit line draw path with credit_line_id parameter
@@ -867,6 +932,70 @@ pub fn get_all_endpoints() -> Vec<crate::health_handlers::EndpointInfo> {
             method: "GET".to_string(),
             path: USER_FINANCIAL_SUMMARY.to_string(),
             description: "Get user's financial summary".to_string(),
+        },
+        // Pool Borough Limit Endpoints
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: POOL_BOROUGH_LIMITS.to_string(),
+            description: "Get borough limits for a pool".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "PUT".to_string(),
+            path: POOL_BOROUGH_LIMITS.to_string(),
+            description: "Set borough limit for a pool".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "DELETE".to_string(),
+            path: POOL_BOROUGH_LIMIT_BY_BOROUGH.to_string(),
+            description: "Delete borough limit for a pool".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: POOL_BOROUGH_SUMMARY.to_string(),
+            description: "Get borough summary for a pool".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: POOL_BOROUGH_VALIDATION.to_string(),
+            description: "Validate borough limits for a pool".to_string(),
+        },
+        // Investor Query Endpoints
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: INVESTOR_DASHBOARD.to_string(),
+            description: "Get investor dashboard data".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: INVESTOR_POOL_SUMMARIES.to_string(),
+            description: "Get investor pool summaries".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: INVESTOR_POOL_METRICS.to_string(),
+            description: "Get investor pool metrics".to_string(),
+        },
+        // Analytics Endpoints
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: ANALYTICS_MARKET_OVERVIEW.to_string(),
+            description: "Get market overview analytics".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: ANALYTICS_POOL_PERFORMANCE.to_string(),
+            description: "Get pool performance analytics".to_string(),
+        },
+        // Authentication Endpoints
+        crate::health_handlers::EndpointInfo {
+            method: "POST".to_string(),
+            path: AUTH_LOGIN.to_string(),
+            description: "User login authentication".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "POST".to_string(),
+            path: AUTH_LOGOUT.to_string(),
+            description: "User logout authentication".to_string(),
         },
     ]
 }
