@@ -63,6 +63,10 @@ pub use crate::state_handlers::{
     SubmitTransactionRequest, SubmitTransactionResponse, TransactionInfo, TriggerBatchResponse,
     UpdateBatchProofRequest,
 };
+pub use crate::transaction_history_handlers::{
+    DateRange, PaginationInfo, TransactionHistoryItem, TransactionHistoryResponse,
+    TransactionSummary,
+};
 pub use crate::turnover_handlers::{
     ProfileCompletionResponse, TurnoverAnalyticsResponse, TurnoverCreateRequest, TurnoverResponse,
     TurnoverUpdateRequest,
@@ -209,6 +213,10 @@ fn default_limit() -> u32 {
         crate::financial_transaction_handlers::get_user_pool_financial_transactions,
         crate::financial_transaction_handlers::get_merchant_credit_line_financial_transactions,
 
+        // Transaction History endpoints
+        crate::transaction_history_handlers::get_transaction_history,
+        crate::transaction_history_handlers::get_pool_transaction_history,
+
         // Credit Line endpoints
         crate::credit_line_handlers::check_credit_eligibility,
         crate::credit_line_handlers::submit_credit_line_request,
@@ -247,6 +255,7 @@ fn default_limit() -> u32 {
         (name = "Withdrawals", description = "Withdrawal operations"),
         (name = "Credit Lines", description = "Credit line requests and management"),
         (name = "Financial Transactions", description = "Financial transaction tracking and reporting"),
+        (name = "Transaction History", description = "Comprehensive transaction history across all operations"),
         (name = "Analytics", description = "Platform analytics and reporting"),
         (name = "Admin", description = "Administrative operations"),
         (name = "Health", description = "Health check and system information"),

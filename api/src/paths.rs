@@ -384,6 +384,16 @@ pub const STATE_PROOF: &str = api_path!("/state/proof/{transaction_type}/{transa
 pub const STATE_VERIFY: &str = api_path!("/state/verify");
 
 // ============================================================================
+// TRANSACTION HISTORY PATHS
+// ============================================================================
+
+/// Get comprehensive transaction history across all operations
+pub const TRANSACTION_HISTORY: &str = api_path!("/transactions/history");
+
+/// Get transaction history for a specific pool
+pub const POOL_TRANSACTION_HISTORY: &str = api_path!("/pools/{pool_id}/transaction-history");
+
+// ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
 
@@ -633,6 +643,15 @@ pub fn user_pool_financial_path(user_id: &str) -> String {
 /// Build merchant credit line financial path with merchant_id parameter
 pub fn merchant_credit_line_financial_path(merchant_id: &str) -> String {
     replace_param(MERCHANT_CREDIT_LINE_FINANCIAL, "merchant_id", merchant_id)
+}
+
+// ============================================================================
+// TRANSACTION HISTORY PATH HELPERS
+// ============================================================================
+
+/// Build pool transaction history path with pool_id parameter
+pub fn pool_transaction_history_path(pool_id: &str) -> String {
+    replace_param(POOL_TRANSACTION_HISTORY, "pool_id", pool_id)
 }
 
 // ============================================================================

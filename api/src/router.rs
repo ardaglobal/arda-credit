@@ -59,6 +59,7 @@ use crate::state_handlers::{
     get_pending_transactions_endpoint, submit_transaction_endpoint, trigger_batch_endpoint,
     update_batch_proof_endpoint,
 };
+use crate::transaction_history_handlers::{get_pool_transaction_history, get_transaction_history};
 use crate::turnover_handlers::{
     create_turnover_endpoint, get_profile_completion_endpoint, get_turnover_analytics_endpoint,
     get_turnover_endpoint, update_turnover_endpoint,
@@ -381,6 +382,10 @@ pub fn create_router(state: ApiState) -> Router {
             get(get_user_financial_summary),
         )
         // ========================================================================
+        // TRANSACTION HISTORY ENDPOINTS
+        // ========================================================================
+        .route(paths::TRANSACTION_HISTORY, get(get_transaction_history))
+        // ========================================================================
         // LOAN MANAGEMENT ENDPOINTS
         // ========================================================================
         // Loan Management
@@ -429,6 +434,10 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::POOL_DEPOSIT, post(deposit_to_pool))
         .route(paths::POOL_UTILIZATION, get(get_pool_utilization))
         .route(paths::POOL_TRANSACTIONS, get(get_pool_transactions))
+        .route(
+            paths::POOL_TRANSACTION_HISTORY,
+            get(get_pool_transaction_history),
+        )
         // ========================================================================
         // POOL BOROUGH LIMIT ENDPOINTS
         // ========================================================================
