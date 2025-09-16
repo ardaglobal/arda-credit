@@ -55,6 +55,7 @@ pub mod router;
 pub mod server;
 pub mod state_handlers;
 pub mod telemetry;
+pub mod transaction_history_handlers;
 pub mod turnover_handlers;
 pub mod types;
 pub mod unified_batch_service;
