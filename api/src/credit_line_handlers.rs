@@ -20,8 +20,11 @@ use uuid::Uuid;
 
 use crate::types::ApiState;
 use arda_credit_db::{
-    create_credit_line_request, get_all_liquidity_pools, get_credit_line_requests_by_merchant,
-    get_merchant_by_user_id, get_merchant_profile_by_merchant_id, get_merchant_turnover_analytics,
+    create_credit_line_request, find_matching_liquidity_pools, get_all_liquidity_pools,
+    get_credit_line_requests_by_merchant, get_merchant_by_user_id,
+    get_merchant_profile_by_merchant_id, get_merchant_turnover_analytics,
+    list_active_credit_lines_with_pools, list_merchant_active_credit_lines_with_pools,
+    list_pool_active_credit_lines_with_details, ActiveCreditLineWithPool,
 };
 use arda_credit_lib::{CreditEvaluator, KycStatus, MerchantProfile as LibMerchantProfile};
 
@@ -144,6 +147,60 @@ pub struct CreditLineErrorResponse {
     pub error: String,
     pub code: String,
     pub details: Option<String>,
+}
+
+/// Active credit line with pool details response
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ActiveCreditLineResponse {
+    pub credit_line_id: Uuid,
+    pub merchant_id: Uuid,
+    pub pool_id: Uuid,
+    pub pool_name: String,
+    pub credit_limit: String,           // Formatted amount with currency
+    pub available_credit: String,       // Formatted amount with currency
+    pub utilized_amount: String,        // Formatted amount with currency
+    pub utilization_percentage: String, // Formatted percentage
+    pub rate_apr: String,               // Formatted percentage
+    pub repayment_window_days: u32,
+    pub credit_line_status: String,
+    pub opened_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub pool_details: ActivePoolDetails,
+}
+
+/// Pool details within active credit line response
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ActivePoolDetails {
+    pub total_deposits: String,      // Formatted amount with currency
+    pub available_liquidity: String, // Formatted amount with currency
+    pub utilized_percentage: String, // Formatted percentage of pool utilization
+    pub pool_status: String,
+    pub investor_id: Uuid,
+    pub max_ltv_ratio: String,     // Formatted percentage
+    pub max_interest_rate: String, // Formatted percentage
+}
+
+/// Active credit lines list response
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ActiveCreditLinesListResponse {
+    pub credit_lines: Vec<ActiveCreditLineResponse>,
+    pub total_count: u32,
+    pub has_more: bool,
+}
+
+/// Query parameters for active credit lines
+#[derive(Debug, Clone, Serialize, Deserialize, IntoParams, ToSchema)]
+pub struct ActiveCreditLinesQuery {
+    /// Filter by merchant ID (admin only)
+    pub merchant_id: Option<Uuid>,
+    /// Filter by pool ID
+    pub pool_id: Option<Uuid>,
+    /// Number of results per page
+    #[param(minimum = 1, maximum = 100)]
+    pub limit: Option<u32>,
+    /// Offset for pagination
+    #[param(minimum = 0)]
+    pub offset: Option<u32>,
 }
 
 // ============================================================================
@@ -429,6 +486,123 @@ pub async fn submit_credit_line_request(
         }
     };
 
+    // Validate borough percentage limits if merchant has a borough specified
+    if let Some(ref merchant_borough) = merchant.borough {
+        info!(
+            "Validating borough limits for merchant in {}",
+            merchant_borough
+        );
+
+        // Find matching pools for the requested loan parameters
+        let criteria = arda_credit_db::PoolMatchingCriteria {
+            required_liquidity: rust_decimal::Decimal::from(body.requested_amount as i64),
+            max_ltv: rust_decimal::Decimal::from(8000), // Default 80% if not specified
+            max_rate: body
+                .requested_rate_apr
+                .map(|rate| rust_decimal::Decimal::from(rate as i64))
+                .unwrap_or_else(|| rust_decimal::Decimal::from(1500)), // Default 15% if not specified
+            min_repayment_days: body.requested_tenor_days.unwrap_or(30) as i32,
+        };
+        let matching_pools_result = find_matching_liquidity_pools(&state.pool, &criteria).await;
+
+        if let Ok(matching_pools) = matching_pools_result {
+            if matching_pools.is_empty() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(CreditLineErrorResponse {
+                        error: "No pools available to fund this credit line request".to_string(),
+                        code: "NO_MATCHING_POOLS".to_string(),
+                        details: None,
+                    }),
+                ));
+            }
+
+            // Check borough limits for each potential matching pool
+            for pool in &matching_pools {
+                match arda_credit_db::validate_borough_borrowing_limit(
+                    &state.pool,
+                    pool.id,
+                    merchant_borough,
+                    rust_decimal::Decimal::from(body.requested_amount as i64),
+                )
+                .await
+                {
+                    Ok(validation) => {
+                        if !validation.is_valid {
+                            let max_percentage_display = (validation.max_percentage
+                                * rust_decimal::Decimal::from(100))
+                            .to_f64()
+                            .unwrap_or(0.0);
+                            let current_allocated_display = (validation.current_allocated
+                                / rust_decimal::Decimal::from(100))
+                            .to_f64()
+                            .unwrap_or(0.0);
+                            let max_allowed_display = (validation.max_allowed
+                                / rust_decimal::Decimal::from(100))
+                            .to_f64()
+                            .unwrap_or(0.0);
+                            let requested_amount_display = body.requested_amount as f64 / 100.0;
+
+                            return Err((
+                                StatusCode::BAD_REQUEST,
+                                Json(CreditLineErrorResponse {
+                                    error: format!(
+                                        "Loan amount would exceed {:.1}% borough limit for {}. Current allocated: ${:.2}, Max allowed: ${:.2}, Requesting: ${:.2}",
+                                        max_percentage_display,
+                                        merchant_borough,
+                                        current_allocated_display,
+                                        max_allowed_display,
+                                        requested_amount_display
+                                    ),
+                                    code: "BOROUGH_LIMIT_EXCEEDED".to_string(),
+                                    details: Some(format!(
+                                        "Pool {} has ${:.2} total deposits, ${:.2} already allocated to {}, requesting ${:.2}",
+                                        pool.name,
+                                        (validation.total_pool_deposits / rust_decimal::Decimal::from(100)).to_f64().unwrap_or(0.0),
+                                        current_allocated_display,
+                                        merchant_borough,
+                                        requested_amount_display
+                                    )),
+                                }),
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to validate borough limits: {}", e);
+                        return Err((
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(CreditLineErrorResponse {
+                                error: "Failed to validate borough limits".to_string(),
+                                code: "VALIDATION_ERROR".to_string(),
+                                details: None,
+                            }),
+                        ));
+                    }
+                }
+            }
+
+            info!(
+                "Borough validation passed for {} matching pools",
+                matching_pools.len()
+            );
+        } else {
+            error!(
+                "Failed to find matching pools for borough validation: {:?}",
+                matching_pools_result
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(CreditLineErrorResponse {
+                    error: "Failed to validate pool availability".to_string(),
+                    code: "POOL_VALIDATION_ERROR".to_string(),
+                    details: None,
+                }),
+            ));
+        }
+    } else {
+        info!("Merchant has no borough specified, skipping borough validation");
+    }
+
     // Create credit line request in database
     let request_data = arda_credit_db::CreateCreditLineRequestData {
         merchant_id: merchant.id,
@@ -455,11 +629,99 @@ pub async fn submit_credit_line_request(
         }
     };
 
-    // TODO: Trigger async evaluation and pool matching
+    // Auto-deploy: Match the credit line to specific pools and fund automatically
     info!(
-        "Credit line request submitted: {} for merchant: {}",
+        "Credit line request submitted: {} for merchant: {}. Starting auto-deployment.",
         request.id, merchant.id
     );
+
+    // Find and select the best pool for funding
+    let criteria = arda_credit_db::PoolMatchingCriteria {
+        required_liquidity: rust_decimal::Decimal::from(body.requested_amount as i64),
+        max_ltv: rust_decimal::Decimal::from(8000), // Default 80%
+        max_rate: body
+            .requested_rate_apr
+            .map(|rate| rust_decimal::Decimal::from(rate as i64))
+            .unwrap_or_else(|| rust_decimal::Decimal::from(1500)), // Default 15%
+        min_repayment_days: body.requested_tenor_days.unwrap_or(30) as i32,
+    };
+
+    let matching_pools_result = find_matching_liquidity_pools(&state.pool, &criteria).await;
+
+    match matching_pools_result {
+        Ok(matching_pools) if !matching_pools.is_empty() => {
+            // Select the first suitable pool (could be enhanced with better selection logic)
+            let selected_pool = &matching_pools[0];
+
+            info!(
+                "Auto-deploying credit line from pool: {} ({})",
+                selected_pool.id, selected_pool.name
+            );
+
+            // Create the active credit line
+            match arda_credit_db::create_credit_line(
+                &state.pool,
+                request.id,
+                merchant.id,
+                selected_pool.id,
+                request.requested_amount,
+                body.requested_rate_apr
+                    .map(|r| rust_decimal::Decimal::from(r as i64))
+                    .unwrap_or_else(|| rust_decimal::Decimal::from(1200)), // Default 12%
+                body.requested_tenor_days.unwrap_or(30) as i32,
+            )
+            .await
+            {
+                Ok(credit_line) => {
+                    info!(
+                        "Successfully created active credit line: {}",
+                        credit_line.id
+                    );
+
+                    // Update borough allocation tracking
+                    if let Some(merchant_borough) = &merchant.borough {
+                        match arda_credit_db::update_borough_allocation(
+                            &state.pool,
+                            selected_pool.id,
+                            merchant_borough,
+                            request.requested_amount, // Positive for new loan
+                        )
+                        .await
+                        {
+                            Ok(()) => info!(
+                                "Updated borough allocation for {} in pool {}",
+                                merchant_borough, selected_pool.name
+                            ),
+                            Err(e) => error!("Failed to update borough allocation: {}", e),
+                        }
+                    }
+
+                    // Update request status to "APPROVED" since we auto-deployed
+                    match arda_credit_db::update_credit_line_request_status(
+                        &state.pool,
+                        request.id,
+                        arda_credit_db::CreditLineStatus::Approved,
+                        None,
+                    )
+                    .await
+                    {
+                        Ok(_) => info!("Updated request status to APPROVED"),
+                        Err(e) => error!("Failed to update request status: {}", e),
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to create active credit line: {}", e);
+                    // Keep request as SUBMITTED for manual review
+                }
+            }
+        }
+        Ok(_) => {
+            info!("No matching pools found for auto-deployment, keeping request as SUBMITTED");
+        }
+        Err(e) => {
+            error!("Failed to find matching pools for auto-deployment: {}", e);
+        }
+    }
 
     // Convert to API response format
     let response = CreditLineRequestResponse {
@@ -734,9 +996,164 @@ pub async fn browse_available_pools(
     Ok(Json(filtered_pools))
 }
 
+/// List active credit lines borrowing from active liquidity pools
+#[utoipa::path(
+    get,
+    path = "/api/v1/credit-lines/active",
+    summary = "List active credit lines with pool details",
+    description = "Get all active credit line requests that are currently borrowing from active liquidity pools",
+    tag = "Credit Lines",
+    params(ActiveCreditLinesQuery),
+    responses(
+        (status = 200, description = "Active credit lines retrieved", body = ActiveCreditLinesListResponse),
+        (status = 401, description = "Unauthorized - invalid JWT token"),
+        (status = 403, description = "Forbidden - insufficient permissions"),
+        (status = 500, description = "Internal server error")
+    ),
+    security(
+        ("jwt" = [])
+    )
+)]
+#[instrument(skip(state))]
+pub async fn list_active_credit_lines_with_pool_details(
+    State(state): State<ApiState>,
+    Query(query): Query<ActiveCreditLinesQuery>,
+) -> Result<Json<ActiveCreditLinesListResponse>, (StatusCode, Json<CreditLineErrorResponse>)> {
+    let limit = query.limit.unwrap_or(20).min(100) as i64;
+    let offset = query.offset.unwrap_or(0) as i64;
+
+    // Determine which query to use based on parameters
+    let credit_lines_result = if let Some(merchant_id) = query.merchant_id {
+        // Query by merchant ID
+        list_merchant_active_credit_lines_with_pools(&state.pool, merchant_id, limit, offset).await
+    } else if let Some(pool_id) = query.pool_id {
+        // Query by pool ID
+        list_pool_active_credit_lines_with_details(&state.pool, pool_id, limit, offset).await
+    } else {
+        // Query all active credit lines
+        list_active_credit_lines_with_pools(&state.pool, limit, offset).await
+    };
+
+    let credit_lines = match credit_lines_result {
+        Ok(credit_lines) => credit_lines,
+        Err(e) => {
+            error!("Failed to get active credit lines: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(CreditLineErrorResponse {
+                    error: "Internal server error".to_string(),
+                    code: "INTERNAL_ERROR".to_string(),
+                    details: None,
+                }),
+            ));
+        }
+    };
+
+    // Convert to API response format
+    let credit_line_responses: Vec<ActiveCreditLineResponse> = credit_lines
+        .into_iter()
+        .map(|cl| convert_to_active_credit_line_response(cl))
+        .collect();
+
+    let response = ActiveCreditLinesListResponse {
+        credit_lines: credit_line_responses.clone(),
+        total_count: credit_line_responses.len() as u32, // TODO: Get actual total count
+        has_more: credit_line_responses.len() == limit as usize,
+    };
+
+    Ok(Json(response))
+}
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/// Convert database model to API response format
+fn convert_to_active_credit_line_response(
+    cl: ActiveCreditLineWithPool,
+) -> ActiveCreditLineResponse {
+    let credit_limit = cl.credit_limit.unwrap_or_default().to_f64().unwrap_or(0.0);
+    let available_credit = cl
+        .available_credit
+        .unwrap_or_default()
+        .to_f64()
+        .unwrap_or(0.0);
+    let utilized_amount = cl
+        .utilized_amount
+        .unwrap_or_default()
+        .to_f64()
+        .unwrap_or(0.0);
+    let pool_total_deposits = cl
+        .pool_total_deposits
+        .unwrap_or_default()
+        .to_f64()
+        .unwrap_or(0.0);
+    let pool_available_liquidity = cl
+        .pool_available_liquidity
+        .unwrap_or_default()
+        .to_f64()
+        .unwrap_or(0.0);
+
+    // Calculate utilization percentage
+    let utilization_percentage = if credit_limit > 0.0 {
+        (utilized_amount / credit_limit * 100.0).min(100.0).max(0.0)
+    } else {
+        0.0
+    };
+
+    // Calculate pool utilization percentage
+    let pool_utilized_percentage = if pool_total_deposits > 0.0 {
+        let pool_utilized = pool_total_deposits - pool_available_liquidity;
+        (pool_utilized / pool_total_deposits * 100.0)
+            .min(100.0)
+            .max(0.0)
+    } else {
+        0.0
+    };
+
+    ActiveCreditLineResponse {
+        credit_line_id: cl.credit_line_id,
+        merchant_id: cl.merchant_id,
+        pool_id: cl.pool_id,
+        pool_name: cl.pool_name,
+        credit_limit: format!("${:.2}", credit_limit / 100.0),
+        available_credit: format!("${:.2}", available_credit / 100.0),
+        utilized_amount: format!("${:.2}", utilized_amount / 100.0),
+        utilization_percentage: format!("{:.1}%", utilization_percentage),
+        rate_apr: format!(
+            "{:.2}%",
+            cl.rate_apr.unwrap_or_default().to_f64().unwrap_or(0.0) / 100.0
+        ),
+        repayment_window_days: cl.repayment_window_days.unwrap_or(30) as u32,
+        credit_line_status: cl.credit_line_status.unwrap_or("UNKNOWN".to_string()),
+        opened_at: DateTime::<Utc>::from_naive_utc_and_offset(
+            cl.opened_at.unwrap_or_default(),
+            Utc,
+        ),
+        expires_at: cl
+            .expires_at
+            .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc)),
+        pool_details: ActivePoolDetails {
+            total_deposits: format!("${:.2}", pool_total_deposits / 100.0),
+            available_liquidity: format!("${:.2}", pool_available_liquidity / 100.0),
+            utilized_percentage: format!("{:.1}%", pool_utilized_percentage),
+            pool_status: cl.pool_status.unwrap_or("UNKNOWN".to_string()),
+            investor_id: cl.investor_id.unwrap_or_default(),
+            max_ltv_ratio: format!(
+                "{:.1}%",
+                cl.max_ltv_ratio.unwrap_or_default().to_f64().unwrap_or(0.0) / 100.0
+            ),
+            max_interest_rate: format!(
+                "{:.2}%",
+                cl.max_interest_rate
+                    .unwrap_or_default()
+                    .to_f64()
+                    .unwrap_or(0.0)
+                    / 100.0
+            ),
+        },
+    }
+}
 
 /// Get description for eligibility check
 fn get_check_description(check_name: &str) -> String {

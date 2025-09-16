@@ -184,6 +184,7 @@ pub struct Merchant {
     pub country: String,
     pub kyc_status: String, // NOT_SUBMITTED, PENDING, APPROVED, REJECTED
     pub business_type: Option<String>, // LLC, CORP, SOLE_PROP, PARTNERSHIP, OTHER
+    pub borough: Option<String>, // Geographic region for lending limits
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -3427,6 +3428,48 @@ pub struct PoolMatchingCriteria {
     pub min_repayment_days: i32,
 }
 
+/// Database model for pool borough limits
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PoolBoroughLimit {
+    pub id: uuid::Uuid,
+    pub pool_id: uuid::Uuid,
+    pub borough: String,
+    pub max_percentage: rust_decimal::Decimal,
+    pub current_allocated: rust_decimal::Decimal,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Request structure for setting pool borough limits
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetPoolBoroughLimitRequest {
+    pub pool_id: uuid::Uuid,
+    pub borough: String,
+    pub max_percentage: rust_decimal::Decimal, // 0.1000 = 10%
+}
+
+/// Response structure for borough validation
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoroughValidationResult {
+    pub is_valid: bool,
+    pub current_allocated: rust_decimal::Decimal,
+    pub max_allowed: rust_decimal::Decimal,
+    pub total_pool_deposits: rust_decimal::Decimal,
+    pub percentage_after_loan: rust_decimal::Decimal,
+    pub max_percentage: rust_decimal::Decimal,
+}
+
+/// Borough summary for a pool
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct PoolBoroughSummary {
+    pub borough: String,
+    pub current_allocated: rust_decimal::Decimal,
+    pub max_percentage: rust_decimal::Decimal,
+    pub max_allowed: rust_decimal::Decimal,
+    pub remaining_capacity: rust_decimal::Decimal,
+    pub utilization_percentage: rust_decimal::Decimal,
+}
+
 /// Validate pool parameters
 pub fn validate_pool_parameters(
     max_ltv_ratio: rust_decimal::Decimal,
@@ -4106,7 +4149,7 @@ pub async fn get_investor_pool_metrics(
             COALESCE(SUM(lp.utilized_liquidity), 0) as "total_capital_deployed!",
             -- Lifetime percentage yield: total interest earned / total capital provided
             CASE
-                WHEN SUM(lp.total_deposits) > 0 THEN 
+                WHEN SUM(lp.total_deposits) > 0 THEN
                     (COALESCE((
                         SELECT SUM(amount)
                         FROM pool_financial_transactions pft
@@ -4152,8 +4195,8 @@ pub async fn get_investor_pool_metrics(
                 )
             ), 0)::int8 as "total_loans_originated!",
             COALESCE((
-                SELECT 
-                    CASE 
+                SELECT
+                    CASE
                         WHEN COUNT(*) > 0 THEN (COUNT(CASE WHEN cl.status = 'DEFAULTED' THEN 1 END)::decimal / COUNT(*)::decimal) * 100
                         ELSE 0
                     END
@@ -4509,6 +4552,7 @@ pub async fn create_merchant(
         country: result.country,
         kyc_status: result.kyc_status,
         business_type: result.business_type,
+        borough: None, // New merchants don't have borough set initially
         created_at: result
             .created_at
             .expect("created_at should not be null")
@@ -4532,6 +4576,7 @@ pub async fn get_merchant_by_user_id(
             country as "country!: String",
             kyc_status as "kyc_status!: String",
             business_type,
+            borough,
             created_at, updated_at
         FROM merchants
         WHERE user_id = $1
@@ -4552,6 +4597,7 @@ pub async fn get_merchant_by_user_id(
             country: row.country,
             kyc_status: row.kyc_status,
             business_type: row.business_type,
+            borough: row.borough,
             created_at: row
                 .created_at
                 .expect("created_at should not be null")
@@ -4579,6 +4625,7 @@ pub async fn get_merchant_by_id(
             country as "country!: String",
             kyc_status as "kyc_status!: String",
             business_type,
+            borough,
             created_at, updated_at
         FROM merchants
         WHERE id = $1
@@ -4599,6 +4646,7 @@ pub async fn get_merchant_by_id(
             country: row.country,
             kyc_status: row.kyc_status,
             business_type: row.business_type,
+            borough: row.borough,
             created_at: row
                 .created_at
                 .expect("created_at should not be null")
@@ -5581,6 +5629,55 @@ pub async fn create_pool_financial_transaction(
     Ok(transaction)
 }
 
+/// Update pool balances after financial transaction
+pub async fn update_pool_balance_after_transaction(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    transaction_type: &str,
+    amount: rust_decimal::Decimal,
+) -> Result<(), sqlx::Error> {
+    match transaction_type {
+        "FUND" => {
+            // Increase total_deposits and available_liquidity
+            sqlx::query!(
+                r#"
+                UPDATE liquidity_pools
+                SET total_deposits = total_deposits + $1,
+                    available_liquidity = available_liquidity + $1,
+                    updated_at = NOW()
+                WHERE id = $2
+                "#,
+                amount,
+                pool_id
+            )
+            .execute(pool)
+            .await?;
+        }
+        "WITHDRAW" => {
+            // Decrease total_deposits and available_liquidity
+            sqlx::query!(
+                r#"
+                UPDATE liquidity_pools
+                SET total_deposits = GREATEST(total_deposits - $1, 0),
+                    available_liquidity = GREATEST(available_liquidity - $1, 0),
+                    updated_at = NOW()
+                WHERE id = $2
+                "#,
+                amount,
+                pool_id
+            )
+            .execute(pool)
+            .await?;
+        }
+        _ => {
+            // For other transaction types (INTEREST, RETURN), don't modify balances
+            return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
 /// Create credit line financial transaction
 pub async fn create_credit_line_financial_transaction(
     pool: &PgPool,
@@ -5940,4 +6037,184 @@ pub async fn get_user_financial_summary(
             .total_credit_line_draws
             .unwrap_or(rust_decimal::Decimal::ZERO),
     })
+}
+
+// ============================================================================
+// POOL BOROUGH LIMIT FUNCTIONS
+// ============================================================================
+
+/// Set or update a borough percentage limit for a pool
+pub async fn set_pool_borough_limit(
+    pool: &PgPool,
+    request: SetPoolBoroughLimitRequest,
+) -> Result<PoolBoroughLimit, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO pool_borough_limits (pool_id, borough, max_percentage, current_allocated)
+        VALUES ($1, $2, $3, 0)
+        ON CONFLICT (pool_id, borough)
+        DO UPDATE SET
+            max_percentage = $3,
+            updated_at = NOW()
+        RETURNING id, pool_id, borough, max_percentage, current_allocated, created_at, updated_at
+        "#,
+        request.pool_id,
+        request.borough,
+        request.max_percentage
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let limit = PoolBoroughLimit {
+        id: result.id,
+        pool_id: result.pool_id,
+        borough: result.borough,
+        max_percentage: result.max_percentage,
+        current_allocated: result.current_allocated,
+        created_at: result.created_at.unwrap_or_else(|| Utc::now()),
+        updated_at: result.updated_at.unwrap_or_else(|| Utc::now()),
+    };
+
+    Ok(limit)
+}
+
+/// Get all borough limits for a specific pool
+pub async fn get_pool_borough_limits(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+) -> Result<Vec<PoolBoroughLimit>, sqlx::Error> {
+    let results = sqlx::query!(
+        r#"
+        SELECT id, pool_id, borough, max_percentage, current_allocated, created_at, updated_at
+        FROM pool_borough_limits
+        WHERE pool_id = $1
+        ORDER BY borough ASC
+        "#,
+        pool_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let limits = results
+        .into_iter()
+        .map(|row| PoolBoroughLimit {
+            id: row.id,
+            pool_id: row.pool_id,
+            borough: row.borough,
+            max_percentage: row.max_percentage,
+            current_allocated: row.current_allocated,
+            created_at: row.created_at.unwrap_or_else(|| Utc::now()),
+            updated_at: row.updated_at.unwrap_or_else(|| Utc::now()),
+        })
+        .collect();
+
+    Ok(limits)
+}
+
+/// Validate if a loan request would exceed borough percentage limits
+pub async fn validate_borough_borrowing_limit(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    borough: &str,
+    requested_amount: rust_decimal::Decimal,
+) -> Result<BoroughValidationResult, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        SELECT * FROM validate_borough_borrowing_limit($1, $2, $3)
+        "#,
+        pool_id,
+        borough,
+        requested_amount
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(BoroughValidationResult {
+        is_valid: result.is_valid.unwrap_or(false),
+        current_allocated: result
+            .current_allocated
+            .unwrap_or(rust_decimal::Decimal::ZERO),
+        max_allowed: result.max_allowed.unwrap_or(rust_decimal::Decimal::ZERO),
+        total_pool_deposits: result
+            .total_pool_deposits
+            .unwrap_or(rust_decimal::Decimal::ZERO),
+        percentage_after_loan: result
+            .percentage_after_loan
+            .unwrap_or(rust_decimal::Decimal::ZERO),
+        max_percentage: result.max_percentage.unwrap_or(rust_decimal::Decimal::ONE),
+    })
+}
+
+/// Update borough allocation when loans are originated or repaid
+pub async fn update_borough_allocation(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    borough: &str,
+    amount_change: rust_decimal::Decimal,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        SELECT update_borough_allocation($1, $2, $3)
+        "#,
+        pool_id,
+        borough,
+        amount_change
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Get borough allocation summary for a pool
+pub async fn get_pool_borough_summary(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+) -> Result<Vec<PoolBoroughSummary>, sqlx::Error> {
+    let results = sqlx::query!(
+        r#"
+        SELECT * FROM get_pool_borough_summary($1)
+        "#,
+        pool_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let summaries = results
+        .into_iter()
+        .map(|row| PoolBoroughSummary {
+            borough: row.borough.unwrap_or_default(),
+            current_allocated: row.current_allocated.unwrap_or(rust_decimal::Decimal::ZERO),
+            max_percentage: row.max_percentage.unwrap_or(rust_decimal::Decimal::ZERO),
+            max_allowed: row.max_allowed.unwrap_or(rust_decimal::Decimal::ZERO),
+            remaining_capacity: row
+                .remaining_capacity
+                .unwrap_or(rust_decimal::Decimal::ZERO),
+            utilization_percentage: row
+                .utilization_percentage
+                .unwrap_or(rust_decimal::Decimal::ZERO),
+        })
+        .collect();
+
+    Ok(summaries)
+}
+
+/// Delete a borough limit for a pool
+pub async fn delete_pool_borough_limit(
+    pool: &PgPool,
+    pool_id: uuid::Uuid,
+    borough: &str,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        DELETE FROM pool_borough_limits
+        WHERE pool_id = $1 AND borough = $2
+        "#,
+        pool_id,
+        borough
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() > 0)
 }

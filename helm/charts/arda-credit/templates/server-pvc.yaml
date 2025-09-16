@@ -1,0 +1,22 @@
+{{- if and .Values.server.enabled .Values.server.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-server-data
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  annotations:
+    {{- with .Values.server.persistence.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  accessModes:
+    - {{ .Values.server.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.server.persistence.size }}
+  {{- if .Values.server.persistence.storageClass }}
+  storageClassName: {{ .Values.server.persistence.storageClass }}
+  {{- end }}
+{{- end }}
