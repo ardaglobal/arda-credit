@@ -1,5 +1,6 @@
 use axum::{
-    response::Json,
+    extract::State,
+    response::{Json, Response},
     routing::{delete, get, post, put},
     Router,
 };
@@ -158,6 +159,8 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::ROOT, get(crate::health_handlers::api_info))
         .route(paths::API_HEALTH, get(crate::health_handlers::health_check))
         .route(paths::API_INFO, get(crate::health_handlers::api_info))
+        // Prometheus metrics endpoint
+        .route("/metrics", get(metrics_handler))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
         // Authentication endpoints
@@ -541,4 +544,20 @@ fn swagger_ui() -> Router<ApiState> {
     SwaggerUi::new("/api-docs")
         .url("/api-docs/openapi.json", get_openapi_spec())
         .into()
+}
+
+/// Prometheus metrics endpoint handler
+#[instrument(skip(state))]
+async fn metrics_handler(State(state): State<ApiState>) -> impl axum::response::IntoResponse {
+    use metrics_exporter_prometheus::PrometheusBuilder;
+    
+    // Get metrics from the global registry
+    let builder = PrometheusBuilder::new();
+    let recorder = builder.build_recorder();
+    let metrics = recorder.handle().render();
+    axum::response::Response::builder()
+        .status(200)
+        .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
+        .body(metrics)
+        .unwrap()
 }

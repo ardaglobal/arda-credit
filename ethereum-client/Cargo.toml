@@ -48,6 +48,7 @@ reqwest = { workspace = true, features = [ "json" ] }
 hex       = { workspace = true }
 once_cell = { workspace = true }
 url       = { workspace = true, features = [ "serde" ] }
+metrics   = { workspace = true }
 
 # Database integration (optional for caching/indexing)
 chrono = { workspace = true, features = [ "serde" ], optional = true }

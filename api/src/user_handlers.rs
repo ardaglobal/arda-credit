@@ -15,6 +15,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
+use metrics;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::paths;
@@ -220,6 +221,11 @@ pub async fn register_user_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<RegisterUserRequest>,
 ) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
+    let start_time = std::time::Instant::now();
+    
+    // Record business logic operation
+    metrics::counter!("business_logic_operations_total", "operation" => "register_user").increment(1);
+    
     info!(
         "👤 API: Registering new user: type={}, email={}, invite_code={:?}",
         request.user_type, request.email, request.invite_code
@@ -344,6 +350,11 @@ pub async fn register_user_endpoint(
                 }
             }
 
+            // Record function execution time
+            let duration = start_time.elapsed();
+            metrics::histogram!("function_execution_duration_seconds", "function" => "register_user")
+                .record(duration.as_secs_f64());
+            
             Ok(Json(identity_to_register_response(identity)))
         }
         Ok(RegisterResult::Reregistered(identity)) => {
@@ -376,6 +387,11 @@ pub async fn register_user_endpoint(
                 }
             }
 
+            // Record function execution time for re-registration
+            let duration = start_time.elapsed();
+            metrics::histogram!("function_execution_duration_seconds", "function" => "register_user")
+                .record(duration.as_secs_f64());
+            
             Ok(Json(identity_to_register_response(identity)))
         }
         Ok(RegisterResult::AlreadyExists) => {
@@ -383,6 +399,7 @@ pub async fn register_user_endpoint(
                 "❌ API: Registration failed - user with email already exists and is active: {}",
                 request.email
             );
+            metrics::counter!("business_logic_errors_total", "operation" => "register_user", "error_type" => "already_exists").increment(1);
             Err((
                 StatusCode::CONFLICT,
                 "User with this email already exists".to_string(),
@@ -390,6 +407,7 @@ pub async fn register_user_endpoint(
         }
         Err(e) => {
             error!("❌ API: Failed to register user: {}", e);
+            metrics::counter!("business_logic_errors_total", "operation" => "register_user", "error_type" => "database_error").increment(1);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Failed to register user".to_string(),

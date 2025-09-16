@@ -13,7 +13,7 @@ use tower_http::{
     timeout::TimeoutLayer,
     trace::TraceLayer,
 };
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::auth::AuthService;
 use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
@@ -146,6 +146,14 @@ impl ApiServer {
             balance_service,
         };
 
+        // Initialize Prometheus metrics
+        info!("📊 Initializing Prometheus metrics");
+        let _metrics_handle = crate::metrics::MetricsHandle::new()
+            .map_err(|e| {
+                warn!("Failed to initialize metrics: {}", e);
+                e
+            })?;
+
         let server = Self { config, state };
 
         info!("✅ API server initialized successfully");
@@ -187,6 +195,14 @@ impl ApiServer {
             withdrawal_service,
             balance_service,
         };
+
+        // Initialize Prometheus metrics
+        info!("📊 Initializing Prometheus metrics");
+        let _metrics_handle = crate::metrics::MetricsHandle::new()
+            .map_err(|e| {
+                warn!("Failed to initialize metrics: {}", e);
+                e
+            })?;
 
         Ok(Self { config, state })
     }
@@ -272,6 +288,7 @@ impl ApiServer {
     /// Add middleware layers to the router
     fn add_middleware_with_state(&self, router: Router) -> Router {
         let mut router = router
+            .layer(axum::middleware::from_fn(crate::metrics::metrics_middleware))
             .layer(TraceLayer::new_for_http())
             .layer(RequestBodyLimitLayer::new(
                 self.config.max_request_size_bytes,
