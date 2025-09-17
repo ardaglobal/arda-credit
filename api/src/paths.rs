@@ -384,6 +384,16 @@ pub const STATE_PROOF: &str = api_path!("/state/proof/{transaction_type}/{transa
 pub const STATE_VERIFY: &str = api_path!("/state/verify");
 
 // ============================================================================
+// CONTRACT CONFIGURATION PATHS
+// ============================================================================
+
+/// Get Arda contract configuration (address, network details)
+pub const CONTRACT_CONFIG: &str = api_path!("/contract/config");
+
+/// Get real-time transaction updates via Server-Sent Events (SSE)
+pub const TRANSACTION_UPDATES_SSE: &str = api_path!("/transactions/updates");
+
+// ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================
 
@@ -1015,6 +1025,18 @@ pub fn get_all_endpoints() -> Vec<crate::health_handlers::EndpointInfo> {
             method: "POST".to_string(),
             path: AUTH_LOGOUT.to_string(),
             description: "User logout authentication".to_string(),
+        },
+        // Contract Configuration Endpoints
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: CONTRACT_CONFIG.to_string(),
+            description: "Get Arda contract configuration (address, network details)".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: TRANSACTION_UPDATES_SSE.to_string(),
+            description: "Get real-time transaction updates via Server-Sent Events (SSE)"
+                .to_string(),
         },
     ]
 }

@@ -19,6 +19,9 @@ pub use crate::authentication_handlers::{
     LogoutResponse, ValidateInviteCodeResponse,
 };
 pub use crate::balance_service::AvailableBalance;
+pub use crate::contract_handlers::{
+    ContractConfigQuery, ContractConfigResponse, TransactionUpdateEvent, TransactionUpdatesQuery,
+};
 pub use crate::credit_line_handlers::{
     ActiveCreditLineResponse, ActiveCreditLinesListResponse, ActiveCreditLinesQuery,
     ActivePoolDetails, AvailablePoolResponse, CreditLineErrorResponse,
@@ -230,6 +233,10 @@ fn default_limit() -> u32 {
         crate::turnover_handlers::update_turnover_endpoint,
         crate::turnover_handlers::get_turnover_analytics_endpoint,
         crate::turnover_handlers::get_profile_completion_endpoint,
+
+        // Contract configuration endpoints
+        crate::contract_handlers::get_contract_config,
+        crate::contract_handlers::get_transaction_updates,
     ),
     tags(
         (name = "Authentication", description = "User authentication endpoints"),
@@ -259,7 +266,9 @@ fn default_limit() -> u32 {
         (name = "Analytics", description = "Platform analytics and reporting"),
         (name = "Admin", description = "Administrative operations"),
         (name = "Health", description = "Health check and system information"),
-        (name = "Info", description = "API information and discovery")
+        (name = "Info", description = "API information and discovery"),
+        (name = "contract", description = "Contract configuration and blockchain integration"),
+        (name = "transactions", description = "Real-time transaction monitoring and updates")
     ),
     components(schemas(
         // Authentication types
@@ -408,7 +417,13 @@ fn default_limit() -> u32 {
         BoroughSummaryResponse,
         ValidateBoroughQuery,
         BoroughValidationResponse,
-        BoroughErrorResponse
+        BoroughErrorResponse,
+
+        // Contract configuration types
+        ContractConfigResponse,
+        ContractConfigQuery,
+        TransactionUpdateEvent,
+        TransactionUpdatesQuery
     ))
 )]
 pub struct ApiDoc;

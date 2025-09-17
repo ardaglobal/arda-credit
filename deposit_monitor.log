@@ -1,0 +1,38 @@
+warning: patch for the non root package will be ignored, specify patch at the workspace root:
+package:   /Users/horizon/Desktop/work/arda-credit/api/Cargo.toml
+workspace: /Users/horizon/Desktop/work/arda-credit/Cargo.toml
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Finished `release` profile [optimized] target(s) in 0.91s
+     Running `target/release/deposit_monitor --database-url 'postgresql://postgres:password@127.0.0.1:5432/arda_credit_db' --ethereum-rpc-url 'https://eth-sepolia.g.alchemy.com/v2/TeiXdIUihPUGQwux8Pfi-' --contract-address 0xc52AdA53f2a6911b398B804BC57D5D773DB59f92`
+[2m2025-09-17T23:49:41.580296Z[0m [32m INFO[0m Starting USDC Deposit Monitor
+[2m2025-09-17T23:49:41.580406Z[0m [32m INFO[0m Database URL: postgresql://postgres:***@127.0.0.1:5432/arda_credit_db
+[2m2025-09-17T23:49:41.580431Z[0m [32m INFO[0m Ethereum RPC: https://eth-sepolia.g.alchemy.com/v2/TeiXdIUihPUGQwux8Pfi-
+[2m2025-09-17T23:49:41.580434Z[0m [32m INFO[0m Contract: 0xc52AdA53f2a6911b398B804BC57D5D773DB59f92
+[2m2025-09-17T23:49:41.580436Z[0m [32m INFO[0m Confirmations: 12
+[2m2025-09-17T23:49:41.580438Z[0m [32m INFO[0m Connecting to database...
+[2m2025-09-17T23:49:41.594690Z[0m [32m INFO[0m Database connection established
+[2m2025-09-17T23:49:41.594702Z[0m [32m INFO[0m Connecting to Ethereum node...
+[2m2025-09-17T23:49:41.603636Z[0m [32m INFO[0m 🔍 Validating verification key compatibility with smart contract...
+[2m2025-09-17T23:49:41.999677Z[0m [32m INFO[0m 📍 Smart contract verification key: 0x00c2f4e4c0c0e6b33e55a98ac99c81a5e9b8c2b8a1e7d6a5c4b3a29081967f65
+[2m2025-09-17T23:49:41.999982Z[0m [32m INFO[0m 📁 Local verification key (from vk.json): 0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b
+[2m2025-09-17T23:49:41.999996Z[0m [31mERROR[0m ❌ Verification key mismatch!
+Smart Contract VKey: 0x00c2f4e4c0c0e6b33e55a98ac99c81a5e9b8c2b8a1e7d6a5c4b3a29081967f65
+Local VKey (vk.json): 0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b
+
+This means proofs generated with your current circuit will be REJECTED by the smart contract.
+
+Solutions:
+1. Deploy a new contract with the correct verification key: 0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b
+2. Use a circuit that matches the contract's verification key: 0x00c2f4e4c0c0e6b33e55a98ac99c81a5e9b8c2b8a1e7d6a5c4b3a29081967f65
+[2m2025-09-17T23:49:42.000002Z[0m [31mERROR[0m Verification key validation failed during client initialization: Configuration error: Verification key mismatch!
+Smart Contract VKey: 0x00c2f4e4c0c0e6b33e55a98ac99c81a5e9b8c2b8a1e7d6a5c4b3a29081967f65
+Local VKey (vk.json): 0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b
+
+This means proofs generated with your current circuit will be REJECTED by the smart contract.
+
+Solutions:
+1. Deploy a new contract with the correct verification key: 0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b
+2. Use a circuit that matches the contract's verification key: 0x00c2f4e4c0c0e6b33e55a98ac99c81a5e9b8c2b8a1e7d6a5c4b3a29081967f65
+Error: Config("Verification key mismatch!\nSmart Contract VKey: 0x00c2f4e4c0c0e6b33e55a98ac99c81a5e9b8c2b8a1e7d6a5c4b3a29081967f65\nLocal VKey (vk.json): 0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b\n\nThis means proofs generated with your current circuit will be REJECTED by the smart contract.\n\nSolutions:\n1. Deploy a new contract with the correct verification key: 0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b\n2. Use a circuit that matches the contract's verification key: 0x00c2f4e4c0c0e6b33e55a98ac99c81a5e9b8c2b8a1e7d6a5c4b3a29081967f65")

@@ -292,12 +292,20 @@ i2p:
 	@echo "📄 Output saved to: .evals/i2p_dynamic_prompt.md"
 	@echo "🤖 Ready for AI agent execution (Cursor, Claude Code, etc.)"
 
-## server: Start API server locally (in debug mode with verbose logging)
+## server: Start API server locally (in debug mode with verbose logging) with deposit monitor
 .PHONY: server
 server: up
 	@sleep 2
 	@echo "Running database migrations..."
 	sqlx migrate run --source db/migrations
+	@echo "Starting deposit monitor in background..."
+	@SQLX_OFFLINE=true cargo run -p ethereum-client --bin deposit_monitor --release -- \
+		--database-url postgresql://postgres:password@127.0.0.1:5432/arda_credit_db \
+		--ethereum-rpc-url $$ETHEREUM_RPC_URL \
+		--contract-address $$ETHEREUM_CONTRACT_ADDRESS \
+		> deposit_monitor.log 2>&1 &
+	@echo "Deposit monitor started (logs: deposit_monitor.log)"
+	@echo "Starting API server..."
 	RUST_LOG=debug cargo run --bin server
 
 ## forge-build: Build smart contracts

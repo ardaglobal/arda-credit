@@ -189,7 +189,14 @@ async fn create_ethereum_client(
             notify_addresses: vec![],
             rate_limit_per_second: 10,
         },
-        signer: None,
+        signer: Some(ethereum_client::config::SignerConfig {
+            private_key: std::env::var("ETHEREUM_WALLET_PRIVATE_KEY").unwrap_or_else(|_| {
+                "0000000000000000000000000000000000000000000000000000000000000001".to_string()
+            }),
+            address: "0x0000000000000000000000000000000000000000"
+                .parse()
+                .unwrap(),
+        }),
         monitoring: ethereum_client::config::MonitoringConfig {
             enable_event_monitoring: true,
             polling_interval_seconds: 12,
