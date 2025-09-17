@@ -21,7 +21,7 @@ default = [ "tikv-jemallocator" ]
 [dependencies]
 chrono = { version = "0.4", features = [ "serde" ] }
 lib = { path = "../lib" }
-rust_decimal = "1.33"
+rust_decimal = "1.38"
 serde = { workspace = true }
 sqlx = { workspace = true, features = [
     "chrono",

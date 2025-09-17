@@ -14,6 +14,29 @@ use uuid::Uuid;
 
 use crate::DbResult;
 
+/// Active credit line with liquidity pool details
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ActiveCreditLineWithPool {
+    pub credit_line_id: Uuid,
+    pub merchant_id: Uuid,
+    pub pool_id: Uuid,
+    pub pool_name: String,
+    pub credit_limit: Option<Decimal>,
+    pub available_credit: Option<Decimal>,
+    pub utilized_amount: Option<Decimal>,
+    pub rate_apr: Option<Decimal>,
+    pub repayment_window_days: Option<i32>,
+    pub credit_line_status: Option<String>,
+    pub opened_at: Option<NaiveDateTime>,
+    pub expires_at: Option<NaiveDateTime>,
+    pub pool_total_deposits: Option<Decimal>,
+    pub pool_available_liquidity: Option<Decimal>,
+    pub pool_status: Option<String>,
+    pub investor_id: Option<Uuid>,
+    pub max_ltv_ratio: Option<Decimal>,
+    pub max_interest_rate: Option<Decimal>,
+}
+
 /// Credit line request data structure
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CreditLineRequest {
@@ -572,6 +595,144 @@ pub async fn get_merchant_credit_line_stats(
             0
         },
     })
+}
+
+/// Get all active credit lines with their corresponding liquidity pool details
+pub async fn list_active_credit_lines_with_pools(
+    pool: &PgPool,
+    limit: i64,
+    offset: i64,
+) -> DbResult<Vec<ActiveCreditLineWithPool>> {
+    let credit_lines = sqlx::query_as!(
+        ActiveCreditLineWithPool,
+        r#"
+        SELECT
+            cl.id as credit_line_id,
+            cl.merchant_id,
+            cl.pool_id,
+            lp.name as pool_name,
+            cl.credit_limit,
+            cl.available_credit,
+            cl.utilized_amount,
+            cl.rate_apr,
+            cl.repayment_window_days,
+            cl.status as credit_line_status,
+            cl.opened_at,
+            cl.expires_at,
+            lp.total_deposits as pool_total_deposits,
+            lp.available_liquidity as pool_available_liquidity,
+            lp.status as pool_status,
+            lp.investor_id,
+            lp.max_ltv_ratio,
+            lp.max_interest_rate
+        FROM credit_lines cl
+        INNER JOIN liquidity_pools lp ON cl.pool_id = lp.id
+        WHERE cl.status = 'ACTIVE'
+          AND lp.status = 'ACTIVE'
+        ORDER BY cl.opened_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(credit_lines)
+}
+
+/// Get active credit lines with pools by merchant
+pub async fn list_merchant_active_credit_lines_with_pools(
+    pool: &PgPool,
+    merchant_id: Uuid,
+    limit: i64,
+    offset: i64,
+) -> DbResult<Vec<ActiveCreditLineWithPool>> {
+    let credit_lines = sqlx::query_as!(
+        ActiveCreditLineWithPool,
+        r#"
+        SELECT
+            cl.id as credit_line_id,
+            cl.merchant_id,
+            cl.pool_id,
+            lp.name as pool_name,
+            cl.credit_limit,
+            cl.available_credit,
+            cl.utilized_amount,
+            cl.rate_apr,
+            cl.repayment_window_days,
+            cl.status as credit_line_status,
+            cl.opened_at,
+            cl.expires_at,
+            lp.total_deposits as pool_total_deposits,
+            lp.available_liquidity as pool_available_liquidity,
+            lp.status as pool_status,
+            lp.investor_id,
+            lp.max_ltv_ratio,
+            lp.max_interest_rate
+        FROM credit_lines cl
+        INNER JOIN liquidity_pools lp ON cl.pool_id = lp.id
+        WHERE cl.merchant_id = $1
+          AND cl.status = 'ACTIVE'
+          AND lp.status = 'ACTIVE'
+        ORDER BY cl.opened_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        merchant_id,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(credit_lines)
+}
+
+/// Get active credit lines with pools by pool
+pub async fn list_pool_active_credit_lines_with_details(
+    pool: &PgPool,
+    pool_id: Uuid,
+    limit: i64,
+    offset: i64,
+) -> DbResult<Vec<ActiveCreditLineWithPool>> {
+    let credit_lines = sqlx::query_as!(
+        ActiveCreditLineWithPool,
+        r#"
+        SELECT
+            cl.id as credit_line_id,
+            cl.merchant_id,
+            cl.pool_id,
+            lp.name as pool_name,
+            cl.credit_limit,
+            cl.available_credit,
+            cl.utilized_amount,
+            cl.rate_apr,
+            cl.repayment_window_days,
+            cl.status as credit_line_status,
+            cl.opened_at,
+            cl.expires_at,
+            lp.total_deposits as pool_total_deposits,
+            lp.available_liquidity as pool_available_liquidity,
+            lp.status as pool_status,
+            lp.investor_id,
+            lp.max_ltv_ratio,
+            lp.max_interest_rate
+        FROM credit_lines cl
+        INNER JOIN liquidity_pools lp ON cl.pool_id = lp.id
+        WHERE cl.pool_id = $1
+          AND cl.status = 'ACTIVE'
+          AND lp.status = 'ACTIVE'
+        ORDER BY cl.opened_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        pool_id,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(credit_lines)
 }
 
 /// Merchant credit line statistics

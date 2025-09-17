@@ -1,12 +1,15 @@
 use chrono::Utc;
 use db::{
-    create_credit_line_request, create_identity_with_password, create_investor_profile,
-    create_liquidity_pool, create_merchant, create_merchant_profile, create_usdc_deposit,
-    submit_kyc_data, update_identity_profile, CreateCreditLineRequestData,
-    CreateInvestorProfileRequest, CreateLiquidityPoolRequest, CreateMerchantProfileRequest,
-    CreateMerchantRequest,
+    create_credit_line, create_credit_line_request, create_identity_with_password,
+    create_investor_profile, create_liquidity_pool, create_merchant, create_merchant_profile,
+    create_usdc_deposit, find_matching_liquidity_pools, set_pool_borough_limit, submit_kyc_data,
+    update_borough_allocation, update_credit_line_request_status, update_identity_profile,
+    CreateCreditLineRequestData, CreateInvestorProfileRequest, CreateLiquidityPoolRequest,
+    CreateMerchantProfileRequest, CreateMerchantRequest, CreditLineStatus, PoolMatchingCriteria,
+    SetPoolBoroughLimitRequest,
 };
 use rand::Rng;
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::env;
@@ -28,9 +31,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔧 Running migrations...");
     sqlx::migrate!("./migrations").run(&pool).await?;
 
-    println!("🎲 Starting fake data population based on PERFORMANCE.md...");
+    println!("🎲 Starting fake data population");
 
-    // Based on PERFORMANCE.md:
+    // Based on docs/architecture/performance-targets.md:
     // - 100 new users per day (U=100)
     // - 10 new loans per day (L=10)
     // Mix of investors, lenders, and merchants
@@ -112,10 +115,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 create_investor_profile(&pool, user.id, &profile_request).await?;
             }
             "merchant" => {
+                // Diverse NYC boroughs for testing borough limits
+                let boroughs = vec![
+                    "Manhattan",
+                    "Brooklyn",
+                    "Queens",
+                    "Bronx",
+                    "Staten Island",
+                    "Long Island",
+                    "Westchester",
+                    "New Jersey",
+                    "Connecticut",
+                ];
+                let selected_borough = boroughs[rng.random_range(0..boroughs.len())];
+
                 // Create merchant
                 let merchant_request = CreateMerchantRequest {
-                    legal_name: format!("Business LLC {}", i),
-                    dba: Some(format!("Store {}", i)),
+                    legal_name: format!("Business LLC {} - {}", i, selected_borough),
+                    dba: Some(format!("Store {} - {}", i, selected_borough)),
                     tax_id: Some(format!("12-{}{}", 1000000 + i, Utc::now().timestamp())),
                     mcc: Some("5411".to_string()), // Grocery stores
                     country: "US".to_string(),
@@ -125,17 +142,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let merchant = create_merchant(&pool, user.id, &merchant_request).await?;
                 merchant_ids.push(merchant.id);
 
-                // Create merchant profile
+                // Update merchant with borough information
+                sqlx::query!(
+                    "UPDATE merchants SET borough = $1 WHERE id = $2",
+                    selected_borough,
+                    merchant.id
+                )
+                .execute(&pool)
+                .await?;
+
+                // Create merchant profile with varied data
+                let industries = vec![
+                    "Retail",
+                    "Food Service",
+                    "Technology",
+                    "Healthcare",
+                    "Manufacturing",
+                ];
                 let profile_request = CreateMerchantProfileRequest {
-                    industry: Some("Retail".to_string()),
+                    industry: Some(industries[rng.random_range(0..industries.len())].to_string()),
                     years_in_business: Some(rng.random_range(1..20)),
                     employee_count: Some(rng.random_range(1..50)),
                     monthly_revenue_estimate: Some(Decimal::from(rng.random_range(5000..100000))),
-                    business_description: Some(
-                        "Retail business specializing in consumer goods".to_string(),
-                    ),
+                    business_description: Some(format!(
+                        "{} business specializing in {} services in {}",
+                        industries[rng.random_range(0..industries.len())],
+                        if selected_borough == "Manhattan" {
+                            "premium"
+                        } else {
+                            "community"
+                        },
+                        selected_borough
+                    )),
                 };
                 create_merchant_profile(&pool, merchant.id, &profile_request).await?;
+
+                println!(
+                    "Created merchant in {}: {}",
+                    selected_borough, merchant.legal_name
+                );
             }
             _ => {} // lender - no additional setup needed
         }
@@ -154,21 +199,109 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for (i, &investor_id) in investor_ids.iter().enumerate() {
         if i < 20 {
-            // Create 20 pools
+            // Create 20 pools with varied characteristics
+            let pool_names = vec![
+                "Conservative Credit Fund",
+                "Growth Lending Pool",
+                "High-Yield Credit",
+                "Regional Development Fund",
+                "Small Business Credit",
+                "Rapid Deploy Pool",
+                "Diversified Credit",
+                "Premium Lending",
+                "Community Development",
+                "Enterprise Credit Pool",
+                "Emerging Markets",
+                "Stable Returns Fund",
+                "Manhattan Focus Pool",
+                "Brooklyn Community Fund",
+                "Queens Development",
+                "Bronx Growth Pool",
+                "Staten Island Credit",
+                "Multi-Borough Fund",
+                "Metro Area Pool",
+                "NYC Infrastructure",
+            ];
+
+            let pool_name = pool_names
+                .get(i)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("Credit Pool {}", i + 1));
             let pool_request = CreateLiquidityPoolRequest {
                 investor_id,
-                name: format!("Credit Pool {}", i + 1),
-                max_ltv_ratio: Decimal::new(rng.random_range(5000..8000), 4), // 0.5000 to 0.8000
+                name: pool_name.clone(),
+                max_ltv_ratio: Decimal::new(rng.random_range(5000..8500), 4), // 0.5000 to 0.8500
                 max_interest_rate: Decimal::new(rng.random_range(800..1500), 4), // 0.0800 to 0.1500
                 repayment_period_days: rng.random_range(30..365),
             };
 
-            let pool = create_liquidity_pool(&pool, &pool_request).await?;
-            pool_ids.push(pool.id);
+            let created_pool = create_liquidity_pool(&pool, &pool_request).await?;
+            pool_ids.push(created_pool.id);
+
+            // Fund the pool with realistic amounts ($1M to $10M)
+            let total_funding =
+                Decimal::from(rng.random_range(1000000..10000000)) * Decimal::from(100); // Convert to cents
+            let utilized_amount = total_funding * Decimal::new(rng.random_range(0..60), 2); // 0% to 60% utilized
+            let available_amount = total_funding - utilized_amount;
+
+            // Update pool balances
+            sqlx::query!(
+                "UPDATE liquidity_pools SET total_deposits = $1, utilized_liquidity = $2, available_liquidity = $3 WHERE id = $4",
+                total_funding,
+                utilized_amount,
+                available_amount,
+                created_pool.id
+            ).execute(&pool).await?;
+
+            println!(
+                "Created funded pool: {} (${:.0}M total, ${:.0}M available)",
+                pool_name,
+                total_funding.to_f64().unwrap_or(0.0) / 100_000_000.0, // Convert from cents to millions
+                available_amount.to_f64().unwrap_or(0.0) / 100_000_000.0
+            );
         }
     }
 
     println!("✅ Created {} liquidity pools", pool_ids.len());
+
+    // Add borough percentage limits to some pools for testing
+    println!("🗺️ Adding borough percentage limits to pools...");
+    let boroughs_with_limits = vec!["Manhattan", "Brooklyn", "Queens", "Bronx"];
+
+    for (i, &pool_id) in pool_ids.iter().enumerate() {
+        if i < 10 {
+            // Add limits to first 10 pools
+            for borough in &boroughs_with_limits {
+                let percentage_limit = match borough {
+                    &"Manhattan" => 0.25, // 25% - higher demand area
+                    &"Brooklyn" => 0.20,  // 20%
+                    &"Queens" => 0.20,    // 20%
+                    &"Bronx" => 0.15,     // 15% - more conservative
+                    _ => 0.10,            // 10% default
+                };
+
+                let limit_request = SetPoolBoroughLimitRequest {
+                    pool_id,
+                    borough: borough.to_string(),
+                    max_percentage: Decimal::from_f64(percentage_limit)
+                        .unwrap_or(Decimal::new(10, 2)),
+                };
+
+                set_pool_borough_limit(&pool, limit_request).await?;
+                println!(
+                    "Set {}% borough limit for {} in pool {}",
+                    (percentage_limit * 100.0) as u8,
+                    borough,
+                    i + 1
+                );
+            }
+        }
+    }
+
+    println!(
+        "✅ Added borough limits to {} pools",
+        std::cmp::min(10, pool_ids.len())
+    );
 
     // Create USDC deposits for users
     println!("💵 Creating USDC deposits...");
@@ -197,43 +330,256 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📋 Creating credit line requests...");
     let mut credit_requests = Vec::new();
 
-    for (i, &merchant_id) in merchant_ids.iter().enumerate() {
-        if i < 30 {
-            // Create 30 credit requests
+    // Get merchant data for more realistic credit requests
+    let merchants_data = sqlx::query!(
+        "SELECT m.id, m.legal_name, m.borough, mp.monthly_revenue_estimate, mp.industry
+         FROM merchants m
+         JOIN merchant_profiles mp ON m.id = mp.merchant_id
+         LIMIT 50"
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    let request_purposes = vec![
+        "Working capital for seasonal inventory buildup",
+        "Equipment purchase and facility expansion",
+        "Bridge financing for new market expansion",
+        "Cash flow support during growth phase",
+        "Technology upgrade and digital transformation",
+        "Supply chain optimization and inventory management",
+        "Real estate acquisition for business expansion",
+        "Marketing campaign and customer acquisition",
+        "Debt consolidation and financial restructuring",
+        "Emergency capital for unexpected opportunities",
+    ];
+
+    for (i, merchant) in merchants_data.iter().enumerate() {
+        if i < 40 {
+            // Create 40 credit requests from different merchants
+            // Calculate reasonable credit amount based on revenue (2-6x monthly revenue)
+            let monthly_revenue = merchant
+                .monthly_revenue_estimate
+                .unwrap_or(Decimal::from(20000));
+            let credit_multiplier = Decimal::new(rng.random_range(200..600), 2); // 2.0 to 6.0x
+            let base_amount = monthly_revenue * credit_multiplier;
+            let requested_amount = (base_amount / Decimal::from(100)).round() * Decimal::from(100); // Round to nearest $100
+
             let request_data = CreateCreditLineRequestData {
-                merchant_id,
-                requested_amount: Decimal::from(rng.random_range(10000..200000)), // $10k-$200k
-                requested_rate_apr: Some(Decimal::new(rng.random_range(800..1200), 4)), // 0.0800-0.1200
+                merchant_id: merchant.id,
+                requested_amount,
+                requested_rate_apr: Some(Decimal::new(rng.random_range(800..1400), 4)), // 0.0800-0.1400
                 requested_tenor_days: rng.random_range(30..365),
                 request_description: Some(format!(
-                    "Credit line request for business expansion {}",
-                    i + 1
+                    "{} for {} business in {}. Monthly revenue: ${:.0}",
+                    request_purposes[i % request_purposes.len()],
+                    merchant
+                        .industry
+                        .as_ref()
+                        .unwrap_or(&"General".to_string())
+                        .to_lowercase(),
+                    merchant.borough.as_ref().unwrap_or(&"Unknown".to_string()),
+                    monthly_revenue.to_f64().unwrap_or(0.0)
                 )),
             };
 
-            let credit_request = create_credit_line_request(&pool, request_data).await?;
+            let credit_request = create_credit_line_request(&pool, request_data.clone()).await?;
             credit_requests.push(credit_request.id);
+
+            // Auto-deploy the credit line by finding a matching pool
+            let criteria = PoolMatchingCriteria {
+                required_liquidity: requested_amount,
+                max_ltv: Decimal::new(8000, 4), // 80%
+                max_rate: request_data
+                    .requested_rate_apr
+                    .unwrap_or(Decimal::new(1500, 4)), // 15%
+                min_repayment_days: request_data.requested_tenor_days,
+            };
+
+            match find_matching_liquidity_pools(&pool, &criteria).await {
+                Ok(matching_pools) if !matching_pools.is_empty() => {
+                    let selected_pool = &matching_pools[0];
+
+                    // Create active credit line
+                    match create_credit_line(
+                        &pool,
+                        credit_request.id,
+                        merchant.id,
+                        selected_pool.id,
+                        requested_amount,
+                        request_data
+                            .requested_rate_apr
+                            .unwrap_or(Decimal::new(1200, 4)), // 12%
+                        request_data.requested_tenor_days,
+                    )
+                    .await
+                    {
+                        Ok(credit_line) => {
+                            // Update borough allocation if merchant has borough
+                            if let Some(ref merchant_borough) = merchant.borough {
+                                let _ = update_borough_allocation(
+                                    &pool,
+                                    selected_pool.id,
+                                    merchant_borough,
+                                    requested_amount,
+                                )
+                                .await;
+                            }
+
+                            // Update request status to APPROVED
+                            let _ = update_credit_line_request_status(
+                                &pool,
+                                credit_request.id,
+                                CreditLineStatus::Approved,
+                                None,
+                            )
+                            .await;
+
+                            println!(
+                                "✅ Auto-deployed credit line: {} ${:.0}k for {} ({}) → Pool: {}",
+                                credit_line.id,
+                                requested_amount.to_f64().unwrap_or(0.0) / 1000.0,
+                                merchant.legal_name,
+                                merchant.borough.as_ref().unwrap_or(&"Unknown".to_string()),
+                                selected_pool.name
+                            );
+                        }
+                        Err(e) => {
+                            println!(
+                                "⚠️  Failed to auto-deploy credit for {}: {}",
+                                merchant.legal_name, e
+                            );
+                        }
+                    }
+                }
+                Ok(_) => {
+                    println!(
+                        "⚠️  No matching pools for ${:.0}k request from {} ({})",
+                        requested_amount.to_f64().unwrap_or(0.0) / 1000.0,
+                        merchant.legal_name,
+                        merchant.borough.as_ref().unwrap_or(&"Unknown".to_string())
+                    );
+                }
+                Err(e) => {
+                    println!(
+                        "⚠️  Pool matching failed for {}: {}",
+                        merchant.legal_name, e
+                    );
+                }
+            }
         }
     }
 
-    println!("✅ Created {} credit line requests", credit_requests.len());
+    println!(
+        "✅ Created {} credit line requests with auto-deployment",
+        credit_requests.len()
+    );
 
     // Summary statistics
     println!("\n📊 DATA POPULATION SUMMARY");
     println!("═══════════════════════════");
     println!("👥 Users: {}", user_ids.len());
     println!("   - Investors: {}", investor_ids.len());
-    println!("   - Merchants: {}", merchant_ids.len());
+    println!("   - Merchants: {} (across 9 boroughs)", merchant_ids.len());
     println!(
         "   - Lenders: {}",
         user_ids.len() - investor_ids.len() - merchant_ids.len()
     );
     println!("💰 Liquidity Pools: {}", pool_ids.len());
-    println!("💵 USDC Deposits: 100");
-    println!("📋 Credit Requests: {}", credit_requests.len());
+    println!(
+        "   - With borough limits: {}",
+        std::cmp::min(10, pool_ids.len())
+    );
+    println!("   - Funding range: $1M - $10M each");
+    println!("💵 USDC Deposits: 100 users");
+    println!(
+        "📋 Credit Requests: {} (with auto-deployment)",
+        credit_requests.len()
+    );
+    println!("🗺️ Borough Coverage:");
+    println!("   - Manhattan, Brooklyn, Queens, Bronx");
+    println!("   - Staten Island, Long Island, Westchester");
+    println!("   - New Jersey, Connecticut");
 
-    println!("\n✨ Fake data population complete!");
-    println!("🚀 Ready for frontend testing with realistic data volumes");
+    // Borough-specific statistics
+    let borough_stats = sqlx::query!(
+        "SELECT m.borough, COUNT(*) as count, AVG(mp.monthly_revenue_estimate) as avg_revenue
+         FROM merchants m
+         JOIN merchant_profiles mp ON m.id = mp.merchant_id
+         WHERE m.borough IS NOT NULL
+         GROUP BY m.borough
+         ORDER BY count DESC"
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    println!("\n📍 MERCHANTS BY BOROUGH:");
+    for stat in borough_stats {
+        println!(
+            "   {} - {} merchants (avg revenue: ${:.0}/month)",
+            stat.borough.as_ref().unwrap_or(&"Unknown".to_string()),
+            stat.count.unwrap_or(0),
+            stat.avg_revenue
+                .unwrap_or(Decimal::ZERO)
+                .to_f64()
+                .unwrap_or(0.0)
+        );
+    }
+
+    // Pool utilization statistics
+    let pool_stats = sqlx::query!(
+        "SELECT
+            COUNT(*) as total_pools,
+            SUM(total_deposits) as total_funding,
+            SUM(available_liquidity) as total_available,
+            SUM(utilized_liquidity) as total_utilized,
+            AVG(utilized_liquidity::DECIMAL / NULLIF(total_deposits::DECIMAL, 0) * 100) as avg_utilization
+         FROM liquidity_pools"
+    ).fetch_one(&pool).await?;
+
+    println!("\n💼 POOL UTILIZATION:");
+    println!(
+        "   Total funding: ${:.1}M",
+        pool_stats
+            .total_funding
+            .unwrap_or(Decimal::ZERO)
+            .to_f64()
+            .unwrap_or(0.0)
+            / 100_000_000.0
+    );
+    println!(
+        "   Available liquidity: ${:.1}M",
+        pool_stats
+            .total_available
+            .unwrap_or(Decimal::ZERO)
+            .to_f64()
+            .unwrap_or(0.0)
+            / 100_000_000.0
+    );
+    println!(
+        "   Utilized liquidity: ${:.1}M",
+        pool_stats
+            .total_utilized
+            .unwrap_or(Decimal::ZERO)
+            .to_f64()
+            .unwrap_or(0.0)
+            / 100_000_000.0
+    );
+    println!(
+        "   Average utilization: {:.1}%",
+        pool_stats
+            .avg_utilization
+            .unwrap_or(Decimal::ZERO)
+            .to_f64()
+            .unwrap_or(0.0)
+    );
+
+    println!("\n✨ Enhanced fake data population complete!");
+    println!("🚀 Ready for borough percentage limit testing!");
+    println!("🔬 Test scenarios include:");
+    println!("   - Credit requests from merchants in different boroughs");
+    println!("   - Pools with varying borough percentage limits");
+    println!("   - Realistic funding amounts and utilization rates");
+    println!("   - Borough-based risk diversification testing");
 
     Ok(())
 }

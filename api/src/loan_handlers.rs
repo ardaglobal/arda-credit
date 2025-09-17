@@ -642,6 +642,20 @@ pub async fn record_payment_endpoint(
     );
 
     // TODO: Implement payment recording with database integration
+    // TODO: When implementing payment recording, also decrease borough allocation:
+    // if let Some((pool_id, merchant_borough)) = get_loan_pool_and_borough(&request.loan_id).await {
+    //     let payment_amount = Decimal::from_str(&request.amount).unwrap_or(Decimal::ZERO);
+    //     match arda_credit_db::update_borough_allocation(
+    //         &state.pool,
+    //         pool_id,
+    //         &merchant_borough,
+    //         -payment_amount,  // Negative for payment (reduces allocation)
+    //     ).await {
+    //         Ok(()) => info!("Reduced borough allocation by payment amount"),
+    //         Err(e) => error!("Failed to update borough allocation for payment: {}", e),
+    //     }
+    // }
+
     let transaction_id = Uuid::new_v4().to_string();
 
     let response = PaymentResponse {

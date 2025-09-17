@@ -2,7 +2,7 @@
 
 Smart contracts for zero-knowledge arithmetic proof verification with comprehensive state management built on [SP1](https://github.com/succinctlabs/sp1) and [SP1VerifierGateway](https://github.com/succinctlabs/sp1-contracts/blob/main/contracts/src/SP1VerifierGateway.sol).
 
-## Contract Architecture
+## Overview
 
 - **Loan.sol**: Main contract implementing SP1 proof verification with state management
 - **interfaces/IStateManager.sol**: Standardized interface for state operations and proof management
@@ -110,7 +110,10 @@ Note: you can use either the [SP1VerifierGateway](https://github.com/succinctlab
 
 This step is required for the contract to be able to verify proofs.
 
-Find your program verification key by going into the `../script` directory and running `RUST_LOG=info cargo run --package arithmetic-script --release -- --vkey`, which will print an output like:
+Find your program verification key by running:
+```bash
+make run    # This will print the program verification key
+```
 
 > Program Verification Key: 0x00620892344c310c32a74bf0807a5c043964264e4f37c96a10ad12b5c9214e0e
 
@@ -167,7 +170,7 @@ The following secrets need to be configured in your GitHub repository:
 
 #### Core Secrets
 - `ETHEREUM_WALLET_PRIVATE_KEY`: The private key of the deployer account
-- `PROGRAM_VKEY`: The program verification key (get this by running `cargo run --package arithmetic-script --release -- --vkey` in the `../script` directory)
+- `PROGRAM_VKEY`: The program verification key (get this by running `make run` in the project root)
 
 #### Sepolia Network Secrets
 - `SEPOLIA_RPC_URL`: RPC URL for Sepolia testnet

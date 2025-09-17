@@ -10,7 +10,9 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
-use crate::admin_handlers::{KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse};
+use crate::admin_handlers::{
+    KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse, PlatformMetricsResponse,
+};
 use crate::auth::AuthService;
 use crate::authentication_handlers::{
     generate_invite_code_endpoint, login_endpoint, logout_endpoint, validate_invite_code_endpoint,
@@ -19,8 +21,8 @@ use crate::authentication_handlers::{
 };
 use crate::batch_processor::BatchProcessorHandle;
 use crate::credit_line_handlers::{
-    browse_available_pools, check_credit_eligibility, list_credit_line_requests,
-    submit_credit_line_request,
+    browse_available_pools, check_credit_eligibility, list_active_credit_lines_with_pool_details,
+    list_credit_line_requests, submit_credit_line_request,
 };
 use crate::financial_transaction_handlers::{
     get_account_financial_transactions, get_credit_line_financial_transactions,
@@ -39,6 +41,10 @@ use crate::merchant_handlers::{
 };
 use crate::openapi::ApiDoc;
 use crate::paths;
+use crate::pool_borough_handlers::{
+    delete_borough_limit, get_borough_limits, get_borough_summary, set_borough_limit,
+    validate_borough_limit,
+};
 use crate::pool_handlers::{
     create_pool, deposit_to_pool,
     /* get_enhanced_investor_metrics_handler, */ get_investor_dashboard,
@@ -53,6 +59,7 @@ use crate::state_handlers::{
     get_pending_transactions_endpoint, submit_transaction_endpoint, trigger_batch_endpoint,
     update_batch_proof_endpoint,
 };
+use crate::transaction_history_handlers::{get_pool_transaction_history, get_transaction_history};
 use crate::turnover_handlers::{
     create_turnover_endpoint, get_profile_completion_endpoint, get_turnover_analytics_endpoint,
     get_turnover_endpoint, update_turnover_endpoint,
@@ -155,11 +162,11 @@ pub fn create_router(state: ApiState) -> Router {
         .merge(swagger_ui())
         // Authentication endpoints
         .route(
-            "/api/auth/login",
+            paths::AUTH_LOGIN,
             post(crate::authentication_handlers::login_endpoint),
         )
         .route(
-            "/api/auth/logout",
+            paths::AUTH_LOGOUT,
             post(crate::authentication_handlers::logout_endpoint),
         )
         // Admin KYC endpoints
@@ -174,6 +181,10 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::ADMIN_KYC_BULK_APPROVE,
             post(crate::admin_handlers::bulk_kyc_approval_endpoint),
+        )
+        .route(
+            paths::ADMIN_PLATFORM_METRICS,
+            get(crate::admin_handlers::get_platform_metrics_endpoint),
         )
         .route(
             paths::INVITE_CODE_GENERATE,
@@ -371,6 +382,10 @@ pub fn create_router(state: ApiState) -> Router {
             get(get_user_financial_summary),
         )
         // ========================================================================
+        // TRANSACTION HISTORY ENDPOINTS
+        // ========================================================================
+        .route(paths::TRANSACTION_HISTORY, get(get_transaction_history))
+        // ========================================================================
         // LOAN MANAGEMENT ENDPOINTS
         // ========================================================================
         // Loan Management
@@ -419,6 +434,23 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::POOL_DEPOSIT, post(deposit_to_pool))
         .route(paths::POOL_UTILIZATION, get(get_pool_utilization))
         .route(paths::POOL_TRANSACTIONS, get(get_pool_transactions))
+        .route(
+            paths::POOL_TRANSACTION_HISTORY,
+            get(get_pool_transaction_history),
+        )
+        // ========================================================================
+        // POOL BOROUGH LIMIT ENDPOINTS
+        // ========================================================================
+        .route(
+            paths::POOL_BOROUGH_LIMITS,
+            get(get_borough_limits).put(set_borough_limit),
+        )
+        .route(
+            paths::POOL_BOROUGH_LIMIT_BY_BOROUGH,
+            delete(delete_borough_limit),
+        )
+        .route(paths::POOL_BOROUGH_SUMMARY, get(get_borough_summary))
+        .route(paths::POOL_BOROUGH_VALIDATION, get(validate_borough_limit))
         // ========================================================================
         // POOL METRICS ENDPOINTS
         // ========================================================================
@@ -428,22 +460,22 @@ pub fn create_router(state: ApiState) -> Router {
             get(get_investor_pool_metrics_overview),
         )
         // Investor Query Endpoints
-        .route("/api/investor/dashboard", get(get_investor_dashboard))
+        .route(paths::INVESTOR_DASHBOARD, get(get_investor_dashboard))
         .route(
-            "/api/investor/pools/summary",
+            paths::INVESTOR_POOL_SUMMARIES,
             get(get_investor_pool_summaries),
         )
         .route(
-            "/api/investor/pool-metrics",
+            paths::INVESTOR_POOL_METRICS,
             get(get_investor_pool_metrics_handler),
         )
         /* .route(
-            "/api/investor/metrics",
+            paths::INVESTOR_METRICS,
             get(get_enhanced_investor_metrics_handler),
         ) */
         // Analytics Endpoints
-        .route("/api/analytics/market-overview", get(get_market_overview))
-        .route("/api/analytics/pool-performance", get(get_pool_performance))
+        .route(paths::ANALYTICS_MARKET_OVERVIEW, get(get_market_overview))
+        .route(paths::ANALYTICS_POOL_PERFORMANCE, get(get_pool_performance))
         // ========================================================================
         // MERCHANT TURNOVER ENDPOINTS
         // ========================================================================
@@ -482,6 +514,10 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::CREDIT_LINES_REQUEST,
             post(submit_credit_line_request),
+        )
+        .route(
+            paths::CREDIT_LINES_ACTIVE,
+            get(list_active_credit_lines_with_pool_details),
         )
         .with_state(state)
 }

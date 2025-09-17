@@ -20,7 +20,7 @@ default = [ "tikv-jemallocator" ]
 [dependencies]
 # Core dependencies
 chrono       = { version = "0.4", features = [ "serde" ] }
-rust_decimal = "1.0"
+rust_decimal = "1.38"
 serde        = { workspace = true }
 thiserror    = "2.0"
 tokio        = { workspace = true }
@@ -73,10 +73,10 @@ validator    = { version = "0.20", features = [ "derive" ] } # Email/password va
 
 # OpenTelemetry dependencies (compatible versions)
 opentelemetry                      = { version = "0.20.0", features = [ "rt-tokio", "trace" ] }
-opentelemetry-otlp                 = { version = "0.13.0", features = [ "trace" ] }
-opentelemetry-semantic-conventions = { version = "0.12.0" }
+opentelemetry-otlp                 = { version = "0.30.0", features = [ "trace" ] }
+opentelemetry-semantic-conventions = { version = "0.30.0" }
 tonic                              = { version = "0.12.0", features = [ "tls-roots" ] }
-tracing-opentelemetry              = { version = "0.20.0" }
+tracing-opentelemetry              = { version = "0.31.0" }
 
 # Middleware dependencies
 blake3 = "1"

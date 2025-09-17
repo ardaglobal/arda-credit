@@ -2,7 +2,9 @@
 
 This document captures initial throughput, batching, and latency targets for the pilot and near-term growth scenarios. It translates business activity into concrete transaction volumes and transactions-per-second (TPS) goals for the zkVM batch processor.
 
-## Scope & Assumptions
+For a high-level overview of the three-component architecture (smart contracts, ZKVM program, and web server), see [`docs/architecture/three-component-overview.md`](../architecture/three-component-overview.md).
+
+## Overview
 
 - New users per day (U): 100
 - New loans per day (L): 10

@@ -116,7 +116,7 @@ pub struct GenerateInviteCodeResponse {
 /// Login endpoint for user authentication
 #[utoipa::path(
     post,
-    path = "/api/auth/login",
+    path = "/api/v1/auth/login",
     request_body = LoginRequest,
     responses(
         (status = 200, description = "Login successful", body = LoginResponse),
@@ -216,7 +216,7 @@ pub async fn login_endpoint(
 /// Logout endpoint (stateless JWT - mainly for logging)
 #[utoipa::path(
     post,
-    path = "/api/auth/logout",
+    path = "/api/v1/auth/logout",
     request_body = LogoutRequest,
     responses(
         (status = 200, description = "Logout successful", body = LogoutResponse),

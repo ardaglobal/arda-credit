@@ -1,6 +1,6 @@
 # Authentication Integration Guide
 
-This guide shows how to integrate with the Arda Credit API authentication system from your frontend application.
+This guide shows how to integrate with the Arda Credit API authentication system from your frontend application. For comprehensive frontend integration examples organized by framework, see [`docs/integrations/frontend-examples.md`](../integrations/frontend-examples.md).
 
 ## Overview
 
@@ -548,21 +548,17 @@ export default apiClient;
 
 ## Environment Configuration
 
-Create a `.env` file for configuration:
-
-```env
-# JWT Configuration
-JWT_SECRET=your-super-secure-secret-key-here-at-least-32-characters-long
-JWT_EXPIRY_HOURS=24
-
-# Database
-DATABASE_URL=postgresql://username:password@localhost/arda_credit
-
-# Server
-HOST=0.0.0.0
-PORT=8080
-RUST_LOG=info
+**Setup environment variables:**
+```bash
+make env    # Copies .env.example to .env
+# Edit .env to add your JWT_SECRET and other required variables
 ```
+
+**Configuration details:** See `.env.example` for complete configuration options and required environment variables.
+
+**Key authentication variables:**
+- `JWT_SECRET` - Secret key for JWT token signing (32+ characters)
+- `JWT_EXPIRY_HOURS` - Token expiration time in hours
 
 ## Security Best Practices
 
