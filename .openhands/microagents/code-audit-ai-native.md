@@ -1,14 +1,34 @@
 ---
 name: Code Audit and AI-Native Management
 type: knowledge
-version: 1.0.0
+version: 2.0.0
 agent: CodeActAgent
-triggers: []
+triggers: ["code audit", "weekly audit", "ai-native", "code management", "documentation sync"]
 ---
 
 # Code Audit and AI-Native Management Microagent
 
-This microagent provides guidance for implementing weekly code audits and AI-native code management practices for the Arda Credit repository. It focuses on maintaining documentation consistency, identifying security issues, and implementing best practices for AI-friendly codebase management.
+This microagent provides guidance for implementing weekly code audits and AI-native code management practices for the Arda Credit repository. It coordinates with the distributed specialist microagent system to ensure comprehensive coverage across all domains.
+
+## Distributed Specialist Integration
+
+This microagent works in coordination with specialized domain experts:
+- **Zero-Knowledge Proof and Cryptography Specialist** - zkVM, SP1, cryptographic security
+- **Financial Operations and Compliance Specialist** - Loan processing, KYC, regulatory compliance  
+- **Blockchain and Ethereum Integration Specialist** - Smart contracts, on-chain operations
+- **Database and Performance Optimization Specialist** - PostgreSQL, Merkle trees, query optimization
+- **API Security and Authentication Specialist** - API security, JWT/Argon2, input validation
+- **DevOps and Infrastructure Specialist** - CI/CD, Kubernetes, monitoring, deployment
+
+Each specialist provides deep domain expertise while this microagent coordinates system-wide auditing and AI-native practices.
+
+**Repository Context**: Arda Credit is a privacy-preserving loan vApp built with:
+- **Rust** (141 files, ~77k LOC) - Core business logic, API, CLI, zkVM programs
+- **Solidity** (441 files, ~116k LOC) - Smart contracts and dependencies  
+- **JavaScript/TypeScript** (155 files) - Frontend and tooling
+- **SP1 zkVM** - Zero-knowledge proof generation
+- **PostgreSQL** - Database with complex financial data models
+- **Axum** - Web framework for API server
 
 ## Core Responsibilities
 
@@ -17,63 +37,78 @@ This microagent provides guidance for implementing weekly code audits and AI-nat
 **Documentation Consistency Auditing:**
 - Compare README.md content with actual implementation
 - Verify AGENTS.md/CLAUDE.md alignment with current codebase features
-- Identify gaps between documented APIs and actual API endpoints
-- Check for outdated examples or deprecated functionality references
-- Validate that architectural diagrams match current system design
+- Cross-reference API endpoints in documentation vs `api/src/*_handlers.rs` files
+- Validate CLI commands in docs vs `cli/src/*.rs` implementations
+- Check zkVM program documentation vs `program/src/main.rs` functionality
+- Ensure smart contract documentation matches `contracts/src/*.sol` files
 
-**Security Gap Analysis:**
-- Scan for hardcoded secrets or credentials in code
-- Review authentication and authorization implementations
-- Check for SQL injection vulnerabilities in database queries
-- Analyze input validation and sanitization practices
-- Verify secure communication protocols (HTTPS, TLS)
-- Review error handling to prevent information leakage
-- Check for proper session management and token handling
+**Rust-Specific Security Analysis:**
+- **Panic Safety**: Audit 543 `unwrap()` and 258 `expect()` calls for production safety
+- **Memory Safety**: Verify no `unsafe` blocks (currently 0 - maintain this!)
+- **Error Handling**: Review `Result<T, E>` usage and proper error propagation
+- **SQL Injection**: Check `sqlx` query usage in `db/src/*.rs` files
+- **Input Validation**: Verify `validator` crate usage in API handlers
+- **Cryptographic Security**: Review JWT, Argon2, and zkVM proof handling
+
+**Large File Monitoring (Current Issues):**
+- `db/src/db.rs` (6,220 lines) - **CRITICAL**: Needs immediate refactoring
+- `db/src/merkle_tree.rs` (3,126 lines) - Split into modules
+- `db/src/ads_service.rs` (2,501 lines) - Extract service layers
+- `lib/src/loan_processor.rs` (2,345 lines) - Break into focused components
+- `ethereum-client/src/client.rs` (2,072 lines) - Separate concerns
+- `api/src/unified_batch_service.rs` (1,671 lines) - Extract batch logic
+- `api/src/financial_transaction_handlers.rs` (1,599 lines) - Split by transaction type
 
 **Implementation Gap Detection:**
-- Identify features mentioned in documentation but not implemented
-- Find implemented features not documented
-- Check for TODO/FIXME comments that indicate incomplete work
-- Verify test coverage matches documented functionality
-- Analyze performance characteristics vs. documented targets
+- Cross-reference documented loan operations vs `lib/src/loan.rs` implementation
+- Verify KYC features in docs vs `api/src/kyc_service.rs` 
+- Check liquidity pool documentation vs `api/src/pool_*.rs` handlers
+- Validate zkVM program capabilities vs documentation claims
+- Ensure smart contract features match documented functionality
 
 ### 2. AI-Native Code Management
 
 **File Size Management (Lovable.dev Inspired):**
-- Monitor files exceeding 250 lines of code
-- Suggest refactoring opportunities for large files
-- Identify functions that could be extracted into separate modules
-- Recommend splitting complex files into focused components
-- Track file growth trends over time
+- **Priority Refactoring**: 7 files exceed 1,500 lines (see list above)
+- **Target**: Keep Rust files under 250 lines for optimal AI context
+- **Rust Module System**: Use `mod.rs` files to organize large modules
+- **Extract Patterns**: Move common patterns to `lib/src/` for reuse
+- **Service Layer**: Split large handlers into service + handler layers
 
-**Context Management Best Practices:**
-- Ensure each file has a single, clear responsibility
-- Verify proper separation of concerns across modules
-- Check for appropriate abstraction levels
-- Identify overly complex functions that need decomposition
-- Recommend consistent naming conventions for AI readability
+**Rust-Specific Context Management:**
+- **Single Responsibility**: Each `.rs` file should handle one domain concept
+- **Trait Abstractions**: Use traits to define clear interfaces between modules
+- **Error Types**: Define domain-specific error types per module
+- **Async Boundaries**: Separate sync business logic from async I/O operations
+- **Test Organization**: Keep unit tests in same file, integration tests in `tests/`
+
+**Zero-Knowledge Proof Context:**
+- **zkVM Compatibility**: Ensure `lib/src/` code compiles for both native and zkVM
+- **Proof Generation**: Keep proof logic separate from business logic
+- **State Management**: Maintain clear separation between on-chain and off-chain state
+- **Batch Processing**: Organize batch operations for optimal proof generation
 
 **Documentation Standards:**
-- Maintain clear, concise function and module documentation
-- Ensure API documentation is up-to-date with implementation
-- Verify that complex business logic is well-documented
-- Check for proper error handling documentation
-- Maintain architectural decision records (ADRs)
+- **Rust Doc Comments**: Use `///` for public APIs, `//` for internal logic
+- **Module Documentation**: Each `mod.rs` should explain the module's purpose
+- **API Documentation**: Keep OpenAPI specs in sync with handler implementations
+- **Architecture Docs**: Update `docs/` when making structural changes
+- **Security Notes**: Document security assumptions and threat models
 
 ### 3. Automated Audit Implementation
 
-**GitHub Actions Integration:**
-- Create weekly scheduled workflow for automated audits
-- Generate audit reports in markdown format
-- Post findings as GitHub issues with appropriate labels
-- Track audit history and trend analysis
-- Integrate with existing CI/CD pipeline
+**GitHub Actions Integration (Extends Existing Workflows):**
+- **Leverage Existing**: Build on current `audit.yml`, `deny.yml`, `format.yml` workflows
+- **Weekly Schedule**: Add cron job to existing security audit workflow
+- **Rust-Specific Tools**: Integrate `cargo audit`, `cargo deny`, `clippy` with custom rules
+- **File Size Monitoring**: Add automated checks for files exceeding 250 lines
+- **Documentation Sync**: Compare API endpoints in handlers vs OpenAPI specs
 
-**Linear Integration (Alternative):**
-- Create recurring Linear issues for manual audit reviews
-- Template-based audit checklists
-- Automated assignment to team members
-- Progress tracking and completion metrics
+**Integration with Existing Security Tools:**
+- **cargo-deny**: Already configured in `deny.toml` - extend for custom rules
+- **rustsec/audit-check**: Already in use - add custom vulnerability checks
+- **Dependabot**: Already configured - ensure it covers all Rust dependencies
+- **Custom Lints**: Add clippy rules for `unwrap()` usage in production code
 
 ## Audit Checklist Template
 
