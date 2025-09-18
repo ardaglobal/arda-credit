@@ -12,6 +12,10 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{types::ApiState, ErrorResponse};
+use arda_credit_db::{
+    create_account_financial_transaction, update_user_balance_from_deposit,
+    update_user_balance_from_withdrawal,
+};
 
 // ============================================================================
 // REQUEST/RESPONSE TYPES
@@ -245,8 +249,14 @@ pub async fn record_account_deposit(
         block_number: request.block_number,
     };
 
-    match arda_credit_db::create_account_financial_transaction(&state.pool, &db_request).await {
+    match create_account_financial_transaction(&state.pool, &db_request).await {
         Ok(transaction) => {
+            // Update user balance after successful transaction recording
+            if let Err(e) = update_user_balance_from_deposit(&state.pool, user_uuid, amount).await {
+                error!("Failed to update user balance after deposit: {}", e);
+                // Don't fail the transaction, just log the error
+            }
+
             info!(
                 transaction_id = %transaction.id,
                 user_id = %user_id,
@@ -352,8 +362,16 @@ pub async fn record_account_withdrawal(
         block_number: request.block_number,
     };
 
-    match arda_credit_db::create_account_financial_transaction(&state.pool, &db_request).await {
+    match create_account_financial_transaction(&state.pool, &db_request).await {
         Ok(transaction) => {
+            // Update user balance after successful transaction recording
+            if let Err(e) =
+                update_user_balance_from_withdrawal(&state.pool, user_uuid, amount).await
+            {
+                error!("Failed to update user balance after withdrawal: {}", e);
+                // Don't fail the transaction, just log the error
+            }
+
             info!(
                 transaction_id = %transaction.id,
                 user_id = %user_id,
