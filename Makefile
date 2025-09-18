@@ -185,78 +185,23 @@ run:
 # ZK Proof Benchmarking Commands (requires SINDRI_API_KEY)
 # =============================================================================
 
-## bench-quick: Quick benchmark test (8 proofs × 50 transactions each)
-.PHONY: bench-quick
-bench-quick:
-	@echo "🏃‍♂️ Running quick benchmark test..."
-	@echo "Configuration: 8 proofs × 50 transactions = 400 total transactions"
-	@echo "Expected duration: ~3-5 minutes"
-	@echo ""
-	NUM_PROOFS=8 NUM_TRANSACTIONS=50 cargo run --release --package arda-credit --features sindri,benchmark
+NUM_PROOFS=1
+NUM_TRANSACTIONS=100
 
-## bench-medium: Medium benchmark test (50 proofs × 200 transactions each)
-.PHONY: bench-medium
-bench-medium:
-	@echo "🏃‍♂️ Running medium benchmark test..."
-	@echo "Configuration: 50 proofs × 200 transactions = 10,000 total transactions"
-	@echo "Expected duration: ~5-10 minutes"
-	@echo ""
-	NUM_PROOFS=50 NUM_TRANSACTIONS=200 cargo run --release --package arda-credit --features sindri,benchmark
-
-## bench-large: Large benchmark test (100 proofs × 1000 transactions each)
-.PHONY: bench-large
-bench-large:
-	@echo "🚀 Running large benchmark test..."
-	@echo "Configuration: 100 proofs × 1000 transactions = 100,000 total transactions"
-	@echo "Expected duration: ~10-15 minutes"
-	@echo ""
-	NUM_PROOFS=100 NUM_TRANSACTIONS=1000 cargo run --release --package arda-credit --features sindri,benchmark
-
-## bench-custom: Custom benchmark test (specify NUM_PROOFS and NUM_TRANSACTIONS)
-# Usage: make bench-custom NUM_PROOFS=50 NUM_TRANSACTIONS=500
-.PHONY: bench-custom
-bench-custom:
-	@if [ -z "$(NUM_PROOFS)" ] || [ -z "$(NUM_TRANSACTIONS)" ]; then \
-		echo "❌ Please specify both NUM_PROOFS and NUM_TRANSACTIONS"; \
-		echo "Usage: make bench-custom NUM_PROOFS=50 NUM_TRANSACTIONS=500"; \
-		exit 1; \
-	fi
-	@TOTAL_TXS=$$(($(NUM_PROOFS) * $(NUM_TRANSACTIONS))); \
-	echo "🎛️  Running custom benchmark test..."; \
-	echo "Configuration: $(NUM_PROOFS) proofs × $(NUM_TRANSACTIONS) transactions = $$TOTAL_TXS total transactions"; \
-	echo ""
-	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features sindri,benchmark
-
-## bench-help: Show benchmarking help and scaling predictions
-.PHONY: bench-help
-bench-help:
-	@echo "🎯 ZK Proof Benchmarking Commands"
-	@echo "================================="
+## bench-zk: Run a zk benchmark test. Usage: make bench-zk NUM_PROOFS=50 NUM_TRANSACTIONS=500
+.PHONY: bench-zk
+bench-zk:
 	@echo ""
 	@echo "Prerequisites:"
 	@echo "  • SINDRI_API_KEY set in .env"
+	@echo "  • Update sindri.json provingScheme to compressed"
 	@echo "  • Circuit deployed: make deploy"
 	@echo ""
-	@echo "Benchmark Levels:"
-	@echo "  make bench-quick    - 400 txs (8×50) - ~3-5min"
-	@echo "  make bench-medium   - 10K txs (50×200) - ~5-10min"
-	@echo "  make bench-large    - 100K txs (100×1000) - ~10-15min"
-	@echo ""
-	@echo "Custom Benchmarks:"
-	@echo "  make bench-custom NUM_PROOFS=X NUM_TRANSACTIONS=Y"
-	@echo ""
-	@echo "📊 Sindri Scaling Formula (Empirically Validated):"
-	@echo "  • Transactions ≤ 100: ~28-30 seconds per proof"
-	@echo "  • Transactions > 100: 28s + (T/100-1)^1.3 × 25s"
-	@echo "  • Examples:"
-	@echo "    - 1000 txs: ~463s (7.7min) per proof"
-	@echo "    - 2000 txs: ~1177s (19.6min) per proof"
-	@echo "    - 10000 txs: ~9851s (2.7hrs) per proof"
-	@echo ""
-	@echo "🚀 Throughput Expectations:"
-	@echo "  • 100 concurrent 1000tx proofs: ~49K txs/second"
-	@echo "  • Platform saturation: 100+ concurrent proofs show degradation"
-	@echo "  • Optimal configuration: 10-20 concurrent proofs for consistent latency"
+	@TOTAL_TXS=$$(($(NUM_PROOFS) * $(NUM_TRANSACTIONS))); \
+	echo "🎛️  Running benchmark test..."; \
+	echo "Configuration: $(NUM_PROOFS) proofs × $(NUM_TRANSACTIONS) transactions = $$TOTAL_TXS total transactions"; \
+	echo ""
+	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features sindri,benchmark
 
 ## cli: CLI client (requires API server running)
 .PHONY: cli
