@@ -72,6 +72,19 @@ pub struct CreatePoolFinancialTransactionRequest {
     pub description: Option<String>,
 }
 
+/// Create pool funding request (simplified for funding endpoint)
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct CreatePoolFundingRequest {
+    /// Pool ID
+    pub pool_id: String,
+    /// User ID
+    pub user_id: String,
+    /// Amount in USDC (human readable, e.g., "100.50")
+    pub amount_usdc: String,
+    /// Description of the transaction
+    pub description: Option<String>,
+}
+
 /// Create credit line financial transaction request
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
 pub struct CreateCreditLineFinancialTransactionRequest {
@@ -508,7 +521,7 @@ pub async fn get_account_financial_transactions(
     params(
         ("pool_id" = String, Path, description = "Pool ID (UUID)")
     ),
-    request_body = CreatePoolFinancialTransactionRequest,
+    request_body = CreatePoolFundingRequest,
     responses(
         (status = 201, description = "Pool funding recorded successfully", body = PoolFinancialTransactionResponse),
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
@@ -521,7 +534,7 @@ pub async fn get_account_financial_transactions(
 pub async fn record_pool_funding(
     State(state): State<ApiState>,
     Path(pool_id): Path<String>,
-    JsonExtractor(request): JsonExtractor<CreatePoolFinancialTransactionRequest>,
+    JsonExtractor(request): JsonExtractor<CreatePoolFundingRequest>,
 ) -> Result<Json<PoolFinancialTransactionResponse>, (StatusCode, Json<ErrorResponse>)> {
     let pool_uuid = match Uuid::parse_str(&pool_id) {
         Ok(uuid) => uuid,
@@ -549,13 +562,13 @@ pub async fn record_pool_funding(
         }
     };
 
-    // Validate transaction type
-    if request.transaction_type != "FUND" {
+    // Validate that path pool_id matches body pool_id
+    if pool_id != request.pool_id {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse::new(
-                "invalid_transaction_type",
-                "Transaction type must be FUND for this endpoint",
+                "pool_id_mismatch",
+                "Pool ID in URL path must match pool ID in request body",
             )),
         ));
     }
@@ -574,30 +587,15 @@ pub async fn record_pool_funding(
         }
     };
 
-    // Parse optional state transaction ID
-    let state_transaction_id = if let Some(ref state_tx_id) = request.state_transaction_id {
-        Some(Uuid::parse_str(state_tx_id).map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new(
-                    "invalid_state_transaction_id",
-                    "Invalid state transaction ID format",
-                )),
-            )
-        })?)
-    } else {
-        None
-    };
-
-    // Create database request
+    // Create database request with fixed transaction type and optional fields set to None
     let db_request = arda_credit_db::CreatePoolFinancialTransactionRequest {
         pool_id: pool_uuid,
         user_id: user_uuid,
-        transaction_type: request.transaction_type.clone(),
+        transaction_type: "FUND".to_string(),
         amount,
         currency: "USDC".to_string(),
-        state_transaction_id,
-        transaction_hash: request.transaction_hash.clone(),
+        state_transaction_id: None,
+        transaction_hash: None,
         description: request.description.clone(),
     };
 
@@ -607,7 +605,7 @@ pub async fn record_pool_funding(
             if let Err(e) = arda_credit_db::update_pool_balance_after_transaction(
                 &state.pool,
                 pool_uuid,
-                &request.transaction_type,
+                "FUND",
                 amount,
             )
             .await

@@ -32,9 +32,9 @@ pub use crate::credit_line_handlers::{
 pub use crate::financial_transaction_handlers::{
     AccountFinancialTransactionResponse, CreateAccountFinancialTransactionRequest,
     CreateCreditLineFinancialTransactionRequest, CreatePoolFinancialTransactionRequest,
-    CreditLineFinancialTransactionResponse, FinancialSummaryResponse, FinancialTransactionQuery,
-    PaginatedFinancialTransactionsResponse, PoolFinancialTransactionResponse,
-    UnifiedFinancialTransactionResponse,
+    CreatePoolFundingRequest, CreditLineFinancialTransactionResponse, FinancialSummaryResponse,
+    FinancialTransactionQuery, PaginatedFinancialTransactionsResponse,
+    PoolFinancialTransactionResponse, UnifiedFinancialTransactionResponse,
 };
 pub use crate::loan_handlers::{
     CreateLoanRequest, DeleteLoanResponse, ListLoansQuery, ListLoansResponse, LoanDetailsResponse,
@@ -314,6 +314,7 @@ fn default_limit() -> u32 {
         FinancialTransactionQuery,
         CreateAccountFinancialTransactionRequest,
         CreatePoolFinancialTransactionRequest,
+        CreatePoolFundingRequest,
         CreateCreditLineFinancialTransactionRequest,
         AccountFinancialTransactionResponse,
         PoolFinancialTransactionResponse,
