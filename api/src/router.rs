@@ -519,6 +519,17 @@ pub fn create_router(state: ApiState) -> Router {
             paths::CREDIT_LINES_ACTIVE,
             get(list_active_credit_lines_with_pool_details),
         )
+        // ========================================================================
+        // CONTRACT CONFIGURATION ENDPOINTS
+        // ========================================================================
+        .route(
+            paths::CONTRACT_CONFIG,
+            get(crate::contract_handlers::get_contract_config),
+        )
+        .route(
+            paths::TRANSACTION_UPDATES_SSE,
+            get(crate::contract_handlers::get_transaction_updates),
+        )
         .with_state(state)
 }
 
