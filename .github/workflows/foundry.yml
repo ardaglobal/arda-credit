@@ -1,23 +1,71 @@
-name: Deploy Smart Contracts
+name: Foundry CI/CD
 
 on:
   workflow_dispatch:
   push:
     tags:
-      - 'contracts-v*-rc*'
+      - 'contracts-v*'
     paths:
       - "contracts/**"
+      - ".github/workflows/foundry*"
 
 env:
   FOUNDRY_PROFILE: ci
 
 concurrency:
-  # One lane per workflow run
-  group: ${{ github.workflow }}-${{ github.run_id }}
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    name: Test Contracts
+    runs-on:
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
+      - image=ubuntu-7.0
+      - instance-size=large
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Cache Foundry dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.foundry/cache
+            ~/.foundry/bin
+            contracts/lib
+            contracts/out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('contracts/foundry.toml', 'contracts/remappings.txt', 'contracts/lib/**/*.sol') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Install dependencies
+        run: |
+          cd contracts
+          forge install
+
+      - name: Run Forge build
+        run: |
+          cd contracts
+          forge --version
+          forge build --sizes
+        id: build
+
+      - name: Run Forge tests
+        run: |
+          cd contracts
+          forge test -vvv
+        id: test
+
   detect-version:
+    name: Detect Version
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
@@ -39,7 +87,7 @@ jobs:
 
   deploy:
     name: Deploy Contracts
-    needs: detect-version
+    needs: [test, detect-version]
     runs-on:
       - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }}
       - image=ubuntu-7.0
@@ -47,12 +95,23 @@ jobs:
     defaults:
       run:
         working-directory: contracts
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           submodules: recursive
+
+      - name: Cache Foundry dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.foundry/cache
+            ~/.foundry/bin
+            lib
+            out
+          key: ${{ runner.os }}-foundry-${{ hashFiles('foundry.toml', 'remappings.txt', 'lib/**/*.sol') }}
+          restore-keys: |
+            ${{ runner.os }}-foundry-
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1

@@ -3,8 +3,6 @@ name: Code Coverage
 on:
   schedule:
     - cron: '40 0 * * *'
-  release:
-    types: [published]
 
 env:
   CARGO_TERM_COLOR: always

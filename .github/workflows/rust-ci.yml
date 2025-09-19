@@ -3,17 +3,13 @@ name: Rust CI
 on:
   # Combine triggers from all three original workflows
   workflow_dispatch:
-  pull_request:
-  schedule:
-    - cron: '35 0 * * *'  # From test.yml timing
-  release:
-    types: [published]
   push:
+    branches:
+      - main
     tags:
       - 'v*'
       - 'program-v*'
       - 'contracts-v*'
-  merge_group:
 
 env:
   CARGO_TERM_COLOR: always

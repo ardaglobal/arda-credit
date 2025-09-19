@@ -2,10 +2,6 @@ name: YAML Lint
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '5 0 * * *'
-  release:
-    types: [published]
   push:
     tags:
       - 'v*'
