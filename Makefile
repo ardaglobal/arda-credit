@@ -198,6 +198,28 @@ cover:
 run:
 	cargo run --release
 
+# =============================================================================
+# ZK Proof Benchmarking Commands (requires SINDRI_API_KEY)
+# =============================================================================
+
+NUM_PROOFS=1
+NUM_TRANSACTIONS=100
+
+## bench-zk: Run a zk benchmark test. Usage: make bench-zk NUM_PROOFS=50 NUM_TRANSACTIONS=500
+.PHONY: bench-zk
+bench-zk:
+	@echo ""
+	@echo "Prerequisites:"
+	@echo "  • SINDRI_API_KEY set in .env"
+	@echo "  • Update sindri.json provingScheme to compressed"
+	@echo "  • Circuit deployed: make deploy"
+	@echo ""
+	@TOTAL_TXS=$$(($(NUM_PROOFS) * $(NUM_TRANSACTIONS))); \
+	echo "🎛️  Running benchmark test..."; \
+	echo "Configuration: $(NUM_PROOFS) proofs × $(NUM_TRANSACTIONS) transactions = $$TOTAL_TXS total transactions"; \
+	echo ""
+	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features sindri,benchmark
+
 ## cli: CLI client (requires API server running)
 .PHONY: cli
 cli:
