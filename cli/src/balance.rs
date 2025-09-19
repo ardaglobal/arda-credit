@@ -160,6 +160,62 @@ pub enum BalanceCommands {
         verbose: bool,
     },
 
+    /// Start withdrawal executor service
+    StartWithdrawalExecutor {
+        /// Database connection URL
+        #[arg(long, env = "DATABASE_URL")]
+        database_url: String,
+        /// Ethereum RPC URL
+        #[arg(long, env = "ETHEREUM_RPC_URL")]
+        ethereum_rpc_url: String,
+        /// Smart contract address
+        #[arg(long, env = "ETHEREUM_CONTRACT_ADDRESS")]
+        contract_address: String,
+        /// Private key for transaction signing (hex format)
+        #[arg(long, env = "ETHEREUM_PRIVATE_KEY")]
+        private_key: String,
+        /// Polling interval in seconds
+        #[arg(long, default_value = "30")]
+        poll_interval: u64,
+        /// Gas limit for transactions
+        #[arg(long, default_value = "200000")]
+        gas_limit: u64,
+        /// Max withdrawals per batch
+        #[arg(long, default_value = "10")]
+        batch_size: i32,
+        /// Dry run mode (don't execute transactions)
+        #[arg(long)]
+        dry_run: bool,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Execute a specific withdrawal request manually
+    ExecuteWithdrawal {
+        /// Withdrawal request ID to execute
+        #[arg(long)]
+        request_id: i32,
+        /// Ethereum RPC URL
+        #[arg(long, env = "ETHEREUM_RPC_URL")]
+        ethereum_rpc_url: String,
+        /// Smart contract address
+        #[arg(long, env = "ETHEREUM_CONTRACT_ADDRESS")]
+        contract_address: String,
+        /// Private key for transaction signing (hex format)
+        #[arg(long, env = "ETHEREUM_PRIVATE_KEY")]
+        private_key: String,
+        /// Gas limit for transaction
+        #[arg(long, default_value = "200000")]
+        gas_limit: u64,
+        /// Dry run mode (don't execute transaction)
+        #[arg(long)]
+        dry_run: bool,
+        /// Show detailed output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
     /// Test balance and withdrawal operations
     Test {
         /// Test address for operations
@@ -247,6 +303,51 @@ pub async fn handle_balance_command(
             limit,
             verbose: cmd_verbose,
         } => get_pending_withdrawals(client, limit, cmd_verbose || verbose).await,
+        BalanceCommands::StartWithdrawalExecutor {
+            database_url,
+            ethereum_rpc_url,
+            contract_address,
+            private_key,
+            poll_interval,
+            gas_limit,
+            batch_size,
+            dry_run,
+            verbose: cmd_verbose,
+        } => {
+            start_withdrawal_executor(
+                &database_url,
+                &ethereum_rpc_url,
+                &contract_address,
+                &private_key,
+                poll_interval,
+                gas_limit,
+                batch_size,
+                dry_run,
+                cmd_verbose || verbose,
+            )
+            .await
+        }
+        BalanceCommands::ExecuteWithdrawal {
+            request_id,
+            ethereum_rpc_url,
+            contract_address,
+            private_key,
+            gas_limit,
+            dry_run,
+            verbose: cmd_verbose,
+        } => {
+            execute_single_withdrawal(
+                client,
+                request_id,
+                &ethereum_rpc_url,
+                &contract_address,
+                &private_key,
+                gas_limit,
+                dry_run,
+                cmd_verbose || verbose,
+            )
+            .await
+        }
         BalanceCommands::Test {
             test_address,
             test_withdrawals,
@@ -1313,4 +1414,236 @@ pub async fn test_balance_operations(
     }
 
     Ok(())
+}
+
+/// Start the withdrawal executor service
+pub async fn start_withdrawal_executor(
+    database_url: &str,
+    ethereum_rpc_url: &str,
+    contract_address: &str,
+    private_key: &str,
+    poll_interval: u64,
+    gas_limit: u64,
+    batch_size: i32,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<()> {
+    println!("🚀 Starting Withdrawal Executor Service");
+    println!("   Database: {}", mask_database_url(database_url));
+    println!("   Contract: {}", contract_address);
+    println!("   Poll interval: {}s", poll_interval);
+    println!("   Batch size: {}", batch_size);
+    println!("   Gas limit: {}", gas_limit);
+    println!("   Dry run: {}", dry_run);
+
+    if verbose {
+        println!("   RPC URL: {}", ethereum_rpc_url);
+    }
+
+    // Use std::process::Command to run the withdrawal executor binary
+    let mut cmd = std::process::Command::new("cargo");
+    cmd.arg("run")
+        .arg("-p")
+        .arg("ethereum-client")
+        .arg("--bin")
+        .arg("withdrawal_executor")
+        .arg("--")
+        .arg("--database-url")
+        .arg(database_url)
+        .arg("--ethereum-rpc-url")
+        .arg(ethereum_rpc_url)
+        .arg("--contract-address")
+        .arg(contract_address)
+        .arg("--private-key")
+        .arg(private_key)
+        .arg("--poll-interval")
+        .arg(poll_interval.to_string())
+        .arg("--gas-limit")
+        .arg(gas_limit.to_string())
+        .arg("--batch-size")
+        .arg(batch_size.to_string());
+
+    if dry_run {
+        cmd.arg("--dry-run");
+    }
+
+    if verbose {
+        cmd.arg("--verbose");
+    }
+
+    // Set environment variable for SQLx offline mode
+    cmd.env("SQLX_OFFLINE", "true");
+
+    println!("\n🔄 Launching withdrawal executor...");
+
+    let status = cmd.status()?;
+
+    if !status.success() {
+        println!(
+            "❌ Withdrawal executor failed with exit code: {:?}",
+            status.code()
+        );
+    } else {
+        println!("✅ Withdrawal executor completed successfully");
+    }
+
+    Ok(())
+}
+
+/// Execute a single withdrawal request manually
+pub async fn execute_single_withdrawal(
+    client: &BatchApiClient,
+    request_id: i32,
+    ethereum_rpc_url: &str,
+    contract_address: &str,
+    private_key: &str,
+    gas_limit: u64,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<()> {
+    println!("⚡ Executing withdrawal request #{}", request_id);
+
+    // First, get the withdrawal request details via HTTP API call
+    let api_url =
+        env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string());
+    let client_http = Client::new();
+    let url = format!("{}/api/v1/withdrawals/{}", api_url, request_id);
+
+    match client_http.get(&url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                let withdrawal: serde_json::Value = response.json().await?;
+
+                let user_address = withdrawal
+                    .get("user_address")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+                let recipient_address = withdrawal
+                    .get("recipient_address")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+                let amount_usdc = withdrawal
+                    .get("amount_usdc")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+                let state = withdrawal
+                    .get("state")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown");
+
+                println!("   User: {}", user_address);
+                println!("   Recipient: {}", recipient_address);
+                println!("   Amount: {} USDC", amount_usdc);
+                println!("   Status: {}", state);
+
+                if state != "approved" {
+                    println!(
+                        "⚠️  Warning: Withdrawal is not in 'approved' state. Current state: {}",
+                        state
+                    );
+                    println!("   Only approved withdrawals should be executed manually.");
+                    return Ok(());
+                }
+
+                if dry_run {
+                    println!(
+                        "\n[DRY RUN] Would execute withdrawal #{} for {} USDC",
+                        request_id, amount_usdc
+                    );
+                    return Ok(());
+                }
+            } else {
+                println!(
+                    "❌ Failed to get withdrawal details: HTTP {}",
+                    response.status()
+                );
+                return Ok(());
+            }
+
+            // Use std::process::Command to run a single withdrawal execution
+            let mut cmd = std::process::Command::new("cargo");
+            cmd.arg("run")
+                .arg("-p")
+                .arg("ethereum-client")
+                .arg("--bin")
+                .arg("withdrawal_executor")
+                .arg("--")
+                .arg("--database-url")
+                .arg(&env::var("DATABASE_URL").unwrap_or_else(|_| {
+                    "postgresql://postgres:password@127.0.0.1:5432/arda_credit_db".to_string()
+                }))
+                .arg("--ethereum-rpc-url")
+                .arg(ethereum_rpc_url)
+                .arg("--contract-address")
+                .arg(contract_address)
+                .arg("--private-key")
+                .arg(private_key)
+                .arg("--poll-interval")
+                .arg("5") // Quick poll for single execution
+                .arg("--gas-limit")
+                .arg(gas_limit.to_string())
+                .arg("--batch-size")
+                .arg("1"); // Process only one withdrawal
+
+            if verbose {
+                cmd.arg("--verbose");
+            }
+
+            // Set environment variable for SQLx offline mode
+            cmd.env("SQLX_OFFLINE", "true");
+
+            println!("\n🔄 Executing withdrawal on blockchain...");
+
+            let output = cmd.output()?;
+
+            if output.status.success() {
+                println!("✅ Withdrawal executed successfully!");
+
+                // Check the updated status
+                match client_http.get(&url).send().await {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            if let Ok(updated_withdrawal) =
+                                response.json::<serde_json::Value>().await
+                            {
+                                let updated_state = updated_withdrawal
+                                    .get("state")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("Unknown");
+                                println!("   Updated status: {}", updated_state);
+                                if let Some(tx_hash) = updated_withdrawal
+                                    .get("transaction_hash")
+                                    .and_then(|v| v.as_str())
+                                {
+                                    println!("   Transaction hash: {}", tx_hash);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => println!("⚠️  Could not fetch updated status: {}", e),
+                }
+            } else {
+                println!("❌ Withdrawal execution failed");
+                println!("Error: {}", String::from_utf8_lossy(&output.stderr));
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to get withdrawal details: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+/// Helper function to mask sensitive database URL parts
+fn mask_database_url(url: &str) -> String {
+    if let Some(at_pos) = url.find('@') {
+        if let Some(colon_pos) = url[..at_pos].rfind(':') {
+            format!("{}:****{}", &url[..colon_pos], &url[at_pos..])
+        } else {
+            url.to_string()
+        }
+    } else {
+        url.to_string()
+    }
 }

@@ -70,6 +70,7 @@ use crate::user_handlers::{
     SubmitKycResponse, UpdateKycStatusRequest, UpdateUserRequest, UpdateUserResponse,
     UserDetailsResponse,
 };
+use crate::withdrawal_handlers;
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{Identity, IndexedMerkleTreeADS};
 use std::sync::Arc;
@@ -529,6 +530,25 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::TRANSACTION_UPDATES_SSE,
             get(crate::contract_handlers::get_transaction_updates),
+        )
+        // ========================================================================
+        // ADDITIONAL ADMIN WITHDRAWAL ENDPOINTS (using path constants)
+        // ========================================================================
+        .route(
+            paths::ADMIN_APPROVE_WITHDRAWAL,
+            post(withdrawal_handlers::approve_withdrawal_request),
+        )
+        .route(
+            paths::ADMIN_REJECT_WITHDRAWAL,
+            post(withdrawal_handlers::reject_withdrawal_request),
+        )
+        .route(
+            paths::ADMIN_EXECUTE_WITHDRAWAL,
+            post(withdrawal_handlers::manual_execute_withdrawal),
+        )
+        .route(
+            paths::ADMIN_WITHDRAWAL_DASHBOARD,
+            get(withdrawal_handlers::get_admin_withdrawal_dashboard),
         )
         .with_state(state)
 }

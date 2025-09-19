@@ -292,7 +292,7 @@ i2p:
 	@echo "📄 Output saved to: .evals/i2p_dynamic_prompt.md"
 	@echo "🤖 Ready for AI agent execution (Cursor, Claude Code, etc.)"
 
-## server: Start API server locally (in debug mode with verbose logging) with deposit monitor
+## server: Start API server locally (in debug mode with verbose logging) with deposit monitor and withdrawal executor
 .PHONY: server
 server: up
 	@sleep 2
@@ -305,8 +305,76 @@ server: up
 		--contract-address $$ETHEREUM_CONTRACT_ADDRESS \
 		> deposit_monitor.log 2>&1 &
 	@echo "Deposit monitor started (logs: deposit_monitor.log)"
+	@echo "Starting withdrawal executor in background..."
+	@SQLX_OFFLINE=true cargo run -p ethereum-client --bin withdrawal_executor --release -- \
+		--database-url postgresql://postgres:password@127.0.0.1:5432/arda_credit_db \
+		--ethereum-rpc-url $$ETHEREUM_RPC_URL \
+		--contract-address $$ETHEREUM_CONTRACT_ADDRESS \
+		--private-key $$ETHEREUM_PRIVATE_KEY \
+		--poll-interval 30 \
+		--batch-size 10 \
+		> withdrawal_executor.log 2>&1 &
+	@echo "Withdrawal executor started (logs: withdrawal_executor.log)"
 	@echo "Starting API server..."
 	RUST_LOG=debug cargo run --bin server
+
+## server-stop: Stop background services (deposit monitor and withdrawal executor)
+.PHONY: server-stop
+server-stop:
+	@echo "🛑 Stopping background services..."
+	@pkill -f "deposit_monitor" || echo "  No deposit monitor process found"
+	@pkill -f "withdrawal_executor" || echo "  No withdrawal executor process found"
+	@echo "✅ Background services stopped"
+
+## server-help: Show required environment variables for server
+.PHONY: server-help
+server-help:
+	@echo "Server Environment Variables"
+	@echo "==========================="
+	@echo ""
+	@echo "Required for Deposit Monitor and Withdrawal Executor:"
+	@echo "  ETHEREUM_RPC_URL          - Ethereum RPC endpoint URL"
+	@echo "  ETHEREUM_CONTRACT_ADDRESS - Arda Credit contract address"
+	@echo "  ETHEREUM_PRIVATE_KEY      - Private key for withdrawal transactions (hex format)"
+	@echo ""
+	@echo "Optional Database (uses default if not set):"
+	@echo "  DATABASE_URL              - PostgreSQL connection string"
+	@echo "                               (default: postgresql://postgres:password@127.0.0.1:5432/arda_credit_db)"
+	@echo ""
+	@echo "Example Usage:"
+	@echo "  export ETHEREUM_RPC_URL='https://eth-sepolia.g.alchemy.com/v2/your-api-key'"
+	@echo "  export ETHEREUM_CONTRACT_ADDRESS='0x45F9Dff1f6c75C9Ab28e8c5167F2461A2B295c1A'"
+	@echo "  export ETHEREUM_PRIVATE_KEY='your-private-key-without-0x-prefix'"
+	@echo "  make server"
+	@echo ""
+	@echo "Or set them in your .env file and run:"
+	@echo "  export \$$(cat .env | grep -v '^#' | xargs) && make server"
+	@echo ""
+	@echo "Log Files:"
+	@echo "  deposit_monitor.log       - Deposit monitor service logs"
+	@echo "  withdrawal_executor.log   - Withdrawal executor service logs"
+	@echo ""
+	@echo "Stop Services:"
+	@echo "  make server-stop          - Stop background services"
+
+## server-logs: Show logs from background services
+.PHONY: server-logs
+server-logs:
+	@echo "=== Deposit Monitor Logs ==="
+	@if [ -f "deposit_monitor.log" ]; then \
+		tail -20 deposit_monitor.log; \
+	else \
+		echo "❌ deposit_monitor.log not found"; \
+	fi
+	@echo ""
+	@echo "=== Withdrawal Executor Logs ==="
+	@if [ -f "withdrawal_executor.log" ]; then \
+		tail -20 withdrawal_executor.log; \
+	else \
+		echo "❌ withdrawal_executor.log not found"; \
+	fi
+	@echo ""
+	@echo "💡 Use 'tail -f deposit_monitor.log' or 'tail -f withdrawal_executor.log' for live monitoring"
 
 ## forge-build: Build smart contracts
 .PHONY: forge-build

@@ -60,6 +60,7 @@ pub use credit_line_operations::{
 
 // Re-export batch processing types and functions
 pub use db::{
+    approve_withdrawal_request,
     // Invite code functions
     check_invite_code,
     // Financial transaction functions
@@ -154,11 +155,14 @@ pub use db::{
     get_user_id_by_wallet_address,
     get_user_pool_financial_transactions,
     get_user_withdrawal_balance,
+    get_validated_pending_withdrawals,
     get_withdrawal_by_tx_hash,
     get_withdrawal_request_by_id,
     get_withdrawal_requests_by_user_address,
     get_withdrawal_requests_by_user_id,
     get_withdrawals_by_user_address,
+    // Admin withdrawal functions
+    get_withdrawals_pending_admin_approval,
     // Database connection
     init_db,
     init_db_with_url,
@@ -169,7 +173,9 @@ pub use db::{
     mark_batch_posted_to_contract,
     mark_batch_posted_to_contract_with_tx_hash,
 
+    mark_withdrawal_submitted,
     register_or_reregister_user,
+    reject_withdrawal_request,
     // Authentication functions
     reset_password_with_token,
     set_email_verification_token,

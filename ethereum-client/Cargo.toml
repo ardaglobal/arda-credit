@@ -77,6 +77,10 @@ path = "src/bin/bridge.rs"
 name = "deposit_monitor"
 path = "src/bin/deposit_monitor.rs"
 
+[[bin]]
+name = "withdrawal_executor"
+path = "src/bin/withdrawal_executor.rs"
+
 [features]
 database = [ "chrono", "sqlx", "uuid" ]
 default  = [ "database" ]

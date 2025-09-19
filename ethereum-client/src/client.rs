@@ -1741,6 +1741,83 @@ impl EthereumClient {
 
         Ok((verification_key, verifier_address))
     }
+
+    /// Call the smart contract's withdraw function to send USDC to a specified address
+    /// This is used by the withdrawal executor service to execute validated withdrawal requests
+    pub async fn call_withdraw_function(
+        &self,
+        to: Address,
+        amount: U256,
+        gas_limit: u64,
+    ) -> Result<(FixedBytes<32>, Option<TransactionReceipt>)> {
+        info!(
+            "Executing withdrawal: to={}, amount={}, gas_limit={}",
+            to, amount, gas_limit
+        );
+
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
+
+        // Send withdrawal transaction
+        let tx_result = contract
+            .withdraw(amount, to)
+            .gas(gas_limit)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to send withdrawal transaction: {e}");
+                EthereumError::from_contract_error(&format!("Withdrawal transaction failed: {e}"))
+            })?;
+
+        let tx_hash = *tx_result.tx_hash();
+        info!("Withdrawal transaction sent: {}", tx_hash);
+
+        // Wait for confirmation
+        let receipt = tx_result.get_receipt().await.map_err(|e| {
+            error!("Failed to get withdrawal transaction receipt: {e}");
+            EthereumError::Transaction(format!("Withdrawal receipt error: {e}"))
+        })?;
+
+        // Verify transaction was successful
+        if !receipt.status() {
+            error!("Withdrawal transaction failed on-chain with status: false");
+            return Err(EthereumError::Transaction(
+                "Withdrawal transaction failed on-chain".to_string(),
+            ));
+        }
+
+        let block_number = receipt.block_number.unwrap_or(0);
+        info!(
+            "Withdrawal confirmed successfully in block {}: {}",
+            block_number,
+            hex::encode(tx_hash.as_slice())
+        );
+
+        Ok((tx_hash, Some(receipt)))
+    }
+
+    /// Get the user's deposit balance from the smart contract
+    pub async fn get_user_deposit_balance(&self, user: Address) -> Result<U256> {
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
+
+        let balance = contract.getUserDeposit(user).call().await.map_err(|e| {
+            error!("Failed to get user deposit balance: {e}");
+            EthereumError::from_contract_error(&format!("User deposit query failed: {e}"))
+        })?;
+
+        Ok(balance)
+    }
+
+    /// Get the total USDC deposits in the contract
+    pub async fn get_total_deposits(&self) -> Result<U256> {
+        let contract = ILoan::new(self.contracts.loan, &self.http_provider);
+
+        let total = contract.getTotalDeposits().call().await.map_err(|e| {
+            error!("Failed to get total deposits: {e}");
+            EthereumError::from_contract_error(&format!("Total deposits query failed: {e}"))
+        })?;
+
+        Ok(total)
+    }
 }
 
 pub type Receipt = TransactionReceipt;

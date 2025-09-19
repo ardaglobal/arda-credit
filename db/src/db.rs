@@ -6,6 +6,8 @@ use std::env;
 use std::str::FromStr;
 use tracing::{debug, instrument};
 
+use crate::error::DbError;
+
 #[cfg(all(not(target_env = "msvc"), feature = "tikv-jemallocator"))]
 use tikv_jemallocator::Jemalloc;
 
@@ -3298,6 +3300,235 @@ pub async fn update_withdrawal_request_submitted(
     Ok(request)
 }
 
+/// Get admin-approved withdrawal requests ready for execution
+pub async fn get_validated_pending_withdrawals(
+    pool: &PgPool,
+    limit: Option<i32>,
+) -> Result<Vec<WithdrawalRequest>, DbError> {
+    let limit = limit.unwrap_or(100) as i64;
+
+    let requests = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        SELECT
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        FROM withdrawal_requests
+        WHERE state = 'approved'
+            AND kyc_validated = true
+            AND balance_validated = true
+            AND cancelled_at IS NULL
+            AND failed_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT $1
+        "#,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(requests)
+}
+
+/// Mark a withdrawal as submitted (called by withdrawal executor)
+pub async fn mark_withdrawal_submitted(
+    pool: &PgPool,
+    request_id: i32,
+    transaction_hash: &str,
+    block_number: Option<i64>,
+) -> Result<WithdrawalRequest, DbError> {
+    update_withdrawal_request_submitted(pool, request_id, transaction_hash, block_number)
+        .await
+        .map_err(DbError::Database)
+}
+
+/// Get withdrawal requests pending admin approval
+pub async fn get_withdrawals_pending_admin_approval(
+    pool: &PgPool,
+    limit: i32,
+    offset: i32,
+) -> Result<Vec<WithdrawalRequest>, DbError> {
+    let requests = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        SELECT
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        FROM withdrawal_requests
+        WHERE state = 'pending'
+            AND cancelled_at IS NULL
+        ORDER BY created_at ASC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit as i64,
+        offset as i64
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(requests)
+}
+
+/// Approve a withdrawal request (admin action)
+pub async fn approve_withdrawal_request(
+    pool: &PgPool,
+    request_id: i32,
+    admin_notes: &Option<String>,
+) -> Result<WithdrawalRequest, DbError> {
+    let approved_at = chrono::Utc::now();
+
+    let request = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        UPDATE withdrawal_requests
+        SET state = 'approved',
+            kyc_validated = true,
+            balance_validated = true,
+            validated_at = $2,
+            updated_at = $2,
+            validation_errors = CASE
+                WHEN $3::text IS NOT NULL THEN
+                    jsonb_build_object('admin_notes', $3::text)
+                ELSE validation_errors
+            END
+        WHERE id = $1
+            AND state = 'pending'
+            AND cancelled_at IS NULL
+        RETURNING
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        "#,
+        request_id,
+        approved_at,
+        admin_notes.as_deref()
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(request)
+}
+
+/// Reject a withdrawal request (admin action)
+pub async fn reject_withdrawal_request(
+    pool: &PgPool,
+    request_id: i32,
+    rejection_reason: &str,
+    admin_notes: Option<&str>,
+) -> Result<WithdrawalRequest, DbError> {
+    let rejected_at = chrono::Utc::now();
+
+    let validation_errors = serde_json::json!({
+        "rejection_reason": rejection_reason,
+        "admin_notes": admin_notes,
+        "rejected_at": rejected_at
+    });
+
+    let request = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        UPDATE withdrawal_requests
+        SET state = 'rejected',
+            kyc_validated = false,
+            balance_validated = false,
+            failed_at = $2,
+            updated_at = $2,
+            validation_errors = $3,
+            error_message = $4
+        WHERE id = $1
+            AND state = 'pending'
+            AND cancelled_at IS NULL
+        RETURNING
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        "#,
+        request_id,
+        rejected_at,
+        validation_errors,
+        rejection_reason
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(request)
+}
+
+/// Admin withdrawal dashboard data (duplicated here to avoid circular import)
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct AdminWithdrawalDashboard {
+    pub pending_approval_count: i64,
+    pub pending_execution_count: i64,
+    pub total_pending_amount: String,
+    pub recent_requests: Vec<WithdrawalRequest>,
+    pub execution_stats: Option<serde_json::Value>,
+}
+
+/// Get admin dashboard stats for withdrawals
+pub async fn get_admin_withdrawal_dashboard_stats(
+    pool: &PgPool,
+) -> Result<AdminWithdrawalDashboard, DbError> {
+    // Get counts by status
+    let stats = sqlx::query!(
+        r#"
+        SELECT
+            COUNT(CASE WHEN state = 'pending' THEN 1 END) as pending_approval_count,
+            COUNT(CASE WHEN state = 'approved' THEN 1 END) as pending_execution_count,
+            COALESCE(SUM(CASE WHEN state IN ('pending', 'approved') THEN amount ELSE 0 END), 0) as total_pending_amount
+        FROM withdrawal_requests
+        WHERE cancelled_at IS NULL
+            AND confirmed_at IS NULL
+        "#
+    )
+    .fetch_one(pool)
+    .await?;
+
+    // Get recent requests
+    let recent_requests = sqlx::query_as!(
+        WithdrawalRequest,
+        r#"
+        SELECT
+            id, user_id, user_address, recipient_address, amount, amount_usdc,
+            state, kyc_validated, balance_validated, kyc_status_at_request,
+            available_balance_at_request, transaction_hash, block_number,
+            confirmation_count, required_confirmations, error_message,
+            validation_errors, created_at, updated_at, validated_at,
+            submitted_at, confirmed_at, failed_at, cancelled_at
+        FROM withdrawal_requests
+        WHERE cancelled_at IS NULL
+        ORDER BY created_at DESC
+        LIMIT 10
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(AdminWithdrawalDashboard {
+        pending_approval_count: stats.pending_approval_count.unwrap_or(0),
+        pending_execution_count: stats.pending_execution_count.unwrap_or(0),
+        total_pending_amount: stats
+            .total_pending_amount
+            .unwrap_or(rust_decimal::Decimal::ZERO)
+            .to_string(),
+        recent_requests,
+        execution_stats: None, // Will be filled by the handler if executor is available
+    })
+}
+
 /// Update withdrawal request confirmation status
 pub async fn update_withdrawal_request_confirmations(
     pool: &PgPool,
@@ -3363,7 +3594,7 @@ pub async fn get_pending_withdrawal_requests(
             validation_errors, created_at, updated_at, validated_at,
             submitted_at, confirmed_at, failed_at, cancelled_at
         FROM withdrawal_requests
-        WHERE state IN ('pending', 'validated')
+        WHERE state IN ('pending', 'validated', 'failed')
         ORDER BY created_at ASC
         LIMIT $1
         "#,

@@ -60,5 +60,23 @@ impl std::str::FromStr for UserType {
     }
 }
 
+/// Standard error response format
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ErrorResponse {
+    pub error: String,
+    pub message: String,
+    pub details: Option<serde_json::Value>,
+}
+
+impl ErrorResponse {
+    pub fn new(error: &str, message: &str) -> Self {
+        Self {
+            error: error.to_string(),
+            message: message.to_string(),
+            details: None,
+        }
+    }
+}
+
 // Note: All types are now imported from rest.rs to avoid duplication
 // This file serves as a bridge during the transition period

@@ -174,6 +174,15 @@ sol! {
             bytes32 transactionHash
         );
 
+        // USDC Withdrawal Events
+        #[derive(Debug, PartialEq, Eq)]
+        event Withdrawal(
+            address indexed user,
+            address indexed to,
+            uint256 indexed amount,
+            uint256 timestamp
+        );
+
         // Verification key utilities
         function getProgramVerificationKey() external view returns (bytes32 vKey);
 
@@ -193,6 +202,15 @@ sol! {
         function getPreviousStateRootFromBatch(bytes32 stateId) external view returns (bytes32);
 
         function getNewStateRootFromBatch(bytes32 stateId) external view returns (bytes32);
+
+        // USDC Withdrawal Functions
+        function withdraw(uint256 amount, address to) external;
+
+        function withdrawAll() external;
+
+        function getUserDeposit(address user) external view returns (uint256);
+
+        function getTotalDeposits() external view returns (uint256);
     }
 }
 
