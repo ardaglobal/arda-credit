@@ -14,6 +14,11 @@ version     = "0.0.1"
 name = "arda-credit"
 path = "src/bin/main.rs"
 
+[features]
+benchmark = [  ]
+default   = [  ]
+sindri    = [  ]
+
 [dependencies]
 # Core computation (for types)
 arda-credit-lib = { path = "../lib", package = "lib" }
@@ -24,8 +29,12 @@ sp1-sdk = { workspace = true }
 # Sindri integration
 sindri = { workspace = true }
 
-# Command line argument parsing
+# Command line argument parsing 
 clap = { workspace = true, features = [ "derive" ] }
+
+# Benchmarking and metrics
+futures = { workspace = true }
+metrics = { workspace = true }
 
 # Utilities
 alloy-sol-types    = { workspace = true }

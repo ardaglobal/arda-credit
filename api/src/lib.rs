@@ -39,6 +39,7 @@ pub mod authentication_handlers;
 pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
+pub mod contract_handlers;
 pub mod credit_line_handlers;
 pub mod financial_transaction_handlers;
 pub mod health_handlers;
@@ -98,6 +99,7 @@ pub use router::{create_router, ApiConfig, ApiState};
 
 // Re-export new handler modules
 pub use admin_handlers::*;
+pub use contract_handlers::*;
 pub use merchant_handlers::*;
 pub use state_handlers::*;
 pub use user_handlers::*;

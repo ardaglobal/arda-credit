@@ -43,3 +43,4 @@ helm/charts/*/charts/
 __pycache__/
 *.py[cod]
 *$py.class
+*.log

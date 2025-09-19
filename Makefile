@@ -23,11 +23,27 @@ help: Makefile
 install:
 	./install-dependencies.sh
 
+## build-program: Build SP1 program
+.PHONY: build-program
+build-program:
+	cd program && cargo prove build --output-directory ../build
+
 ## fmt: Format code
 .PHONY: fmt
 fmt: yamllint-fix actionlint-fix docker-lint-fix
-	cargo fmt
-	taplo fmt
+	@if [ "$(CHECK)" = "1" ]; then \
+		echo ""; \
+		echo "Running formatters with --check"; \
+		echo ""; \
+		cargo fmt -- --check; \
+		taplo fmt --check; \
+	else \
+		echo ""; \
+		echo "Formatting code"; \
+		echo ""; \
+		cargo fmt; \
+		taplo fmt; \
+	fi
 
 ## lint: Lint code
 .PHONY: lint
@@ -36,6 +52,7 @@ lint: yamllint actionlint docker-lint deny lint-rust
 ## lint-rust: Lint only Rust code
 .PHONY: lint-rust
 lint-rust:
+	$(MAKE) fmt CHECK=1
 	SQLX_OFFLINE=true cargo clippy --all-targets -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
 
 ## env: Copy .env.example to .env
@@ -181,6 +198,28 @@ cover:
 run:
 	cargo run --release
 
+# =============================================================================
+# ZK Proof Benchmarking Commands (requires SINDRI_API_KEY)
+# =============================================================================
+
+NUM_PROOFS=1
+NUM_TRANSACTIONS=100
+
+## bench-zk: Run a zk benchmark test. Usage: make bench-zk NUM_PROOFS=50 NUM_TRANSACTIONS=500
+.PHONY: bench-zk
+bench-zk:
+	@echo ""
+	@echo "Prerequisites:"
+	@echo "  • SINDRI_API_KEY set in .env"
+	@echo "  • Update sindri.json provingScheme to compressed"
+	@echo "  • Circuit deployed: make deploy"
+	@echo ""
+	@TOTAL_TXS=$$(($(NUM_PROOFS) * $(NUM_TRANSACTIONS))); \
+	echo "🎛️  Running benchmark test..."; \
+	echo "Configuration: $(NUM_PROOFS) proofs × $(NUM_TRANSACTIONS) transactions = $$TOTAL_TXS total transactions"; \
+	echo ""
+	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features sindri,benchmark
+
 ## cli: CLI client (requires API server running)
 .PHONY: cli
 cli:
@@ -292,12 +331,20 @@ i2p:
 	@echo "📄 Output saved to: .evals/i2p_dynamic_prompt.md"
 	@echo "🤖 Ready for AI agent execution (Cursor, Claude Code, etc.)"
 
-## server: Start API server locally (in debug mode with verbose logging)
+## server: Start API server locally (in debug mode with verbose logging) with deposit monitor
 .PHONY: server
 server: up
 	@sleep 2
 	@echo "Running database migrations..."
 	sqlx migrate run --source db/migrations
+	@echo "Starting deposit monitor in background..."
+	@SQLX_OFFLINE=true cargo run -p ethereum-client --bin deposit_monitor --release -- \
+		--database-url postgresql://postgres:password@127.0.0.1:5432/arda_credit_db \
+		--ethereum-rpc-url $$ETHEREUM_RPC_URL \
+		--contract-address $$ETHEREUM_CONTRACT_ADDRESS \
+		> deposit_monitor.log 2>&1 &
+	@echo "Deposit monitor started (logs: deposit_monitor.log)"
+	@echo "Starting API server..."
 	RUST_LOG=debug cargo run --bin server
 
 ## forge-build: Build smart contracts
