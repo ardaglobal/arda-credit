@@ -18,6 +18,7 @@ use metrics::{counter, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use std::time::Instant;
 use tracing::{debug, info, warn};
+use regex::Regex;
 
 /// Prometheus metrics handle for the application
 pub struct MetricsHandle {
@@ -84,6 +85,48 @@ impl MetricsHandle {
     pub fn render(&self) -> String {
         self.prometheus_handle.render()
     }
+
+    /// Health check for metrics system
+    /// Returns true if metrics are being collected properly
+    pub fn health_check(&self) -> bool {
+        let metrics_output = self.render();
+        
+        // Check if we have basic metrics registered
+        let has_http_metrics = metrics_output.contains("http_requests_total");
+        let has_db_metrics = metrics_output.contains("db_operations_total");
+        let has_system_metrics = metrics_output.contains("system_cpu_usage_percent");
+        
+        // Metrics system is healthy if we have at least some basic metrics
+        has_http_metrics || has_db_metrics || has_system_metrics
+    }
+}
+
+/// Normalize HTTP paths to prevent cardinality explosion
+/// Replaces dynamic segments (UUIDs, numbers) with placeholders
+fn normalize_path(path: &str) -> String {
+    // Common patterns to normalize
+    let patterns = [
+        // UUID pattern (8-4-4-4-12 hex digits)
+        (r"/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "/{id}"),
+        // Numeric IDs
+        (r"/\d+", "/{id}"),
+        // Batch IDs (batch_ prefix followed by UUID or number)
+        (r"/batch_[0-9a-fA-F-]+", "/batch_{id}"),
+        // Transaction hashes (0x followed by hex)
+        (r"/0x[0-9a-fA-F]+", "/{hash}"),
+        // Wallet addresses (0x followed by 40 hex chars)
+        (r"/0x[0-9a-fA-F]{40}", "/{address}"),
+    ];
+
+    let mut normalized = path.to_string();
+    
+    for (pattern, replacement) in patterns.iter() {
+        if let Ok(re) = Regex::new(pattern) {
+            normalized = re.replace_all(&normalized, *replacement).to_string();
+        }
+    }
+    
+    normalized
 }
 
 /// Middleware for HTTP request metrics
@@ -93,23 +136,28 @@ pub async fn metrics_middleware(
 ) -> Response {
     let start = Instant::now();
     let method = req.method().to_string();
-    let path = req
+    let raw_path = req
         .extensions()
         .get::<MatchedPath>()
         .map(|matched_path| matched_path.as_str())
         .unwrap_or("unknown")
         .to_string();
+    
+    // Normalize path to prevent cardinality explosion
+    let normalized_path = normalize_path(&raw_path);
 
     // Increment request counter
-    counter!("http_requests_total", "method" => method.clone(), "path" => path.clone()).increment(1);
+    counter!("http_requests_total", "method" => method.clone(), "path" => normalized_path.clone()).increment(1);
 
     let response = next.run(req).await;
     let status = response.status().as_u16().to_string();
     let duration = start.elapsed().as_secs_f64();
 
     // Record metrics
-    histogram!("http_request_duration_seconds", "method" => method.clone(), "path" => path.clone()).record(duration);
-    counter!("http_responses_total", "method" => method, "path" => path, "status" => status).increment(1);
+    histogram!("http_request_duration_seconds", "method" => method.clone(), "path" => normalized_path.clone()).record(duration);
+    counter!("http_responses_total", "method" => method, "path" => normalized_path, "status" => status).increment(1);
+
+    debug!("📊 HTTP request: {} {} -> {} ({}s, normalized: {})", method, raw_path, status, duration, normalized_path);
 
     response
 }

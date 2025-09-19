@@ -135,6 +135,14 @@ impl ApiServer {
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
 
+        // Initialize Prometheus metrics
+        info!("📊 Initializing Prometheus metrics");
+        let metrics_handle = crate::metrics::MetricsHandle::new()
+            .map_err(|e| {
+                warn!("Failed to initialize metrics: {}", e);
+                e
+            })?;
+
         // Create API state
         let state = ApiState {
             pool,
@@ -144,15 +152,8 @@ impl ApiServer {
             auth_service,
             withdrawal_service,
             balance_service,
+            metrics_handle: Some(Arc::new(metrics_handle)),
         };
-
-        // Initialize Prometheus metrics
-        info!("📊 Initializing Prometheus metrics");
-        let _metrics_handle = crate::metrics::MetricsHandle::new()
-            .map_err(|e| {
-                warn!("Failed to initialize metrics: {}", e);
-                e
-            })?;
 
         let server = Self { config, state };
 
@@ -186,6 +187,14 @@ impl ApiServer {
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
 
+        // Initialize Prometheus metrics
+        info!("📊 Initializing Prometheus metrics");
+        let metrics_handle = crate::metrics::MetricsHandle::new()
+            .map_err(|e| {
+                warn!("Failed to initialize metrics: {}", e);
+                e
+            })?;
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
@@ -194,15 +203,8 @@ impl ApiServer {
             auth_service,
             withdrawal_service,
             balance_service,
+            metrics_handle: Some(Arc::new(metrics_handle)),
         };
-
-        // Initialize Prometheus metrics
-        info!("📊 Initializing Prometheus metrics");
-        let _metrics_handle = crate::metrics::MetricsHandle::new()
-            .map_err(|e| {
-                warn!("Failed to initialize metrics: {}", e);
-                e
-            })?;
 
         Ok(Self { config, state })
     }
