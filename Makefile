@@ -23,11 +23,27 @@ help: Makefile
 install:
 	./install-dependencies.sh
 
+## build-program: Build SP1 program
+.PHONY: build-program
+build-program:
+	cd program && cargo prove build --output-directory ../build
+
 ## fmt: Format code
 .PHONY: fmt
 fmt: yamllint-fix actionlint-fix docker-lint-fix
-	cargo fmt
-	taplo fmt
+	@if [ "$(CHECK)" = "1" ]; then \
+		echo ""; \
+		echo "Running formatters with --check"; \
+		echo ""; \
+		cargo fmt -- --check; \
+		taplo fmt --check; \
+	else \
+		echo ""; \
+		echo "Formatting code"; \
+		echo ""; \
+		cargo fmt; \
+		taplo fmt; \
+	fi
 
 ## lint: Lint code
 .PHONY: lint
@@ -36,6 +52,7 @@ lint: yamllint actionlint docker-lint deny lint-rust
 ## lint-rust: Lint only Rust code
 .PHONY: lint-rust
 lint-rust:
+	$(MAKE) fmt CHECK=1
 	SQLX_OFFLINE=true cargo clippy --all-targets -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
 
 ## env: Copy .env.example to .env
