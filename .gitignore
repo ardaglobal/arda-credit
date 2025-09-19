@@ -38,3 +38,9 @@ proof_*.json
 
 # Helm chart dependencies (downloaded chart archives)
 helm/charts/*/charts/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.log

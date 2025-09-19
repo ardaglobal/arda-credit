@@ -12,6 +12,10 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{types::ApiState, ErrorResponse};
+use arda_credit_db::{
+    create_account_financial_transaction, update_user_balance_from_deposit,
+    update_user_balance_from_withdrawal,
+};
 
 // ============================================================================
 // REQUEST/RESPONSE TYPES
@@ -64,6 +68,19 @@ pub struct CreatePoolFinancialTransactionRequest {
     pub state_transaction_id: Option<String>,
     /// Blockchain transaction hash (optional)
     pub transaction_hash: Option<String>,
+    /// Description of the transaction
+    pub description: Option<String>,
+}
+
+/// Create pool funding request (simplified for funding endpoint)
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct CreatePoolFundingRequest {
+    /// Pool ID
+    pub pool_id: String,
+    /// User ID
+    pub user_id: String,
+    /// Amount in USDC (human readable, e.g., "100.50")
+    pub amount_usdc: String,
     /// Description of the transaction
     pub description: Option<String>,
 }
@@ -245,8 +262,14 @@ pub async fn record_account_deposit(
         block_number: request.block_number,
     };
 
-    match arda_credit_db::create_account_financial_transaction(&state.pool, &db_request).await {
+    match create_account_financial_transaction(&state.pool, &db_request).await {
         Ok(transaction) => {
+            // Update user balance after successful transaction recording
+            if let Err(e) = update_user_balance_from_deposit(&state.pool, user_uuid, amount).await {
+                error!("Failed to update user balance after deposit: {}", e);
+                // Don't fail the transaction, just log the error
+            }
+
             info!(
                 transaction_id = %transaction.id,
                 user_id = %user_id,
@@ -352,8 +375,16 @@ pub async fn record_account_withdrawal(
         block_number: request.block_number,
     };
 
-    match arda_credit_db::create_account_financial_transaction(&state.pool, &db_request).await {
+    match create_account_financial_transaction(&state.pool, &db_request).await {
         Ok(transaction) => {
+            // Update user balance after successful transaction recording
+            if let Err(e) =
+                update_user_balance_from_withdrawal(&state.pool, user_uuid, amount).await
+            {
+                error!("Failed to update user balance after withdrawal: {}", e);
+                // Don't fail the transaction, just log the error
+            }
+
             info!(
                 transaction_id = %transaction.id,
                 user_id = %user_id,
@@ -490,7 +521,7 @@ pub async fn get_account_financial_transactions(
     params(
         ("pool_id" = String, Path, description = "Pool ID (UUID)")
     ),
-    request_body = CreatePoolFinancialTransactionRequest,
+    request_body = CreatePoolFundingRequest,
     responses(
         (status = 201, description = "Pool funding recorded successfully", body = PoolFinancialTransactionResponse),
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
@@ -503,7 +534,7 @@ pub async fn get_account_financial_transactions(
 pub async fn record_pool_funding(
     State(state): State<ApiState>,
     Path(pool_id): Path<String>,
-    JsonExtractor(request): JsonExtractor<CreatePoolFinancialTransactionRequest>,
+    JsonExtractor(request): JsonExtractor<CreatePoolFundingRequest>,
 ) -> Result<Json<PoolFinancialTransactionResponse>, (StatusCode, Json<ErrorResponse>)> {
     let pool_uuid = match Uuid::parse_str(&pool_id) {
         Ok(uuid) => uuid,
@@ -531,13 +562,13 @@ pub async fn record_pool_funding(
         }
     };
 
-    // Validate transaction type
-    if request.transaction_type != "FUND" {
+    // Validate that path pool_id matches body pool_id
+    if pool_id != request.pool_id {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse::new(
-                "invalid_transaction_type",
-                "Transaction type must be FUND for this endpoint",
+                "pool_id_mismatch",
+                "Pool ID in URL path must match pool ID in request body",
             )),
         ));
     }
@@ -556,30 +587,15 @@ pub async fn record_pool_funding(
         }
     };
 
-    // Parse optional state transaction ID
-    let state_transaction_id = if let Some(ref state_tx_id) = request.state_transaction_id {
-        Some(Uuid::parse_str(state_tx_id).map_err(|_| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new(
-                    "invalid_state_transaction_id",
-                    "Invalid state transaction ID format",
-                )),
-            )
-        })?)
-    } else {
-        None
-    };
-
-    // Create database request
+    // Create database request with fixed transaction type and optional fields set to None
     let db_request = arda_credit_db::CreatePoolFinancialTransactionRequest {
         pool_id: pool_uuid,
         user_id: user_uuid,
-        transaction_type: request.transaction_type.clone(),
+        transaction_type: "FUND".to_string(),
         amount,
         currency: "USDC".to_string(),
-        state_transaction_id,
-        transaction_hash: request.transaction_hash.clone(),
+        state_transaction_id: None,
+        transaction_hash: None,
         description: request.description.clone(),
     };
 
@@ -589,7 +605,7 @@ pub async fn record_pool_funding(
             if let Err(e) = arda_credit_db::update_pool_balance_after_transaction(
                 &state.pool,
                 pool_uuid,
-                &request.transaction_type,
+                "FUND",
                 amount,
             )
             .await

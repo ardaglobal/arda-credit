@@ -12,23 +12,29 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 pub use crate::admin_handlers::{
     AdminUserIdentity, AdminUserListResponse, BulkKycApprovalRequest, BulkKycApprovalResponse,
     BulkOperationResponse, KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse,
+    PlatformMetricsResponse,
 };
 pub use crate::authentication_handlers::{
     GenerateInviteCodeRequest, GenerateInviteCodeResponse, LoginRequest, LoginResponse,
     LogoutResponse, ValidateInviteCodeResponse,
 };
 pub use crate::balance_service::AvailableBalance;
+pub use crate::contract_handlers::{
+    ContractConfigQuery, ContractConfigResponse, TransactionUpdateEvent, TransactionUpdatesQuery,
+};
 pub use crate::credit_line_handlers::{
-    AvailablePoolResponse, CreditLineErrorResponse, CreditLineRequestListResponse,
-    CreditLineRequestQuery, CreditLineRequestResponse, EligibilityCheckDetail,
-    EligibilityCheckResponse, PoolBrowsingQuery, SubmitCreditLineRequestBody,
+    ActiveCreditLineResponse, ActiveCreditLinesListResponse, ActiveCreditLinesQuery,
+    ActivePoolDetails, AvailablePoolResponse, CreditLineErrorResponse,
+    CreditLineRequestListResponse, CreditLineRequestQuery, CreditLineRequestResponse,
+    EligibilityCheckDetail, EligibilityCheckResponse, PoolBrowsingQuery,
+    SubmitCreditLineRequestBody,
 };
 pub use crate::financial_transaction_handlers::{
     AccountFinancialTransactionResponse, CreateAccountFinancialTransactionRequest,
     CreateCreditLineFinancialTransactionRequest, CreatePoolFinancialTransactionRequest,
-    CreditLineFinancialTransactionResponse, FinancialSummaryResponse, FinancialTransactionQuery,
-    PaginatedFinancialTransactionsResponse, PoolFinancialTransactionResponse,
-    UnifiedFinancialTransactionResponse,
+    CreatePoolFundingRequest, CreditLineFinancialTransactionResponse, FinancialSummaryResponse,
+    FinancialTransactionQuery, PaginatedFinancialTransactionsResponse,
+    PoolFinancialTransactionResponse, UnifiedFinancialTransactionResponse,
 };
 pub use crate::loan_handlers::{
     CreateLoanRequest, DeleteLoanResponse, ListLoansQuery, ListLoansResponse, LoanDetailsResponse,
@@ -50,11 +56,19 @@ pub use crate::pool_api::{
     StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
     UtilizationHistoryQuery,
 };
+pub use crate::pool_borough_handlers::{
+    BoroughErrorResponse, BoroughLimitResponse, BoroughSummaryResponse, BoroughValidationResponse,
+    SetBoroughLimitRequest, ValidateBoroughQuery,
+};
 pub use crate::state_handlers::{
     BatchInfo, BatchListResponse, BatchProcessorStatsResponse, ContractSubmissionData,
     CreateBatchRequest, CreateBatchResponse, CurrentStateResponse, PendingTransactionsResponse,
     SubmitTransactionRequest, SubmitTransactionResponse, TransactionInfo, TriggerBatchResponse,
     UpdateBatchProofRequest,
+};
+pub use crate::transaction_history_handlers::{
+    DateRange, PaginationInfo, TransactionHistoryItem, TransactionHistoryResponse,
+    TransactionSummary,
 };
 pub use crate::turnover_handlers::{
     ProfileCompletionResponse, TurnoverAnalyticsResponse, TurnoverCreateRequest, TurnoverResponse,
@@ -131,6 +145,7 @@ fn default_limit() -> u32 {
         crate::admin_handlers::list_pending_kyc_endpoint,
         crate::admin_handlers::get_kyc_statistics_endpoint,
         crate::admin_handlers::bulk_kyc_approval_endpoint,
+        crate::admin_handlers::get_platform_metrics_endpoint,
 
         // State Management endpoints
         crate::state_handlers::submit_transaction_endpoint,
@@ -171,6 +186,13 @@ fn default_limit() -> u32 {
         crate::pool_handlers::get_pool_metrics_overview,
         crate::pool_handlers::get_investor_pool_metrics_overview,
 
+        // Pool Borough Limit endpoints
+        crate::pool_borough_handlers::set_borough_limit,
+        crate::pool_borough_handlers::get_borough_limits,
+        crate::pool_borough_handlers::get_borough_summary,
+        crate::pool_borough_handlers::validate_borough_limit,
+        crate::pool_borough_handlers::delete_borough_limit,
+
         // Withdrawal endpoints
         crate::withdrawal_handlers::initiate_withdrawal_endpoint,
         crate::withdrawal_handlers::get_withdrawal_status_endpoint,
@@ -194,11 +216,16 @@ fn default_limit() -> u32 {
         crate::financial_transaction_handlers::get_user_pool_financial_transactions,
         crate::financial_transaction_handlers::get_merchant_credit_line_financial_transactions,
 
+        // Transaction History endpoints
+        crate::transaction_history_handlers::get_transaction_history,
+        crate::transaction_history_handlers::get_pool_transaction_history,
+
         // Credit Line endpoints
         crate::credit_line_handlers::check_credit_eligibility,
         crate::credit_line_handlers::submit_credit_line_request,
         crate::credit_line_handlers::list_credit_line_requests,
         crate::credit_line_handlers::browse_available_pools,
+        crate::credit_line_handlers::list_active_credit_lines_with_pool_details,
 
         // Turnover endpoints
         crate::turnover_handlers::create_turnover_endpoint,
@@ -206,6 +233,10 @@ fn default_limit() -> u32 {
         crate::turnover_handlers::update_turnover_endpoint,
         crate::turnover_handlers::get_turnover_analytics_endpoint,
         crate::turnover_handlers::get_profile_completion_endpoint,
+
+        // Contract configuration endpoints
+        crate::contract_handlers::get_contract_config,
+        crate::contract_handlers::get_transaction_updates,
     ),
     tags(
         (name = "Authentication", description = "User authentication endpoints"),
@@ -231,10 +262,13 @@ fn default_limit() -> u32 {
         (name = "Withdrawals", description = "Withdrawal operations"),
         (name = "Credit Lines", description = "Credit line requests and management"),
         (name = "Financial Transactions", description = "Financial transaction tracking and reporting"),
+        (name = "Transaction History", description = "Comprehensive transaction history across all operations"),
         (name = "Analytics", description = "Platform analytics and reporting"),
         (name = "Admin", description = "Administrative operations"),
         (name = "Health", description = "Health check and system information"),
-        (name = "Info", description = "API information and discovery")
+        (name = "Info", description = "API information and discovery"),
+        (name = "contract", description = "Contract configuration and blockchain integration"),
+        (name = "transactions", description = "Real-time transaction monitoring and updates")
     ),
     components(schemas(
         // Authentication types
@@ -280,6 +314,7 @@ fn default_limit() -> u32 {
         FinancialTransactionQuery,
         CreateAccountFinancialTransactionRequest,
         CreatePoolFinancialTransactionRequest,
+        CreatePoolFundingRequest,
         CreateCreditLineFinancialTransactionRequest,
         AccountFinancialTransactionResponse,
         PoolFinancialTransactionResponse,
@@ -375,7 +410,21 @@ fn default_limit() -> u32 {
         InvestorProfileQuery,
         InvestorProfileResponse,
         UpdateMerchantProfileRequest,
-        UpdateInvestorProfileRequest
+        UpdateInvestorProfileRequest,
+
+        // Borough limit types
+        SetBoroughLimitRequest,
+        BoroughLimitResponse,
+        BoroughSummaryResponse,
+        ValidateBoroughQuery,
+        BoroughValidationResponse,
+        BoroughErrorResponse,
+
+        // Contract configuration types
+        ContractConfigResponse,
+        ContractConfigQuery,
+        TransactionUpdateEvent,
+        TransactionUpdatesQuery
     ))
 )]
 pub struct ApiDoc;
