@@ -1,5 +1,6 @@
 use axum::{
-    response::Json,
+    extract::State,
+    response::{Json, Response},
     routing::{delete, get, post, put},
     Router,
 };
@@ -124,6 +125,7 @@ pub struct ApiState {
     pub auth_service: Arc<AuthService>,
     pub withdrawal_service: WithdrawalTransactionService,
     pub balance_service: BalanceVerificationService,
+    pub metrics_handle: Option<Arc<crate::metrics::MetricsHandle>>,
 }
 
 /// Configuration for API server
@@ -158,6 +160,9 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::ROOT, get(crate::health_handlers::api_info))
         .route(paths::API_HEALTH, get(crate::health_handlers::health_check))
         .route(paths::API_INFO, get(crate::health_handlers::api_info))
+        // Prometheus metrics endpoint
+        .route("/metrics", get(metrics_handler))
+        .route("/metrics/health", get(metrics_health_handler))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
         // Authentication endpoints
@@ -552,4 +557,54 @@ fn swagger_ui() -> Router<ApiState> {
     SwaggerUi::new("/api-docs")
         .url("/api-docs/openapi.json", get_openapi_spec())
         .into()
+}
+
+/// Prometheus metrics endpoint handler
+#[instrument(skip(state))]
+async fn metrics_handler(State(state): State<ApiState>) -> impl axum::response::IntoResponse {
+    // Get metrics from the metrics handle stored in state
+    let metrics = match &state.metrics_handle {
+        Some(handle) => {
+            handle.render()
+        }
+        None => {
+            tracing::warn!("No metrics handle found in state");
+            "# No metrics handle available\n".to_string()
+        }
+    };
+    
+    axum::response::Response::builder()
+        .status(200)
+        .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
+        .body(metrics)
+        .unwrap()
+}
+
+/// Prometheus metrics health check endpoint handler
+#[instrument(skip(state))]
+async fn metrics_health_handler(State(state): State<ApiState>) -> impl axum::response::IntoResponse {
+    use axum::http::StatusCode;
+    use serde_json::json;
+    
+    let (status, health_status) = match &state.metrics_handle {
+        Some(handle) => {
+            if handle.health_check() {
+                (StatusCode::OK, "healthy")
+            } else {
+                (StatusCode::SERVICE_UNAVAILABLE, "unhealthy")
+            }
+        }
+        None => {
+            tracing::warn!("No metrics handle found in state for health check");
+            (StatusCode::SERVICE_UNAVAILABLE, "no_metrics_handle")
+        }
+    };
+    
+    let response_body = json!({
+        "status": health_status,
+        "service": "prometheus_metrics",
+        "timestamp": chrono::Utc::now().to_rfc3339()
+    });
+    
+    (status, axum::Json(response_body))
 }

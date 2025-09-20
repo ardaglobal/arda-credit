@@ -16,6 +16,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
+use metrics;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::paths;
@@ -172,6 +173,11 @@ pub async fn create_loan_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<CreateLoanRequest>,
 ) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
+    let start_time = std::time::Instant::now();
+    
+    // Record business logic operation
+    metrics::counter!("business_logic_operations_total", "operation" => "create_loan").increment(1);
+    
     info!(
         "💰 API: Creating loan: borrower={}, lender={}, amount={}",
         request.borrower_id, request.lender_id, request.principal_amount
@@ -221,6 +227,7 @@ pub async fn create_loan_endpoint(
     .await
     .map_err(|e| {
         error!("❌ Failed to create loan: {}", e);
+        metrics::counter!("business_logic_errors_total", "operation" => "create_loan").increment(1);
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             "Failed to create loan".to_string(),
@@ -239,6 +246,11 @@ pub async fn create_loan_endpoint(
         last_updated: Some(loan.updated_at),
     };
 
+    // Record function execution time
+    let duration = start_time.elapsed();
+    metrics::histogram!("function_execution_duration_seconds", "function" => "create_loan")
+        .record(duration.as_secs_f64());
+    
     info!("✅ API: Loan created successfully: {}", response.loan_id);
     Ok(Json(response))
 }

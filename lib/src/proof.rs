@@ -284,6 +284,7 @@ pub async fn generate_batch_proof(
 pub async fn generate_sindri_proof(
     request: ProofGenerationRequest,
 ) -> Result<ProofGenerationResponse, ProofError> {
+    let start_time = std::time::Instant::now();
     let final_balance = request.initial_balance + request.transactions.iter().sum::<i32>();
 
     info!(
@@ -293,6 +294,14 @@ pub async fn generate_sindri_proof(
         request.transactions,
         final_balance
     );
+
+    // Record Sindri API request
+    #[cfg(feature = "sp1")]
+    {
+        use metrics::{counter, histogram};
+        counter!("sindri_api_requests_total", "operation" => "prove_circuit").increment(1);
+        histogram!("sindri_proof_transactions_per_batch").record(request.transactions.len() as f64);
+    }
 
     // Create SP1 inputs for batch processing and serialize for Sindri
     let mut stdin = SP1Stdin::new();
@@ -362,6 +371,20 @@ pub async fn generate_sindri_proof(
         {
             warn!("⚠️  Failed to generate EVM fixture: {}", e);
         }
+    }
+
+    // Record proof generation metrics
+    #[cfg(feature = "sp1")]
+    {
+        use metrics::{counter, histogram};
+        let duration = start_time.elapsed();
+        histogram!("sindri_proof_generation_duration_seconds").record(duration.as_secs_f64());
+        
+        let success = response.proof_info.status == JobStatus::Ready;
+        counter!("sindri_proof_generation_total", 
+                "status" => if success { "success" } else { "pending" },
+                "proof_system" => request.proof_system.to_sindri_scheme())
+            .increment(1);
     }
 
     Ok(response)

@@ -302,6 +302,11 @@ impl EthereumClient {
         proof: Bytes,
         public_values: Bytes,
     ) -> Result<StateUpdate> {
+        let start_time = std::time::Instant::now();
+        
+        // Record smart contract API call
+        metrics::counter!("smart_contract_calls_total", "method" => "update_state").increment(1);
+        
         // Create contract instance
         let contract = ILoan::new(self.contracts.loan, &self.http_provider);
 
@@ -317,6 +322,7 @@ impl EthereumClient {
             .await
             .map_err(|e| {
                 error!("Failed to send state update transaction: {e}");
+                metrics::counter!("smart_contract_errors_total", "method" => "update_state").increment(1);
                 EthereumError::from_contract_error(&format!("Transaction failed: {e}"))
             })?;
 
@@ -358,6 +364,15 @@ impl EthereumClient {
         if let Some(cache) = &self.cache {
             cache.store_state_update(&state_update).await?;
         }
+
+        // Record successful transaction metrics
+        let duration = start_time.elapsed();
+        metrics::histogram!("smart_contract_transaction_duration_seconds", "method" => "update_state")
+            .record(duration.as_secs_f64());
+        
+        // Record gas usage if available
+        metrics::histogram!("smart_contract_gas_used", "method" => "update_state")
+            .record(receipt.gas_used as f64);
 
         Ok(state_update)
     }
@@ -555,6 +570,8 @@ impl EthereumClient {
         &self,
         updates: Vec<(FixedBytes<32>, FixedBytes<32>, Bytes, Bytes)>,
     ) -> Result<BatchStateUpdate> {
+        let _start_time = std::time::Instant::now();
+        
         if updates.is_empty() {
             return Err(EthereumError::Config("No updates provided".to_string()));
         }
@@ -572,6 +589,10 @@ impl EthereumClient {
         }
 
         info!("Batch updating {} states", state_ids.len());
+        
+        // Record batch smart contract API call
+        metrics::counter!("smart_contract_calls_total", "method" => "batch_update_states").increment(1);
+        metrics::histogram!("smart_contract_batch_size").record(state_ids.len() as f64);
 
         // Create contract instance
         let contract = ILoan::new(self.contracts.loan, &self.http_provider);
