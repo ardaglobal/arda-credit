@@ -312,6 +312,32 @@ pub async fn approve_withdrawal_request(
                 "Withdrawal {} approved successfully by admin. Amount: {:?} USDC, User: {}",
                 request_id, withdrawal.amount_usdc, withdrawal.user_address
             );
+
+            // Execute withdrawal immediately upon approval
+            if let Some(executor) = &state.withdrawal_executor {
+                match executor.execute_withdrawal(request_id).await {
+                    Ok(()) => {
+                        info!(
+                            "✅ Withdrawal {} executed successfully on blockchain",
+                            request_id
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            "❌ Failed to execute withdrawal {} on blockchain: {}",
+                            request_id, e
+                        );
+                        // Log the error but continue with approval response
+                        // The withdrawal is still approved in the database and can be retried
+                    }
+                }
+            } else {
+                warn!(
+                    "⚠️ Withdrawal executor not available - withdrawal approved but not executed"
+                );
+                warn!("💡 Configure ETHEREUM_RPC_URL, ETHEREUM_CONTRACT_ADDRESS, and ETHEREUM_WALLET_PRIVATE_KEY to enable automatic execution");
+            }
+
             Ok(Json(
                 serde_json::to_value(&withdrawal).unwrap_or_else(|_| serde_json::json!({})),
             ))

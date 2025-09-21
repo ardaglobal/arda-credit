@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE withdrawal_requests\n        SET state = 'rejected',\n            kyc_validated = false,\n            balance_validated = false,\n            failed_at = $2,\n            updated_at = $2,\n            validation_errors = $3,\n            error_message = $4\n        WHERE id = $1\n            AND state = 'pending'\n            AND cancelled_at IS NULL\n        RETURNING\n            id, user_id, user_address, recipient_address, amount, amount_usdc,\n            state, kyc_validated, balance_validated, kyc_status_at_request,\n            available_balance_at_request, transaction_hash, block_number,\n            confirmation_count, required_confirmations, error_message,\n            validation_errors, created_at, updated_at, validated_at,\n            submitted_at, confirmed_at, failed_at, cancelled_at\n        ",
+  "query": "\n        UPDATE withdrawal_requests\n        SET state = 'cancelled',\n            kyc_validated = false,\n            balance_validated = false,\n            cancelled_at = $2,\n            updated_at = $2,\n            validation_errors = $3,\n            error_message = $4\n        WHERE id = $1\n            AND state = 'pending'\n            AND cancelled_at IS NULL\n        RETURNING\n            id, user_id, user_address, recipient_address, amount, amount_usdc,\n            state, kyc_validated, balance_validated, kyc_status_at_request,\n            available_balance_at_request, transaction_hash, block_number,\n            confirmation_count, required_confirmations, error_message,\n            validation_errors, created_at, updated_at, validated_at,\n            submitted_at, confirmed_at, failed_at, cancelled_at\n        ",
   "describe": {
     "columns": [
       {
@@ -159,5 +159,5 @@
       true
     ]
   },
-  "hash": "5b20f3fa1fe39ea62fd430658873151c0ea5f6a74eca75a953ff35b1014076f2"
+  "hash": "00b0555579b981cfd4538911c1aa657f29f16fdafaace4a568de8605dccbb085"
 }

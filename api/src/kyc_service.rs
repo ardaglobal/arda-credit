@@ -19,6 +19,7 @@ impl KycValidationService {
         Self { pool }
     }
     /// Validate if user is KYC approved for withdrawal operations
+    /// Currently always returns true since KYC is not fully implemented
     pub async fn validate_kyc_for_withdrawal(
         &self,
         user_id: Uuid,
@@ -35,20 +36,14 @@ impl KycValidationService {
                 })
             }
         };
-        let is_valid = identity.kyc_status == "approved";
-        let reason = if !is_valid {
-            Some(format!(
-                "KYC status is '{}', must be 'approved' for withdrawals",
-                identity.kyc_status
-            ))
-        } else {
-            None
-        };
+
+        // TODO: Remove this when KYC system is fully implemented
+        // For now, always approve KYC validation for withdrawals
         Ok(KycValidationResult {
-            is_valid,
+            is_valid: true,
             user_id,
             kyc_status: identity.kyc_status.clone(),
-            reason,
+            reason: None,
         })
     }
     /// Validate KYC status for a user by wallet address

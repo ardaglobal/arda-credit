@@ -858,7 +858,7 @@ pub async fn get_withdrawal_status(
                     .and_then(|v| v.as_f64())
                     .unwrap_or(0.0);
                 let status = result
-                    .get("status")
+                    .get("state")
                     .and_then(|v| v.as_str())
                     .unwrap_or("UNKNOWN");
                 let created_at = result

@@ -54,6 +54,7 @@ pub mod pool_borough_handlers;
 pub mod pool_handlers;
 pub mod router;
 pub mod server;
+pub mod simple_withdrawal_executor;
 pub mod state_handlers;
 pub mod telemetry;
 pub mod transaction_history_handlers;

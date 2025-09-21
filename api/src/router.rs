@@ -125,6 +125,8 @@ pub struct ApiState {
     pub auth_service: Arc<AuthService>,
     pub withdrawal_service: WithdrawalTransactionService,
     pub balance_service: BalanceVerificationService,
+    pub withdrawal_executor:
+        Option<crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
 }
 
 /// Configuration for API server

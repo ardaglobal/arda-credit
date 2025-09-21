@@ -147,6 +147,7 @@ pub use db::{
     get_potential_stuck_batches,
     get_proven_unposted_batches,
     get_user_account_financial_transactions,
+    get_user_available_balance,
     get_user_balance_by_address,
     get_user_balance_by_id,
     get_user_deposit_balance,

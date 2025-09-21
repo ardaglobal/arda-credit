@@ -1,5 +1,6 @@
 use arda_credit_db::{
-    get_identity_by_id, get_user_balance_by_id, get_user_deposit_balance, DbResult,
+    get_identity_by_id, get_user_available_balance, get_user_balance_by_id,
+    get_user_deposit_balance, DbResult,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -76,8 +77,8 @@ impl BalanceVerificationService {
         wallet_address: &str,
         withdrawal_amount: Decimal,
     ) -> DbResult<BalanceVerificationResult> {
-        // Get user's available balance by address
-        let balance_result = get_user_deposit_balance(&self.pool, wallet_address).await;
+        // Get user's available balance by address (after subtracting pending withdrawals)
+        let balance_result = get_user_available_balance(&self.pool, wallet_address).await;
 
         match balance_result {
             Ok(Some(balance)) => {
@@ -103,17 +104,30 @@ impl BalanceVerificationService {
         &self,
         wallet_address: &str,
     ) -> DbResult<Option<AvailableBalance>> {
-        let balance_result = get_user_deposit_balance(&self.pool, wallet_address).await;
+        let balance_result = get_user_available_balance(&self.pool, wallet_address).await;
 
         match balance_result {
-            Ok(Some(balance)) => Ok(Some(AvailableBalance {
-                user_address: balance.user_address.clone(),
-                available_balance: balance.total_deposited,
-                available_balance_usdc: balance.total_deposited_usdc.unwrap_or(Decimal::ZERO),
-                total_deposited: balance.total_deposited,
-                total_deposited_usdc: balance.total_deposited_usdc.unwrap_or(Decimal::ZERO),
-                deposit_count: balance.deposit_count,
-            })),
+            Ok(Some(balance)) => {
+                // Get the original deposit balance to show total deposited
+                let original_deposit = get_user_deposit_balance(&self.pool, wallet_address).await?;
+                let total_deposited = original_deposit
+                    .as_ref()
+                    .map(|d| d.total_deposited)
+                    .unwrap_or(Decimal::ZERO);
+                let total_deposited_usdc = original_deposit
+                    .as_ref()
+                    .and_then(|d| d.total_deposited_usdc)
+                    .unwrap_or(Decimal::ZERO);
+
+                Ok(Some(AvailableBalance {
+                    user_address: balance.user_address.clone(),
+                    available_balance: balance.total_deposited, // This now represents available balance after subtracting pending withdrawals
+                    available_balance_usdc: balance.total_deposited_usdc.unwrap_or(Decimal::ZERO),
+                    total_deposited, // Original total deposited
+                    total_deposited_usdc,
+                    deposit_count: balance.deposit_count,
+                }))
+            }
             Ok(None) => Ok(None),
             Err(e) => Err(e.into()),
         }

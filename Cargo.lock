@@ -786,8 +786,12 @@ checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 name = "api"
 version = "0.0.1"
 dependencies = [
+ "alloy-network",
  "alloy-primitives",
+ "alloy-provider",
+ "alloy-signer-local",
  "alloy-sol-types",
+ "anyhow",
  "argon2",
  "async-graphql",
  "async-graphql-axum",

@@ -2656,6 +2656,44 @@ pub async fn get_user_deposit_balance(
     Ok(balance)
 }
 
+/// Get user's available balance for withdrawals (deposits minus pending/approved withdrawals)
+pub async fn get_user_available_balance(
+    pool: &PgPool,
+    user_address: &str,
+) -> Result<Option<UserDepositBalance>, sqlx::Error> {
+    let balance = sqlx::query_as!(
+        UserDepositBalance,
+        r#"
+        SELECT
+            udb.id,
+            udb.user_address,
+            (udb.total_deposited - COALESCE(pending_withdrawals.pending_amount, 0)) as "total_deposited!: rust_decimal::Decimal",
+            ((udb.total_deposited - COALESCE(pending_withdrawals.pending_amount, 0))::numeric / 1000000::numeric) as total_deposited_usdc,
+            udb.deposit_count,
+            udb.first_deposit_at,
+            udb.last_deposit_at,
+            udb.created_at,
+            udb.updated_at
+        FROM user_deposit_balances udb
+        LEFT JOIN (
+            SELECT
+                user_address,
+                SUM(amount) as pending_amount
+            FROM withdrawal_requests
+            WHERE user_address = $1
+              AND state IN ('pending', 'approved', 'submitted')
+            GROUP BY user_address
+        ) pending_withdrawals ON udb.user_address = pending_withdrawals.user_address
+        WHERE udb.user_address = $1
+        "#,
+        user_address
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(balance)
+}
+
 /// Get user balance from user_balances table by user_id
 pub async fn get_user_balance_by_id(
     pool: &PgPool,
@@ -3216,17 +3254,11 @@ pub async fn update_withdrawal_request_validation(
     validation_errors: Option<serde_json::Value>,
 ) -> Result<WithdrawalRequest, sqlx::Error> {
     let validated_at = chrono::Utc::now();
-    let new_state = if kyc_validated && balance_validated {
-        "validated"
-    } else {
-        "failed"
-    };
+    // Always keep state as "pending" regardless of validation results for now
+    let new_state = "pending";
 
-    let failed_at = if new_state == "failed" {
-        Some(validated_at)
-    } else {
-        None
-    };
+    // No failed_at timestamp since we're keeping all requests as pending
+    let failed_at: Option<chrono::DateTime<chrono::Utc>> = None;
 
     let request = sqlx::query_as!(
         WithdrawalRequest,
@@ -3439,10 +3471,10 @@ pub async fn reject_withdrawal_request(
         WithdrawalRequest,
         r#"
         UPDATE withdrawal_requests
-        SET state = 'rejected',
+        SET state = 'cancelled',
             kyc_validated = false,
             balance_validated = false,
-            failed_at = $2,
+            cancelled_at = $2,
             updated_at = $2,
             validation_errors = $3,
             error_message = $4
