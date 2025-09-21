@@ -46,6 +46,7 @@ pub mod health_handlers;
 pub mod kyc_service;
 pub mod loan_handlers;
 pub mod merchant_handlers;
+pub mod metrics;
 pub mod middleware;
 pub mod openapi;
 pub mod paths;

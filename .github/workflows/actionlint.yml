@@ -1,10 +1,8 @@
 name: GitHub Actions Lint
 
 on:
+  # Currently embedded into make lint as a pre-commit check
   workflow_dispatch:
-  push:
-    branches: [main, develop]
-  merge_group:
 
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.

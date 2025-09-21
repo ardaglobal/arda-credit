@@ -46,6 +46,7 @@ reqwest = { workspace = true, features = [ "json" ] }
 
 # Utilities
 hex       = { workspace = true }
+metrics   = { workspace = true }
 once_cell = { workspace = true }
 url       = { workspace = true, features = [ "serde" ] }
 

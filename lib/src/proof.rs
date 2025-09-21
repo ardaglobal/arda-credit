@@ -201,8 +201,15 @@ pub async fn generate_batch_proof(
         &stdin_json[..std::cmp::min(100, stdin_json.len())]
     );
 
+    // Enable benchmark mode to get cycle counts in response
+    let benchmark_meta = {
+        let mut meta = std::collections::HashMap::new();
+        meta.insert("benchmark".to_string(), "true".to_string());
+        Some(meta)
+    };
+
     let proof_info = client
-        .prove_circuit(&circuit_name, proof_input, None, None, None)
+        .prove_circuit(&circuit_name, proof_input, benchmark_meta, None, None)
         .await
         .map_err(|e| {
             error!("❌ Sindri API call failed: {}", e);
@@ -213,6 +220,12 @@ pub async fn generate_batch_proof(
         "✅ Sindri API call successful! Proof ID: {}, Status: {:?}",
         proof_info.proof_id, proof_info.status
     );
+
+    // Log cycle counts if available in benchmark mode (check available fields)
+    info!("🔍 Available proof info fields: {:?}", proof_info);
+
+    // Note: sp1_info field may not be available in current Sindri client version
+    // The benchmark metadata should still enable enhanced monitoring
 
     let status = match proof_info.status {
         JobStatus::Ready => "Ready".to_string(),
@@ -271,6 +284,7 @@ pub async fn generate_batch_proof(
 pub async fn generate_sindri_proof(
     request: ProofGenerationRequest,
 ) -> Result<ProofGenerationResponse, ProofError> {
+    let start_time = std::time::Instant::now();
     let final_balance = request.initial_balance + request.transactions.iter().sum::<i32>();
 
     info!(
@@ -280,6 +294,14 @@ pub async fn generate_sindri_proof(
         request.transactions,
         final_balance
     );
+
+    // Record Sindri API request
+    #[cfg(feature = "sp1")]
+    {
+        use metrics::{counter, histogram};
+        counter!("sindri_api_requests_total", "operation" => "prove_circuit").increment(1);
+        histogram!("sindri_proof_transactions_per_batch").record(request.transactions.len() as f64);
+    }
 
     // Create SP1 inputs for batch processing and serialize for Sindri
     let mut stdin = SP1Stdin::new();
@@ -349,6 +371,20 @@ pub async fn generate_sindri_proof(
         {
             warn!("⚠️  Failed to generate EVM fixture: {}", e);
         }
+    }
+
+    // Record proof generation metrics
+    #[cfg(feature = "sp1")]
+    {
+        use metrics::{counter, histogram};
+        let duration = start_time.elapsed();
+        histogram!("sindri_proof_generation_duration_seconds").record(duration.as_secs_f64());
+
+        let success = response.proof_info.status == JobStatus::Ready;
+        counter!("sindri_proof_generation_total", 
+                "status" => if success { "success" } else { "pending" },
+                "proof_system" => request.proof_system.to_sindri_scheme())
+        .increment(1);
     }
 
     Ok(response)

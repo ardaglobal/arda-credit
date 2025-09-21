@@ -109,6 +109,7 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
         auth_service,
         withdrawal_service,
         balance_service,
+        metrics_handle: None, // No metrics in tests
     }
 }
 

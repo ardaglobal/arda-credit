@@ -2,10 +2,8 @@
 
 [![Sindri Circuit CI/CD](https://github.com/ardaglobal/arda-credit/actions/workflows/sindri.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/sindri.yml)
 [![Build and Push Docker Image](https://github.com/ardaglobal/arda-credit/actions/workflows/docker.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/docker.yml)
-[![Build Program](https://github.com/ardaglobal/arda-credit/actions/workflows/prove.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/prove.yml)
-[![Deploy Smart Contracts](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry-deploy.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry-deploy.yml)
-[![Foundry Test](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry-test.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry-test.yml)
-[![Test](https://github.com/ardaglobal/arda-credit/actions/workflows/test.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/test.yml)
+[![Rust CI](https://github.com/ardaglobal/arda-credit/actions/workflows/rust-ci.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/rust-ci.yml)
+[![Foundry CI/CD](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry.yml/badge.svg)](https://github.com/ardaglobal/arda-credit/actions/workflows/foundry.yml)
 
 A privacy-preserving loan platform built on SP1 zero-knowledge proofs, enabling secure loan origination, payments, and closeouts with KYC verification while maintaining transaction privacy through batch processing.
 
@@ -76,9 +74,7 @@ Public Data (Verifiable):
 ```bash
 make help          # Show all available commands
 make setup         # Complete setup from scratch
-make up           # Start services
-make test         # Run all tests
-make forge-test   # Test smart contracts
+make server        # Start API server locally
 ```
 
 ## Privacy Guarantees
@@ -97,19 +93,7 @@ make forge-test   # Test smart contracts
 
 ## Development
 
-### Getting Started
-- **Setup**: [`docs/deployment/development-setup.md`](docs/deployment/development-setup.md)
-- **CLI Commands**: [`AGENTS.md#essential-development-commands`](AGENTS.md#essential-development-commands)
-- **Local Testing**: [`docs/development/local-testing.md`](docs/development/local-testing.md)
-
-### Quick Commands
-```bash
-make help          # Show all available commands
-make setup         # Complete setup from scratch
-make up           # Start services
-make test         # Run all tests
-make forge-test   # Test smart contracts
-```
+See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for detailed development guidelines.
 
 ### 🎲 Test Data Population
 
@@ -117,7 +101,7 @@ To populate your database with realistic test data for development and testing:
 
 ```bash
 # Start the database
-docker compose up postgres -d
+make up
 
 # Populate with comprehensive test dataset
 cargo run -p db --bin populate_fake_data
@@ -183,6 +167,3 @@ This project is licensed under the MIT License - see the [LICENSE-MIT](LICENSE-M
 
 This is a Minimum Viable Product (MVP) demonstrating privacy-preserving loan operations. The KYC process can be mocked for testing, but provides the foundation for production KYC integration.
 
----
-
-**🏗️ Built with SP1** | **🔐 Privacy by Design** | **⚡ Production Ready**

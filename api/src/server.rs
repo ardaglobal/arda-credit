@@ -13,7 +13,7 @@ use tower_http::{
     timeout::TimeoutLayer,
     trace::TraceLayer,
 };
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::auth::AuthService;
 use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
@@ -23,13 +23,6 @@ use crate::types::{ApiConfig, ApiState};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-// Import new handler modules
-use crate::admin_handlers::*;
-use crate::merchant_handlers::*;
-use crate::state_handlers::*;
-use crate::user_handlers::*;
-
-use alloy_primitives::Address;
 use arda_credit_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -137,6 +130,13 @@ impl ApiServer {
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
 
+        // Initialize Prometheus metrics
+        info!("📊 Initializing Prometheus metrics");
+        let metrics_handle = crate::metrics::MetricsHandle::new().map_err(|e| {
+            warn!("Failed to initialize metrics: {}", e);
+            e
+        })?;
+
         // Create API state
         let state = ApiState {
             pool,
@@ -147,6 +147,7 @@ impl ApiServer {
             withdrawal_service,
             balance_service,
             withdrawal_executor: None, // Not configured in this constructor
+            metrics_handle: Some(Arc::new(metrics_handle)),
         };
 
         let server = Self { config, state };
@@ -267,6 +268,12 @@ impl ApiServer {
             info!("💡 Set ETHEREUM_RPC_URL, ETHEREUM_CONTRACT_ADDRESS, and ETHEREUM_WALLET_PRIVATE_KEY to enable automatic withdrawal execution");
             None
         };
+        // Initialize Prometheus metrics
+        info!("📊 Initializing Prometheus metrics");
+        let metrics_handle = crate::metrics::MetricsHandle::new().map_err(|e| {
+            warn!("Failed to initialize metrics: {}", e);
+            e
+        })?;
 
         let state = ApiState {
             pool,
@@ -277,6 +284,7 @@ impl ApiServer {
             withdrawal_service,
             balance_service,
             withdrawal_executor,
+            metrics_handle: Some(Arc::new(metrics_handle)),
         };
 
         Ok(Self { config, state })
@@ -363,6 +371,9 @@ impl ApiServer {
     /// Add middleware layers to the router
     fn add_middleware_with_state(&self, router: Router) -> Router {
         let mut router = router
+            .layer(axum::middleware::from_fn(
+                crate::metrics::metrics_middleware,
+            ))
             .layer(TraceLayer::new_for_http())
             .layer(RequestBodyLimitLayer::new(
                 self.config.max_request_size_bytes,

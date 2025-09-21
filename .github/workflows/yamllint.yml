@@ -3,8 +3,10 @@ name: YAML Lint
 on:
   workflow_dispatch:
   push:
-    branches: [main, develop]
-  merge_group:
+    tags:
+      - 'v*'
+      - 'program-v*'
+      - 'contracts-v*'
 
 concurrency:
   # One lane per PR or branch. New runs cancel older ones in that lane.

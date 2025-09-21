@@ -323,6 +323,8 @@ impl BackgroundBatchProcessor {
     /// Process a batch of transactions using unified ADS-integrated service
     #[instrument(skip(self), level = "info")]
     async fn process_batch(&self, trigger_type: &str) -> Result<Option<i32>, String> {
+        let start_time = std::time::Instant::now();
+
         info!(
             "🔄 UNIFIED: Processing batch via {} trigger (using unified service)",
             trigger_type
@@ -340,6 +342,8 @@ impl BackgroundBatchProcessor {
             .await
         {
             Ok(Some(result)) => {
+                let processing_duration = start_time.elapsed();
+
                 info!(
                     "✅ UNIFIED: Batch processed successfully via {}: id={}, transactions={}, nullifiers={}, merkle_root=0x{}",
                     trigger_type,
@@ -347,6 +351,15 @@ impl BackgroundBatchProcessor {
                     result.transaction_count,
                     result.nullifier_count,
                     hex::encode(&result.merkle_root[..8])
+                );
+
+                // Record batch processing metrics
+                crate::metrics::BatchMetrics::record_batch_processing(
+                    &result.batch_id.to_string(),
+                    result.transaction_count,
+                    processing_duration,
+                    0, // Gas cost will be updated when posted to contract
+                    true,
                 );
 
                 // Update statistics
@@ -363,10 +376,24 @@ impl BackgroundBatchProcessor {
                 Ok(None)
             }
             Err(e) => {
+                let processing_duration = start_time.elapsed();
+
                 error!(
                     "UNIFIED: Failed to process batch via {}: {}",
                     trigger_type, e
                 );
+
+                // Record failed batch processing metrics
+                crate::metrics::BatchMetrics::record_batch_processing(
+                    "failed_batch",
+                    0,
+                    processing_duration,
+                    0,
+                    false,
+                );
+
+                crate::metrics::CodeMetrics::record_error("batch_processing_error", trigger_type);
+
                 Err(e)
             }
         }
