@@ -14,9 +14,9 @@ use axum::{
     response::Json,
 };
 use chrono::{DateTime, Utc};
+use metrics;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
-use metrics;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::paths;
@@ -174,10 +174,10 @@ pub async fn create_loan_endpoint(
     Json(request): Json<CreateLoanRequest>,
 ) -> Result<Json<LoanDetailsResponse>, (StatusCode, String)> {
     let start_time = std::time::Instant::now();
-    
+
     // Record business logic operation
     metrics::counter!("business_logic_operations_total", "operation" => "create_loan").increment(1);
-    
+
     info!(
         "💰 API: Creating loan: borrower={}, lender={}, amount={}",
         request.borrower_id, request.lender_id, request.principal_amount
@@ -250,7 +250,7 @@ pub async fn create_loan_endpoint(
     let duration = start_time.elapsed();
     metrics::histogram!("function_execution_duration_seconds", "function" => "create_loan")
         .record(duration.as_secs_f64());
-    
+
     info!("✅ API: Loan created successfully: {}", response.loan_id);
     Ok(Json(response))
 }

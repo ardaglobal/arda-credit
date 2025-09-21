@@ -80,6 +80,9 @@ pub use crate::user_handlers::{
     SubmitKycRequest, SubmitKycResponse, UpdateKycStatusRequest, UpdateUserRequest,
     UserBalanceResponse, UserDetailsResponse, UserTransactionsResponse,
 };
+pub use crate::withdrawal_handlers::{
+    AdminWithdrawalDashboard, ApproveWithdrawalRequest, RejectWithdrawalRequest,
+};
 pub use crate::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
 };
@@ -201,6 +204,12 @@ fn default_limit() -> u32 {
         crate::withdrawal_handlers::cancel_withdrawal_endpoint,
         crate::withdrawal_handlers::get_pending_withdrawals_endpoint,
 
+        // Admin withdrawal endpoints
+        crate::withdrawal_handlers::approve_withdrawal_request,
+        crate::withdrawal_handlers::reject_withdrawal_request,
+        crate::withdrawal_handlers::get_admin_withdrawal_dashboard,
+        crate::withdrawal_handlers::manual_execute_withdrawal,
+
         // Financial Transaction endpoints
         crate::financial_transaction_handlers::record_account_deposit,
         crate::financial_transaction_handlers::record_account_withdrawal,
@@ -260,6 +269,8 @@ fn default_limit() -> u32 {
         (name = "Loans", description = "Loan lifecycle management"),
         (name = "Payments", description = "Payment processing and history"),
         (name = "Withdrawals", description = "Withdrawal operations"),
+        (name = "Admin Withdrawals", description = "Administrative withdrawal approval and management"),
+        (name = "Admin Dashboard", description = "Administrative dashboard and monitoring"),
         (name = "Credit Lines", description = "Credit line requests and management"),
         (name = "Financial Transactions", description = "Financial transaction tracking and reporting"),
         (name = "Transaction History", description = "Comprehensive transaction history across all operations"),
@@ -405,6 +416,10 @@ fn default_limit() -> u32 {
         InitiateWithdrawalResponse,
         WithdrawalStatusResponse,
         AvailableBalance,
+        // Admin withdrawal types
+        AdminWithdrawalDashboard,
+        ApproveWithdrawalRequest,
+        RejectWithdrawalRequest,
 
         // Additional merchant types
         InvestorProfileQuery,

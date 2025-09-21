@@ -4,7 +4,7 @@
 //!
 //! Hot Path Metrics:
 //! - HTTP request/response metrics
-//! - Database operation metrics  
+//! - Database operation metrics
 //! - System resource usage (CPU/Memory)
 //!
 //! Cold Path Metrics:
@@ -16,9 +16,9 @@
 use axum::{extract::MatchedPath, http::Request, middleware::Next, response::Response};
 use metrics::{counter, gauge, histogram};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use regex::Regex;
 use std::time::Instant;
 use tracing::{debug, info, warn};
-use regex::Regex;
 
 /// Prometheus metrics handle for the application
 pub struct MetricsHandle {
@@ -49,11 +49,11 @@ impl MetricsHandle {
         counter!("http_requests_total").increment(0);
         histogram!("http_request_duration_seconds").record(0.0);
         counter!("http_responses_total").increment(0);
-        
+
         counter!("db_operations_total").increment(0);
         histogram!("db_operation_duration_seconds").record(0.0);
         counter!("db_connections_active").increment(0);
-        
+
         gauge!("system_cpu_usage_percent").set(0.0);
         gauge!("system_memory_usage_bytes").set(0.0);
         gauge!("system_memory_available_bytes").set(0.0);
@@ -62,17 +62,17 @@ impl MetricsHandle {
         counter!("smart_contract_calls_total").increment(0);
         histogram!("smart_contract_call_duration_seconds").record(0.0);
         counter!("smart_contract_errors_total").increment(0);
-        
+
         counter!("sindri_api_calls_total").increment(0);
         histogram!("sindri_proving_duration_seconds").record(0.0);
         counter!("sindri_proof_cost_wei").increment(0);
         gauge!("sindri_proof_cycles").set(0.0);
-        
+
         counter!("batch_transactions_total").increment(0);
         histogram!("batch_processing_duration_seconds").record(0.0);
         gauge!("batch_size_transactions").set(0.0);
         counter!("batch_gas_cost_wei").increment(0);
-        
+
         // Code-level tracing metrics
         histogram!("function_execution_duration_seconds").record(0.0);
         counter!("business_logic_operations_total").increment(0);
@@ -90,12 +90,12 @@ impl MetricsHandle {
     /// Returns true if metrics are being collected properly
     pub fn health_check(&self) -> bool {
         let metrics_output = self.render();
-        
+
         // Check if we have basic metrics registered
         let has_http_metrics = metrics_output.contains("http_requests_total");
         let has_db_metrics = metrics_output.contains("db_operations_total");
         let has_system_metrics = metrics_output.contains("system_cpu_usage_percent");
-        
+
         // Metrics system is healthy if we have at least some basic metrics
         has_http_metrics || has_db_metrics || has_system_metrics
     }
@@ -107,7 +107,10 @@ fn normalize_path(path: &str) -> String {
     // Common patterns to normalize
     let patterns = [
         // UUID pattern (8-4-4-4-12 hex digits)
-        (r"/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "/{id}"),
+        (
+            r"/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            "/{id}",
+        ),
         // Numeric IDs
         (r"/\d+", "/{id}"),
         // Batch IDs (batch_ prefix followed by UUID or number)
@@ -119,21 +122,18 @@ fn normalize_path(path: &str) -> String {
     ];
 
     let mut normalized = path.to_string();
-    
+
     for (pattern, replacement) in patterns.iter() {
         if let Ok(re) = Regex::new(pattern) {
             normalized = re.replace_all(&normalized, *replacement).to_string();
         }
     }
-    
+
     normalized
 }
 
 /// Middleware for HTTP request metrics
-pub async fn metrics_middleware(
-    req: Request<axum::body::Body>,
-    next: Next,
-) -> Response {
+pub async fn metrics_middleware(req: Request<axum::body::Body>, next: Next) -> Response {
     let start = Instant::now();
     let method = req.method().to_string();
     let raw_path = req
@@ -142,12 +142,13 @@ pub async fn metrics_middleware(
         .map(|matched_path| matched_path.as_str())
         .unwrap_or("unknown")
         .to_string();
-    
+
     // Normalize path to prevent cardinality explosion
     let normalized_path = normalize_path(&raw_path);
 
     // Increment request counter
-    counter!("http_requests_total", "method" => method.clone(), "path" => normalized_path.clone()).increment(1);
+    counter!("http_requests_total", "method" => method.clone(), "path" => normalized_path.clone())
+        .increment(1);
 
     let response = next.run(req).await;
     let status = response.status().as_u16().to_string();
@@ -155,9 +156,12 @@ pub async fn metrics_middleware(
 
     // Record metrics
     histogram!("http_request_duration_seconds", "method" => method.clone(), "path" => normalized_path.clone()).record(duration);
-    counter!("http_responses_total", "method" => method, "path" => normalized_path, "status" => status).increment(1);
+    counter!("http_responses_total", "method" => method.clone(), "path" => normalized_path.clone(), "status" => status.clone()).increment(1);
 
-    debug!("📊 HTTP request: {} {} -> {} ({}s, normalized: {})", method, raw_path, status, duration, normalized_path);
+    debug!(
+        "📊 HTTP request: {} {} -> {} ({}s, normalized: {})",
+        method, raw_path, status, duration, normalized_path
+    );
 
     response
 }
@@ -170,11 +174,15 @@ impl DatabaseMetrics {
     pub fn record_operation(operation: &str, duration: std::time::Duration, success: bool) {
         let duration_secs = duration.as_secs_f64();
         let status = if success { "success" } else { "error" };
-        
+
         counter!("db_operations_total", "operation" => operation.to_string(), "status" => status.to_string()).increment(1);
-        histogram!("db_operation_duration_seconds", "operation" => operation.to_string()).record(duration_secs);
-        
-        debug!("📊 DB operation recorded: {} ({}s, {})", operation, duration_secs, status);
+        histogram!("db_operation_duration_seconds", "operation" => operation.to_string())
+            .record(duration_secs);
+
+        debug!(
+            "📊 DB operation recorded: {} ({}s, {})",
+            operation, duration_secs, status
+        );
     }
 
     /// Update active connections gauge
@@ -207,26 +215,32 @@ impl SmartContractMetrics {
     pub fn record_call(contract: &str, method: &str, duration: std::time::Duration, success: bool) {
         let duration_secs = duration.as_secs_f64();
         let status = if success { "success" } else { "error" };
-        
-        counter!("smart_contract_calls_total", 
-            "contract" => contract.to_string(), 
-            "method" => method.to_string(), 
+
+        counter!("smart_contract_calls_total",
+            "contract" => contract.to_string(),
+            "method" => method.to_string(),
             "status" => status.to_string()
-        ).increment(1);
-        
-        histogram!("smart_contract_call_duration_seconds", 
-            "contract" => contract.to_string(), 
+        )
+        .increment(1);
+
+        histogram!("smart_contract_call_duration_seconds",
+            "contract" => contract.to_string(),
             "method" => method.to_string()
-        ).record(duration_secs);
+        )
+        .record(duration_secs);
 
         if !success {
-            counter!("smart_contract_errors_total", 
-                "contract" => contract.to_string(), 
+            counter!("smart_contract_errors_total",
+                "contract" => contract.to_string(),
                 "method" => method.to_string()
-            ).increment(1);
+            )
+            .increment(1);
         }
-        
-        info!("📊 Smart contract call: {}.{} ({}s, {})", contract, method, duration_secs, status);
+
+        info!(
+            "📊 Smart contract call: {}.{} ({}s, {})",
+            contract, method, duration_secs, status
+        );
     }
 }
 
@@ -238,11 +252,15 @@ impl SindriMetrics {
     pub fn record_api_call(operation: &str, duration: std::time::Duration, success: bool) {
         let duration_secs = duration.as_secs_f64();
         let status = if success { "success" } else { "error" };
-        
+
         counter!("sindri_api_calls_total", "operation" => operation.to_string(), "status" => status.to_string()).increment(1);
-        histogram!("sindri_proving_duration_seconds", "operation" => operation.to_string()).record(duration_secs);
-        
-        info!("📊 Sindri API call: {} ({}s, {})", operation, duration_secs, status);
+        histogram!("sindri_proving_duration_seconds", "operation" => operation.to_string())
+            .record(duration_secs);
+
+        info!(
+            "📊 Sindri API call: {} ({}s, {})",
+            operation, duration_secs, status
+        );
     }
 
     /// Record proof generation metrics
@@ -253,13 +271,16 @@ impl SindriMetrics {
         transactions_count: usize,
     ) {
         let proving_time_secs = proving_time.as_secs_f64();
-        
-        histogram!("sindri_proving_duration_seconds", "operation" => "generate_proof".to_string()).record(proving_time_secs);
+
+        histogram!("sindri_proving_duration_seconds", "operation" => "generate_proof".to_string())
+            .record(proving_time_secs);
         counter!("sindri_proof_cost_wei").increment(cost_wei);
         gauge!("sindri_proof_cycles").set(cycles as f64);
-        
-        info!("📊 Sindri proof generated: {}s, {} wei, {} cycles, {} txns", 
-              proving_time_secs, cost_wei, cycles, transactions_count);
+
+        info!(
+            "📊 Sindri proof generated: {}s, {} wei, {} cycles, {} txns",
+            proving_time_secs, cost_wei, cycles, transactions_count
+        );
     }
 }
 
@@ -277,14 +298,17 @@ impl BatchMetrics {
     ) {
         let duration_secs = processing_duration.as_secs_f64();
         let status = if success { "success" } else { "error" };
-        
-        counter!("batch_transactions_total", "status" => status.to_string()).increment(transaction_count as u64);
+
+        counter!("batch_transactions_total", "status" => status.to_string())
+            .increment(transaction_count as u64);
         histogram!("batch_processing_duration_seconds").record(duration_secs);
         gauge!("batch_size_transactions").set(transaction_count as f64);
         counter!("batch_gas_cost_wei").increment(gas_cost_wei);
-        
-        info!("📊 Batch processed: {} ({} txns, {}s, {} wei, {})", 
-              batch_id, transaction_count, duration_secs, gas_cost_wei, status);
+
+        info!(
+            "📊 Batch processed: {} ({} txns, {}s, {} wei, {})",
+            batch_id, transaction_count, duration_secs, gas_cost_wei, status
+        );
     }
 
     /// Record transactions per batch
@@ -305,23 +329,27 @@ impl CodeMetrics {
     /// Record function execution time
     pub fn record_function_execution(function_name: &str, duration: std::time::Duration) {
         let duration_secs = duration.as_secs_f64();
-        histogram!("function_execution_duration_seconds", "function" => function_name.to_string()).record(duration_secs);
-        
-        debug!("📊 Function execution: {} ({}s)", function_name, duration_secs);
+        histogram!("function_execution_duration_seconds", "function" => function_name.to_string())
+            .record(duration_secs);
+
+        debug!(
+            "📊 Function execution: {} ({}s)",
+            function_name, duration_secs
+        );
     }
 
     /// Record business logic operation
     pub fn record_business_operation(operation: &str, success: bool) {
         let status = if success { "success" } else { "error" };
         counter!("business_logic_operations_total", "operation" => operation.to_string(), "status" => status.to_string()).increment(1);
-        
+
         debug!("📊 Business operation: {} ({})", operation, status);
     }
 
     /// Record error occurrence
     pub fn record_error(error_type: &str, context: &str) {
         counter!("error_occurrences_total", "type" => error_type.to_string(), "context" => context.to_string()).increment(1);
-        
+
         warn!("📊 Error recorded: {} in {}", error_type, context);
     }
 }
@@ -378,12 +406,7 @@ mod tests {
 
     #[test]
     fn test_sindri_metrics() {
-        SindriMetrics::record_proof_generation(
-            Duration::from_secs(30),
-            1000000,
-            50000,
-            25,
-        );
+        SindriMetrics::record_proof_generation(Duration::from_secs(30), 1000000, 50000, 25);
     }
 
     #[test]

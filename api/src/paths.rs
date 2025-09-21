@@ -152,6 +152,21 @@ pub const WITHDRAWAL_CANCEL: &str = api_path!("/withdrawals/{request_id}/cancel"
 /// Admin endpoint: Get pending withdrawal requests
 pub const ADMIN_PENDING_WITHDRAWALS: &str = api_path!("/admin/withdrawals/pending");
 
+/// Admin endpoint: Approve withdrawal request
+pub const ADMIN_APPROVE_WITHDRAWAL: &str = api_path!("/admin/withdrawals/{request_id}/approve");
+
+/// Admin endpoint: Reject withdrawal request
+pub const ADMIN_REJECT_WITHDRAWAL: &str = api_path!("/admin/withdrawals/{request_id}/reject");
+
+/// Admin endpoint: Get withdrawal execution stats
+pub const ADMIN_WITHDRAWAL_STATS: &str = api_path!("/admin/withdrawals/stats");
+
+/// Admin endpoint: Execute withdrawal manually
+pub const ADMIN_EXECUTE_WITHDRAWAL: &str = api_path!("/admin/withdrawals/{request_id}/execute");
+
+/// Admin endpoint: Get withdrawal dashboard
+pub const ADMIN_WITHDRAWAL_DASHBOARD: &str = api_path!("/admin/withdrawals/dashboard");
+
 // ============================================================================
 // INVITE CODE MANAGEMENT PATHS
 // ============================================================================
@@ -549,6 +564,21 @@ pub fn user_withdrawals_path(address: &str) -> String {
 /// Build withdrawal cancel path with request_id parameter
 pub fn withdrawal_cancel_path(request_id: &str) -> String {
     replace_param(WITHDRAWAL_CANCEL, "request_id", request_id)
+}
+
+/// Build admin approve withdrawal path with request_id parameter
+pub fn admin_approve_withdrawal_path(request_id: &str) -> String {
+    replace_param(ADMIN_APPROVE_WITHDRAWAL, "request_id", request_id)
+}
+
+/// Build admin reject withdrawal path with request_id parameter
+pub fn admin_reject_withdrawal_path(request_id: &str) -> String {
+    replace_param(ADMIN_REJECT_WITHDRAWAL, "request_id", request_id)
+}
+
+/// Build admin execute withdrawal path with request_id parameter
+pub fn admin_execute_withdrawal_path(request_id: &str) -> String {
+    replace_param(ADMIN_EXECUTE_WITHDRAWAL, "request_id", request_id)
 }
 
 /// Generate transaction by hash path

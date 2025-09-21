@@ -23,13 +23,8 @@ use crate::types::{ApiConfig, ApiState};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
-// Import new handler modules
-use crate::admin_handlers::*;
-use crate::merchant_handlers::*;
-use crate::state_handlers::*;
-use crate::user_handlers::*;
-
 use arda_credit_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
+use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -137,11 +132,10 @@ impl ApiServer {
 
         // Initialize Prometheus metrics
         info!("📊 Initializing Prometheus metrics");
-        let metrics_handle = crate::metrics::MetricsHandle::new()
-            .map_err(|e| {
-                warn!("Failed to initialize metrics: {}", e);
-                e
-            })?;
+        let metrics_handle = crate::metrics::MetricsHandle::new().map_err(|e| {
+            warn!("Failed to initialize metrics: {}", e);
+            e
+        })?;
 
         // Create API state
         let state = ApiState {
@@ -152,6 +146,7 @@ impl ApiServer {
             auth_service,
             withdrawal_service,
             balance_service,
+            withdrawal_executor: None, // Not configured in this constructor
             metrics_handle: Some(Arc::new(metrics_handle)),
         };
 
@@ -187,13 +182,98 @@ impl ApiServer {
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
 
+        // Initialize simple withdrawal executor service if Ethereum config is available
+        let withdrawal_executor = if let Some(executor_config) =
+            crate::simple_withdrawal_executor::create_simple_withdrawal_executor_config()
+        {
+            info!("🔧 Initializing simple withdrawal executor service");
+            info!(
+                "📋 Executor config: batch_size={}, gas_limit={}, dry_run={}",
+                executor_config.batch_size, executor_config.gas_limit, executor_config.dry_run
+            );
+
+            // Create minimal ethereum config for withdrawal executor
+            // The config function already verified that required environment variables exist
+            let config = ethereum_client::config::Config {
+                network: ethereum_client::config::NetworkConfig {
+                    name: "sepolia".to_string(),
+                    chain_id: 11155111,
+                    rpc_url: std::env::var("ETHEREUM_RPC_URL")
+                        .and_then(|url| {
+                            url::Url::parse(&url).map_err(|_| std::env::VarError::NotPresent)
+                        })
+                        .unwrap_or_else(|_| url::Url::parse("http://localhost:8545").unwrap()),
+                    ws_url: None,
+                    explorer_url: None,
+                    is_testnet: true,
+                },
+                contract: ethereum_client::config::ContractConfig {
+                    arda_credit_contract: alloy_primitives::Address::from_slice(
+                        &hex::decode(
+                            std::env::var("ETHEREUM_CONTRACT_ADDRESS")
+                                .unwrap()
+                                .strip_prefix("0x")
+                                .unwrap_or(&std::env::var("ETHEREUM_CONTRACT_ADDRESS").unwrap()),
+                        )
+                        .unwrap_or_else(|_| vec![0; 20])[..20],
+                    ),
+                    verifier_contract: alloy_primitives::Address::ZERO,
+                    deployment_block: None,
+                },
+                rpc: ethereum_client::config::RpcConfig {
+                    notify_addresses: vec![],
+                    rate_limit_per_second: 10,
+                },
+                signer: Some(ethereum_client::config::SignerConfig {
+                    private_key: std::env::var("ETHEREUM_WALLET_PRIVATE_KEY").unwrap(),
+                    address: alloy_primitives::Address::ZERO, // Will be derived from private key
+                }),
+                monitoring: ethereum_client::config::MonitoringConfig {
+                    enable_event_monitoring: false,
+                    polling_interval_seconds: 30,
+                    max_block_range: 1000,
+                    retry_attempts: 3,
+                    timeout_seconds: 30,
+                },
+            };
+
+            match ethereum_client::client::EthereumClient::new_without_validation(config).await {
+                Ok(ethereum_client) => {
+                    let service =
+                        crate::simple_withdrawal_executor::SimpleWithdrawalExecutorService::new(
+                            pool.clone(),
+                            ethereum_client,
+                            executor_config,
+                        );
+                    let handle =
+                        crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle::new(
+                            service,
+                        );
+                    info!("✅ Simple withdrawal executor service initialized");
+                    Some(handle)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "⚠️ Failed to initialize ethereum client for withdrawal executor: {}",
+                        e
+                    );
+                    tracing::warn!("💡 Withdrawals will need to be processed manually");
+                    None
+                }
+            }
+        } else {
+            info!(
+                "ℹ️ Withdrawal executor disabled: missing required Ethereum environment variables"
+            );
+            info!("💡 Set ETHEREUM_RPC_URL, ETHEREUM_CONTRACT_ADDRESS, and ETHEREUM_WALLET_PRIVATE_KEY to enable automatic withdrawal execution");
+            None
+        };
         // Initialize Prometheus metrics
         info!("📊 Initializing Prometheus metrics");
-        let metrics_handle = crate::metrics::MetricsHandle::new()
-            .map_err(|e| {
-                warn!("Failed to initialize metrics: {}", e);
-                e
-            })?;
+        let metrics_handle = crate::metrics::MetricsHandle::new().map_err(|e| {
+            warn!("Failed to initialize metrics: {}", e);
+            e
+        })?;
 
         let state = ApiState {
             pool,
@@ -203,6 +283,7 @@ impl ApiServer {
             auth_service,
             withdrawal_service,
             balance_service,
+            withdrawal_executor,
             metrics_handle: Some(Arc::new(metrics_handle)),
         };
 
@@ -290,7 +371,9 @@ impl ApiServer {
     /// Add middleware layers to the router
     fn add_middleware_with_state(&self, router: Router) -> Router {
         let mut router = router
-            .layer(axum::middleware::from_fn(crate::metrics::metrics_middleware))
+            .layer(axum::middleware::from_fn(
+                crate::metrics::metrics_middleware,
+            ))
             .layer(TraceLayer::new_for_http())
             .layer(RequestBodyLimitLayer::new(
                 self.config.max_request_size_bytes,
@@ -420,7 +503,7 @@ async fn api_info_handler() -> Html<&'static str> {
         <pre><code>curl -X POST http://localhost:8080/api/v1/transactions \
   -H "Content-Type: application/json" \
   -d '{"amount": 5}'</code></pre>
-        
+
         <p>Create a batch of pending transactions:</p>
         <pre><code>curl -X POST http://localhost:8080/api/v1/batches \
   -H "Content-Type: application/json" \

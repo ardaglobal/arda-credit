@@ -13,9 +13,9 @@ use axum::{
     response::Json,
 };
 use chrono::{DateTime, Utc};
+use metrics;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
-use metrics;
 use utoipa::{IntoParams, ToSchema};
 
 use crate::paths;
@@ -222,10 +222,11 @@ pub async fn register_user_endpoint(
     Json(request): Json<RegisterUserRequest>,
 ) -> Result<Json<RegisterUserResponse>, (StatusCode, String)> {
     let start_time = std::time::Instant::now();
-    
+
     // Record business logic operation
-    metrics::counter!("business_logic_operations_total", "operation" => "register_user").increment(1);
-    
+    metrics::counter!("business_logic_operations_total", "operation" => "register_user")
+        .increment(1);
+
     info!(
         "👤 API: Registering new user: type={}, email={}, invite_code={:?}",
         request.user_type, request.email, request.invite_code
@@ -354,7 +355,7 @@ pub async fn register_user_endpoint(
             let duration = start_time.elapsed();
             metrics::histogram!("function_execution_duration_seconds", "function" => "register_user")
                 .record(duration.as_secs_f64());
-            
+
             Ok(Json(identity_to_register_response(identity)))
         }
         Ok(RegisterResult::Reregistered(identity)) => {
@@ -391,7 +392,7 @@ pub async fn register_user_endpoint(
             let duration = start_time.elapsed();
             metrics::histogram!("function_execution_duration_seconds", "function" => "register_user")
                 .record(duration.as_secs_f64());
-            
+
             Ok(Json(identity_to_register_response(identity)))
         }
         Ok(RegisterResult::AlreadyExists) => {

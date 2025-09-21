@@ -379,12 +379,12 @@ pub async fn generate_sindri_proof(
         use metrics::{counter, histogram};
         let duration = start_time.elapsed();
         histogram!("sindri_proof_generation_duration_seconds").record(duration.as_secs_f64());
-        
+
         let success = response.proof_info.status == JobStatus::Ready;
         counter!("sindri_proof_generation_total", 
                 "status" => if success { "success" } else { "pending" },
                 "proof_system" => request.proof_system.to_sindri_scheme())
-            .increment(1);
+        .increment(1);
     }
 
     Ok(response)

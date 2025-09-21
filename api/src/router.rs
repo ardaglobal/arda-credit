@@ -71,6 +71,7 @@ use crate::user_handlers::{
     SubmitKycResponse, UpdateKycStatusRequest, UpdateUserRequest, UpdateUserResponse,
     UserDetailsResponse,
 };
+use crate::withdrawal_handlers;
 use crate::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{Identity, IndexedMerkleTreeADS};
 use std::sync::Arc;
@@ -125,6 +126,8 @@ pub struct ApiState {
     pub auth_service: Arc<AuthService>,
     pub withdrawal_service: WithdrawalTransactionService,
     pub balance_service: BalanceVerificationService,
+    pub withdrawal_executor:
+        Option<crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
     pub metrics_handle: Option<Arc<crate::metrics::MetricsHandle>>,
 }
 
@@ -535,6 +538,25 @@ pub fn create_router(state: ApiState) -> Router {
             paths::TRANSACTION_UPDATES_SSE,
             get(crate::contract_handlers::get_transaction_updates),
         )
+        // ========================================================================
+        // ADDITIONAL ADMIN WITHDRAWAL ENDPOINTS (using path constants)
+        // ========================================================================
+        .route(
+            paths::ADMIN_APPROVE_WITHDRAWAL,
+            post(withdrawal_handlers::approve_withdrawal_request),
+        )
+        .route(
+            paths::ADMIN_REJECT_WITHDRAWAL,
+            post(withdrawal_handlers::reject_withdrawal_request),
+        )
+        .route(
+            paths::ADMIN_EXECUTE_WITHDRAWAL,
+            post(withdrawal_handlers::manual_execute_withdrawal),
+        )
+        .route(
+            paths::ADMIN_WITHDRAWAL_DASHBOARD,
+            get(withdrawal_handlers::get_admin_withdrawal_dashboard),
+        )
         .with_state(state)
 }
 
@@ -564,15 +586,13 @@ fn swagger_ui() -> Router<ApiState> {
 async fn metrics_handler(State(state): State<ApiState>) -> impl axum::response::IntoResponse {
     // Get metrics from the metrics handle stored in state
     let metrics = match &state.metrics_handle {
-        Some(handle) => {
-            handle.render()
-        }
+        Some(handle) => handle.render(),
         None => {
             tracing::warn!("No metrics handle found in state");
             "# No metrics handle available\n".to_string()
         }
     };
-    
+
     axum::response::Response::builder()
         .status(200)
         .header("content-type", "text/plain; version=0.0.4; charset=utf-8")
@@ -582,10 +602,12 @@ async fn metrics_handler(State(state): State<ApiState>) -> impl axum::response::
 
 /// Prometheus metrics health check endpoint handler
 #[instrument(skip(state))]
-async fn metrics_health_handler(State(state): State<ApiState>) -> impl axum::response::IntoResponse {
+async fn metrics_health_handler(
+    State(state): State<ApiState>,
+) -> impl axum::response::IntoResponse {
     use axum::http::StatusCode;
     use serde_json::json;
-    
+
     let (status, health_status) = match &state.metrics_handle {
         Some(handle) => {
             if handle.health_check() {
@@ -599,12 +621,12 @@ async fn metrics_health_handler(State(state): State<ApiState>) -> impl axum::res
             (StatusCode::SERVICE_UNAVAILABLE, "no_metrics_handle")
         }
     };
-    
+
     let response_body = json!({
         "status": health_status,
         "service": "prometheus_metrics",
         "timestamp": chrono::Utc::now().to_rfc3339()
     });
-    
+
     (status, axum::Json(response_body))
 }

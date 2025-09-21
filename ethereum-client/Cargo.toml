@@ -46,9 +46,9 @@ reqwest = { workspace = true, features = [ "json" ] }
 
 # Utilities
 hex       = { workspace = true }
+metrics   = { workspace = true }
 once_cell = { workspace = true }
 url       = { workspace = true, features = [ "serde" ] }
-metrics   = { workspace = true }
 
 # Database integration (optional for caching/indexing)
 chrono = { workspace = true, features = [ "serde" ], optional = true }
@@ -77,6 +77,10 @@ path = "src/bin/bridge.rs"
 [[bin]]
 name = "deposit_monitor"
 path = "src/bin/deposit_monitor.rs"
+
+[[bin]]
+name = "withdrawal_executor"
+path = "src/bin/withdrawal_executor.rs"
 
 [features]
 database = [ "chrono", "sqlx", "uuid" ]

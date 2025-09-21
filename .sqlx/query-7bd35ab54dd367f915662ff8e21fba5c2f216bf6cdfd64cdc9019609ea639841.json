@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, user_id, user_address, recipient_address, amount, amount_usdc,\n            state, kyc_validated, balance_validated, kyc_status_at_request,\n            available_balance_at_request, transaction_hash, block_number,\n            confirmation_count, required_confirmations, error_message,\n            validation_errors, created_at, updated_at, validated_at,\n            submitted_at, confirmed_at, failed_at, cancelled_at\n        FROM withdrawal_requests\n        WHERE state IN ('pending', 'validated')\n        ORDER BY created_at ASC\n        LIMIT $1\n        ",
+  "query": "\n        SELECT\n            id, user_id, user_address, recipient_address, amount, amount_usdc,\n            state, kyc_validated, balance_validated, kyc_status_at_request,\n            available_balance_at_request, transaction_hash, block_number,\n            confirmation_count, required_confirmations, error_message,\n            validation_errors, created_at, updated_at, validated_at,\n            submitted_at, confirmed_at, failed_at, cancelled_at\n        FROM withdrawal_requests\n        WHERE state = 'pending'\n            AND cancelled_at IS NULL\n        ORDER BY created_at ASC\n        LIMIT $1 OFFSET $2\n        ",
   "describe": {
     "columns": [
       {
@@ -126,6 +126,7 @@
     ],
     "parameters": {
       "Left": [
+        "Int8",
         "Int8"
       ]
     },
@@ -156,5 +157,5 @@
       true
     ]
   },
-  "hash": "6e1724d998481324690f7c7771ff7862ebb4c66226941f97b83f36e3b5e5cbfc"
+  "hash": "7bd35ab54dd367f915662ff8e21fba5c2f216bf6cdfd64cdc9019609ea639841"
 }

@@ -46,8 +46,8 @@ url                  = "2.5"
 uuid                 = "1.0"
 
 # Prometheus metrics dependencies
-prometheus           = "0.13"
-metrics              = "0.23"
+axum-prometheus             = "0.7"
+metrics                     = "0.23"
 metrics-exporter-prometheus = "0.15"
-metrics-util         = "0.17"
-axum-prometheus      = "0.7"
+metrics-util                = "0.17"
+prometheus                  = "0.14.0"

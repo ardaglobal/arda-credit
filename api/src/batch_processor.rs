@@ -324,7 +324,7 @@ impl BackgroundBatchProcessor {
     #[instrument(skip(self), level = "info")]
     async fn process_batch(&self, trigger_type: &str) -> Result<Option<i32>, String> {
         let start_time = std::time::Instant::now();
-        
+
         info!(
             "🔄 UNIFIED: Processing batch via {} trigger (using unified service)",
             trigger_type
@@ -343,7 +343,7 @@ impl BackgroundBatchProcessor {
         {
             Ok(Some(result)) => {
                 let processing_duration = start_time.elapsed();
-                
+
                 info!(
                     "✅ UNIFIED: Batch processed successfully via {}: id={}, transactions={}, nullifiers={}, merkle_root=0x{}",
                     trigger_type,
@@ -377,7 +377,7 @@ impl BackgroundBatchProcessor {
             }
             Err(e) => {
                 let processing_duration = start_time.elapsed();
-                
+
                 error!(
                     "UNIFIED: Failed to process batch via {}: {}",
                     trigger_type, e
@@ -393,7 +393,7 @@ impl BackgroundBatchProcessor {
                 );
 
                 crate::metrics::CodeMetrics::record_error("batch_processing_error", trigger_type);
-                
+
                 Err(e)
             }
         }
