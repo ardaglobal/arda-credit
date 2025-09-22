@@ -189,8 +189,6 @@ build_and_push_images() {
         fi
     fi
     
-
-    
     # Tag and push server image to local registry
     log_info "Tagging and pushing server image to local registry..."
     

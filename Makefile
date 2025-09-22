@@ -102,8 +102,6 @@ docker-push: docker-build
 	@echo "✅ Image pushed successfully!"
 	@echo "🚀 Published: $(REGISTRY)/$(OWNER)/$(IMAGE_NAME):$(DOCKER_TAG)"
 
-
-
 ## docker-lint: Lint Dockerfiles using hadolint
 .PHONY: docker-lint
 docker-lint:
