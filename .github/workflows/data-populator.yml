@@ -108,7 +108,7 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: .w
+          context: .
           file: ./Dockerfile.data-populator
           push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           tags: ${{ steps.meta.outputs.tags }}
