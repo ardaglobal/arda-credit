@@ -720,3 +720,53 @@ opentelemetry-collector:
     requests:
       cpu: 200m
       memory: 256Mi
+
+# Data Populator CronJob configuration
+# Runs fake data population script on a schedule for testing/development
+dataPopulator:
+  enabled: true  # Disabled by default, enable in development environments
+  
+  # CronJob schedule configuration
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  timeZone: "UTC"  # Optional: set timezone (requires Kubernetes 1.24+)
+  
+  # Image configuration
+  image:
+    registry: "ghcr.io/ardaglobal"
+    repository: "arda-credit-data-populator"
+    tag: "latest"
+    pullPolicy: "Always"
+  
+  # CronJob behavior configuration
+  concurrencyPolicy: "Forbid"  # Don't run concurrent jobs
+  successfulJobsHistoryLimit: 3  # Keep last 3 successful jobs
+  failedJobsHistoryLimit: 1      # Keep last 1 failed job
+  suspend: false  # Set to true to suspend the CronJob
+  
+  # Job execution configuration
+  backoffLimit: 3  # Retry failed jobs up to 3 times
+  ttlSecondsAfterFinished: 3600  # Clean up completed jobs after 1 hour
+  activeDeadlineSeconds: 1800    # Kill job if it runs longer than 30 minutes
+  
+  # Application configuration
+  config:
+    rustLog: "info"  # Logging level: trace, debug, info, warn, error
+  
+  # Additional environment variables
+  env: {}
+    # Add custom environment variables here
+    # CUSTOM_VAR: "value"
+  
+  # Resource configuration
+  resources:
+    limits:
+      #cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Node scheduling (inherits from global if not specified)
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}

@@ -11,8 +11,8 @@ global:
   tolerations: []
   affinity: {}
 
-# Enable namespace creation for proper isolation
-namespaceCreate: true
+# Disable namespace creation - namespace already exists
+namespaceCreate: false
 
 # PostgreSQL configuration - optimized for local development
 postgresql:
@@ -138,6 +138,10 @@ server:
   
   # Disable anti-affinity for single-node testing
   podAntiAffinity:
+    enabled: false
+  
+  # Disable persistence for local development
+  persistence:
     enabled: false
 
 # Frontend App configuration - use real app from GHCR
@@ -429,4 +433,43 @@ opentelemetry-collector:
       memory: 256Mi
     requests:
       cpu: 100m
+      memory: 128Mi
+
+# Data Populator CronJob - enabled for local testing
+dataPopulator:
+  enabled: true  # Enable for local development and testing
+  
+  # Run more frequently for testing - every 5 minutes
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  timeZone: "UTC"
+  
+  # Use production data-populator image from GHCR
+  image:
+    registry: "ghcr.io/ardaglobal"
+    repository: "arda-credit-data-populator"
+    tag: "latest"
+    pullPolicy: Always
+  
+  # CronJob behavior for testing
+  concurrencyPolicy: "Forbid"  # Don't run concurrent jobs
+  successfulJobsHistoryLimit: 2  # Keep fewer jobs for local testing
+  failedJobsHistoryLimit: 1
+  suspend: false
+  
+  # Shorter timeouts for local testing
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 1800  # Clean up after 30 minutes
+  activeDeadlineSeconds: 600     # Kill job if it runs longer than 10 minutes
+  
+  # Debug logging for local development
+  config:
+    rustLog: "debug"
+  
+  # Minimal resources for local testing
+  resources:
+    limits:
+      #cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
       memory: 128Mi

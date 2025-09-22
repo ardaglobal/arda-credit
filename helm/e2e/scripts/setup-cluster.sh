@@ -168,7 +168,7 @@ build_and_push_images() {
     # Registry URL
     local registry_url="localhost:${REGISTRY_PORT}"
     
-    # Check if image already exists locally
+    # Check if main image already exists locally
     if docker images localhost/arda-credit:local-dev --format "table {{.Repository}}:{{.Tag}}" | grep -q "localhost/arda-credit:local-dev"; then
         log_info "Image localhost/arda-credit:local-dev already exists, skipping build..."
     else
@@ -197,7 +197,8 @@ build_and_push_images() {
     docker push "${registry_url}/arda-credit:local-dev"
     log_success "Pushed server image to ${registry_url}/arda-credit:local-dev"
     
-    log_info "App will use production image from ghcr.io/ardaglobal/arda-credit-app:latest"
+    # Data-populator will use GHCR image, no need to build locally
+    log_info "Data-populator will use production image from ghcr.io/ardaglobal/arda-credit-data-populator:latest"
     log_success "Local registry setup completed"
 }
 
@@ -427,7 +428,7 @@ validate_monitoring_setup() {
     
     # Wait for OTEL collector to be ready
     log_info "Waiting for OTEL collector to be ready..."
-    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=opentelemetry-collector -n arda-credit --timeout=120s
+    kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=opentelemetry-collector -n arda-credit --timeout=120s
     
     # Give OTEL collector time to start scraping
     log_info "Allowing OTEL collector to start metric collection..."

@@ -31,9 +31,9 @@ nodes:
       - containerPort: 30001
         hostPort: 8080
         protocol: TCP
-      # PostgreSQL debug access (port 5432 -> NodePort 30002)
+      # PostgreSQL debug access (port 5532 -> NodePort 30002)
       - containerPort: 30002
-        hostPort: 5432
+        hostPort: 5532
         protocol: TCP
 
   # Single worker node for realistic multi-node behavior
