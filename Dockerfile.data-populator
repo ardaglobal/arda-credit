@@ -13,6 +13,8 @@ COPY lib/Cargo.toml ./lib/
 # Copy source code for required crates
 COPY lib/ ./lib/
 COPY db/ ./db/
+# Copy SQLx offline query cache for offline compilation
+COPY .sqlx/ ./.sqlx/
 
 # Build only the populate_fake_data binary
 WORKDIR /app/db
