@@ -1,0 +1,103 @@
+{{- if .Values.dataPopulator.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-data-populator
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-populator
+spec:
+  # Schedule configuration from values
+  schedule: {{ .Values.dataPopulator.schedule | quote }}
+  # Timezone support (requires Kubernetes 1.24+)
+  {{- if .Values.dataPopulator.timeZone }}
+  timeZone: {{ .Values.dataPopulator.timeZone | quote }}
+  {{- end }}
+  # Job management
+  concurrencyPolicy: {{ .Values.dataPopulator.concurrencyPolicy | default "Forbid" }}
+  successfulJobsHistoryLimit: {{ .Values.dataPopulator.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.dataPopulator.failedJobsHistoryLimit | default 1 }}
+  # Optional: suspend the CronJob
+  {{- if .Values.dataPopulator.suspend }}
+  suspend: {{ .Values.dataPopulator.suspend }}
+  {{- end }}
+  jobTemplate:
+    spec:
+      # Job configuration
+      completions: 1
+      parallelism: 1
+      backoffLimit: {{ .Values.dataPopulator.backoffLimit | default 3 }}
+      # Clean up completed jobs after specified time
+      ttlSecondsAfterFinished: {{ .Values.dataPopulator.ttlSecondsAfterFinished | default 3600 }}
+      # Job timeout
+      {{- if .Values.dataPopulator.activeDeadlineSeconds }}
+      activeDeadlineSeconds: {{ .Values.dataPopulator.activeDeadlineSeconds }}
+      {{- end }}
+      template:
+        metadata:
+          labels:
+            {{- include "arda-credit.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: data-populator
+          annotations:
+            sidecar.istio.io/inject: "false"  # Disable service mesh if present
+        spec:
+          # Jobs should not restart automatically
+          restartPolicy: Never
+          {{- with .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          serviceAccountName: {{ include "arda-credit.fullname" . }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: data-populator
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+              image: "{{ .Values.dataPopulator.image.registry }}/{{ .Values.dataPopulator.image.repository }}:{{ .Values.dataPopulator.image.tag | default "latest" }}"
+              imagePullPolicy: {{ .Values.dataPopulator.image.pullPolicy | default "Always" }}
+              env:
+                # Database connection (exact same pattern as server deployment)
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      {{- if .Values.postgresql.enabled }}
+                      name: {{ include "arda-credit.fullname" . }}-postgresql
+                      key: postgres-password
+                      {{- else }}
+                      name: {{ .Values.postgresql.external.existingSecret }}
+                      key: {{ .Values.postgresql.external.secretPasswordKey }}
+                      {{- end }}
+                - name: DATABASE_URL
+                  {{- if .Values.postgresql.enabled }}
+                  value: "postgresql://{{ .Values.postgresql.auth.username }}:$(POSTGRES_PASSWORD)@{{ include "arda-credit.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+                  {{- else }}
+                  value: "postgresql://{{ .Values.postgresql.external.username }}:$(POSTGRES_PASSWORD)@{{ .Values.postgresql.external.host }}:{{ .Values.postgresql.external.port }}/{{ .Values.postgresql.external.database }}"
+                  {{- end }}
+                # Logging configuration
+                - name: RUST_LOG
+                  value: {{ .Values.dataPopulator.config.rustLog | default "info" | quote }}
+                # Additional environment variables
+                {{- range $key, $value := .Values.dataPopulator.env }}
+                - name: {{ $key }}
+                  value: {{ $value | quote }}
+                {{- end }}
+              resources:
+                {{- toYaml .Values.dataPopulator.resources | nindent 16 }}
+          # Node scheduling preferences
+          {{- $nodeSelector := coalesce .Values.dataPopulator.nodeSelector .Values.global.nodeSelector }}
+          {{- with $nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- $tolerations := coalesce .Values.dataPopulator.tolerations .Values.global.tolerations }}
+          {{- with $tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- $affinity := coalesce .Values.dataPopulator.affinity .Values.global.affinity }}
+          {{- with $affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

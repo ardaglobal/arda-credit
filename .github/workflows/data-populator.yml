@@ -1,0 +1,118 @@
+name: Build and Push Data Populator Docker Image
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'db/src/bin/populate_fake_data.rs'
+      - 'db/Cargo.toml'
+      - 'lib/Cargo.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Dockerfile.data-populator'
+      - '.hadolint.yaml'
+  pull_request:
+    paths:
+      - 'db/src/bin/populate_fake_data.rs'
+      - 'db/Cargo.toml'
+      - 'lib/Cargo.toml'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'Dockerfile.data-populator'
+      - '.hadolint.yaml'
+  release:
+    types: [published]
+
+concurrency:
+  # One lane per PR or branch. New runs cancel older ones in that lane.
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-data-populator
+
+jobs:
+  build-and-push-data-populator:
+    runs-on:
+      # https://docs.aws.amazon.com/codebuild/latest/userguide/sample-github-action-runners-update-yaml.images.html
+      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }} image:ubuntu-7.0 instance-size:large
+    permissions:
+      contents: read
+      packages: write  # Includes read access for pulling private base containers
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Configure build optimizations
+        run: |
+          {
+            # Set Rust to use multiple CPUs
+            echo "CARGO_BUILD_JOBS=8"
+            echo "RUSTFLAGS=-C target-cpu=native"
+            # Set BuildKit log buffer to 50MB
+            echo "BUILDKIT_STEP_LOG_MAX_SIZE=50000000"
+            # Cargo network optimizations
+            echo "CARGO_NET_GIT_FETCH_WITH_CLI=true"
+            echo "CARGO_HTTP_MULTIPLEXING=false"
+          } >> $GITHUB_ENV
+
+      - name: Lint data populator Dockerfile with hadolint
+        uses: hadolint/hadolint-action@v3.2.0
+        with:
+          dockerfile: Dockerfile.data-populator
+          config: .hadolint.yaml
+          no-color: false
+          no-fail: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
+            env.BUILDKIT_STEP_LOG_MAX_SIZE=${{ env.BUILDKIT_STEP_LOG_MAX_SIZE }}
+
+      - name: Log in to GH Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for data populator
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Determine build platforms
+        id: platforms
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"
+          else
+            echo "platforms=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push data populator Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.data-populator
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: ${{ steps.platforms.outputs.platforms }}
+          cache-from: type=s3,region=us-east-1,bucket=codebuild-s3-cache-arda,prefix=output/arda-credit-data-populator,mode=max
+          cache-to: type=s3,region=us-east-1,bucket=codebuild-s3-cache-arda,prefix=output/arda-credit-data-populator,mode=max
