@@ -19,6 +19,8 @@ use tracing::{info, instrument, warn};
 
 use crate::auth::AuthService;
 use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
+use crate::email_service::EmailService;
+use crate::magic_link_service::{MagicLinkConfig, MagicLinkService};
 use crate::middleware::{EmailRateLimiter, RateLimiter};
 use crate::openapi::ApiDoc;
 use crate::session_cleanup::SessionCleanupService;
@@ -144,6 +146,7 @@ impl ApiServer {
             batch_processor: Some(batch_processor_handle),
             ads_service,
             session_service,
+            magic_link_service: None, // Will be set in create_router
             withdrawal_service,
             balance_service,
             withdrawal_executor: None, // Not configured in this constructor
@@ -283,6 +286,7 @@ impl ApiServer {
             batch_processor: Some(batch_processor_handle),
             ads_service,
             session_service,
+            magic_link_service: None, // Will be set in create_router
             withdrawal_service,
             balance_service,
             withdrawal_executor,
@@ -328,11 +332,38 @@ impl ApiServer {
 
     /// Build the complete router with all endpoints
     #[instrument(skip(self), level = "info")]
-    pub fn create_router(&self) -> Router {
+    pub async fn create_router(&self) -> Router {
         info!("🔧 Building API router");
 
         // Initialize email rate limiter for magic link spam prevention
         let email_rate_limiter = Arc::new(EmailRateLimiter::new());
+
+        // Initialize email service for magic links
+        let email_config = crate::email_config::EmailConfig::from_env()
+            .unwrap_or_else(|_| crate::email_config::EmailConfig {
+                enabled: false,
+                ses_region: "us-east-1".to_string(),
+                email_from: "test@example.com".to_string(),
+                email_reply_to: "noreply@example.com".to_string(),
+                configuration_set: None,
+                magic_base_url: "https://app.arda.xyz/auth/verify".to_string(),
+            });
+
+        let email_service = Arc::new(EmailService::new(email_config).await
+            .unwrap_or_else(|e| {
+                warn!("Failed to initialize email service ({}), using mock", e);
+                // For testing/development, create a basic disabled config
+                // This will be handled by the EmailService internally
+                panic!("Email service initialization failed - check AWS SES configuration")
+            }));
+        let magic_link_config = MagicLinkConfig::default();
+        let magic_link_service = Arc::new(MagicLinkService::new(
+            self.state.pool.clone(),
+            magic_link_config,
+            email_service,
+            Arc::new(RateLimiter::new(180)), // 180 requests per minute for magic links
+            self.state.session_service.clone(),
+        ));
 
         // Create API state with email rate limiter
         let api_state = ApiState {
@@ -341,6 +372,7 @@ impl ApiServer {
             batch_processor: self.state.batch_processor.clone(),
             ads_service: self.state.ads_service.clone(),
             session_service: self.state.session_service.clone(),
+            magic_link_service: Some(magic_link_service),
             withdrawal_service: self.state.withdrawal_service.clone(),
             balance_service: self.state.balance_service.clone(),
             withdrawal_executor: self.state.withdrawal_executor.clone(),

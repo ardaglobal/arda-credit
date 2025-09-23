@@ -125,6 +125,7 @@ pub struct ApiState {
     pub batch_processor: Option<BatchProcessorHandle>,
     pub ads_service: Arc<RwLock<IndexedMerkleTreeADS>>,
     pub session_service: Arc<SessionService>,
+    pub magic_link_service: Option<Arc<crate::magic_link_service::MagicLinkService>>,
     pub withdrawal_service: WithdrawalTransactionService,
     pub balance_service: BalanceVerificationService,
     pub withdrawal_executor:
@@ -170,15 +171,23 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/metrics/health", get(metrics_health_handler))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
-        // Authentication endpoints (temporarily disabled during magic link transition)
-        // .route(
-        //     paths::AUTH_LOGIN,
-        //     post(crate::authentication_handlers::login_endpoint),
-        // )
-        // .route(
-        //     paths::AUTH_LOGOUT,
-        //     post(crate::authentication_handlers::logout_endpoint),
-        // )
+        // Magic Link Authentication endpoints
+        .route(
+            paths::AUTH_MAGIC_LINK,
+            post(crate::magic_link_handlers::request_magic_link),
+        )
+        .route(
+            paths::AUTH_VERIFY,
+            post(crate::magic_link_handlers::verify_magic_link),
+        )
+        .route(
+            paths::AUTH_ME,
+            get(crate::magic_link_handlers::get_current_user),
+        )
+        .route(
+            paths::AUTH_LOGOUT,
+            post(crate::magic_link_handlers::logout_endpoint),
+        )
         // Admin KYC endpoints
         .route(
             paths::ADMIN_KYC_PENDING,

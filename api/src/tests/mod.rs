@@ -35,6 +35,10 @@ pub mod pool_tests;
 pub mod credit_line_tests;
 pub mod financial_tests;
 pub mod admin_tests;
+pub mod magic_link_integration_test;
+pub mod magic_link_security_test;
+pub mod magic_link_error_test;
+pub mod magic_link_performance_test;
 
 // Re-export common test utilities
 pub use crate::test_utils::*;

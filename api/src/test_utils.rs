@@ -110,18 +110,178 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
         withdrawal_service,
         balance_service,
         metrics_handle: None, // No metrics in tests
+        session_service: Arc::new(crate::session_service::SessionService::new(pool.clone())),
+        magic_link_service: None,
+        email_rate_limiter: None,
+        withdrawal_executor: None,
     }
 }
 
-/// Test user data for consistent testing
+/// Create a test API state with magic link services enabled
+pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
+    use crate::{
+        auth::AuthService,
+        batch_processor::BatchProcessorHandle,
+        BalanceVerificationService, WithdrawalTransactionService,
+        email_service::EmailService,
+        middleware::EmailRateLimiter,
+        magic_link_service::{MagicLinkService, MagicLinkConfig},
+        session_service::SessionService,
+    };
+
+    // Create ADS service
+    let ads_service = Arc::new(RwLock::new(IndexedMerkleTreeADS::new()));
+
+    // Create auth service
+    let auth_service = Arc::new(AuthService::new("test-jwt-secret-key-minimum-32-characters-for-testing".to_string(), Some(24)));
+
+    // Create withdrawal service
+    let withdrawal_service = WithdrawalTransactionService::new();
+
+    // Create balance service
+    let balance_service = BalanceVerificationService::new();
+
+    // Create session service
+    let session_service = Arc::new(SessionService::new(pool.clone()));
+
+    // Create mock email service for testing
+    let email_service = Arc::new(create_mock_email_service());
+
+    // Create email rate limiter
+    let email_rate_limiter = Arc::new(EmailRateLimiter::new(3, 3600)); // 3 per hour
+
+    // Create magic link service
+    let magic_link_config = MagicLinkConfig {
+        token_ttl_minutes: 10,
+        base_url: "https://app.arda.xyz/auth/verify".to_string(),
+        max_tokens_per_user: 3,
+    };
+
+    let magic_link_service = Arc::new(MagicLinkService::new(
+        pool.clone(),
+        magic_link_config,
+        email_service,
+        email_rate_limiter.clone(),
+        session_service.clone(),
+    ));
+
+    ApiState {
+        pool: pool.clone(),
+        config: crate::router::ApiConfig {
+            server_name: "Test API".to_string(),
+            version: "1.0.0".to_string(),
+            max_batch_size: 50,
+            enable_debug_endpoints: true,
+        },
+        batch_processor: Some(BatchProcessorHandle::new()),
+        ads_service,
+        session_service,
+        magic_link_service: Some(magic_link_service),
+        withdrawal_service,
+        balance_service,
+        withdrawal_executor: None,
+        metrics_handle: None,
+        email_rate_limiter: Some(email_rate_limiter),
+    }
+}
+
+/// Create a test app (router) with the given state
+pub async fn create_test_app(state: ApiState) -> TestApp {
+    crate::router::create_router(state)
+}
+
+/// Create a test app with magic link services enabled
+pub async fn create_test_app_with_magic_links(state: ApiState) -> TestApp {
+    crate::router::create_router(state)
+}
+
+/// Create a test user in the database
+pub async fn create_test_user(pool: &PgPool, email: &str, user_type: &str) -> TestUser {
+    let user_id = Uuid::new_v4();
+
+    sqlx::query(
+        r#"
+        INSERT INTO identities (
+            id, email, user_type, first_name, last_name, wallet_address,
+            kyc_status, created_at, updated_at
+        ) VALUES ($1, $2, $3, 'Test', 'User', NULL, 'NOT_SUBMITTED', NOW(), NOW())
+        "#,
+    )
+    .bind(user_id)
+    .bind(email)
+    .bind(user_type)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    TestUser {
+        id: user_id,
+        email: email.to_string(),
+        user_type: user_type.to_string(),
+        first_name: Some("Test".to_string()),
+        last_name: Some("User".to_string()),
+        wallet_address: None,
+    }
+}
+
+/// Create a mock email service for testing
+pub fn create_mock_email_service() -> crate::email_service::EmailService {
+    // This is a simplified mock - in a real implementation you'd use a proper mock
+    // For now, we'll create a service that doesn't actually send emails
+    use crate::email_service::{EmailService, EmailConfig};
+    use aws_config::BehaviorVersion;
+    use aws_sdk_sesv2::Client;
+
+    // Create a mock SES client that doesn't send emails
+    // This is a placeholder - you'd need to implement proper mocking
+    EmailService::new(
+        EmailConfig {
+            region: "us-east-1".to_string(),
+            from_email: "test@example.com".to_string(),
+            reply_to: None,
+            configuration_set: None,
+        },
+        Client::from_conf(
+            aws_sdk_sesv2::config::Builder::new()
+                .behavior_version(BehaviorVersion::v2024_03_28())
+                .build()
+        ),
+    )
+}
+
+
+/// Test magic link data for testing
 #[derive(Debug, Clone)]
-pub struct TestUser {
+pub struct TestMagicLink {
     pub id: Uuid,
-    pub email: String,
-    pub user_type: String,
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub wallet_address: Option<String>,
+    pub user_id: Uuid,
+    pub token: String,
+    pub state: String,
+    pub redirect_uri: Option<String>,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Test app type alias for convenience
+pub type TestApp = axum::Router;
+
+/// Test context for integration testing
+#[derive(Clone)]
+pub struct TestContext {
+    pub pool: PgPool,
+    pub state: ApiState,
+}
+
+impl TestContext {
+    /// Create a new test context with database and API state
+    pub async fn new() -> Self {
+        let test_db = TestDatabase::new().await;
+        let state = create_test_api_state_with_magic_links(&test_db.pool).await;
+        Self {
+            pool: test_db.pool,
+            state,
+        }
+    }
 }
 
 impl TestUser {

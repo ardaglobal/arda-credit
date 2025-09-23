@@ -115,6 +115,11 @@ pub const AUTH_LOGIN: &str = api_path!("/auth/login");
 /// Authentication logout
 pub const AUTH_LOGOUT: &str = api_path!("/auth/logout");
 
+/// Magic link authentication endpoints
+pub const AUTH_MAGIC_LINK: &str = api_path!("/auth/magic-link");
+pub const AUTH_VERIFY: &str = api_path!("/auth/verify");
+pub const AUTH_ME: &str = api_path!("/auth/me");
+
 /// Merchant profile operations
 pub const MERCHANT_PROFILE: &str = api_path!("/merchant/profile");
 
