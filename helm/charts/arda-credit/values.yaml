@@ -194,6 +194,9 @@ server:
 app:
   enabled: true
   
+  # Server URL for frontend API calls
+  serverUrl: "https://app.stag.aws.arda.xyz"
+  
   image:
     registry: ghcr.io/ardaglobal
     repository: arda-credit-app

@@ -11,14 +11,15 @@ data:
   SINDRI_CIRCUIT_TAG: {{ .Values.server.config.sindriCircuitTag | quote }}
   
   # App configuration
-  SERVER_URL: ""
+  SERVER_URL: {{ .Values.app.serverUrl | quote }}
+  VITE_SERVER_URL: {{ .Values.app.serverUrl | quote }}
   NODE_ENV: "production"
 
   # Nginx configuration for proxying API requests
   nginx.conf: |
     server {
         listen 80;
-        server_name localhost;
+        server_name _;
         
         # Set document root for static frontend files
         root /usr/share/nginx/html;
