@@ -34,7 +34,119 @@ This document outlines the plan to replace Arda Credit's password-based authenti
 3. User clicks link → calls `POST /auth/verify` → creates server session
 4. Session-based authentication for subsequent requests
 
-## Implementation Plan
+## Phased Implementation Approach (Updated)
+
+### Critical Blocking Tasks (Must Complete First)
+
+**🚨 BLOCKER 1: Database Schema Migration**
+- **Owner**: Agent A (Database Focus)
+- **Priority**: Highest
+- **Blocks**: Everything else depends on these tables existing
+- **Deliverable**: Create and apply migration for `magic_links` and `sessions` tables
+
+**🚨 BLOCKER 2: Session Management Infrastructure** 
+- **Owner**: Agent A (Database Focus)  
+- **Priority**: Highest
+- **Blocks**: Authentication handlers, middleware updates
+- **Deliverable**: PostgreSQL session storage, cookie handling, session cleanup
+
+### Parallel Execution Phase (After Blockers Complete)
+
+#### Agent A: Infrastructure & Database Track
+**Focus**: Core authentication infrastructure, database operations, middleware
+
+**Task A1: Password System Cleanup**
+- **Dependencies**: None (independent cleanup)
+- **Parallel with**: Agent B's SES integration
+- **Deliverables**:
+  - Remove password columns from `identities` table
+  - Remove Argon2 password hashing code  
+  - Remove password validation logic
+  - Clean up password-related API endpoints
+  - Update user registration (no password required)
+
+**Task A2: Authentication Middleware Updates**  
+- **Dependencies**: Session management infrastructure (BLOCKER 2)
+- **Parallel with**: Agent B's magic link service
+- **Deliverables**:
+  - Replace JWT middleware with session-based auth
+  - Session cookie management middleware
+  - Update rate limiting for magic link endpoints
+  - Session-based route protection
+
+#### Agent B: Email & Authentication Logic Track
+**Focus**: External integrations, user-facing authentication features
+
+**Task B1: AWS SES Integration**
+- **Dependencies**: None (DevOps setup complete)
+- **Parallel with**: Agent A's password cleanup
+- **Deliverables**:
+  - SES service integration using provided IAM/config
+  - Email templates for magic links
+  - Error handling and retry logic
+  - Integration with telemetry/logging
+
+**Task B2: Magic Link Service Implementation**
+- **Dependencies**: Database migration (BLOCKER 1) + SES integration (Task B1)
+- **Parallel with**: Agent A's middleware updates
+- **Deliverables**:
+  - Token generation (32-byte CSPRNG → base64url)
+  - SHA-256 hash storage (never store plaintext tokens)
+  - CSRF state parameter handling
+  - Rate limiting (3 emails/hour per address)
+  - Token validation and consumption logic
+
+### Integration Phase (Both Agents)
+
+**Joint Task: Authentication API Endpoints**
+- **Dependencies**: All parallel tasks complete
+- **Approach**: Pair programming or review handoff
+- **Deliverables**:
+  - `POST /auth/magic-link` - Request magic link
+  - `POST /auth/verify` - Verify token and create session  
+  - `GET /auth/me` - Session-based user info
+  - `POST /auth/logout` - Session cleanup
+  - Remove old password-based login endpoints
+
+### Final Tasks (Can be Split)
+
+**Testing & Validation**
+- **Agent A**: Database integration tests, session management tests
+- **Agent B**: Email integration tests, magic link service tests
+- **Joint**: End-to-end authentication flow testing
+
+**Documentation Updates**
+- **Agent A**: Database schema docs, session management docs
+- **Agent B**: Email service docs, magic link flow docs  
+- **Joint**: OpenAPI/Swagger spec updates
+
+### Execution Timeline
+
+```
+Week 1:
+├── Agent A: Database migration + Session infrastructure (BLOCKERS)
+└── Agent B: SES integration setup
+
+Week 2:  
+├── Agent A: Password cleanup + Middleware updates
+└── Agent B: Magic link service implementation
+
+Week 3:
+├── Joint: Authentication API endpoints
+└── Joint: Testing & integration
+
+Week 4:
+└── Documentation + final validation
+```
+
+### Key Coordination Points
+
+1. **After BLOCKER completion**: Both agents sync on database schema and session interface
+2. **Before integration phase**: Code review of all parallel work
+3. **During API implementation**: Define clear interfaces between session management and magic link services
+4. **Testing coordination**: Ensure test data setup works for both tracks
+
+## Original Implementation Plan (Reference)
 
 ### Phase 1: Infrastructure Setup
 

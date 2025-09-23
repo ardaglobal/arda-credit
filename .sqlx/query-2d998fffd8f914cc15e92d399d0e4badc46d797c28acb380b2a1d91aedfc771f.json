@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as \"kyc_investor_type?: KycInvestorType\",\n               created_at as \"created_at!\", updated_at as \"updated_at!\",\n               password_hash, last_login_at, email_verified, email_verification_token,\n               password_reset_token, password_reset_expires_at, wallet_address,\n               first_name, last_name, jurisdiction\n        FROM identities\n        WHERE id = $1 AND deleted_at IS NULL\n        ",
+  "query": "\n                SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as \"kyc_investor_type?: KycInvestorType\",\n                       created_at as \"created_at!\", updated_at as \"updated_at!\",\n                       last_login_at, email_verified, email_verification_token,\n                       wallet_address, first_name, last_name, jurisdiction\n                FROM identities\n                WHERE id = $1\n                ",
   "describe": {
     "columns": [
       {
@@ -61,51 +61,36 @@
       },
       {
         "ordinal": 9,
-        "name": "password_hash",
-        "type_info": "Varchar"
-      },
-      {
-        "ordinal": 10,
         "name": "last_login_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 10,
         "name": "email_verified",
         "type_info": "Bool"
       },
       {
-        "ordinal": 12,
+        "ordinal": 11,
         "name": "email_verification_token",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 13,
-        "name": "password_reset_token",
-        "type_info": "Varchar"
-      },
-      {
-        "ordinal": 14,
-        "name": "password_reset_expires_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 15,
+        "ordinal": 12,
         "name": "wallet_address",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 16,
+        "ordinal": 13,
         "name": "first_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 17,
+        "ordinal": 14,
         "name": "last_name",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 18,
+        "ordinal": 15,
         "name": "jurisdiction",
         "type_info": "Varchar"
       }
@@ -131,11 +116,8 @@
       true,
       true,
       true,
-      true,
-      true,
-      true,
       true
     ]
   },
-  "hash": "3c3e8ea4351633688f039d131c9211156649d4c4578aa0c2d324db73204ff009"
+  "hash": "2d998fffd8f914cc15e92d399d0e4badc46d797c28acb380b2a1d91aedfc771f"
 }

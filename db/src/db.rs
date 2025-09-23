@@ -95,19 +95,44 @@ pub struct Identity {
     pub kyc_investor_type: Option<KycInvestorType>, // QIB, QP, AI - only for investors
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-    // Authentication fields
-    pub password_hash: Option<String>,
+    // Authentication fields (magic link system)
     pub last_login_at: Option<DateTime<Utc>>,
     pub email_verified: Option<bool>,
     pub email_verification_token: Option<String>,
-    pub password_reset_token: Option<String>,
-    pub password_reset_expires_at: Option<DateTime<Utc>>,
     // User profile fields
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub jurisdiction: Option<String>,
     // Wallet integration
     pub wallet_address: Option<String>,
+}
+
+/// Magic link for email-based authentication
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct MagicLink {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub token_hash: Vec<u8>, // BYTEA maps to Vec<u8>
+    pub state: String,
+    pub redirect_uri: Option<String>,
+    pub client_ip: Option<ipnetwork::IpNetwork>, // INET maps to IpNetwork
+    pub user_agent: Option<String>,
+    pub expires_at: DateTime<Utc>,
+    pub consumed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Session for cookie-based authentication after magic link verification
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Session {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub session_token: String,
+    pub expires_at: DateTime<Utc>,
+    pub client_ip: Option<ipnetwork::IpNetwork>,
+    pub user_agent: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_accessed_at: DateTime<Utc>,
 }
 
 /// Investor profile for enhanced investor account functionality
@@ -1179,12 +1204,9 @@ pub async fn create_identity(
         kyc_investor_type: None,
         created_at: now,
         updated_at: now,
-        password_hash: None,
         last_login_at: None,
         email_verified: Some(false),
         email_verification_token: None,
-        password_reset_token: None,
-        password_reset_expires_at: None,
         first_name: None,
         last_name: None,
         jurisdiction: None,
@@ -1194,61 +1216,17 @@ pub async fn create_identity(
     Ok(identity)
 }
 
-/// Create identity with password (for registration)
-#[instrument(skip(pool, password_hash), fields(
-    operation = "create_identity_with_password",
-    table = "identities",
-    layer = "database",
-    user_type = %user_type,
-    email = %email
-), level = "info")]
+/// DEPRECATED: Password authentication has been replaced with magic link authentication
+/// This function is kept for backwards compatibility but always returns an error
 pub async fn create_identity_with_password(
-    pool: &PgPool,
-    user_type: &str,
-    email: &str,
-    password_hash: &str,
+    _pool: &PgPool,
+    _user_type: &str,
+    _email: &str,
+    _password_hash: &str,
 ) -> Result<Identity, sqlx::Error> {
-    let id = uuid::Uuid::new_v4();
-    let now = chrono::Utc::now();
-
-    sqlx::query!(
-        r#"
-        INSERT INTO identities (id, user_type, email, password_hash, created_at, updated_at, email_verified)
-        VALUES ($1, $2, $3, $4, $5, $5, $6)
-        "#,
-        id,
-        user_type,
-        email,
-        password_hash,
-        now,
-        false // email_verified starts as false
-    )
-    .execute(pool)
-    .await?;
-
-    let identity = Identity {
-        id,
-        user_type: user_type.to_string(),
-        email: email.to_string(),
-        kyc_status: "not_submitted".to_string(),
-        kyc_submitted_at: None,
-        kyc_verified_at: None,
-        kyc_investor_type: None,
-        created_at: now,
-        updated_at: now,
-        password_hash: Some(password_hash.to_string()),
-        last_login_at: None,
-        email_verified: Some(false),
-        email_verification_token: None,
-        password_reset_token: None,
-        password_reset_expires_at: None,
-        first_name: None,
-        last_name: None,
-        jurisdiction: None,
-        wallet_address: None,
-    };
-
-    Ok(identity)
+    Err(sqlx::Error::Configuration(
+        "Password authentication has been disabled. Use magic link authentication instead.".into()
+    ))
 }
 
 /// Register or re-register user with soft delete handling
@@ -1259,15 +1237,7 @@ pub async fn register_or_reregister_user(
     pool: &PgPool,
     user_type: &str,
     email: &str,
-    password_hash: &str,
 ) -> Result<RegisterResult, sqlx::Error> {
-    // For investors and merchants, allow empty password (will be stored as NULL)
-    let password_hash_value =
-        if (user_type == "investor" || user_type == "merchant") && password_hash.is_empty() {
-            None
-        } else {
-            Some(password_hash)
-        };
     // First, check if email already exists
     let existing_user = sqlx::query!(
         "SELECT id, deleted_at FROM identities WHERE email = $1",
@@ -1284,18 +1254,14 @@ pub async fn register_or_reregister_user(
                 r#"
                 UPDATE identities
                 SET user_type = $1,
-                    password_hash = $2,
                     deleted_at = NULL,
-                    updated_at = $3,
-                    email_verified = $4,
+                    updated_at = $2,
+                    email_verified = $3,
                     last_login_at = NULL,
-                    email_verification_token = NULL,
-                    password_reset_token = NULL,
-                    password_reset_expires_at = NULL
-                WHERE id = $5
+                    email_verification_token = NULL
+                WHERE id = $4
                 "#,
                 user_type,
-                password_hash_value,
                 now,
                 false, // email_verified
                 user.id
@@ -1308,9 +1274,8 @@ pub async fn register_or_reregister_user(
                 r#"
                 SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                        created_at as "created_at!", updated_at as "updated_at!",
-                       password_hash, last_login_at, email_verified, email_verification_token,
-                       password_reset_token, password_reset_expires_at, wallet_address,
-                       first_name, last_name, jurisdiction
+                       last_login_at, email_verified, email_verification_token,
+                       wallet_address, first_name, last_name, jurisdiction
                 FROM identities
                 WHERE id = $1
                 "#,
@@ -1329,12 +1294,9 @@ pub async fn register_or_reregister_user(
                 kyc_investor_type: identity.kyc_investor_type,
                 created_at: identity.created_at,
                 updated_at: identity.updated_at,
-                password_hash: identity.password_hash,
                 last_login_at: identity.last_login_at,
                 email_verified: identity.email_verified,
                 email_verification_token: identity.email_verification_token,
-                password_reset_token: identity.password_reset_token,
-                password_reset_expires_at: identity.password_reset_expires_at,
                 first_name: identity.first_name,
                 last_name: identity.last_name,
                 jurisdiction: identity.jurisdiction,
@@ -1354,13 +1316,12 @@ pub async fn register_or_reregister_user(
 
             sqlx::query!(
                 r#"
-                INSERT INTO identities (id, user_type, email, password_hash, created_at, updated_at, email_verified)
-                VALUES ($1, $2, $3, $4, $5, $5, $6)
+                INSERT INTO identities (id, user_type, email, created_at, updated_at, email_verified)
+                VALUES ($1, $2, $3, $4, $4, $5)
                 "#,
                 id,
                 user_type,
                 email,
-                password_hash_value,
                 now,
                 false // email_verified starts as false
             )
@@ -1377,12 +1338,9 @@ pub async fn register_or_reregister_user(
                 kyc_investor_type: None,
                 created_at: now,
                 updated_at: now,
-                password_hash: password_hash_value.map(|s| s.to_string()),
                 last_login_at: None,
                 email_verified: Some(false),
                 email_verification_token: None,
-                password_reset_token: None,
-                password_reset_expires_at: None,
                 first_name: None,
                 last_name: None,
                 jurisdiction: None,
@@ -1417,9 +1375,8 @@ pub async fn get_identity_by_id(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
-               password_hash, last_login_at, email_verified, email_verification_token,
-               password_reset_token, password_reset_expires_at, wallet_address,
-               first_name, last_name, jurisdiction
+               last_login_at, email_verified, email_verification_token,
+               wallet_address, first_name, last_name, jurisdiction
         FROM identities
         WHERE id = $1 AND deleted_at IS NULL
         "#,
@@ -1438,12 +1395,9 @@ pub async fn get_identity_by_id(
         kyc_investor_type: row.kyc_investor_type,
         created_at: row.created_at,
         updated_at: row.updated_at,
-        password_hash: row.password_hash,
         last_login_at: row.last_login_at,
         email_verified: row.email_verified,
         email_verification_token: row.email_verification_token,
-        password_reset_token: row.password_reset_token,
-        password_reset_expires_at: row.password_reset_expires_at,
         first_name: row.first_name,
         last_name: row.last_name,
         jurisdiction: row.jurisdiction,
@@ -1462,8 +1416,8 @@ pub async fn get_identity_by_email(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
-               password_hash, last_login_at, email_verified, email_verification_token,
-               password_reset_token, password_reset_expires_at, wallet_address,
+               last_login_at, email_verified, email_verification_token,
+               wallet_address,
                first_name, last_name, jurisdiction
         FROM identities
         WHERE email = $1 AND deleted_at IS NULL
@@ -1483,12 +1437,9 @@ pub async fn get_identity_by_email(
         kyc_investor_type: row.kyc_investor_type,
         created_at: row.created_at,
         updated_at: row.updated_at,
-        password_hash: row.password_hash,
         last_login_at: row.last_login_at,
         email_verified: row.email_verified,
         email_verification_token: row.email_verification_token,
-        password_reset_token: row.password_reset_token,
-        password_reset_expires_at: row.password_reset_expires_at,
         first_name: row.first_name,
         last_name: row.last_name,
         jurisdiction: row.jurisdiction,
@@ -1510,8 +1461,8 @@ pub async fn list_identities(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
-               password_hash, last_login_at, email_verified, email_verification_token,
-               password_reset_token, password_reset_expires_at, wallet_address,
+               last_login_at, email_verified, email_verification_token,
+               wallet_address,
                first_name, last_name, jurisdiction
         FROM identities
         ORDER BY created_at DESC
@@ -1535,12 +1486,9 @@ pub async fn list_identities(
             kyc_investor_type: row.kyc_investor_type,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            password_hash: row.password_hash,
             last_login_at: row.last_login_at,
             email_verified: row.email_verified,
             email_verification_token: row.email_verification_token,
-            password_reset_token: row.password_reset_token,
-            password_reset_expires_at: row.password_reset_expires_at,
             first_name: row.first_name,
             last_name: row.last_name,
             jurisdiction: row.jurisdiction,
@@ -1603,8 +1551,8 @@ pub async fn list_pending_kyc_applications(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
-               password_hash, last_login_at, email_verified, email_verification_token,
-               password_reset_token, password_reset_expires_at, wallet_address,
+               last_login_at, email_verified, email_verification_token,
+               wallet_address,
                first_name, last_name, jurisdiction
         FROM identities
         WHERE kyc_status = 'pending'
@@ -1629,12 +1577,9 @@ pub async fn list_pending_kyc_applications(
             kyc_investor_type: row.kyc_investor_type,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            password_hash: row.password_hash,
             last_login_at: row.last_login_at,
             email_verified: row.email_verified,
             email_verification_token: row.email_verification_token,
-            password_reset_token: row.password_reset_token,
-            password_reset_expires_at: row.password_reset_expires_at,
             first_name: row.first_name,
             last_name: row.last_name,
             jurisdiction: row.jurisdiction,
@@ -2189,28 +2134,16 @@ pub async fn update_last_login(pool: &PgPool, user_id: uuid::Uuid) -> Result<(),
     Ok(())
 }
 
-/// Set password for a user (for password updates)
+/// DEPRECATED: Password authentication has been replaced with magic link authentication
+/// This function is kept for backwards compatibility but always returns an error
 pub async fn update_user_password(
-    pool: &PgPool,
-    user_id: uuid::Uuid,
-    password_hash: &str,
+    _pool: &PgPool,
+    _user_id: uuid::Uuid,
+    _password_hash: &str,
 ) -> Result<(), sqlx::Error> {
-    let now = Utc::now();
-
-    sqlx::query!(
-        r#"
-        UPDATE identities
-        SET password_hash = $1, updated_at = $2
-        WHERE id = $3
-        "#,
-        password_hash,
-        now,
-        user_id
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(())
+    Err(sqlx::Error::Configuration(
+        "Password authentication has been disabled. Use magic link authentication instead.".into()
+    ))
 }
 
 /// Set email verification token for a user
@@ -2258,110 +2191,37 @@ pub async fn verify_email_with_token(pool: &PgPool, token: &str) -> Result<bool,
     Ok(result.rows_affected() > 0)
 }
 
-/// Set password reset token with expiration
+/// DEPRECATED: Password authentication has been replaced with magic link authentication
+/// This function is kept for backwards compatibility but always returns false
 pub async fn set_password_reset_token(
-    pool: &PgPool,
-    email: &str,
-    token: &str,
-    expires_in_hours: i64,
+    _pool: &PgPool,
+    _email: &str,
+    _token: &str,
+    _expires_in_hours: i64,
 ) -> Result<bool, sqlx::Error> {
-    let now = Utc::now();
-    let expires_at = now + chrono::Duration::hours(expires_in_hours);
-
-    let result = sqlx::query!(
-        r#"
-        UPDATE identities
-        SET password_reset_token = $1,
-            password_reset_expires_at = $2,
-            updated_at = $3
-        WHERE email = $4
-        "#,
-        token,
-        expires_at,
-        now,
-        email
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(result.rows_affected() > 0)
+    // Password reset is no longer supported - return false to indicate failure
+    Ok(false)
 }
 
-/// Reset password using reset token
+/// DEPRECATED: Password authentication has been replaced with magic link authentication
+/// This function is kept for backwards compatibility but always returns false
 pub async fn reset_password_with_token(
-    pool: &PgPool,
-    token: &str,
-    new_password_hash: &str,
+    _pool: &PgPool,
+    _token: &str,
+    _new_password_hash: &str,
 ) -> Result<bool, sqlx::Error> {
-    let now = Utc::now();
-
-    let result = sqlx::query!(
-        r#"
-        UPDATE identities
-        SET password_hash = $1,
-            password_reset_token = NULL,
-            password_reset_expires_at = NULL,
-            updated_at = $2
-        WHERE password_reset_token = $3
-          AND password_reset_expires_at > $2
-        "#,
-        new_password_hash,
-        now,
-        token
-    )
-    .execute(pool)
-    .await?;
-
-    Ok(result.rows_affected() > 0)
+    // Password reset is no longer supported - return false to indicate failure
+    Ok(false)
 }
 
-/// Get identity by password reset token (if valid)
+/// DEPRECATED: Password authentication has been replaced with magic link authentication
+/// This function is kept for backwards compatibility but always returns None
 pub async fn get_identity_by_reset_token(
-    pool: &PgPool,
-    token: &str,
+    _pool: &PgPool,
+    _token: &str,
 ) -> Result<Option<Identity>, sqlx::Error> {
-    let now = Utc::now();
-
-    let row = sqlx::query!(
-        r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
-               created_at as "created_at!", updated_at as "updated_at!",
-               password_hash, last_login_at, email_verified, email_verification_token,
-               password_reset_token, password_reset_expires_at, wallet_address,
-               first_name, last_name, jurisdiction
-        FROM identities
-        WHERE password_reset_token = $1
-          AND password_reset_expires_at > $2
-        "#,
-        token,
-        now
-    )
-    .fetch_optional(pool)
-    .await?;
-
-    let identity = row.map(|row| Identity {
-        id: row.id,
-        user_type: row.user_type,
-        email: row.email,
-        kyc_status: row.kyc_status,
-        kyc_submitted_at: row.kyc_submitted_at,
-        kyc_verified_at: row.kyc_verified_at,
-        kyc_investor_type: row.kyc_investor_type,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        password_hash: row.password_hash,
-        last_login_at: row.last_login_at,
-        email_verified: row.email_verified,
-        email_verification_token: row.email_verification_token,
-        password_reset_token: row.password_reset_token,
-        password_reset_expires_at: row.password_reset_expires_at,
-        first_name: row.first_name,
-        last_name: row.last_name,
-        jurisdiction: row.jurisdiction,
-        wallet_address: row.wallet_address,
-    });
-
-    Ok(identity)
+    // Password reset tokens are no longer valid - return None
+    Ok(None)
 }
 
 // ============================================================================
@@ -4062,8 +3922,7 @@ pub async fn get_investor_profile_with_identity(
             i.id as identity_id, i.user_type, i.email, i.kyc_status,
             i.kyc_submitted_at, i.kyc_verified_at, i.kyc_investor_type as "kyc_investor_type?: KycInvestorType",
             i.created_at as "identity_created_at!", i.updated_at as "identity_updated_at!",
-            i.password_hash, i.last_login_at, i.email_verified, i.email_verification_token,
-            i.password_reset_token, i.password_reset_expires_at,
+            i.last_login_at, i.email_verified, i.email_verification_token,
             i.first_name, i.last_name, i.jurisdiction, i.wallet_address
         FROM investor_profiles ip
         JOIN identities i ON ip.user_id = i.id
@@ -4095,12 +3954,9 @@ pub async fn get_investor_profile_with_identity(
             kyc_investor_type: row.kyc_investor_type,
             created_at: row.identity_created_at,
             updated_at: row.identity_updated_at,
-            password_hash: row.password_hash,
             last_login_at: row.last_login_at,
             email_verified: row.email_verified,
             email_verification_token: row.email_verification_token,
-            password_reset_token: row.password_reset_token,
-            password_reset_expires_at: row.password_reset_expires_at,
             first_name: row.first_name,
             last_name: row.last_name,
             jurisdiction: row.jurisdiction,
@@ -5646,12 +5502,9 @@ pub async fn get_investor_profile_by_user_id_or_email(
                 kyc_investor_type: row.kyc_investor_type,
                 created_at: row.profile_created_at, // Using profile timestamps since this is joined data
                 updated_at: row.profile_updated_at,
-                password_hash: None, // Don't expose password hash
                 last_login_at: None,
                 email_verified: None,
                 email_verification_token: None,
-                password_reset_token: None,
-                password_reset_expires_at: None,
                 first_name: row.first_name,
                 last_name: row.last_name,
                 jurisdiction: row.jurisdiction,
