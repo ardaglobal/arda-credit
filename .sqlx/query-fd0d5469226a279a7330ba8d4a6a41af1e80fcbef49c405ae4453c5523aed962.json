@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance, interest_rate_bps, loan_status)\n        VALUES ($1, $2, $2, 100000, 75000, 1200, 'active')\n        ON CONFLICT (id) DO UPDATE SET\n            lender_id = $2,\n            loan_status = 'active'\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fd0d5469226a279a7330ba8d4a6a41af1e80fcbef49c405ae4453c5523aed962"
+}

@@ -45,6 +45,7 @@ pub mod vapp_integration;
 pub mod ccr;
 pub mod db;
 pub mod error;
+pub mod marketplace;
 
 // Re-export credit line operations
 pub use credit_line_operations::{

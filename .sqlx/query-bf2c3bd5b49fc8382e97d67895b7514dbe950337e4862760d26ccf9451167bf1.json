@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT l.lender_id, ll.asking_price\n        FROM loans l\n        JOIN loan_listings ll ON l.id = ll.loan_id\n        WHERE l.id = $1\n          AND l.loan_status = 'for_sale'\n          AND ll.status = 'active'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "lender_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "asking_price",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "bf2c3bd5b49fc8382e97d67895b7514dbe950337e4862760d26ccf9451167bf1"
+}
