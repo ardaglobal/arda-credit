@@ -43,7 +43,7 @@ jobs:
             echo "CARGO_HTTP_MULTIPLEXING=false"
           } >> $GITHUB_ENV
       - name: Lint main Dockerfile with hadolint
-        uses: hadolint/hadolint-action@v3.2.0
+        uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: Dockerfile
           config: .hadolint.yaml
