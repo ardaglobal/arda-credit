@@ -16,6 +16,7 @@
 //! handling patterns.
 
 // Public module exports
+pub mod auth;
 pub mod balance;
 pub mod batch;
 pub mod cli;
@@ -28,6 +29,7 @@ pub mod user;
 pub mod benchmarks;
 
 // Re-export commonly used types and functions
+pub use auth::*;
 pub use balance::*;
 pub use batch::*;
 pub use cli::*;
