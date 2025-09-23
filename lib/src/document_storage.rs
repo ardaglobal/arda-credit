@@ -14,6 +14,7 @@ use aws_sdk_s3::{
     },
     Client as S3Client,
 };
+use chrono::{DateTime, Utc};
 use mime_guess::from_path;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -112,7 +113,7 @@ pub struct S3Metadata {
     pub etag: String,
     pub content_type: String,
     pub content_length: u64,
-    pub last_modified: Option<chrono::DateTime<chrono::Utc>>,
+    pub last_modified: Option<DateTime<Utc>>,
     pub server_side_encryption: Option<String>,
     pub kms_key_id: Option<String>,
 }

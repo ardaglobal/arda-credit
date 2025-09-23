@@ -5,7 +5,11 @@ pub mod balance;
 pub mod credit_evaluation;
 pub mod credit_line;
 pub mod document; // Document storage and management
+
+#[cfg(feature = "document_storage")]
 pub mod document_storage; // AWS S3 document storage integration
+
+#[cfg(feature = "document_storage")]
 pub mod document_zkvm; // ZK proof integration for document operations
 pub mod loan;
 pub mod loan_processor;
@@ -75,12 +79,14 @@ pub use document::{
 };
 
 // Re-export document storage types
+#[cfg(feature = "document_storage")]
 pub use document_storage::{
     DocumentDownloadResponse, DocumentStorageClient, DocumentUploadRequest, DocumentWatermark,
     PresignedOperation, S3Metadata, StorageConfig, StorageError, SupportedFileType,
 };
 
 // Re-export document ZK types
+#[cfg(feature = "document_storage")]
 pub use document_zkvm::{
     DocumentBatch, DocumentInclusionProof, DocumentProofPublicValues, DocumentZkError,
     DocumentZkState, document_operation_to_loan_transaction,

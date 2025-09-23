@@ -35,7 +35,7 @@ alloy-signer-local = { workspace = true }
 alloy-sol-types    = { workspace = true }
 anyhow             = { workspace = true }
 arda-credit-db     = { path = "../db", package = "db" }
-arda-credit-lib    = { path = "../lib", package = "lib", features = [ "sp1" ] }
+arda-credit-lib    = { path = "../lib", package = "lib", features = [ "sp1", "document_storage" ] }
 ethereum-client    = { path = "../ethereum-client" }
 sindri             = { version = "0.3.1", features = [ "sp1-v5" ] }
 sp1-sdk            = "5.2.1"

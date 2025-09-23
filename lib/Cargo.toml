@@ -28,7 +28,17 @@ tracing = { version = "0.1", optional = true }
 # CLI dependencies
 clap = { version = "4.5", features = [ "derive" ], optional = true }
 
+# AWS S3 and document storage dependencies
+aws-config = { workspace = true, optional = true }
+aws-sdk-s3 = { workspace = true, optional = true }
+aws-sdk-kms = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+mime = { workspace = true, optional = true }
+mime_guess = { workspace = true, optional = true }
+validator = { workspace = true, optional = true }
+
 [features]
 clap    = [ "dep:clap" ]
 default = [  ]
+document_storage = [ "dep:aws-config", "dep:aws-sdk-s3", "dep:aws-sdk-kms", "dep:chrono", "dep:mime", "dep:mime_guess", "dep:validator" ]
 sp1     = [ "dep:metrics", "dep:sindri", "dep:sp1-sdk", "dep:tokio", "dep:tracing" ]
