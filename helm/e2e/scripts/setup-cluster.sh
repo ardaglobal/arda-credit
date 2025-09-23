@@ -252,15 +252,31 @@ EOF
     
     # Create ghcr-secret if credentials are available
     if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
-        log_info "Creating ghcr-secret from environment variables..."
+        log_info "Creating ghcr-secret from environment variables in arda-credit namespace..."
         kubectl create secret docker-registry ghcr-secret \
             --docker-server=ghcr.io \
             --docker-username="${GHCR_USERNAME}" \
             --docker-password="${GHCR_TOKEN}" \
             --docker-email="${GHCR_EMAIL:-noreply@ardaglobal.com}" \
+            --namespace=arda-credit \
             --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Validate that the secret was created successfully
+        if kubectl get secret ghcr-secret -n arda-credit >/dev/null 2>&1; then
+            log_success "ghcr-secret created successfully in arda-credit namespace"
+        else
+            log_error "Failed to create ghcr-secret in arda-credit namespace"
+            log_info "This will prevent pods from pulling private images from ghcr.io"
+            exit 1
+        fi
     else
-        log_warning "GHCR credentials not found in .env, skipping ghcr-secret creation"
+        log_warning "GHCR credentials not found in .env file"
+        log_warning "Set GHCR_USERNAME and GHCR_TOKEN in .env to enable private image pulls"
+        log_warning "Pods may fail to pull private images from ghcr.io/ardaglobal/*"
+        log_info "To fix this:"
+        log_info "  1. Add GHCR_USERNAME=your-github-username to .env"
+        log_info "  2. Add GHCR_TOKEN=your-github-token to .env"
+        log_info "  3. Re-run 'make kind-setup'"
     fi
     
     # Create arda-credit-secrets for Helm lookup (external to Helm management)
@@ -306,6 +322,35 @@ EOF
     fi
     
     log_success "Dependencies installed and configured"
+}
+
+# Validate ghcr-secret accessibility
+validate_ghcr_secret() {
+    log_info "Validating ghcr-secret accessibility..."
+    
+    # Check if ghcr-secret exists in arda-credit namespace
+    if kubectl get secret ghcr-secret -n arda-credit >/dev/null 2>&1; then
+        log_success "ghcr-secret found in arda-credit namespace"
+        
+        # Verify the secret has the expected keys
+        local secret_keys
+        secret_keys=$(kubectl get secret ghcr-secret -n arda-credit -o jsonpath='{.data}' | jq -r 'keys[]' 2>/dev/null || echo "")
+        
+        if echo "${secret_keys}" | grep -q ".dockerconfigjson"; then
+            log_success "ghcr-secret contains valid Docker registry configuration"
+        else
+            log_warning "ghcr-secret exists but may not contain valid Docker registry configuration"
+        fi
+    else
+        log_warning "ghcr-secret not found in arda-credit namespace"
+        log_warning "Pods may fail to pull private images from ghcr.io"
+        log_info "To create the secret manually:"
+        log_info "  kubectl create secret docker-registry ghcr-secret \\"
+        log_info "    --docker-server=ghcr.io \\"
+        log_info "    --docker-username=YOUR_GITHUB_USERNAME \\"
+        log_info "    --docker-password=YOUR_GITHUB_TOKEN \\"
+        log_info "    --namespace=arda-credit"
+    fi
 }
 
 
@@ -530,6 +575,7 @@ main() {
     update_helm_dependencies
     deploy_arda_credit
     wait_for_services
+    validate_ghcr_secret
     
     echo
     display_access_info
