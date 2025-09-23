@@ -681,9 +681,11 @@ deny:
 ## kind-setup: Setup Kind cluster for local e2e testing
 # This creates a local Kubernetes cluster with Arda Credit deployed
 # Uses locally built images for debugging and development
+# Requires GHCR_USERNAME and GHCR_TOKEN in .env for private image pulls
 .PHONY: kind-setup
 kind-setup:
 	@echo "🚀 Setting up Kind cluster for e2e testing..."
+	@echo "💡 Ensure GHCR_USERNAME and GHCR_TOKEN are set in .env for private image pulls"
 	@command -v kind >/dev/null 2>&1 || { echo "❌ kind not found. Run 'make install' to install dependencies."; exit 1; }
 	@command -v kubectl >/dev/null 2>&1 || { echo "❌ kubectl not found. Run 'make install' to install dependencies."; exit 1; }
 	@command -v helm >/dev/null 2>&1 || { echo "❌ helm not found. Run 'make install' to install dependencies."; exit 1; }
