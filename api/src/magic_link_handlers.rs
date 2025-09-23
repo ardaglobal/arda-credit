@@ -8,7 +8,7 @@
 
 use axum::{
     extract::{Query, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response},
 };
 use axum_extra::extract::CookieJar;
@@ -18,14 +18,14 @@ use std::collections::HashMap;
 use tracing::{error, info, instrument, warn};
 use utoipa::ToSchema;
 
-use crate::cookie_utils::{create_session_cookie, create_expired_session_cookie};
-use crate::magic_link_service::{MagicLinkService, MagicLinkError};
+use crate::cookie_utils::{create_expired_session_cookie, create_session_cookie};
+use crate::magic_link_service::{MagicLinkError, MagicLinkService};
 use crate::magic_link_types::{
-    MagicLinkRequest, MagicLinkResponse, VerifyMagicLinkRequest, VerifyMagicLinkResponse,
-    UserInfo, MagicLinkErrorResponse
+    MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
+    VerifyMagicLinkResponse,
 };
 use crate::session_middleware::extract_current_user;
-use crate::session_service::{SessionService, SessionError};
+use crate::session_service::{SessionError, SessionService};
 use crate::types::ApiState;
 
 /// Custom response that includes JSON body and cookie headers
@@ -38,10 +38,9 @@ impl<T: Serialize> IntoResponse for JsonWithCookie<T> {
     fn into_response(self) -> Response {
         let mut response = Json(self.body).into_response();
         for cookie in self.cookies {
-            response.headers_mut().append(
-                header::SET_COOKIE,
-                cookie.to_string().parse().unwrap(),
-            );
+            response
+                .headers_mut()
+                .append(header::SET_COOKIE, cookie.to_string().parse().unwrap());
         }
         response
     }
@@ -79,7 +78,7 @@ pub async fn request_magic_link(
                 message: "Magic link service not available".to_string(),
                 details: None,
                 timestamp: Utc::now(),
-            })
+            }),
         )
     })?;
 
@@ -90,14 +89,20 @@ pub async fn request_magic_link(
     let user_agent = extract_user_agent(&headers);
 
     // Generate and send magic link
-    match magic_link_service.generate_magic_link(
-        &request.email,
-        request.redirect_uri.clone(),
-        client_ip,
-        user_agent,
-    ).await {
+    match magic_link_service
+        .generate_magic_link(
+            &request.email,
+            request.redirect_uri.clone(),
+            client_ip,
+            user_agent,
+        )
+        .await
+    {
         Ok(message_id) => {
-            info!("✅ Magic link sent successfully: email={}, message_id={}", request.email, message_id);
+            info!(
+                "✅ Magic link sent successfully: email={}, message_id={}",
+                request.email, message_id
+            );
 
             Ok(Json(MagicLinkResponse {
                 success: true,
@@ -116,10 +121,15 @@ pub async fn request_magic_link(
                     message: "No account found with this email address".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
-        Err(MagicLinkError::RateLimit { client_id: _, limit, window_seconds, retry_after_seconds }) => {
+        Err(MagicLinkError::RateLimit {
+            client_id: _,
+            limit,
+            window_seconds,
+            retry_after_seconds,
+        }) => {
             warn!("❌ Rate limit exceeded for email: {}", request.email);
             Err((
                 StatusCode::TOO_MANY_REQUESTS,
@@ -132,7 +142,7 @@ pub async fn request_magic_link(
                         "retry_after_seconds": retry_after_seconds
                     })),
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
         Err(MagicLinkError::Email(email_error)) => {
@@ -141,10 +151,11 @@ pub async fn request_magic_link(
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(MagicLinkErrorResponse {
                     error: "EMAIL_SERVICE_ERROR".to_string(),
-                    message: "Unable to send email at this time. Please try again later.".to_string(),
+                    message: "Unable to send email at this time. Please try again later."
+                        .to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
         Err(e) => {
@@ -156,7 +167,7 @@ pub async fn request_magic_link(
                     message: "An unexpected error occurred. Please try again.".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
     }
@@ -195,7 +206,7 @@ pub async fn verify_magic_link(
                 message: "Magic link service not available".to_string(),
                 details: None,
                 timestamp: Utc::now(),
-            })
+            }),
         )
     })?;
 
@@ -206,12 +217,10 @@ pub async fn verify_magic_link(
     let user_agent = extract_user_agent(&headers);
 
     // Verify magic link and create session
-    match magic_link_service.verify_magic_link(
-        &request.token,
-        &request.state,
-        client_ip,
-        user_agent,
-    ).await {
+    match magic_link_service
+        .verify_magic_link(&request.token, &request.state, client_ip, user_agent)
+        .await
+    {
         Ok((session_token, session)) => {
             // Get user information
             let user = match state.session_service.validate_session(&session_token).await {
@@ -222,10 +231,11 @@ pub async fn verify_magic_link(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(MagicLinkErrorResponse {
                             error: "SESSION_ERROR".to_string(),
-                            message: "Authentication succeeded but session creation failed".to_string(),
+                            message: "Authentication succeeded but session creation failed"
+                                .to_string(),
                             details: None,
                             timestamp: Utc::now(),
-                        })
+                        }),
                     ));
                 }
             };
@@ -237,17 +247,17 @@ pub async fn verify_magic_link(
 
             Ok(JsonWithCookie {
                 body: VerifyMagicLinkResponse {
-                success: true,
-                message: "Authentication successful".to_string(),
-                redirect_uri: request.redirect_uri,
-                user: UserInfo {
-                    user_id: user.id.to_string(),
-                    email: user.email,
-                    user_type: user.user_type,
-                    kyc_status: "unknown".to_string(), // Would need to fetch from DB for full info
-                    email_verified: true, // Assume verified since they used magic link
-                },
-                timestamp: Utc::now(),
+                    success: true,
+                    message: "Authentication successful".to_string(),
+                    redirect_uri: request.redirect_uri,
+                    user: UserInfo {
+                        user_id: user.id.to_string(),
+                        email: user.email,
+                        user_type: user.user_type,
+                        kyc_status: "unknown".to_string(), // Would need to fetch from DB for full info
+                        email_verified: true, // Assume verified since they used magic link
+                    },
+                    timestamp: Utc::now(),
                 },
                 cookies: vec![session_cookie],
             })
@@ -261,7 +271,7 @@ pub async fn verify_magic_link(
                     message: "Magic link not found or has expired".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
         Err(MagicLinkError::AlreadyConsumed) => {
@@ -273,7 +283,7 @@ pub async fn verify_magic_link(
                     message: "This magic link has already been used".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
         Err(MagicLinkError::Expired) => {
@@ -285,7 +295,7 @@ pub async fn verify_magic_link(
                     message: "This magic link has expired. Please request a new one.".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
         Err(MagicLinkError::InvalidState) => {
@@ -297,7 +307,7 @@ pub async fn verify_magic_link(
                     message: "Invalid request. Please start over.".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
         Err(MagicLinkError::InvalidToken) => {
@@ -309,7 +319,7 @@ pub async fn verify_magic_link(
                     message: "Invalid magic link format".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
         Err(e) => {
@@ -321,7 +331,7 @@ pub async fn verify_magic_link(
                     message: "Unable to verify magic link. Please try again.".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
     }
@@ -358,7 +368,7 @@ pub async fn get_current_user(
                 email: current_user.email,
                 user_type: current_user.user_type,
                 kyc_status: "unknown".to_string(), // Would need to fetch from DB for full info
-                email_verified: true, // Assume verified since they used magic link
+                email_verified: true,              // Assume verified since they used magic link
             }))
         }
         None => {
@@ -370,7 +380,7 @@ pub async fn get_current_user(
                     message: "Authentication required".to_string(),
                     details: None,
                     timestamp: Utc::now(),
-                })
+                }),
             ))
         }
     }
@@ -412,7 +422,8 @@ pub async fn logout(
 ) -> Result<JsonWithCookie<serde_json::Value>, (StatusCode, Json<MagicLinkErrorResponse>)> {
     let magic_link_service = state.magic_link_service.as_ref();
     // Extract session token from cookie
-    let session_token = cookies.get("session_token")
+    let session_token = cookies
+        .get("session_token")
         .map(|cookie| cookie.value().to_string());
 
     if let Some(token) = session_token {
@@ -451,7 +462,8 @@ pub async fn logout(
 /// Extract client IP from request headers
 fn extract_client_ip(headers: &HeaderMap) -> Option<String> {
     // Try common proxy headers first
-    let ip_str = headers.get("x-forwarded-for")
+    let ip_str = headers
+        .get("x-forwarded-for")
         .or_else(|| headers.get("x-real-ip"))
         .or_else(|| headers.get("x-client-ip"))
         .and_then(|header| header.to_str().ok())
@@ -462,7 +474,8 @@ fn extract_client_ip(headers: &HeaderMap) -> Option<String> {
 
 /// Extract user agent from request headers
 fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
-    headers.get("user-agent")
+    headers
+        .get("user-agent")
         .and_then(|header| header.to_str().ok())
         .map(|s| s.to_string())
 }

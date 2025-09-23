@@ -2,13 +2,13 @@
 //!
 //! Tests system behavior under load and performance characteristics
 
+use axum::http::StatusCode;
+use futures::future::join_all;
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
-use futures::future::join_all;
-use axum::http::StatusCode;
 
 use crate::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use crate::test_utils::{TestContext, TestApp, create_test_app_with_magic_links, create_test_user};
+use crate::test_utils::{create_test_app_with_magic_links, create_test_user, TestApp, TestContext};
 use crate::types::ApiState;
 
 /// Performance test context
@@ -50,46 +50,62 @@ async fn test_concurrent_magic_link_requests() {
     let start = Instant::now();
 
     // Make concurrent magic link requests
-    let tasks: Vec<_> = users.into_iter().map(|user| {
-        let app = ctx.app.clone();
-        tokio::spawn(async move {
-            let request = MagicLinkRequest {
-                email: user.email,
-                redirect_uri: None,
-            };
+    let tasks: Vec<_> = users
+        .into_iter()
+        .map(|user| {
+            let app = ctx.app.clone();
+            tokio::spawn(async move {
+                let request = MagicLinkRequest {
+                    email: user.email,
+                    redirect_uri: None,
+                };
 
-            let response = app
-                .oneshot(axum::http::Request::builder()
-                    .method("POST")
-                    .uri("/api/v1/auth/magic-link")
-                    .header("content-type", "application/json")
-                    .body(serde_json::to_string(&request).unwrap().into())
-                    .unwrap())
-                .await
-                .unwrap();
+                let response = app
+                    .oneshot(
+                        axum::http::Request::builder()
+                            .method("POST")
+                            .uri("/api/v1/auth/magic-link")
+                            .header("content-type", "application/json")
+                            .body(serde_json::to_string(&request).unwrap().into())
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
 
-            (response.status(), user.email)
+                (response.status(), user.email)
+            })
         })
-    }).collect();
+        .collect();
 
     let results = join_all(tasks).await;
     let duration = start.elapsed();
 
     // All requests should complete within reasonable time
-    assert!(duration < Duration::from_secs(5),
-            "Concurrent requests took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_secs(5),
+        "Concurrent requests took too long: {:?}",
+        duration
+    );
 
     // Most requests should succeed (some may be rate limited)
-    let success_count = results.iter()
+    let success_count = results
+        .iter()
         .filter(|(status, _)| status.is_success())
         .count();
 
-    println!("Concurrent requests: {} successes out of {} total in {:?}",
-             success_count, results.len(), duration);
+    println!(
+        "Concurrent requests: {} successes out of {} total in {:?}",
+        success_count,
+        results.len(),
+        duration
+    );
 
-    assert!(success_count >= results.len() / 2,
-            "At least half of concurrent requests should succeed, got {}/{}",
-            success_count, results.len());
+    assert!(
+        success_count >= results.len() / 2,
+        "At least half of concurrent requests should succeed, got {}/{}",
+        success_count,
+        results.len()
+    );
 }
 
 #[tokio::test]
@@ -106,31 +122,42 @@ async fn test_session_validation_performance() {
     let num_requests = 100;
 
     // Make many concurrent authenticated requests
-    let tasks: Vec<_> = (0..num_requests).map(|_| {
-        let app = ctx.app.clone();
-        let cookie = session_cookie.clone();
-        tokio::spawn(async move {
-            make_authenticated_request(&app, &cookie, "/api/v1/auth/me").await
+    let tasks: Vec<_> = (0..num_requests)
+        .map(|_| {
+            let app = ctx.app.clone();
+            let cookie = session_cookie.clone();
+            tokio::spawn(async move {
+                make_authenticated_request(&app, &cookie, "/api/v1/auth/me").await
+            })
         })
-    }).collect();
+        .collect();
 
     let results = join_all(tasks).await;
     let duration = start.elapsed();
 
-    println!("Processed {} authenticated requests in {:?}", num_requests, duration);
+    println!(
+        "Processed {} authenticated requests in {:?}",
+        num_requests, duration
+    );
 
     // Should handle reasonable load
-    assert!(duration < Duration::from_secs(10),
-            "Session validation took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_secs(10),
+        "Session validation took too long: {:?}",
+        duration
+    );
 
     // All requests should succeed
-    let success_count = results.iter()
+    let success_count = results
+        .iter()
         .filter(|result| matches!(result, Ok(response) if response.status().is_success()))
         .count();
 
-    assert_eq!(success_count, num_requests,
-               "All {} authenticated requests should succeed, got {}",
-               num_requests, success_count);
+    assert_eq!(
+        success_count, num_requests,
+        "All {} authenticated requests should succeed, got {}",
+        num_requests, success_count
+    );
 }
 
 #[tokio::test]
@@ -151,24 +178,29 @@ async fn test_magic_link_verification_performance() {
     let start = Instant::now();
 
     // Verify all magic links concurrently
-    let tasks: Vec<_> = magic_links.into_iter().map(|magic_link| {
-        let app = ctx.app.clone();
-        tokio::spawn(async move {
-            let request = VerifyMagicLinkRequest {
-                token: magic_link.token,
-                state: magic_link.state,
-                redirect_uri: None,
-            };
+    let tasks: Vec<_> = magic_links
+        .into_iter()
+        .map(|magic_link| {
+            let app = ctx.app.clone();
+            tokio::spawn(async move {
+                let request = VerifyMagicLinkRequest {
+                    token: magic_link.token,
+                    state: magic_link.state,
+                    redirect_uri: None,
+                };
 
-            app.oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/verify")
-                .header("content-type", "application/json")
-                .body(serde_json::to_string(&request).unwrap().into())
-                .unwrap())
-            .await
+                app.oneshot(
+                    axum::http::Request::builder()
+                        .method("POST")
+                        .uri("/api/v1/auth/verify")
+                        .header("content-type", "application/json")
+                        .body(serde_json::to_string(&request).unwrap().into())
+                        .unwrap(),
+                )
+                .await
+            })
         })
-    }).collect();
+        .collect();
 
     let results = join_all(tasks).await;
     let duration = start.elapsed();
@@ -176,16 +208,23 @@ async fn test_magic_link_verification_performance() {
     println!("Verified {} magic links in {:?}", results.len(), duration);
 
     // Should complete reasonably quickly
-    assert!(duration < Duration::from_secs(3),
-            "Magic link verification took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_secs(3),
+        "Magic link verification took too long: {:?}",
+        duration
+    );
 
     // All verifications should succeed
-    let success_count = results.iter()
+    let success_count = results
+        .iter()
         .filter(|result| matches!(result, Ok(response) if response.status().is_success()))
         .count();
 
-    assert_eq!(success_count, results.len(),
-               "All magic link verifications should succeed");
+    assert_eq!(
+        success_count,
+        results.len(),
+        "All magic link verifications should succeed"
+    );
 }
 
 #[tokio::test]
@@ -206,14 +245,24 @@ async fn test_database_performance_under_load() {
     let duration = start.elapsed();
 
     assert!(cleanup_result.is_ok(), "Cleanup should succeed");
-    assert!(duration < Duration::from_secs(5),
-            "Cleanup took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_secs(5),
+        "Cleanup took too long: {:?}",
+        duration
+    );
 
-    println!("Cleaned up {} expired links in {:?}", cleanup_result.unwrap(), duration);
+    println!(
+        "Cleaned up {} expired links in {:?}",
+        cleanup_result.unwrap(),
+        duration
+    );
 
     // Verify cleanup worked
     let remaining_expired = count_expired_magic_links(&ctx.pool).await;
-    assert_eq!(remaining_expired, 0, "All expired links should be cleaned up");
+    assert_eq!(
+        remaining_expired, 0,
+        "All expired links should be cleaned up"
+    );
 }
 
 #[tokio::test]
@@ -234,14 +283,17 @@ async fn test_rate_limiting_performance() {
             redirect_uri: None,
         };
 
-        let response = ctx.app
+        let response = ctx
+            .app
             .clone()
-            .oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/magic-link")
-                .header("content-type", "application/json")
-                .body(serde_json::to_string(&request).unwrap().into())
-                .unwrap())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/magic-link")
+                    .header("content-type", "application/json")
+                    .body(serde_json::to_string(&request).unwrap().into())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -255,18 +307,33 @@ async fn test_rate_limiting_performance() {
 
     let duration = start.elapsed();
 
-    println!("Rate limiting test: {} requests in {:?}", num_requests, duration);
+    println!(
+        "Rate limiting test: {} requests in {:?}",
+        num_requests, duration
+    );
 
     // Should complete reasonably quickly even with rate limiting
-    assert!(duration < Duration::from_secs(2),
-            "Rate limiting test took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_secs(2),
+        "Rate limiting test took too long: {:?}",
+        duration
+    );
 
     // Should have some successes and some rate limited responses
     let success_count = results.iter().filter(|status| status.is_success()).count();
-    let rate_limited_count = results.iter().filter(|status| **status == StatusCode::TOO_MANY_REQUESTS).count();
+    let rate_limited_count = results
+        .iter()
+        .filter(|status| **status == StatusCode::TOO_MANY_REQUESTS)
+        .count();
 
-    assert!(success_count >= 3, "Should allow at least 3 requests before rate limiting");
-    assert!(rate_limited_count > 0, "Should have some rate limited requests");
+    assert!(
+        success_count >= 3,
+        "Should allow at least 3 requests before rate limiting"
+    );
+    assert!(
+        rate_limited_count > 0,
+        "Should have some rate limited requests"
+    );
 }
 
 #[tokio::test]
@@ -289,31 +356,45 @@ async fn test_memory_usage_under_load() {
     let start = Instant::now();
 
     // Make many requests with different sessions concurrently
-    let tasks: Vec<_> = session_cookies.iter().enumerate().map(|(i, cookie)| {
-        let app = ctx.app.clone();
-        let cookie = cookie.clone();
-        tokio::spawn(async move {
-            for _ in 0..5 { // 5 requests per session
-                let response = make_authenticated_request(&app, &cookie, "/api/v1/auth/me").await;
-                assert!(response.status().is_success());
-            }
+    let tasks: Vec<_> = session_cookies
+        .iter()
+        .enumerate()
+        .map(|(i, cookie)| {
+            let app = ctx.app.clone();
+            let cookie = cookie.clone();
+            tokio::spawn(async move {
+                for _ in 0..5 {
+                    // 5 requests per session
+                    let response =
+                        make_authenticated_request(&app, &cookie, "/api/v1/auth/me").await;
+                    assert!(response.status().is_success());
+                }
+            })
         })
-    }).collect();
+        .collect();
 
     let results = join_all(tasks).await;
     let duration = start.elapsed();
 
-    println!("Memory usage test: {} sessions with {} requests each in {:?}",
-             num_sessions, 5, duration);
+    println!(
+        "Memory usage test: {} sessions with {} requests each in {:?}",
+        num_sessions, 5, duration
+    );
 
     // All tasks should complete successfully
     for result in results {
-        assert!(result.is_ok(), "All concurrent session requests should succeed");
+        assert!(
+            result.is_ok(),
+            "All concurrent session requests should succeed"
+        );
     }
 
     // Should handle the load reasonably well
-    assert!(duration < Duration::from_secs(10),
-            "Concurrent session load test took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_secs(10),
+        "Concurrent session load test took too long: {:?}",
+        duration
+    );
 }
 
 #[tokio::test]
@@ -334,8 +415,11 @@ async fn test_token_generation_performance() {
     println!("Generated {} token pairs in {:?}", num_tokens, duration);
 
     // Token generation should be fast
-    assert!(duration < Duration::from_secs(1),
-            "Token generation took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_secs(1),
+        "Token generation took too long: {:?}",
+        duration
+    );
 
     // Test hash performance
     let test_token = "test-token-for-hashing-12345678901234567890123456789012";
@@ -350,8 +434,11 @@ async fn test_token_generation_performance() {
     println!("Hashed {} tokens in {:?}", num_tokens, hash_duration);
 
     // Hashing should also be fast
-    assert!(hash_duration < Duration::from_secs(2),
-            "Token hashing took too long: {:?}", hash_duration);
+    assert!(
+        hash_duration < Duration::from_secs(2),
+        "Token hashing took too long: {:?}",
+        hash_duration
+    );
 }
 
 #[tokio::test]
@@ -394,14 +481,23 @@ async fn test_database_query_performance() {
 
     let duration = start.elapsed();
 
-    println!("Database queries completed in {:?}: {} users, {} magic links, {} sessions",
-             duration, user_count, magic_link_count, session_count);
+    println!(
+        "Database queries completed in {:?}: {} users, {} magic links, {} sessions",
+        duration, user_count, magic_link_count, session_count
+    );
 
     // Database queries should be fast
-    assert!(duration < Duration::from_millis(500),
-            "Database queries took too long: {:?}", duration);
+    assert!(
+        duration < Duration::from_millis(500),
+        "Database queries took too long: {:?}",
+        duration
+    );
 
-    assert!(user_count >= num_records as i64, "Should have at least {} users", num_records);
+    assert!(
+        user_count >= num_records as i64,
+        "Should have at least {} users",
+        num_records
+    );
 }
 
 // Helper functions
@@ -419,25 +515,24 @@ async fn complete_auth_flow(app: &TestApp, pool: &sqlx::PgPool, user_id: uuid::U
 
     let response = app
         .clone()
-        .oneshot(axum::http::Request::builder()
-            .method("POST")
-            .uri("/api/v1/auth/verify")
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&verify_request).unwrap().into())
-            .unwrap())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/verify")
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&verify_request).unwrap().into())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
 
     // Extract session cookie
-    let cookies: Vec<_> = response
-        .headers()
-        .get_all("set-cookie")
-        .iter()
-        .collect();
+    let cookies: Vec<_> = response.headers().get_all("set-cookie").iter().collect();
 
-    let session_cookie = cookies.iter()
+    let session_cookie = cookies
+        .iter()
         .find(|cookie| cookie.to_str().unwrap().contains("session_token"))
         .unwrap()
         .to_str()
@@ -447,12 +542,18 @@ async fn complete_auth_flow(app: &TestApp, pool: &sqlx::PgPool, user_id: uuid::U
     session_cookie
 }
 
-async fn make_authenticated_request(app: &TestApp, session_cookie: &str, uri: &str) -> Result<axum::http::Response<axum::body::Body>, Box<dyn std::error::Error + Send + Sync>> {
+async fn make_authenticated_request(
+    app: &TestApp,
+    session_cookie: &str,
+    uri: &str,
+) -> Result<axum::http::Response<axum::body::Body>, Box<dyn std::error::Error + Send + Sync>> {
     let request = axum::http::Request::builder()
         .method("GET")
         .uri(uri)
-        .header("cookie", format!("session_token={}",
-                 extract_session_token(session_cookie)))
+        .header(
+            "cookie",
+            format!("session_token={}", extract_session_token(session_cookie)),
+        )
         .body(axum::body::Body::empty())
         .unwrap();
 
@@ -472,7 +573,10 @@ fn extract_session_token(cookie_header: &str) -> &str {
     }
 }
 
-async fn create_test_magic_link(pool: &sqlx::PgPool, user_id: uuid::Uuid) -> crate::test_utils::TestMagicLink {
+async fn create_test_magic_link(
+    pool: &sqlx::PgPool,
+    user_id: uuid::Uuid,
+) -> crate::test_utils::TestMagicLink {
     use chrono::{Duration, Utc};
 
     let token = format!("perf-token-{}", uuid::Uuid::new_v4().simple());

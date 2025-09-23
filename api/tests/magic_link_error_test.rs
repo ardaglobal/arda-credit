@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use serde_json::Value;
 
 use crate::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use crate::test_utils::{TestContext, TestApp, create_test_app_with_magic_links, create_test_user};
+use crate::test_utils::{create_test_app_with_magic_links, create_test_user, TestApp, TestContext};
 use crate::types::ApiState;
 
 /// Test context for error handling tests
@@ -27,28 +27,38 @@ impl ErrorTestContext {
         }
     }
 
-    async fn make_magic_link_request(&self, request: &MagicLinkRequest) -> axum::http::Response<axum::body::Body> {
+    async fn make_magic_link_request(
+        &self,
+        request: &MagicLinkRequest,
+    ) -> axum::http::Response<axum::body::Body> {
         self.app
             .clone()
-            .oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/magic-link")
-                .header("content-type", "application/json")
-                .body(serde_json::to_string(request).unwrap().into())
-                .unwrap())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/magic-link")
+                    .header("content-type", "application/json")
+                    .body(serde_json::to_string(request).unwrap().into())
+                    .unwrap(),
+            )
             .await
             .unwrap()
     }
 
-    async fn make_verify_request(&self, request: &VerifyMagicLinkRequest) -> axum::http::Response<axum::body::Body> {
+    async fn make_verify_request(
+        &self,
+        request: &VerifyMagicLinkRequest,
+    ) -> axum::http::Response<axum::body::Body> {
         self.app
             .clone()
-            .oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/verify")
-                .header("content-type", "application/json")
-                .body(serde_json::to_string(request).unwrap().into())
-                .unwrap())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/verify")
+                    .header("content-type", "application/json")
+                    .body(serde_json::to_string(request).unwrap().into())
+                    .unwrap(),
+            )
             .await
             .unwrap()
     }
@@ -83,15 +93,19 @@ async fn test_invalid_email_formats() {
 
         // Should either reject with BAD_REQUEST or NOT_FOUND (user not found)
         assert!(
-            response.status() == StatusCode::BAD_REQUEST ||
-            response.status() == StatusCode::NOT_FOUND,
-            "Email '{}' should be rejected, got status: {}", email, response.status()
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::NOT_FOUND,
+            "Email '{}' should be rejected, got status: {}",
+            email,
+            response.status()
         );
 
         if response.status() == StatusCode::BAD_REQUEST {
             let body: Value = parse_response_body(response).await;
-            assert!(body["error"].as_str().unwrap().contains("INVALID") ||
-                    body["error"].as_str().unwrap().contains("EMAIL"));
+            assert!(
+                body["error"].as_str().unwrap().contains("INVALID")
+                    || body["error"].as_str().unwrap().contains("EMAIL")
+            );
         }
     }
 }
@@ -110,8 +124,10 @@ async fn test_nonexistent_user() {
 
     let body: Value = parse_response_body(response).await;
     assert_eq!(body["error"], "USER_NOT_FOUND");
-    assert!(body["message"].as_str().unwrap().contains("account") ||
-            body["message"].as_str().unwrap().contains("found"));
+    assert!(
+        body["message"].as_str().unwrap().contains("account")
+            || body["message"].as_str().unwrap().contains("found")
+    );
 }
 
 #[tokio::test]
@@ -119,10 +135,10 @@ async fn test_malformed_tokens() {
     let ctx = ErrorTestContext::new().await;
 
     let malformed_tokens = vec![
-        "", // Empty
-        "too-short", // Too short
-        "not-base64-@#$%", // Invalid base64
-        "a".repeat(100), // Too long
+        "",                                                   // Empty
+        "too-short",                                          // Too short
+        "not-base64-@#$%",                                    // Invalid base64
+        "a".repeat(100),                                      // Too long
         "valid-length-but-wrong-format-12345678901234567890", // Wrong format
         "contains spaces and invalid chars !@#$%^&*()",
         "🚀-unicode-invalid-🚀",
@@ -144,8 +160,10 @@ async fn test_malformed_tokens() {
         );
 
         let body: Value = parse_response_body(response).await;
-        assert!(body["error"].as_str().unwrap().contains("INVALID") ||
-                body["error"].as_str().unwrap().contains("TOKEN"));
+        assert!(
+            body["error"].as_str().unwrap().contains("INVALID")
+                || body["error"].as_str().unwrap().contains("TOKEN")
+        );
     }
 }
 
@@ -154,8 +172,8 @@ async fn test_malformed_state_parameters() {
     let ctx = ErrorTestContext::new().await;
 
     let malformed_states = vec![
-        "", // Empty
-        "too-short", // Too short
+        "",             // Empty
+        "too-short",    // Too short
         "a".repeat(50), // Too long
         "contains-invalid-chars-!@#$%^&*()",
         "🚀-unicode-invalid-🚀",
@@ -185,13 +203,13 @@ async fn test_invalid_redirect_uris() {
     let user = create_test_user(&ctx.pool, "test@example.com", "investor").await;
 
     let invalid_redirects = vec![
-        "http://evil.com/steal-session", // External domain
-        "javascript:alert('xss')", // JavaScript protocol
-        "/../../etc/passwd", // Path traversal attempt
+        "http://evil.com/steal-session",                // External domain
+        "javascript:alert('xss')",                      // JavaScript protocol
+        "/../../etc/passwd",                            // Path traversal attempt
         "data:text/html,<script>alert('xss')</script>", // Data protocol
-        "ftp://evil.com/file", // Non-HTTP protocol
-        "file:///etc/passwd", // File protocol
-        "//evil.com", // Protocol-relative URL
+        "ftp://evil.com/file",                          // Non-HTTP protocol
+        "file:///etc/passwd",                           // File protocol
+        "//evil.com",                                   // Protocol-relative URL
     ];
 
     for redirect in invalid_redirects {
@@ -206,8 +224,10 @@ async fn test_invalid_redirect_uris() {
         // For security, we expect rejection of dangerous redirects
         if response.status() == StatusCode::BAD_REQUEST {
             let body: Value = parse_response_body(response).await;
-            assert!(body["error"].as_str().unwrap().contains("INVALID") ||
-                    body["error"].as_str().unwrap().contains("REDIRECT"));
+            assert!(
+                body["error"].as_str().unwrap().contains("INVALID")
+                    || body["error"].as_str().unwrap().contains("REDIRECT")
+            );
         }
         // If it succeeds, the redirect should be safe
     }
@@ -293,8 +313,10 @@ async fn test_magic_link_already_consumed() {
 
     let body: Value = parse_response_body(response).await;
     assert_eq!(body["error"], "MAGIC_LINK_CONSUMED");
-    assert!(body["message"].as_str().unwrap().contains("used") ||
-            body["message"].as_str().unwrap().contains("consumed"));
+    assert!(
+        body["message"].as_str().unwrap().contains("used")
+            || body["message"].as_str().unwrap().contains("consumed")
+    );
 }
 
 #[tokio::test]
@@ -302,31 +324,38 @@ async fn test_invalid_json_requests() {
     let ctx = ErrorTestContext::new().await;
 
     let invalid_json_requests = vec![
-        "", // Empty body
-        "{", // Incomplete JSON
-        r#"{"email":}"#, // Invalid JSON
-        r#"{"email": "test@example.com", "redirect_uri": }"# , // Trailing comma
-        r#"{"invalid_field": "value"}"#, // Wrong field name
-        "not json at all", // Not JSON
-        r#"{"email": null}"#, // Null email
-        r#"{"email": 123}"#, // Wrong type
+        "",                                                   // Empty body
+        "{",                                                  // Incomplete JSON
+        r#"{"email":}"#,                                      // Invalid JSON
+        r#"{"email": "test@example.com", "redirect_uri": }"#, // Trailing comma
+        r#"{"invalid_field": "value"}"#,                      // Wrong field name
+        "not json at all",                                    // Not JSON
+        r#"{"email": null}"#,                                 // Null email
+        r#"{"email": 123}"#,                                  // Wrong type
     ];
 
     for json_body in invalid_json_requests {
-        let response = ctx.app
+        let response = ctx
+            .app
             .clone()
-            .oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/magic-link")
-                .header("content-type", "application/json")
-                .body(json_body.into())
-                .unwrap())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/magic-link")
+                    .header("content-type", "application/json")
+                    .body(json_body.into())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
         // Should get a 400 Bad Request for malformed JSON
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST,
-                  "Invalid JSON '{}' should result in BAD_REQUEST", json_body);
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Invalid JSON '{}' should result in BAD_REQUEST",
+            json_body
+        );
     }
 }
 
@@ -335,42 +364,51 @@ async fn test_missing_required_fields() {
     let ctx = ErrorTestContext::new().await;
 
     // Test missing email field
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
-        .oneshot(axum::http::Request::builder()
-            .method("POST")
-            .uri("/api/v1/auth/magic-link")
-            .header("content-type", "application/json")
-            .body(r#"{"redirect_uri": "/dashboard"}"#.into())
-            .unwrap())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/magic-link")
+                .header("content-type", "application/json")
+                .body(r#"{"redirect_uri": "/dashboard"}"#.into())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     // Test missing token in verify request
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
-        .oneshot(axum::http::Request::builder()
-            .method("POST")
-            .uri("/api/v1/auth/verify")
-            .header("content-type", "application/json")
-            .body(r#"{"state": "test-state"}"#.into())
-            .unwrap())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/verify")
+                .header("content-type", "application/json")
+                .body(r#"{"state": "test-state"}"#.into())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     // Test missing state in verify request
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
-        .oneshot(axum::http::Request::builder()
-            .method("POST")
-            .uri("/api/v1/auth/verify")
-            .header("content-type", "application/json")
-            .body(r#"{"token": "test-token"}"#.into())
-            .unwrap())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/verify")
+                .header("content-type", "application/json")
+                .body(r#"{"token": "test-token"}"#.into())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -382,14 +420,17 @@ async fn test_wrong_content_type() {
     let ctx = ErrorTestContext::new().await;
 
     // Test with wrong content type
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
-        .oneshot(axum::http::Request::builder()
-            .method("POST")
-            .uri("/api/v1/auth/magic-link")
-            .header("content-type", "text/plain")
-            .body(r#"email=test@example.com"#.into())
-            .unwrap())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/magic-link")
+                .header("content-type", "text/plain")
+                .body(r#"email=test@example.com"#.into())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -404,19 +445,26 @@ async fn test_unsupported_http_methods() {
     let unsupported_methods = vec!["GET", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
 
     for method in unsupported_methods {
-        let response = ctx.app
+        let response = ctx
+            .app
             .clone()
-            .oneshot(axum::http::Request::builder()
-                .method(method)
-                .uri("/api/v1/auth/magic-link")
-                .body(axum::body::Body::empty())
-                .unwrap())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method(method)
+                    .uri("/api/v1/auth/magic-link")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
         // Should get a 405 Method Not Allowed
-        assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED,
-                  "Method {} should result in METHOD_NOT_ALLOWED", method);
+        assert_eq!(
+            response.status(),
+            StatusCode::METHOD_NOT_ALLOWED,
+            "Method {} should result in METHOD_NOT_ALLOWED",
+            method
+        );
     }
 }
 
@@ -446,36 +494,39 @@ async fn test_concurrent_request_conflicts() {
     let user = create_test_user(&ctx.pool, "test@example.com", "investor").await;
 
     // Make multiple concurrent requests that might cause race conditions
-    let tasks: Vec<_> = (0..10).map(|i| {
-        let app = ctx.app.clone();
-        let email = format!("test{}@example.com", i);
+    let tasks: Vec<_> = (0..10)
+        .map(|i| {
+            let app = ctx.app.clone();
+            let email = format!("test{}@example.com", i);
 
-        // Create user for this email
-        let pool = ctx.pool.clone();
-        tokio::spawn(async move {
-            let _ = create_test_user(&pool, &email, "investor").await;
-            let request = MagicLinkRequest {
-                email,
-                redirect_uri: None,
-            };
+            // Create user for this email
+            let pool = ctx.pool.clone();
+            tokio::spawn(async move {
+                let _ = create_test_user(&pool, &email, "investor").await;
+                let request = MagicLinkRequest {
+                    email,
+                    redirect_uri: None,
+                };
 
-            app.oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/magic-link")
-                .header("content-type", "application/json")
-                .body(serde_json::to_string(&request).unwrap().into())
-                .unwrap())
-            .await
+                app.oneshot(
+                    axum::http::Request::builder()
+                        .method("POST")
+                        .uri("/api/v1/auth/magic-link")
+                        .header("content-type", "application/json")
+                        .body(serde_json::to_string(&request).unwrap().into())
+                        .unwrap(),
+                )
+                .await
+            })
         })
-    }).collect();
+        .collect();
 
     let results = futures::future::join_all(tasks).await;
 
     // Count successes and failures
-    let success_count = results.iter()
-        .filter(|result| {
-            matches!(result, Ok(response) if response.status().is_success())
-        })
+    let success_count = results
+        .iter()
+        .filter(|result| matches!(result, Ok(response) if response.status().is_success()))
         .count();
 
     let rate_limit_count = results.iter()
@@ -484,12 +535,20 @@ async fn test_concurrent_request_conflicts() {
         })
         .count();
 
-    println!("Concurrent requests: {} successes, {} rate limited",
-             success_count, rate_limit_count);
+    println!(
+        "Concurrent requests: {} successes, {} rate limited",
+        success_count, rate_limit_count
+    );
 
     // Should have at least some successes and some rate limiting
-    assert!(success_count > 0, "Should have at least some successful requests");
-    assert!(rate_limit_count >= 0, "Rate limiting may occur under concurrent load");
+    assert!(
+        success_count > 0,
+        "Should have at least some successful requests"
+    );
+    assert!(
+        rate_limit_count >= 0,
+        "Rate limiting may occur under concurrent load"
+    );
 }
 
 #[tokio::test]
@@ -508,10 +567,13 @@ async fn test_extremely_large_request_payloads() {
 
     // Should either succeed (if accepted) or fail with appropriate error
     // Large inputs should be handled gracefully
-    assert!(response.status().is_success() ||
-            response.status() == StatusCode::BAD_REQUEST ||
-            response.status() == StatusCode::PAYLOAD_TOO_LARGE,
-            "Large payload should be handled gracefully, got: {}", response.status());
+    assert!(
+        response.status().is_success()
+            || response.status() == StatusCode::BAD_REQUEST
+            || response.status() == StatusCode::PAYLOAD_TOO_LARGE,
+        "Large payload should be handled gracefully, got: {}",
+        response.status()
+    );
 }
 
 #[tokio::test]
@@ -519,12 +581,12 @@ async fn test_unicode_and_special_characters() {
     let ctx = ErrorTestContext::new().await;
 
     let special_emails = vec![
-        "test@tëst.com", // Unicode in domain
-        "tëst@example.com", // Unicode in local part
-        "test@例え.テスト", // Japanese characters
+        "test@tëst.com",         // Unicode in domain
+        "tëst@example.com",      // Unicode in local part
+        "test@例え.テスト",      // Japanese characters
         "test@пример.испытание", // Cyrillic
-        "test@münchen.de", // German umlaut
-        "test@test..com", // Double dot (invalid)
+        "test@münchen.de",       // German umlaut
+        "test@test..com",        // Double dot (invalid)
     ];
 
     for email in special_emails {
@@ -540,19 +602,25 @@ async fn test_unicode_and_special_characters() {
             StatusCode::OK => {
                 // Valid unicode email accepted
                 println!("Accepted unicode email: {}", email);
-            },
+            }
             StatusCode::NOT_FOUND => {
                 // User doesn't exist - this is expected for our test emails
                 let body: Value = parse_response_body(response).await;
                 assert_eq!(body["error"], "USER_NOT_FOUND");
-            },
+            }
             StatusCode::BAD_REQUEST => {
                 // Invalid email format rejected
                 let body: Value = parse_response_body(response).await;
-                assert!(body["error"].as_str().unwrap().contains("INVALID") ||
-                        body["error"].as_str().unwrap().contains("EMAIL"));
-            },
-            _ => panic!("Unexpected status for email {}: {}", email, response.status()),
+                assert!(
+                    body["error"].as_str().unwrap().contains("INVALID")
+                        || body["error"].as_str().unwrap().contains("EMAIL")
+                );
+            }
+            _ => panic!(
+                "Unexpected status for email {}: {}",
+                email,
+                response.status()
+            ),
         }
     }
 }
@@ -560,6 +628,8 @@ async fn test_unicode_and_special_characters() {
 // Helper functions
 
 async fn parse_response_body(response: axum::http::Response<axum::body::Body>) -> Value {
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     serde_json::from_slice(&body_bytes).unwrap()
 }

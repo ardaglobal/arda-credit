@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM pool_borough_limits\n        WHERE pool_id = $1 AND borough = $2\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6046be8bdcebe785b1800e98b0d23efea905486ed5e8f60b572038841c402c2b"
+}

@@ -1,0 +1,91 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, investor_id, name, total_deposits, available_liquidity,\n            utilized_liquidity, max_ltv_ratio, max_interest_rate,\n            repayment_period_days, status,\n            created_at as \"created_at!: DateTime<Utc>\",\n            updated_at as \"updated_at!: DateTime<Utc>\"\n        FROM liquidity_pools\n        WHERE status = 'ACTIVE'\n            AND available_liquidity >= $1\n            AND max_ltv_ratio >= $2\n            AND max_interest_rate >= $3\n            AND repayment_period_days >= $4\n        ORDER BY max_interest_rate ASC, available_liquidity DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_deposits",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "available_liquidity",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "utilized_liquidity",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "max_ltv_ratio",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "max_interest_rate",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "repayment_period_days",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at!: DateTime<Utc>",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Numeric",
+        "Numeric",
+        "Numeric",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "5138bbc08c80db000e2ed5ba5c7210379e5acb924531c513fa50d75ca2a1b0bf"
+}

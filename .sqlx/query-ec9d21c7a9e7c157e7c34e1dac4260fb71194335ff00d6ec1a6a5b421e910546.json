@@ -1,0 +1,165 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            ip.id as profile_id, ip.user_id, ip.accredited_investor,\n            ip.investment_capacity, ip.regulatory_jurisdiction,\n            ip.created_at as \"profile_created_at!\", ip.updated_at as \"profile_updated_at!\",\n            i.id as identity_id, i.user_type, i.email, i.kyc_status,\n            i.kyc_submitted_at, i.kyc_verified_at, i.kyc_investor_type as \"kyc_investor_type?: KycInvestorType\",\n            i.created_at as \"identity_created_at!\", i.updated_at as \"identity_updated_at!\",\n            i.last_login_at, i.email_verified, i.email_verification_token,\n            i.first_name, i.last_name, i.jurisdiction, i.wallet_address\n        FROM investor_profiles ip\n        JOIN identities i ON ip.user_id = i.id\n        WHERE ip.user_id = $1 AND i.deleted_at IS NULL\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "profile_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "accredited_investor",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
+        "name": "investment_capacity",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "regulatory_jurisdiction",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "profile_created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "profile_updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "identity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "user_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "kyc_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 11,
+        "name": "kyc_submitted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "kyc_verified_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "kyc_investor_type?: KycInvestorType",
+        "type_info": {
+          "Custom": {
+            "name": "kyc_investor_type",
+            "kind": {
+              "Enum": [
+                "QIB",
+                "QP",
+                "AI"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 14,
+        "name": "identity_created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "identity_updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "last_login_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 17,
+        "name": "email_verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 18,
+        "name": "email_verification_token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 19,
+        "name": "first_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "last_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 21,
+        "name": "jurisdiction",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "wallet_address",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ec9d21c7a9e7c157e7c34e1dac4260fb71194335ff00d6ec1a6a5b421e910546"
+}

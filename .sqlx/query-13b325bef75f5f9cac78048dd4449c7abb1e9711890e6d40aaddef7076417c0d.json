@@ -1,0 +1,125 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            cl.id as credit_line_id,\n            cl.merchant_id,\n            cl.pool_id,\n            lp.name as pool_name,\n            cl.credit_limit,\n            cl.available_credit,\n            cl.utilized_amount,\n            cl.rate_apr,\n            cl.repayment_window_days,\n            cl.status as credit_line_status,\n            cl.opened_at,\n            cl.expires_at,\n            lp.total_deposits as pool_total_deposits,\n            lp.available_liquidity as pool_available_liquidity,\n            lp.status as pool_status,\n            lp.investor_id,\n            lp.max_ltv_ratio,\n            lp.max_interest_rate\n        FROM credit_lines cl\n        INNER JOIN liquidity_pools lp ON cl.pool_id = lp.id\n        WHERE cl.status = 'ACTIVE'\n          AND lp.status = 'ACTIVE'\n        ORDER BY cl.opened_at DESC\n        LIMIT $1 OFFSET $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "credit_line_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "merchant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "pool_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "pool_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "credit_limit",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "available_credit",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "utilized_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "rate_apr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "repayment_window_days",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "credit_line_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "opened_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 11,
+        "name": "expires_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 12,
+        "name": "pool_total_deposits",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 13,
+        "name": "pool_available_liquidity",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 14,
+        "name": "pool_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 16,
+        "name": "max_ltv_ratio",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 17,
+        "name": "max_interest_rate",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "13b325bef75f5f9cac78048dd4449c7abb1e9711890e6d40aaddef7076417c0d"
+}

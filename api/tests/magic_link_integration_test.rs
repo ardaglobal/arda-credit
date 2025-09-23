@@ -11,7 +11,7 @@ use tokio::time::timeout;
 use tower::ServiceExt;
 
 use crate::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use crate::test_utils::{TestContext, TestApp, create_test_app, create_test_user, TestMagicLink};
+use crate::test_utils::{create_test_app, create_test_user, TestApp, TestContext, TestMagicLink};
 use crate::types::ApiState;
 
 /// Test context for magic link integration tests
@@ -50,7 +50,8 @@ async fn test_complete_magic_link_flow() {
         redirect_uri: Some("/dashboard".to_string()),
     };
 
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
         .oneshot(create_magic_link_request(&request))
         .await
@@ -68,7 +69,8 @@ async fn test_complete_magic_link_flow() {
         redirect_uri: Some("/dashboard".to_string()),
     };
 
-    let verify_response = ctx.app
+    let verify_response = ctx
+        .app
         .clone()
         .oneshot(create_verify_request(&verify_request))
         .await
@@ -83,16 +85,20 @@ async fn test_complete_magic_link_flow() {
         .iter()
         .collect();
     assert!(!cookies.is_empty());
-    assert!(cookies.iter().any(|cookie| {
-        cookie.to_str().unwrap().contains("session_token")
-    }));
+    assert!(cookies
+        .iter()
+        .any(|cookie| { cookie.to_str().unwrap().contains("session_token") }));
 
     // Step 5: Test authenticated endpoint
     let session_cookie = extract_session_cookie(&cookies);
 
-    let me_response = ctx.app
+    let me_response = ctx
+        .app
         .clone()
-        .oneshot(create_authenticated_request("/api/v1/auth/me", &session_cookie))
+        .oneshot(create_authenticated_request(
+            "/api/v1/auth/me",
+            &session_cookie,
+        ))
         .await
         .unwrap();
 
@@ -104,17 +110,25 @@ async fn test_complete_magic_link_flow() {
     assert_eq!(body["user"]["user_type"], "investor");
 
     // Step 6: Test logout
-    let logout_response = ctx.app
+    let logout_response = ctx
+        .app
         .clone()
-        .oneshot(create_authenticated_request("/api/v1/auth/logout", &session_cookie))
+        .oneshot(create_authenticated_request(
+            "/api/v1/auth/logout",
+            &session_cookie,
+        ))
         .await
         .unwrap();
 
     assert_eq!(logout_response.status(), StatusCode::OK);
 
     // Verify session is invalidated
-    let me_after_logout = ctx.app
-        .oneshot(create_authenticated_request("/api/v1/auth/me", &session_cookie))
+    let me_after_logout = ctx
+        .app
+        .oneshot(create_authenticated_request(
+            "/api/v1/auth/me",
+            &session_cookie,
+        ))
         .await
         .unwrap();
 
@@ -136,7 +150,8 @@ async fn test_magic_link_expiry() {
         redirect_uri: None,
     };
 
-    let response = ctx.app
+    let response = ctx
+        .app
         .oneshot(create_verify_request(&verify_request))
         .await
         .unwrap();
@@ -145,7 +160,10 @@ async fn test_magic_link_expiry() {
 
     let body: Value = parse_response_body(response).await;
     assert_eq!(body["error"], "MAGIC_LINK_EXPIRED");
-    assert_eq!(body["message"], "This link has expired. Please request a new one.");
+    assert_eq!(
+        body["message"],
+        "This link has expired. Please request a new one."
+    );
 }
 
 #[tokio::test]
@@ -162,7 +180,8 @@ async fn test_magic_link_single_use() {
     };
 
     // First verification should succeed
-    let response1 = ctx.app
+    let response1 = ctx
+        .app
         .clone()
         .oneshot(create_verify_request(&verify_request))
         .await
@@ -170,7 +189,8 @@ async fn test_magic_link_single_use() {
     assert_eq!(response1.status(), StatusCode::OK);
 
     // Second verification should fail
-    let response2 = ctx.app
+    let response2 = ctx
+        .app
         .oneshot(create_verify_request(&verify_request))
         .await
         .unwrap();
@@ -178,7 +198,10 @@ async fn test_magic_link_single_use() {
 
     let body: Value = parse_response_body(response2).await;
     assert_eq!(body["error"], "MAGIC_LINK_CONSUMED");
-    assert_eq!(body["message"], "This link has already been used. Please request a new one.");
+    assert_eq!(
+        body["message"],
+        "This link has already been used. Please request a new one."
+    );
 }
 
 #[tokio::test]
@@ -193,7 +216,8 @@ async fn test_magic_link_with_redirect_uri() {
         redirect_uri: Some("/settings/profile".to_string()),
     };
 
-    let response = ctx.app
+    let response = ctx
+        .app
         .clone()
         .oneshot(create_magic_link_request(&request))
         .await
@@ -210,7 +234,8 @@ async fn test_magic_link_with_redirect_uri() {
         redirect_uri: Some("/settings/profile".to_string()),
     };
 
-    let verify_response = ctx.app
+    let verify_response = ctx
+        .app
         .clone()
         .oneshot(create_verify_request(&verify_request))
         .await
@@ -230,31 +255,33 @@ async fn test_concurrent_magic_link_requests() {
     let user = ctx.create_user("test@example.com", "investor").await;
 
     // Make multiple concurrent magic link requests
-    let tasks: Vec<_> = (0..5).map(|_| {
-        let app = ctx.app.clone();
-        let request = MagicLinkRequest {
-            email: "test@example.com".to_string(),
-            redirect_uri: None,
-        };
-        tokio::spawn(async move {
-            app.oneshot(create_magic_link_request(&request)).await
+    let tasks: Vec<_> = (0..5)
+        .map(|_| {
+            let app = ctx.app.clone();
+            let request = MagicLinkRequest {
+                email: "test@example.com".to_string(),
+                redirect_uri: None,
+            };
+            tokio::spawn(async move { app.oneshot(create_magic_link_request(&request)).await })
         })
-    }).collect();
+        .collect();
 
     let results = futures::future::join_all(tasks).await;
 
     // At least one should succeed (rate limiting might affect others)
-    let success_count = results.iter()
-        .filter(|result| {
-            matches!(result, Ok(response) if response.status().is_success())
-        })
+    let success_count = results
+        .iter()
+        .filter(|result| matches!(result, Ok(response) if response.status().is_success()))
         .count();
 
     assert!(success_count >= 1, "At least one request should succeed");
 
     // Check that we don't exceed the max concurrent tokens limit
     let active_links = get_active_magic_links_count(&ctx.pool, user.id).await;
-    assert!(active_links <= 3, "Should not exceed max concurrent tokens limit of 3");
+    assert!(
+        active_links <= 3,
+        "Should not exceed max concurrent tokens limit of 3"
+    );
 }
 
 #[tokio::test]
@@ -274,7 +301,8 @@ async fn test_magic_link_different_user_types() {
             redirect_uri: None,
         };
 
-        let response = ctx.app
+        let response = ctx
+            .app
             .clone()
             .oneshot(create_magic_link_request(&request))
             .await
@@ -291,7 +319,8 @@ async fn test_magic_link_different_user_types() {
             redirect_uri: None,
         };
 
-        let verify_response = ctx.app
+        let verify_response = ctx
+            .app
             .clone()
             .oneshot(create_verify_request(&verify_request))
             .await
@@ -316,7 +345,9 @@ fn create_magic_link_request(request: &MagicLinkRequest) -> axum::http::Request<
         .unwrap()
 }
 
-fn create_verify_request(request: &VerifyMagicLinkRequest) -> axum::http::Request<axum::body::Body> {
+fn create_verify_request(
+    request: &VerifyMagicLinkRequest,
+) -> axum::http::Request<axum::body::Body> {
     axum::http::Request::builder()
         .method("POST")
         .uri("/api/v1/auth/verify")
@@ -325,7 +356,10 @@ fn create_verify_request(request: &VerifyMagicLinkRequest) -> axum::http::Reques
         .unwrap()
 }
 
-fn create_authenticated_request(uri: &str, session_cookie: &str) -> axum::http::Request<axum::body::Body> {
+fn create_authenticated_request(
+    uri: &str,
+    session_cookie: &str,
+) -> axum::http::Request<axum::body::Body> {
     axum::http::Request::builder()
         .method("GET")
         .uri(uri)
@@ -335,7 +369,9 @@ fn create_authenticated_request(uri: &str, session_cookie: &str) -> axum::http::
 }
 
 async fn parse_response_body(response: axum::response::Response) -> Value {
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     serde_json::from_slice(&body_bytes).unwrap()
 }
 

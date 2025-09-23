@@ -9,7 +9,9 @@ use std::time::{Duration as StdDuration, Instant};
 use tokio::time::sleep;
 
 use crate::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use crate::test_utils::{TestContext, TestApp, create_test_app_with_magic_links, create_test_user, TestMagicLink};
+use crate::test_utils::{
+    create_test_app_with_magic_links, create_test_user, TestApp, TestContext, TestMagicLink,
+};
 use crate::types::ApiState;
 
 /// Test context for magic link security tests
@@ -34,29 +36,39 @@ impl SecurityTestContext {
         create_test_user(&self.pool, email, user_type).await
     }
 
-    async fn make_request(&self, request: &MagicLinkRequest) -> axum::http::Response<axum::body::Body> {
+    async fn make_request(
+        &self,
+        request: &MagicLinkRequest,
+    ) -> axum::http::Response<axum::body::Body> {
         self.app
             .clone()
-            .oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/magic-link")
-                .header("content-type", "application/json")
-                .header("x-forwarded-for", "127.0.0.1")
-                .body(serde_json::to_string(request).unwrap().into())
-                .unwrap())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/magic-link")
+                    .header("content-type", "application/json")
+                    .header("x-forwarded-for", "127.0.0.1")
+                    .body(serde_json::to_string(request).unwrap().into())
+                    .unwrap(),
+            )
             .await
             .unwrap()
     }
 
-    async fn make_verify_request(&self, request: &VerifyMagicLinkRequest) -> axum::http::Response<axum::body::Body> {
+    async fn make_verify_request(
+        &self,
+        request: &VerifyMagicLinkRequest,
+    ) -> axum::http::Response<axum::body::Body> {
         self.app
             .clone()
-            .oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/verify")
-                .header("content-type", "application/json")
-                .body(serde_json::to_string(request).unwrap().into())
-                .unwrap())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/verify")
+                    .header("content-type", "application/json")
+                    .body(serde_json::to_string(request).unwrap().into())
+                    .unwrap(),
+            )
             .await
             .unwrap()
     }
@@ -76,7 +88,12 @@ async fn test_email_rate_limiting() {
     // First 3 requests should succeed (rate limit is 3 per hour)
     for i in 0..3 {
         let response = ctx.make_request(&request).await;
-        assert_eq!(response.status(), StatusCode::OK, "Request {} should succeed", i + 1);
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Request {} should succeed",
+            i + 1
+        );
 
         // Small delay to avoid timing issues
         sleep(StdDuration::from_millis(10)).await;
@@ -101,22 +118,37 @@ async fn test_email_rate_limiting_different_ips() {
     let ips = vec!["192.168.1.1", "192.168.1.2", "192.168.1.3", "192.168.1.4"];
 
     for (i, ip) in ips.iter().enumerate() {
-        let response = ctx.app
+        let response = ctx
+            .app
             .clone()
-            .oneshot(axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/v1/auth/magic-link")
-                .header("content-type", "application/json")
-                .header("x-forwarded-for", ip)
-                .body(r#"{"email":"test@example.com"}"#.into())
-                .unwrap())
+            .oneshot(
+                axum::http::Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/auth/magic-link")
+                    .header("content-type", "application/json")
+                    .header("x-forwarded-for", ip)
+                    .body(r#"{"email":"test@example.com"}"#.into())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
         if i < 3 {
-            assert_eq!(response.status(), StatusCode::OK, "Request {} from IP {} should succeed", i + 1, ip);
+            assert_eq!(
+                response.status(),
+                StatusCode::OK,
+                "Request {} from IP {} should succeed",
+                i + 1,
+                ip
+            );
         } else {
-            assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS, "Request {} from IP {} should be rate limited", i + 1, ip);
+            assert_eq!(
+                response.status(),
+                StatusCode::TOO_MANY_REQUESTS,
+                "Request {} from IP {} should be rate limited",
+                i + 1,
+                ip
+            );
         }
 
         sleep(StdDuration::from_millis(10)).await;
@@ -207,8 +239,10 @@ async fn test_concurrent_token_limits() {
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
 
     let body: Value = parse_response_body(response).await;
-    assert!(body["error"].as_str().unwrap().contains("TOO_MANY") ||
-            body["error"].as_str().unwrap().contains("RATE"));
+    assert!(
+        body["error"].as_str().unwrap().contains("TOO_MANY")
+            || body["error"].as_str().unwrap().contains("RATE")
+    );
 }
 
 #[tokio::test]
@@ -221,20 +255,31 @@ async fn test_session_security_attributes() {
     let (session_cookie, _) = complete_auth_flow(&ctx.app, &ctx.pool, user.id).await;
 
     // Verify session cookie has proper security attributes
-    assert!(session_cookie.contains("HttpOnly"), "Session cookie should be HttpOnly");
-    assert!(session_cookie.contains("Secure"), "Session cookie should be Secure");
-    assert!(session_cookie.contains("SameSite=Lax"), "Session cookie should have SameSite=Lax");
+    assert!(
+        session_cookie.contains("HttpOnly"),
+        "Session cookie should be HttpOnly"
+    );
+    assert!(
+        session_cookie.contains("Secure"),
+        "Session cookie should be Secure"
+    );
+    assert!(
+        session_cookie.contains("SameSite=Lax"),
+        "Session cookie should have SameSite=Lax"
+    );
 
     // Test that session works for authenticated requests
     let response = make_authenticated_request(&ctx.app, &session_cookie, "/api/v1/auth/me").await;
     assert_eq!(response.status(), StatusCode::OK);
 
     // Test session invalidation on logout
-    let logout_response = make_authenticated_request(&ctx.app, &session_cookie, "/api/v1/auth/logout").await;
+    let logout_response =
+        make_authenticated_request(&ctx.app, &session_cookie, "/api/v1/auth/logout").await;
     assert_eq!(logout_response.status(), StatusCode::OK);
 
     // Session should no longer work
-    let me_response = make_authenticated_request(&ctx.app, &session_cookie, "/api/v1/auth/me").await;
+    let me_response =
+        make_authenticated_request(&ctx.app, &session_cookie, "/api/v1/auth/me").await;
     assert_eq!(me_response.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -275,8 +320,12 @@ async fn test_invalid_session_tokens() {
 
     for token in invalid_tokens {
         let response = make_authenticated_request(&ctx.app, token, "/api/v1/auth/me").await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED,
-                  "Token '{}' should result in UNAUTHORIZED", token);
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "Token '{}' should result in UNAUTHORIZED",
+            token
+        );
     }
 }
 
@@ -299,8 +348,12 @@ async fn test_brute_force_token_attempts() {
         };
 
         let response = ctx.make_verify_request(&verify_request).await;
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST,
-                  "Invalid token {} should result in BAD_REQUEST", i);
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "Invalid token {} should result in BAD_REQUEST",
+            i
+        );
     }
 
     // Valid token should still work
@@ -348,9 +401,12 @@ async fn test_timing_attack_resistance() {
 
     // Both should fail or succeed consistently in timing
     // (This is a basic check - real timing attack protection would be more sophisticated)
-    assert!(valid_time.as_millis().abs_diff(invalid_time.as_millis()) < 100,
-            "Timing difference too large: valid={}ms, invalid={}ms",
-            valid_time.as_millis(), invalid_time.as_millis());
+    assert!(
+        valid_time.as_millis().abs_diff(invalid_time.as_millis()) < 100,
+        "Timing difference too large: valid={}ms, invalid={}ms",
+        valid_time.as_millis(),
+        invalid_time.as_millis()
+    );
 
     assert_eq!(response1.status(), StatusCode::OK);
     assert_eq!(response2.status(), StatusCode::BAD_REQUEST);
@@ -359,7 +415,9 @@ async fn test_timing_attack_resistance() {
 // Helper functions
 
 async fn parse_response_body(response: axum::http::Response<axum::body::Body>) -> Value {
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     serde_json::from_slice(&body_bytes).unwrap()
 }
 
@@ -404,7 +462,11 @@ async fn get_latest_magic_link(pool: &sqlx::PgPool, user_id: uuid::Uuid) -> Test
     }
 }
 
-async fn complete_auth_flow(app: &TestApp, pool: &sqlx::PgPool, user_id: uuid::Uuid) -> (String, TestMagicLink) {
+async fn complete_auth_flow(
+    app: &TestApp,
+    pool: &sqlx::PgPool,
+    user_id: uuid::Uuid,
+) -> (String, TestMagicLink) {
     // Get magic link
     let magic_link = get_latest_magic_link(pool, user_id).await;
 
@@ -417,12 +479,14 @@ async fn complete_auth_flow(app: &TestApp, pool: &sqlx::PgPool, user_id: uuid::U
 
     let verify_response = app
         .clone()
-        .oneshot(axum::http::Request::builder()
-            .method("POST")
-            .uri("/api/v1/auth/verify")
-            .header("content-type", "application/json")
-            .body(serde_json::to_string(&verify_request).unwrap().into())
-            .unwrap())
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/v1/auth/verify")
+                .header("content-type", "application/json")
+                .body(serde_json::to_string(&verify_request).unwrap().into())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -435,7 +499,8 @@ async fn complete_auth_flow(app: &TestApp, pool: &sqlx::PgPool, user_id: uuid::U
         .iter()
         .collect();
 
-    let session_cookie = cookies.iter()
+    let session_cookie = cookies
+        .iter()
         .find(|cookie| cookie.to_str().unwrap().contains("session_token"))
         .unwrap()
         .to_str()
@@ -445,18 +510,22 @@ async fn complete_auth_flow(app: &TestApp, pool: &sqlx::PgPool, user_id: uuid::U
     (session_cookie, magic_link)
 }
 
-async fn make_authenticated_request(app: &TestApp, session_cookie: &str, uri: &str) -> axum::http::Response<axum::body::Body> {
+async fn make_authenticated_request(
+    app: &TestApp,
+    session_cookie: &str,
+    uri: &str,
+) -> axum::http::Response<axum::body::Body> {
     let request = axum::http::Request::builder()
         .method("GET")
         .uri(uri)
-        .header("cookie", format!("session_token={}", extract_session_token(session_cookie)))
+        .header(
+            "cookie",
+            format!("session_token={}", extract_session_token(session_cookie)),
+        )
         .body(axum::body::Body::empty())
         .unwrap();
 
-    app.clone()
-        .oneshot(request)
-        .await
-        .unwrap()
+    app.clone().oneshot(request).await.unwrap()
 }
 
 fn extract_session_token(cookie_header: &str) -> &str {
@@ -473,7 +542,8 @@ fn extract_session_token(cookie_header: &str) -> &str {
 }
 
 async fn create_short_lived_session(pool: &sqlx::PgPool, user_id: uuid::Uuid) -> String {
-    let session_token = "short-lived-session-token-123456789012345678901234567890123456789012345678901234567890";
+    let session_token =
+        "short-lived-session-token-123456789012345678901234567890123456789012345678901234567890";
     let expires_at = Utc::now() + Duration::seconds(1); // Expires in 1 second
 
     sqlx::query!(

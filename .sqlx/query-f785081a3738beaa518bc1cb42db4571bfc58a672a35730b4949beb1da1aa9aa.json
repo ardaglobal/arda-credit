@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            udb.id,\n            udb.user_address,\n            (udb.total_deposited - COALESCE(pending_withdrawals.pending_amount, 0)) as \"total_deposited!: rust_decimal::Decimal\",\n            ((udb.total_deposited - COALESCE(pending_withdrawals.pending_amount, 0))::numeric / 1000000::numeric) as total_deposited_usdc,\n            udb.deposit_count,\n            udb.first_deposit_at,\n            udb.last_deposit_at,\n            udb.created_at,\n            udb.updated_at\n        FROM user_deposit_balances udb\n        LEFT JOIN (\n            SELECT\n                user_address,\n                SUM(amount) as pending_amount\n            FROM withdrawal_requests\n            WHERE user_address = $1\n              AND state IN ('pending', 'approved', 'submitted')\n            GROUP BY user_address\n        ) pending_withdrawals ON udb.user_address = pending_withdrawals.user_address\n        WHERE udb.user_address = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_deposited!: rust_decimal::Decimal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_deposited_usdc",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "deposit_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "first_deposit_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "last_deposit_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      null,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "f785081a3738beaa518bc1cb42db4571bfc58a672a35730b4949beb1da1aa9aa"
+}

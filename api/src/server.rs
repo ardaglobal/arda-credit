@@ -339,23 +339,23 @@ impl ApiServer {
         let email_rate_limiter = Arc::new(EmailRateLimiter::new());
 
         // Initialize email service for magic links
-        let email_config = crate::email_config::EmailConfig::from_env()
-            .unwrap_or_else(|_| crate::email_config::EmailConfig {
+        let email_config = crate::email_config::EmailConfig::from_env().unwrap_or_else(|_| {
+            crate::email_config::EmailConfig {
                 enabled: false,
                 ses_region: "us-east-1".to_string(),
                 email_from: "test@example.com".to_string(),
                 email_reply_to: "noreply@example.com".to_string(),
                 configuration_set: None,
                 magic_base_url: "https://app.arda.xyz/auth/verify".to_string(),
-            });
+            }
+        });
 
-        let email_service = Arc::new(EmailService::new(email_config).await
-            .unwrap_or_else(|e| {
-                warn!("Failed to initialize email service ({}), using mock", e);
-                // For testing/development, create a basic disabled config
-                // This will be handled by the EmailService internally
-                panic!("Email service initialization failed - check AWS SES configuration")
-            }));
+        let email_service = Arc::new(EmailService::new(email_config).await.unwrap_or_else(|e| {
+            warn!("Failed to initialize email service ({}), using mock", e);
+            // For testing/development, create a basic disabled config
+            // This will be handled by the EmailService internally
+            panic!("Email service initialization failed - check AWS SES configuration")
+        }));
         let magic_link_config = MagicLinkConfig::default();
         let magic_link_service = Arc::new(MagicLinkService::new(
             self.state.pool.clone(),
