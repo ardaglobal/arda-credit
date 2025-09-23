@@ -6,6 +6,7 @@
 //! ## Test Organization
 //!
 //! - `auth_tests.rs` - Authentication and authorization tests
+//! - `email_service_test.rs` - Email service integration tests
 //! - `user_tests.rs` - User management tests
 //! - `loan_tests.rs` - Loan lifecycle tests
 //! - `pool_tests.rs` - Liquidity pool tests
@@ -27,6 +28,7 @@
 //! ```
 
 pub mod auth_tests;
+pub mod email_service_test;
 pub mod user_tests;
 pub mod loan_tests;
 pub mod pool_tests;

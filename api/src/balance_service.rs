@@ -231,13 +231,7 @@ mod tests {
         let email = format!("balance-test-{timestamp}@example.com");
         let unique_wallet = format!("0x{:040x}", timestamp as u64);
 
-        let user_result = register_or_reregister_user(
-            &pool,
-            "investor",
-            &email,
-            "hashed_password", // password_hash
-        )
-        .await?;
+        let user_result = register_or_reregister_user(&pool, "investor", &email).await?;
 
         let user_id = match user_result {
             arda_credit_db::RegisterResult::Created(identity) => identity.id,

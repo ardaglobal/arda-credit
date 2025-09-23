@@ -1,13 +1,9 @@
-use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
-    Argon2,
-};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use uuid::Uuid;
-use validator::{Validate, ValidationError};
+use validator::Validate;
 
 // ============================================================================
 // JWT CLAIMS STRUCTURE
@@ -28,36 +24,10 @@ pub struct Claims {
 // ============================================================================
 
 #[derive(Debug, Validate)]
-pub struct PasswordRequirements {
-    #[validate(length(
-        min = 8,
-        max = 128,
-        message = "Password must be between 8 and 128 characters"
-    ))]
-    #[validate(custom(function = "validate_password_complexity"))]
-    pub password: String,
-}
-
-#[derive(Debug, Validate)]
 pub struct EmailRequirements {
     #[validate(email(message = "Invalid email format"))]
     #[validate(length(max = 255, message = "Email must be less than 255 characters"))]
     pub email: String,
-}
-
-fn validate_password_complexity(password: &str) -> Result<(), ValidationError> {
-    let has_upper = password.chars().any(|c| c.is_uppercase());
-    let has_lower = password.chars().any(|c| c.is_lowercase());
-    let has_digit = password.chars().any(|c| c.is_numeric());
-    let has_special = password
-        .chars()
-        .any(|c| "!@#$%^&*()_+-=[]{}|;:,.<>?".contains(c));
-
-    if has_upper && has_lower && has_digit && has_special {
-        Ok(())
-    } else {
-        Err(ValidationError::new("password_complexity"))
-    }
 }
 
 // ============================================================================
@@ -67,7 +37,6 @@ fn validate_password_complexity(password: &str) -> Result<(), ValidationError> {
 pub struct AuthService {
     jwt_secret: String,
     token_expiry_hours: i64,
-    argon2: Argon2<'static>,
 }
 
 impl AuthService {
@@ -75,46 +44,6 @@ impl AuthService {
         Self {
             jwt_secret,
             token_expiry_hours: token_expiry_hours.unwrap_or(24), // 24 hours default
-            argon2: Argon2::default(),
-        }
-    }
-
-    // ============================================================================
-    // PASSWORD OPERATIONS
-    // ============================================================================
-
-    /// Hash a password using Argon2
-    pub fn hash_password(&self, password: &str) -> Result<String, AuthError> {
-        // Validate password requirements
-        let password_req = PasswordRequirements {
-            password: password.to_string(),
-        };
-        password_req
-            .validate()
-            .map_err(AuthError::ValidationError)?;
-
-        // Generate salt and hash password
-        let salt = SaltString::generate(&mut OsRng);
-        let password_hash = self
-            .argon2
-            .hash_password(password.as_bytes(), &salt)
-            .map_err(|_| AuthError::HashingError)?
-            .to_string();
-
-        Ok(password_hash)
-    }
-
-    /// Verify a password against its hash
-    pub fn verify_password(&self, password: &str, hash: &str) -> Result<bool, AuthError> {
-        let parsed_hash = PasswordHash::new(hash).map_err(|_| AuthError::HashingError)?;
-
-        match self
-            .argon2
-            .verify_password(password.as_bytes(), &parsed_hash)
-        {
-            Ok(()) => Ok(true),
-            Err(argon2::password_hash::Error::Password) => Ok(false),
-            Err(_) => Err(AuthError::HashingError),
         }
     }
 
@@ -194,18 +123,14 @@ impl AuthService {
 
     /// Validate email format
     pub fn validate_email(&self, email: &str) -> Result<(), AuthError> {
-        let email_req = EmailRequirements {
-            email: email.to_string(),
-        };
-        email_req.validate().map_err(AuthError::ValidationError)
-    }
-
-    /// Validate password requirements
-    pub fn validate_password(&self, password: &str) -> Result<(), AuthError> {
-        let password_req = PasswordRequirements {
-            password: password.to_string(),
-        };
-        password_req.validate().map_err(AuthError::ValidationError)
+        // Simple email validation: contains @ and . with basic structure
+        if email.contains('@') && email.contains('.') && email.len() >= 5 {
+            Ok(())
+        } else {
+            Err(AuthError::ValidationError(
+                validator::ValidationErrors::new(),
+            ))
+        }
     }
 
     // ============================================================================
@@ -235,17 +160,11 @@ impl AuthService {
 
 #[derive(Debug, Error)]
 pub enum AuthError {
-    #[error("Invalid password format or complexity requirements not met")]
-    InvalidPassword,
-
     #[error("Invalid token")]
     InvalidToken,
 
     #[error("Token has expired")]
     ExpiredToken,
-
-    #[error("Password hashing error")]
-    HashingError,
 
     #[error("JWT error: {0}")]
     JwtError(#[from] jsonwebtoken::errors::Error),
@@ -253,20 +172,11 @@ pub enum AuthError {
     #[error("Validation error: {0}")]
     ValidationError(#[from] validator::ValidationErrors),
 
-    #[error("Invalid credentials")]
-    InvalidCredentials,
-
     #[error("Account not verified")]
     AccountNotVerified,
 
     #[error("Account locked or disabled")]
     AccountLocked,
-}
-
-impl From<argon2::password_hash::Error> for AuthError {
-    fn from(_: argon2::password_hash::Error) -> Self {
-        AuthError::HashingError
-    }
 }
 
 // ============================================================================
@@ -279,25 +189,21 @@ impl AuthError {
         use axum::http::StatusCode;
 
         match self {
-            AuthError::InvalidPassword | AuthError::ValidationError(_) => StatusCode::BAD_REQUEST,
-            AuthError::InvalidToken | AuthError::ExpiredToken | AuthError::InvalidCredentials => {
-                StatusCode::UNAUTHORIZED
-            }
+            AuthError::ValidationError(_) => StatusCode::BAD_REQUEST,
+            AuthError::InvalidToken | AuthError::ExpiredToken => StatusCode::UNAUTHORIZED,
             AuthError::AccountNotVerified | AuthError::AccountLocked => StatusCode::FORBIDDEN,
-            AuthError::HashingError | AuthError::JwtError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthError::JwtError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
     /// Get user-friendly error message
     pub fn user_message(&self) -> &'static str {
         match self {
-            AuthError::InvalidPassword => "Password does not meet security requirements",
             AuthError::InvalidToken | AuthError::ExpiredToken => "Invalid or expired token",
-            AuthError::InvalidCredentials => "Invalid email or password",
             AuthError::AccountNotVerified => "Please verify your email address before logging in",
             AuthError::AccountLocked => "Account is temporarily locked",
             AuthError::ValidationError(_) => "Input validation failed",
-            AuthError::HashingError | AuthError::JwtError(_) => "Authentication service error",
+            AuthError::JwtError(_) => "Authentication service error",
         }
     }
 }
@@ -312,27 +218,6 @@ mod tests {
 
     fn create_test_auth_service() -> AuthService {
         AuthService::new("test-secret-key-minimum-32-characters".to_string(), Some(1))
-    }
-
-    #[test]
-    fn test_password_hashing() {
-        let auth = create_test_auth_service();
-        let password = "SecureP@ssw0rd123";
-
-        let hash = auth
-            .hash_password(password)
-            .expect("Failed to hash password");
-        assert_ne!(hash, password);
-
-        let is_valid = auth
-            .verify_password(password, &hash)
-            .expect("Failed to verify password");
-        assert!(is_valid);
-
-        let is_invalid = auth
-            .verify_password("WrongPassword", &hash)
-            .expect("Failed to verify password");
-        assert!(!is_invalid);
     }
 
     #[test]
@@ -353,23 +238,6 @@ mod tests {
         assert_eq!(claims.sub, user_id.to_string());
         assert_eq!(claims.email, email);
         assert_eq!(claims.user_type, user_type);
-    }
-
-    #[test]
-    fn test_password_validation() {
-        let auth = create_test_auth_service();
-
-        // Valid password
-        assert!(auth.validate_password("SecureP@ssw0rd123").is_ok());
-
-        // Too short
-        assert!(auth.validate_password("Short1!").is_err());
-
-        // No uppercase
-        assert!(auth.validate_password("lowercase123!").is_err());
-
-        // No special character
-        assert!(auth.validate_password("NoSpecialChar123").is_err());
     }
 
     #[test]

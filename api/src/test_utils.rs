@@ -87,7 +87,7 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
     let ads_service = Arc::new(RwLock::new(IndexedMerkleTreeADS::new()));
 
     // Create auth service
-    let auth_service = Arc::new(AuthService::new());
+    let auth_service = Arc::new(AuthService::new("test-jwt-secret-key-minimum-32-characters-for-testing".to_string(), Some(24)));
 
     // Create withdrawal service
     let withdrawal_service = WithdrawalTransactionService::new();

@@ -115,7 +115,7 @@ pub struct MagicLink {
     pub token_hash: Vec<u8>, // BYTEA maps to Vec<u8>
     pub state: String,
     pub redirect_uri: Option<String>,
-    pub client_ip: Option<ipnetwork::IpNetwork>, // INET maps to IpNetwork
+    pub client_ip: Option<String>, // Client IP address for security logging
     pub user_agent: Option<String>,
     pub expires_at: DateTime<Utc>,
     pub consumed_at: Option<DateTime<Utc>>,
@@ -129,7 +129,7 @@ pub struct Session {
     pub user_id: uuid::Uuid,
     pub session_token: String,
     pub expires_at: DateTime<Utc>,
-    pub client_ip: Option<ipnetwork::IpNetwork>,
+    pub client_ip: Option<String>,
     pub user_agent: Option<String>,
     pub created_at: DateTime<Utc>,
     pub last_accessed_at: DateTime<Utc>,
@@ -1225,7 +1225,7 @@ pub async fn create_identity_with_password(
     _password_hash: &str,
 ) -> Result<Identity, sqlx::Error> {
     Err(sqlx::Error::Configuration(
-        "Password authentication has been disabled. Use magic link authentication instead.".into()
+        "Password authentication has been disabled. Use magic link authentication instead.".into(),
     ))
 }
 
@@ -2142,7 +2142,7 @@ pub async fn update_user_password(
     _password_hash: &str,
 ) -> Result<(), sqlx::Error> {
     Err(sqlx::Error::Configuration(
-        "Password authentication has been disabled. Use magic link authentication instead.".into()
+        "Password authentication has been disabled. Use magic link authentication instead.".into(),
     ))
 }
 

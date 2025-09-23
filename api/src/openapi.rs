@@ -15,8 +15,8 @@ pub use crate::admin_handlers::{
     PlatformMetricsResponse,
 };
 pub use crate::authentication_handlers::{
-    GenerateInviteCodeRequest, GenerateInviteCodeResponse, LoginRequest, LoginResponse,
-    LogoutResponse, ValidateInviteCodeResponse,
+    GenerateInviteCodeRequest, GenerateInviteCodeResponse, LogoutResponse,
+    ValidateInviteCodeResponse,
 };
 pub use crate::balance_service::AvailableBalance;
 pub use crate::contract_handlers::{
@@ -127,7 +127,6 @@ fn default_limit() -> u32 {
         crate::health_handlers::api_info,
 
         // Authentication endpoints
-        crate::authentication_handlers::login_endpoint,
         crate::authentication_handlers::logout_endpoint,
         crate::authentication_handlers::validate_invite_code_endpoint,
         crate::authentication_handlers::generate_invite_code_endpoint,
@@ -287,8 +286,6 @@ fn default_limit() -> u32 {
         RegisterUserResponse,
         UserDetailsResponse,
         UpdateUserRequest,
-        LoginRequest,
-        LoginResponse,
         LogoutResponse,
         RegisterInvestorRequest,
         RegisterMerchantRequest,

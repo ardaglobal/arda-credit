@@ -50,7 +50,7 @@ CREATE TABLE sessions (
     user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
     session_token VARCHAR(64) NOT NULL UNIQUE, -- Random session identifier
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    client_ip INET, -- For security logging
+    client_ip TEXT, -- For security logging
     user_agent TEXT, -- For security logging
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     last_accessed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

@@ -244,18 +244,20 @@ pub async fn register_merchant_endpoint(
 ) -> Result<Json<RegisterMerchantResponse>, (StatusCode, String)> {
     info!("🏪 API: Registering merchant: {}", request.email);
 
-    // Validate email using AuthService
-    if let Err(e) = state.auth_service.validate_email(&request.email) {
-        warn!("❌ API: Invalid email format for merchant: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    // Validate email format (basic validation)
+    if !request.email.contains('@') || !request.email.contains('.') {
+        warn!(
+            "❌ API: Invalid email format for merchant: {}",
+            request.email
+        );
+        return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
     }
 
     // For merchants, use empty password (no authentication required)
     let password_hash = String::new();
 
     // Register the user first as merchant
-    match register_or_reregister_user(&state.pool, "merchant", &request.email, &password_hash).await
-    {
+    match register_or_reregister_user(&state.pool, "merchant", &request.email).await {
         Ok(result) => {
             let identity = match result {
                 RegisterResult::Created(identity) => identity,
@@ -943,10 +945,13 @@ pub async fn register_investor_endpoint(
 ) -> Result<Json<RegisterInvestorResponse>, (StatusCode, String)> {
     info!("💼 API: Registering new investor: email={}", request.email);
 
-    // Validate email using AuthService
-    if let Err(e) = state.auth_service.validate_email(&request.email) {
-        warn!("❌ API: Invalid email format for investor: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    // Validate email format (basic validation)
+    if !request.email.contains('@') || !request.email.contains('.') {
+        warn!(
+            "❌ API: Invalid email format for investor: {}",
+            request.email
+        );
+        return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
     }
 
     // First, check if email already exists
@@ -984,7 +989,7 @@ pub async fn register_investor_endpoint(
         }
         Ok(None) => {
             // Email doesn't exist - create new user
-            match register_or_reregister_user(&state.pool, "investor", &request.email, "").await {
+            match register_or_reregister_user(&state.pool, "investor", &request.email).await {
                 Ok(result) => {
                     match result {
                         RegisterResult::Created(identity) => identity,

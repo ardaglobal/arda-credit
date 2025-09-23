@@ -71,9 +71,22 @@ tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 reqwest = { version = "0.12", features = [ "json" ] }
 
 # Authentication dependencies
-argon2       = "0.5"                                         # Password hashing
 jsonwebtoken = "9.3"                                         # JWT token generation/validation
-validator    = { version = "0.20", features = [ "derive" ] } # Email/password validation
+validator    = { version = "0.20", features = [ "derive" ] } # Email validation
+
+# AWS SES Integration
+aws-config    = "1.0"
+aws-sdk-sesv2 = "1.0"
+
+# Email template support
+askama      = "0.12"
+askama_axum = "0.4"
+
+# Session management dependencies
+axum-extra = { version = "0.9", features = [ "cookie" ] }
+base64     = "0.22"
+ipnetwork  = { version = "0.20", features = [ "serde" ] }
+time       = "0.3"
 
 # OpenTelemetry dependencies (compatible versions)
 opentelemetry                      = { version = "0.20.0", features = [ "rt-tokio", "trace" ] }

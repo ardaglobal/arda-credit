@@ -292,37 +292,27 @@ pub async fn register_user_endpoint(
         }
     }
 
-    // Validate email and password using AuthService
-    if let Err(e) = state.auth_service.validate_email(&request.email) {
-        warn!("❌ API: Invalid email format: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    // Validate email format (basic validation)
+    if !request.email.contains('@') || !request.email.contains('.') {
+        warn!("❌ API: Invalid email format: {}", request.email);
+        return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
     }
 
-    if let Err(e) = state.auth_service.validate_password(&request.password) {
-        warn!("❌ API: Invalid password format: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
+    // Basic password validation
+    if request.password.len() < 8 {
+        warn!("❌ API: Password too short for: {}", request.email);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Password must be at least 8 characters".to_string(),
+        ));
     }
 
-    // Hash the password
-    let password_hash = match state.auth_service.hash_password(&request.password) {
-        Ok(hash) => hash,
-        Err(e) => {
-            error!("❌ API: Failed to hash password: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                e.user_message().to_string(),
-            ));
-        }
-    };
+    // Hash the password (placeholder during magic link transition)
+    let password_hash = format!("placeholder_hash_{}", request.password); // TODO: Implement proper hashing
 
     // Create or re-register user with soft delete handling
-    match register_or_reregister_user(
-        &state.pool,
-        &request.user_type.to_string(),
-        &request.email,
-        &password_hash,
-    )
-    .await
+    match register_or_reregister_user(&state.pool, &request.user_type.to_string(), &request.email)
+        .await
     {
         Ok(RegisterResult::Created(identity)) => {
             info!(

@@ -16,9 +16,9 @@ use crate::admin_handlers::{
 };
 use crate::auth::AuthService;
 use crate::authentication_handlers::{
-    generate_invite_code_endpoint, login_endpoint, logout_endpoint, validate_invite_code_endpoint,
-    GenerateInviteCodeRequest, GenerateInviteCodeResponse, InviteCodeResponse, LoginRequest,
-    LoginResponse, LogoutRequest, LogoutResponse, UserSummary, ValidateInviteCodeResponse,
+    generate_invite_code_endpoint, logout_endpoint, validate_invite_code_endpoint,
+    GenerateInviteCodeRequest, GenerateInviteCodeResponse, InviteCodeResponse, LogoutRequest,
+    LogoutResponse, ValidateInviteCodeResponse,
 };
 use crate::batch_processor::BatchProcessorHandle;
 use crate::credit_line_handlers::{
@@ -54,6 +54,7 @@ use crate::pool_handlers::{
     get_pool_performance, get_pool_transactions, get_pool_utilization, list_pools,
     update_pool_status,
 };
+use crate::session_service::SessionService;
 use crate::state_handlers::{
     create_batch_endpoint, get_batch_details_endpoint, get_batches_endpoint,
     get_contract_submission_data_endpoint, get_current_state_endpoint,
@@ -123,12 +124,13 @@ pub struct ApiState {
     pub config: ApiConfig,
     pub batch_processor: Option<BatchProcessorHandle>,
     pub ads_service: Arc<RwLock<IndexedMerkleTreeADS>>,
-    pub auth_service: Arc<AuthService>,
+    pub session_service: Arc<SessionService>,
     pub withdrawal_service: WithdrawalTransactionService,
     pub balance_service: BalanceVerificationService,
     pub withdrawal_executor:
         Option<crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
     pub metrics_handle: Option<Arc<crate::metrics::MetricsHandle>>,
+    pub email_rate_limiter: Option<Arc<crate::middleware::EmailRateLimiter>>,
 }
 
 /// Configuration for API server
@@ -168,15 +170,15 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/metrics/health", get(metrics_health_handler))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
-        // Authentication endpoints
-        .route(
-            paths::AUTH_LOGIN,
-            post(crate::authentication_handlers::login_endpoint),
-        )
-        .route(
-            paths::AUTH_LOGOUT,
-            post(crate::authentication_handlers::logout_endpoint),
-        )
+        // Authentication endpoints (temporarily disabled during magic link transition)
+        // .route(
+        //     paths::AUTH_LOGIN,
+        //     post(crate::authentication_handlers::login_endpoint),
+        // )
+        // .route(
+        //     paths::AUTH_LOGOUT,
+        //     post(crate::authentication_handlers::logout_endpoint),
+        // )
         // Admin KYC endpoints
         .route(
             paths::ADMIN_KYC_PENDING,

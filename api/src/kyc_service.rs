@@ -98,14 +98,9 @@ mod tests {
             .as_millis();
         let email = format!("kyc-test-{timestamp}@example.com");
 
-        let user_result = register_or_reregister_user(
-            &pool,
-            "investor",
-            &email,
-            "hashed_password", // password_hash
-        )
-        .await
-        .unwrap();
+        let user_result = register_or_reregister_user(&pool, "investor", &email)
+            .await
+            .unwrap();
         let user_id = match user_result {
             arda_credit_db::RegisterResult::Created(identity) => identity.id,
             arda_credit_db::RegisterResult::Reregistered(identity) => identity.id,
