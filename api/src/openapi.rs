@@ -48,6 +48,10 @@ use crate::magic_link_types::{
     MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
     VerifyMagicLinkResponse,
 };
+pub use crate::marketplace_handlers::{
+    ListLoanForSaleRequest, ListLoanForSaleResponse, LoansForSaleResponse, MarketplaceDeal,
+    RemoveLoanFromSaleResponse,
+};
 pub use crate::merchant_handlers::{
     InvestorProfileQuery, InvestorProfileResponse, MerchantProfileQuery, MerchantProfileResponse,
     RegisterInvestorRequest, RegisterInvestorResponse, RegisterMerchantRequest,
@@ -76,6 +80,10 @@ pub use crate::state_handlers::{
 pub use crate::transaction_history_handlers::{
     DateRange, PaginationInfo, TransactionHistoryItem, TransactionHistoryResponse,
     TransactionSummary,
+};
+pub use crate::transfer_handlers::{
+    LoanTransferHistoryResponse, LoanTransferRequest, LoanTransferResponse, TransferHistoryItem,
+    TransferHistoryQuery, UserTransferHistoryResponse,
 };
 pub use crate::turnover_handlers::{
     ProfileCompletionResponse, TurnoverAnalyticsResponse, TurnoverCreateRequest, TurnoverResponse,
@@ -192,6 +200,18 @@ fn default_limit() -> u32 {
         crate::loan_handlers::get_payment_details_endpoint,
         crate::loan_handlers::get_loan_payment_history_endpoint,
 
+        // Loan Trading Marketplace endpoints
+        crate::marketplace_handlers::browse_marketplace_endpoint,
+        crate::marketplace_handlers::list_loan_for_sale_endpoint,
+        crate::marketplace_handlers::remove_loan_from_sale_endpoint,
+        crate::marketplace_handlers::marketplace_stats_endpoint,
+
+        // Loan Transfer endpoints
+        crate::transfer_handlers::transfer_loan_ownership_endpoint,
+        crate::transfer_handlers::get_loan_transfer_history_endpoint,
+        crate::transfer_handlers::get_user_transfer_history_endpoint,
+        crate::transfer_handlers::validate_transfer_endpoint,
+
         // Pool endpoints
         crate::pool_handlers::list_pools,
         crate::pool_handlers::get_pool_details,
@@ -279,6 +299,8 @@ fn default_limit() -> u32 {
         (name = "Pool Metrics", description = "Platform-wide and investor-specific pool metrics and analytics"),
         (name = "Loans", description = "Loan lifecycle management"),
         (name = "Payments", description = "Payment processing and history"),
+        (name = "Marketplace", description = "Loan marketplace operations"),
+        (name = "Transfer", description = "Loan ownership transfer operations"),
         (name = "Withdrawals", description = "Withdrawal operations"),
         (name = "Admin Withdrawals", description = "Administrative withdrawal approval and management"),
         (name = "Admin Dashboard", description = "Administrative dashboard and monitoring"),
@@ -355,6 +377,21 @@ fn default_limit() -> u32 {
         RecordPaymentRequest,
         UpdateLoanRequest,
         UpdateLoanResponse,
+
+        // Loan Trading Marketplace types
+        MarketplaceDeal,
+        LoansForSaleResponse,
+        ListLoanForSaleRequest,
+        ListLoanForSaleResponse,
+        RemoveLoanFromSaleResponse,
+
+        // Loan Transfer types
+        LoanTransferRequest,
+        LoanTransferResponse,
+        LoanTransferHistoryResponse,
+        UserTransferHistoryResponse,
+        TransferHistoryItem,
+        TransferHistoryQuery,
 
         // Pool types
         PoolListQuery,

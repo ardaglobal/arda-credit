@@ -8,7 +8,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
@@ -19,6 +19,7 @@ use tracing::{error, info, instrument};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::trading_auth::extract_user_id_from_headers;
 use crate::types::ApiState;
 use arda_credit_db::{
     cancel_transfer, execute_loan_transfer, get_loan_transfer_history, get_user_transfer_history,
@@ -177,6 +178,7 @@ fn transfer_history_to_api(history: LoanTransferHistory) -> TransferHistoryItem 
 pub async fn transfer_loan_ownership_endpoint(
     State(state): State<ApiState>,
     Path(loan_id_str): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<LoanTransferRequest>,
 ) -> Result<Json<LoanTransferResponse>, (StatusCode, String)> {
     let start_time = std::time::Instant::now();
@@ -211,6 +213,17 @@ pub async fn transfer_loan_ownership_endpoint(
         return Err((
             StatusCode::BAD_REQUEST,
             "Purchase price must be positive".to_string(),
+        ));
+    }
+
+    // Authenticate user - must be the buyer making the transfer
+    let authenticated_user_id = extract_user_id_from_headers(&headers)?;
+
+    // Verify the authenticated user is the buyer specified in the request
+    if authenticated_user_id != buyer_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You can only execute transfers where you are the buyer".to_string(),
         ));
     }
 
@@ -346,6 +359,7 @@ pub async fn transfer_loan_ownership_endpoint(
 pub async fn get_loan_transfer_history_endpoint(
     State(state): State<ApiState>,
     Path(loan_id_str): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Json<LoanTransferHistoryResponse>, (StatusCode, String)> {
     let start_time = std::time::Instant::now();
 
@@ -361,6 +375,9 @@ pub async fn get_loan_transfer_history_endpoint(
             "Invalid loan ID format".to_string(),
         )
     })?;
+
+    // Authenticate user
+    let _authenticated_user_id = extract_user_id_from_headers(&headers)?;
 
     // Get transfer history using your database function
     let history = get_loan_transfer_history(&state.pool, loan_id)
@@ -385,6 +402,8 @@ pub async fn get_loan_transfer_history_endpoint(
     // Record metrics
     let duration = start_time.elapsed();
     metrics::histogram!("transfer_history_query_duration_seconds").record(duration.as_secs_f64());
+    metrics::counter!("transfer_history_queries_total").increment(1);
+    metrics::histogram!("transfer_history_results_count").record(response.total_transfers as f64);
 
     info!(
         "✅ TRANSFER: Retrieved {} transfers for loan {} ({}ms)",
@@ -415,6 +434,7 @@ pub async fn get_loan_transfer_history_endpoint(
 pub async fn get_user_transfer_history_endpoint(
     State(state): State<ApiState>,
     Path(user_id_str): Path<String>,
+    headers: HeaderMap,
     Query(query): Query<TransferHistoryQuery>,
 ) -> Result<Json<UserTransferHistoryResponse>, (StatusCode, String)> {
     let start_time = std::time::Instant::now();
@@ -431,6 +451,17 @@ pub async fn get_user_transfer_history_endpoint(
             "Invalid user ID format".to_string(),
         )
     })?;
+
+    // Authenticate user - can only view their own transfer history
+    let authenticated_user_id = extract_user_id_from_headers(&headers)?;
+
+    // Verify the authenticated user is requesting their own history
+    if authenticated_user_id != user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You can only view your own transfer history".to_string(),
+        ));
+    }
 
     let limit = query.limit.unwrap_or(50);
     let offset = query.offset.unwrap_or(0);
@@ -493,9 +524,13 @@ pub async fn get_user_transfer_history_endpoint(
 pub async fn validate_transfer_endpoint(
     State(state): State<ApiState>,
     Path(loan_id_str): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<LoanTransferRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     info!("🔍 TRANSFER: Validating transfer for loan {}", loan_id_str);
+
+    // Record validation request metric
+    metrics::counter!("transfer_validation_requests_total").increment(1);
 
     // Parse inputs
     let loan_id = Uuid::parse_str(&loan_id_str).map_err(|_| {
@@ -513,6 +548,17 @@ pub async fn validate_transfer_endpoint(
     })?;
 
     let purchase_price = parse_decimal(&request.purchase_price, "purchase_price")?;
+
+    // Authenticate user - must be the buyer validating the transfer
+    let authenticated_user_id = extract_user_id_from_headers(&headers)?;
+
+    // Verify the authenticated user is the buyer specified in the request
+    if authenticated_user_id != buyer_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You can only validate transfers where you are the buyer".to_string(),
+        ));
+    }
 
     // Validate transfer using your database function
     let validation = validate_transfer_eligibility(

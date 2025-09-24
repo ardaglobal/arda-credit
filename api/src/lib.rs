@@ -76,6 +76,7 @@ pub mod simple_withdrawal_executor;
 pub mod state_handlers;
 pub mod telemetry;
 pub mod test_utils;
+pub mod trading_auth;
 pub mod transaction_history_handlers;
 pub mod transfer_handlers;
 pub mod turnover_handlers;

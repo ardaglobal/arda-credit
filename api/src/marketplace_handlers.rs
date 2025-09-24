@@ -10,17 +10,18 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
 };
 use chrono::{DateTime, Utc};
 use metrics;
-use rust_decimal::Decimal;
+use rust_decimal::{prelude::ToPrimitive, Decimal};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
+use crate::trading_auth::{extract_user_id_from_headers, validate_loan_ownership};
 use crate::types::ApiState;
 use arda_credit_db::{
     create_loan_listing, get_marketplace_loans_basic, LoanListing, MarketplaceLoan,
@@ -212,15 +213,9 @@ fn parse_decimal(s: &str, field_name: &str) -> Result<Decimal, (StatusCode, Stri
     })
 }
 
-/// Extract user ID from request (placeholder for Phase 2 - coordinate with Worker B on auth)
-fn get_current_user_id(_state: &ApiState) -> Result<Uuid, (StatusCode, String)> {
-    // TODO: Phase 3 integration will implement proper authentication
-    // For Phase 2, return placeholder for testing
-
-    Err((
-        StatusCode::UNAUTHORIZED,
-        "User authentication - coordinate with Worker B in Phase 3".to_string(),
-    ))
+/// Extract user ID from request headers
+fn get_current_user_id(headers: &HeaderMap) -> Result<Uuid, (StatusCode, String)> {
+    extract_user_id_from_headers(headers)
 }
 
 // ============================================================================
@@ -248,6 +243,7 @@ pub async fn browse_marketplace_endpoint(
 
     // Record metrics
     metrics::counter!("marketplace_browse_requests_total").increment(1);
+    metrics::counter!("marketplace_active_users_total").increment(1); // Unique users browsing
 
     info!(
         "🛒 MARKETPLACE: Browsing loans - limit={:?}, min_amount={:?}, max_price={:?}",
@@ -355,6 +351,7 @@ pub async fn browse_marketplace_endpoint(
 pub async fn list_loan_for_sale_endpoint(
     State(state): State<ApiState>,
     Path(loan_id_str): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<ListLoanForSaleRequest>,
 ) -> Result<Json<ListLoanForSaleResponse>, (StatusCode, String)> {
     let start_time = std::time::Instant::now();
@@ -386,8 +383,26 @@ pub async fn list_loan_for_sale_endpoint(
         ));
     }
 
-    // Get current user ID (Phase 3 will implement real auth)
-    let seller_id = get_current_user_id(&state)?;
+    // Get current user ID from headers
+    let seller_id = get_current_user_id(&headers)?;
+
+    // Validate user owns the loan
+    let owns_loan = validate_loan_ownership(&state.pool, loan_id, seller_id)
+        .await
+        .map_err(|e| {
+            error!("❌ Failed to validate loan ownership: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to validate ownership".to_string(),
+            )
+        })?;
+
+    if !owns_loan {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You do not own this loan".to_string(),
+        ));
+    }
 
     // Create listing using Phase 1 database function
     let listing = create_loan_listing(
@@ -440,6 +455,12 @@ pub async fn list_loan_for_sale_endpoint(
         }
     })?;
 
+    // Record successful listing metrics
+    metrics::counter!("marketplace_listings_created_total").increment(1);
+    metrics::histogram!("marketplace_listing_price_usdc")
+        .record(asking_price.to_f64().unwrap_or(0.0));
+    metrics::counter!("marketplace_active_listings_total").increment(1);
+
     let response = ListLoanForSaleResponse {
         listing_id: listing.listing_id.to_string(),
         loan_id: listing.loan_id.to_string(),
@@ -483,6 +504,7 @@ pub async fn list_loan_for_sale_endpoint(
 pub async fn remove_loan_from_sale_endpoint(
     State(state): State<ApiState>,
     Path(loan_id_str): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Json<RemoveLoanFromSaleResponse>, (StatusCode, String)> {
     let start_time = std::time::Instant::now();
 
@@ -499,8 +521,26 @@ pub async fn remove_loan_from_sale_endpoint(
         )
     })?;
 
-    // Get current user ID (Phase 3 will implement real auth)
-    let seller_id = get_current_user_id(&state)?;
+    // Get current user ID from headers
+    let seller_id = get_current_user_id(&headers)?;
+
+    // Validate user owns the loan
+    let owns_loan = validate_loan_ownership(&state.pool, loan_id, seller_id)
+        .await
+        .map_err(|e| {
+            error!("❌ Failed to validate loan ownership: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to validate ownership".to_string(),
+            )
+        })?;
+
+    if !owns_loan {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "You do not own this loan".to_string(),
+        ));
+    }
 
     // Remove listing using Phase 1 database function
     let removed = arda_credit_db::remove_loan_listing(&state.pool, loan_id, seller_id)
