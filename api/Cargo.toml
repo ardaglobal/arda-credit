@@ -119,6 +119,7 @@ prometheus                  = { workspace = true }
 [dev-dependencies]
 
 axum-test          = "18.1.0"
+futures            = { version = "0.3", features = [ "async-await" ] }
 tempfile           = "3.21"
 tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"

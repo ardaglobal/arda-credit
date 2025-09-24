@@ -104,7 +104,12 @@ async fn create_test_identities(pool: &sqlx::PgPool) -> Result<Vec<Identity>, sq
             "alice.johnson@example.com",
             "approved",
         ),
-        ("Bob Smith", "originator", "bob.smith@example.com", "approved"),
+        (
+            "Bob Smith",
+            "originator",
+            "bob.smith@example.com",
+            "approved",
+        ),
         (
             "Carol Davis",
             "investor",

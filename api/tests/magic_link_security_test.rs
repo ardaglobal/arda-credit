@@ -7,12 +7,13 @@ use chrono::{Duration, Utc};
 use serde_json::Value;
 use std::time::{Duration as StdDuration, Instant};
 use tokio::time::sleep;
+use tower::ServiceExt;
 
-use crate::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use crate::test_utils::{
+use api::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
+use api::test_utils::{
     create_test_app_with_magic_links, create_test_user, TestApp, TestContext, TestMagicLink,
 };
-use crate::types::ApiState;
+use api::types::ApiState;
 
 /// Test context for magic link security tests
 struct SecurityTestContext {
@@ -309,11 +310,12 @@ async fn test_invalid_session_tokens() {
     let ctx = SecurityTestContext::new().await;
 
     // Test various invalid session tokens
+    let toolong_token = "a".repeat(100);
     let invalid_tokens = vec![
         "",
         "invalid-token",
         "too-short",
-        "a".repeat(100), // Too long
+        &toolong_token, // Too long
         "special-chars-@#$%",
         "unicode-🚀-test",
     ];

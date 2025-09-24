@@ -149,6 +149,33 @@ make lint                           # Lint code
 make lint-rust                      # Rust-specific linting
 ```
 
+### Email Debug Mode (Bypass AWS SES)
+
+**For development and testing without AWS SES:**
+```bash
+# Enable debug mode in environment
+echo "EMAIL_DEBUG_MODE=true" >> .env
+
+# Magic links will be logged to console instead of sent via email
+# Example output:
+# 🔗 DEBUG MODE: Magic link for matt@arda.xyz:
+#       https://app.arda.xyz/auth/verify?token=abc123&state=xyz789
+#       Expires in 10 minutes
+#       Click this link to authenticate (expires in 10 minutes)
+
+# Use the logged URL for manual testing of authentication flow
+```
+
+**Configuration Options:**
+```bash
+# Email configuration
+EMAIL_DEBUG_MODE=true           # Skip AWS SES, log links only
+EMAIL_ENABLED=true              # Must be true for debug mode to work
+EMAIL_FROM=test@example.com    # From address for email templates
+EMAIL_REPLY_TO=support@arda.xyz # Reply-to address
+MAGIC_BASE_URL=https://app.arda.xyz/auth/verify  # Base URL for magic links
+```
+
 ### Smart Contract Deployment
 
 **Production deployment:**
@@ -233,6 +260,8 @@ make env                            # Copies .env.example to .env
 - `SINDRI_API_KEY` - API key for proof generation (get from https://sindri.app)
 - `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
 - `ETHEREUM_RPC_URL` - Ethereum RPC endpoint for contract interactions
+- `EMAIL_DEBUG_MODE` - Set to `true` to bypass AWS SES and log magic links to console
+- `EMAIL_ENABLED` - Set to `true` to enable email functionality
 
 For production deployment, see [`docs/deployment/security-production.md`](docs/deployment/security-production.md).
 

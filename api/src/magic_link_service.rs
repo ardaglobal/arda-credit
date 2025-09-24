@@ -208,21 +208,21 @@ impl MagicLinkService {
     }
 
     /// Generate a cryptographically secure token (32 bytes -> base64url)
-    fn generate_token() -> String {
+    pub fn generate_token() -> String {
         let mut token_bytes = [0u8; 32];
         rand::thread_rng().fill(&mut token_bytes);
         URL_SAFE_NO_PAD.encode(token_bytes)
     }
 
     /// Generate a CSRF state parameter (16 bytes -> base64url)
-    fn generate_state() -> String {
+    pub fn generate_state() -> String {
         let mut state_bytes = [0u8; 16];
         rand::thread_rng().fill(&mut state_bytes);
         URL_SAFE_NO_PAD.encode(state_bytes)
     }
 
     /// Hash a token using SHA-256
-    fn hash_token(token: &str) -> Vec<u8> {
+    pub fn hash_token(token: &str) -> Vec<u8> {
         let mut hasher = Sha256::new();
         hasher.update(token.as_bytes());
         hasher.finalize().to_vec()

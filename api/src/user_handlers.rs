@@ -34,12 +34,11 @@ use sqlx::Error as SqlxError;
 
 /// Request to register a new user identity
 /// User type is determined by the invite code provided
+/// Registration is passwordless - authentication uses magic links
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserRequest {
     #[schema(example = "user@example.com")]
     pub email: String,
-    #[schema(example = "SecureP@ssw0rd123")]
-    pub password: String,
     pub jurisdiction: Option<String>, // Optional, defaults to "US"
     #[schema(example = "INVESTOR2025")]
     pub invite_code: String, // Required - determines user type
@@ -291,18 +290,6 @@ pub async fn register_user_endpoint(
         warn!("❌ API: Invalid email format: {}", request.email);
         return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
     }
-
-    // Basic password validation
-    if request.password.len() < 8 {
-        warn!("❌ API: Password too short for: {}", request.email);
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Password must be at least 8 characters".to_string(),
-        ));
-    }
-
-    // Hash the password (placeholder during magic link transition)
-    let password_hash = format!("placeholder_hash_{}", request.password); // TODO: Implement proper hashing
 
     // Create or re-register user with soft delete handling
     match register_or_reregister_user(&state.pool, &user_type, &request.email).await {

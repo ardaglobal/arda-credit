@@ -257,6 +257,8 @@ pub async fn verify_magic_link(
                         kyc_status: "unknown".to_string(), // Would need to fetch from DB for full info
                         email_verified: true, // Assume verified since they used magic link
                     },
+                    session_token: Some(session_token),
+                    expires_in_seconds: 30 * 24 * 60 * 60, // 30 days in seconds
                     timestamp: Utc::now(),
                 },
                 cookies: vec![session_cookie],

@@ -810,6 +810,7 @@ dependencies = [
  "db",
  "dotenv",
  "ethereum-client",
+ "futures",
  "futures-util",
  "hex",
  "http 1.3.1",

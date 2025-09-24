@@ -1,5 +1,6 @@
 [package]
 edition = "2021"
+license = "MIT"
 name    = "create_user_and_magic_link"
 version = "0.1.0"
 

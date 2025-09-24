@@ -9,6 +9,7 @@ pub struct EmailConfig {
     pub configuration_set: Option<String>,
     pub magic_base_url: String,
     pub enabled: bool,
+    pub debug_mode: bool,
 }
 
 impl EmailConfig {
@@ -26,6 +27,10 @@ impl EmailConfig {
                 .unwrap_or_else(|_| "true".to_string())
                 .parse()
                 .unwrap_or(true),
+            debug_mode: env::var("EMAIL_DEBUG_MODE")
+                .unwrap_or_else(|_| "false".to_string())
+                .parse()
+                .unwrap_or(false),
         })
     }
 }

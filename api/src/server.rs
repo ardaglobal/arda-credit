@@ -347,6 +347,7 @@ impl ApiServer {
                 email_reply_to: "noreply@example.com".to_string(),
                 configuration_set: None,
                 magic_base_url: "https://app.arda.xyz/auth/verify".to_string(),
+                debug_mode: false,
             }
         });
 

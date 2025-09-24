@@ -19,7 +19,7 @@ use arda_credit_api::BatchApiClient;
 /// User management CLI commands
 #[derive(Subcommand)]
 pub enum UserCommands {
-    /// Create a new user account
+    /// Create a new user account (passwordless - use magic link to authenticate)
     Create {
         /// Invite code for user registration
         #[arg(long)]
@@ -27,9 +27,6 @@ pub enum UserCommands {
         /// User email address
         #[arg(long)]
         email: String,
-        /// User password
-        #[arg(long)]
-        password: String,
         /// User jurisdiction (optional, defaults to US)
         #[arg(long)]
         jurisdiction: Option<String>,
@@ -209,7 +206,6 @@ pub async fn handle_user_command(
         UserCommands::Create {
             invite_code,
             email,
-            password,
             jurisdiction,
             verbose: cmd_verbose,
         } => {
@@ -217,7 +213,6 @@ pub async fn handle_user_command(
                 client,
                 &invite_code,
                 &email,
-                &password,
                 jurisdiction.as_deref(),
                 cmd_verbose || verbose,
             )
@@ -351,16 +346,12 @@ pub async fn create_user(
     client: &BatchApiClient,
     invite_code: &str,
     email: &str,
-    password: &str,
     jurisdiction: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
-    println!("👤 Creating new user account...");
+    println!("👤 Creating new user account (passwordless)...");
 
-    match client
-        .register_user(invite_code, email, password, jurisdiction)
-        .await
-    {
+    match client.register_user(invite_code, email, jurisdiction).await {
         Ok(response) => {
             println!("✅ User created successfully!");
             println!(
@@ -388,7 +379,6 @@ pub async fn create_user(
             if verbose {
                 println!();
                 println!("🔧 Debug Information:");
-                println!("   Password length: {} characters", password.len());
                 println!(
                     "   KYC Status: {}",
                     response["kyc_status"].as_str().unwrap_or("pending")
@@ -518,7 +508,7 @@ pub async fn list_users(
                     println!("💡 Try adjusting your filters or removing them to see all users");
                 } else {
                     println!("💡 No users exist in the system yet");
-                    println!("💡 Create users using: cli user create --invite-code INVESTOR2025 --email user@example.com --password secure123");
+                    println!("💡 Create users using: cli user create --invite-code INVESTOR2025 --email user@example.com");
                 }
             } else {
                 println!();
@@ -718,9 +708,7 @@ pub async fn update_user(
                 if verbose {
                     println!("   Common causes:");
                     println!("   • Invalid email format");
-                    println!(
-                        "   • Unsupported user type (must be: investor, originator, admin)"
-                    );
+                    println!("   • Unsupported user type (must be: investor, originator, admin)");
                     println!("   • Invalid jurisdiction code");
                     println!("   • Attempting to update immutable fields");
                 }
@@ -1199,7 +1187,10 @@ pub async fn generate_invite_code(
         return Ok(());
     }
 
-    match client.generate_invite_code(user_type, Some(max_uses), Some(expires_in_hours)).await {
+    match client
+        .generate_invite_code(user_type, Some(max_uses), Some(expires_in_hours))
+        .await
+    {
         Ok(response) => {
             // Extract the actual invite code from the response
             let invite_code = response["invite_code"]
@@ -1463,7 +1454,9 @@ pub async fn use_invite_code(
     println!();
 
     println!("💡 To use an invite code:");
-    println!("   1. During user registration: cli user create --invite-code <code> --email <email> --password <password>");
+    println!(
+        "   1. During user registration: cli user create --invite-code <code> --email <email>"
+    );
     println!("   2. Invite codes are automatically validated during the registration flow");
     println!("   3. No separate step is needed to 'use' the invite code");
 

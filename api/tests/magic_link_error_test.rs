@@ -4,10 +4,11 @@
 
 use axum::http::StatusCode;
 use serde_json::Value;
+use tower::ServiceExt;
 
-use crate::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use crate::test_utils::{create_test_app_with_magic_links, create_test_user, TestApp, TestContext};
-use crate::types::ApiState;
+use api::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
+use api::test_utils::{create_test_app_with_magic_links, create_test_user, TestApp, TestContext};
+use api::types::ApiState;
 
 /// Test context for error handling tests
 struct ErrorTestContext {
@@ -68,12 +69,13 @@ impl ErrorTestContext {
 async fn test_invalid_email_formats() {
     let ctx = ErrorTestContext::new().await;
 
+    let toolong_email = "toolong@".repeat(50) + "domain.com";
     let invalid_emails = vec![
         "not-an-email",
         "missing@domain",
         "@missing-local.com",
         "spaces in@email.com",
-        "toolong@".repeat(50) + "domain.com",
+        &toolong_email,
         "",
         "@",
         "test@",
@@ -134,11 +136,12 @@ async fn test_nonexistent_user() {
 async fn test_malformed_tokens() {
     let ctx = ErrorTestContext::new().await;
 
+    let toolong_token = "a".repeat(100);
     let malformed_tokens = vec![
         "",                                                   // Empty
         "too-short",                                          // Too short
         "not-base64-@#$%",                                    // Invalid base64
-        "a".repeat(100),                                      // Too long
+        &toolong_token,                                       // Too long
         "valid-length-but-wrong-format-12345678901234567890", // Wrong format
         "contains spaces and invalid chars !@#$%^&*()",
         "🚀-unicode-invalid-🚀",
@@ -171,10 +174,11 @@ async fn test_malformed_tokens() {
 async fn test_malformed_state_parameters() {
     let ctx = ErrorTestContext::new().await;
 
+    let toolong_state = "a".repeat(50);
     let malformed_states = vec![
         "",             // Empty
         "too-short",    // Too short
-        "a".repeat(50), // Too long
+        &toolong_state, // Too long
         "contains-invalid-chars-!@#$%^&*()",
         "🚀-unicode-invalid-🚀",
     ];
@@ -246,7 +250,7 @@ async fn test_magic_link_expired() {
     use chrono::{Duration, Utc};
     let expired_time = Utc::now() - Duration::minutes(15); // 15 minutes ago
 
-    let token_hash = crate::magic_link_service::MagicLinkService::hash_token(expired_token);
+    let token_hash = api::magic_link_service::MagicLinkService::hash_token(expired_token);
 
     sqlx::query!(
         r#"
@@ -286,7 +290,7 @@ async fn test_magic_link_already_consumed() {
     let consumed_token = "consumed-token-123456789012345678901234567";
     let consumed_state = "consumed-state-12345678901234567890123456";
 
-    let token_hash = crate::magic_link_service::MagicLinkService::hash_token(consumed_token);
+    let token_hash = api::magic_link_service::MagicLinkService::hash_token(consumed_token);
 
     sqlx::query!(
         r#"
@@ -521,7 +525,8 @@ async fn test_concurrent_request_conflicts() {
         })
         .collect();
 
-    let results = futures::future::join_all(tasks).await;
+    let results: Vec<Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>>> =
+        futures::future::join_all(tasks).await;
 
     // Count successes and failures
     let success_count = results

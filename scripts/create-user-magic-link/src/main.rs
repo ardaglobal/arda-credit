@@ -19,7 +19,6 @@ use tracing::{error, info};
 #[derive(Debug, Serialize)]
 struct RegisterUserRequest {
     email: String,
-    password: String,
     jurisdiction: Option<String>,
     invite_code: String,
 }
@@ -53,8 +52,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Get API base URL from environment or use default
-    let api_base_url = env::var("API_BASE_URL")
-        .unwrap_or_else(|_| "http://0.0.0.0:8080".to_string());
+    let api_base_url =
+        env::var("API_BASE_URL").unwrap_or_else(|_| "http://0.0.0.0:8080".to_string());
 
     info!("🚀 Starting user creation and magic link generation script");
     info!("📍 API Base URL: {}", api_base_url);
@@ -66,7 +65,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let register_request = RegisterUserRequest {
         email: "matt@arda.xyz".to_string(),
-        password: "testpassword123".to_string(), // This will be placeholder during magic link transition
         jurisdiction: Some("US".to_string()),
         invite_code: "INVESTOR2025".to_string(),
     };
@@ -93,10 +91,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("⚠️  User already exists with email matt@arda.xyz");
             info!("   Continuing to magic link generation...");
         }
-        status => {
+        reqwest::StatusCode::OK => {
+            let response_body: RegisterUserResponse = register_response.json().await?;
+            info!("✅ User registration completed!");
+            info!("   User ID: {}", response_body.user_id);
+            info!("   User Type: {}", response_body.user_type);
+            info!("   KYC Status: {}", response_body.kyc_status);
+            info!("   Created At: {}", response_body.created_at);
+        }
+        status if status.is_client_error() || status.is_server_error() => {
             let error_text = register_response.text().await?;
             error!("❌ Failed to register user: {} - {}", status, error_text);
             return Err("User registration failed".into());
+        }
+        status => {
+            let response_text = register_response.text().await?;
+            info!("⚠️  Unexpected status code: {} - {}", status, response_text);
+            info!("   Continuing to magic link generation...");
         }
     }
 
@@ -129,7 +140,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(message_id) = response_body.message_id {
                 info!("   Message ID: {}", message_id);
             }
-            info!("   Expires in: {} minutes", response_body.expires_in_minutes);
+            info!(
+                "   Expires in: {} minutes",
+                response_body.expires_in_minutes
+            );
             info!("   Timestamp: {}", response_body.timestamp);
 
             info!("📧 Check your email (matt@arda.xyz) for the magic link!");
@@ -143,7 +157,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         status => {
             let error_text = magic_link_response.text().await?;
-            error!("❌ Failed to request magic link: {} - {}", status, error_text);
+            error!(
+                "❌ Failed to request magic link: {} - {}",
+                status, error_text
+            );
             return Err("Magic link request failed".into());
         }
     }

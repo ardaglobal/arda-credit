@@ -74,6 +74,18 @@ impl EmailService {
         magic_link_url: String,
         expiry_minutes: i64,
     ) -> Result<String, EmailError> {
+        // Check if in debug mode - log the magic link instead of sending email
+        if self.config.debug_mode {
+            info!("🔗 DEBUG MODE: Magic link for {}:", user_email);
+            info!("      {}", magic_link_url);
+            info!("      Expires in {} minutes", expiry_minutes);
+            info!(
+                "      Click this link to authenticate (expires in {} minutes)",
+                expiry_minutes
+            );
+            return Ok("debug-mode".to_string());
+        }
+
         if !self.config.enabled {
             warn!(
                 "📧 Email service disabled - would send magic link to {}",

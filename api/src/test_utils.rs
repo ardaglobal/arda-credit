@@ -24,9 +24,46 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::types::ApiState;
-use arda_credit_db::{IndexedMerkleTreeADS, create_test_pool};
-use sqlx::{PgPool, postgres::PgPoolOptions};
+use arda_credit_db::{AdsConfig, IndexedMerkleTreeADS};
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use uuid::Uuid;
+
+/// Test user data structure
+#[derive(Debug, Clone)]
+pub struct TestUser {
+    pub id: Uuid,
+    pub email: String,
+    pub user_type: String,
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub wallet_address: Option<String>,
+}
+
+impl TestUser {
+    /// Create a new investor test user
+    pub fn new_investor() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            email: format!("investor_{}@test.com", Uuid::new_v4().simple()),
+            user_type: "investor".to_string(),
+            first_name: Some("Test".to_string()),
+            last_name: Some("Investor".to_string()),
+            wallet_address: Some(format!("0x{}", hex::encode(rand::random::<[u8; 20]>()))),
+        }
+    }
+
+    /// Create a new merchant test user
+    pub fn new_merchant() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            email: format!("merchant_{}@test.com", Uuid::new_v4().simple()),
+            user_type: "merchant".to_string(),
+            first_name: Some("Test".to_string()),
+            last_name: Some("Merchant".to_string()),
+            wallet_address: Some(format!("0x{}", hex::encode(rand::random::<[u8; 20]>()))),
+        }
+    }
+}
 
 /// Test database wrapper that handles setup and cleanup
 pub struct TestDatabase {
@@ -36,8 +73,9 @@ pub struct TestDatabase {
 impl TestDatabase {
     /// Create a new test database connection
     pub async fn new() -> Self {
-        let database_url = std::env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://postgres:password@localhost:5432/arda_credit_test".to_string());
+        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgres://postgres:password@localhost:5432/arda_credit_test".to_string()
+        });
 
         let pool = PgPoolOptions::new()
             .max_connections(5)
@@ -57,19 +95,43 @@ impl TestDatabase {
     /// Clean up all test data
     pub async fn cleanup(&self) -> Result<(), sqlx::Error> {
         // Clear all tables in reverse dependency order
-        sqlx::query("DELETE FROM financial_transactions").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM credit_line_requests").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM loan_payments").execute(&self.pool).await?;
+        sqlx::query("DELETE FROM financial_transactions")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM credit_line_requests")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM loan_payments")
+            .execute(&self.pool)
+            .await?;
         sqlx::query("DELETE FROM loans").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM pool_transactions").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM liquidity_pools").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM merchant_turnover").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM merchant_profiles").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM merchant").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM investor_profiles").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM identities").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM batches").execute(&self.pool).await?;
-        sqlx::query("DELETE FROM transactions").execute(&self.pool).await?;
+        sqlx::query("DELETE FROM pool_transactions")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM liquidity_pools")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM merchant_turnover")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM merchant_profiles")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM merchant")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM investor_profiles")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM identities")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM batches")
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM transactions")
+            .execute(&self.pool)
+            .await?;
 
         Ok(())
     }
@@ -78,35 +140,39 @@ impl TestDatabase {
 /// Create a test API state with all required services
 pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
     use crate::{
-        auth::AuthService,
-        batch_processor::BatchProcessorHandle,
-        BalanceVerificationService, WithdrawalTransactionService,
+        auth::AuthService, batch_processor::BatchProcessorHandle, BalanceVerificationService,
+        WithdrawalTransactionService,
     };
 
     // Create ADS service
-    let ads_service = Arc::new(RwLock::new(IndexedMerkleTreeADS::new()));
+    let ads_service = Arc::new(RwLock::new(
+        IndexedMerkleTreeADS::new(pool.clone(), AdsConfig::default())
+            .await
+            .unwrap(),
+    ));
 
     // Create auth service
-    let auth_service = Arc::new(AuthService::new("test-jwt-secret-key-minimum-32-characters-for-testing".to_string(), Some(24)));
+    let auth_service = Arc::new(AuthService::new(
+        "test-jwt-secret-key-minimum-32-characters-for-testing".to_string(),
+        Some(24),
+    ));
 
     // Create withdrawal service
-    let withdrawal_service = WithdrawalTransactionService::new();
+    let withdrawal_service = WithdrawalTransactionService::new(pool.clone());
 
     // Create balance service
-    let balance_service = BalanceVerificationService::new();
+    let balance_service = BalanceVerificationService::new(pool.clone());
 
     ApiState {
         pool: pool.clone(),
-        config: crate::rest::ApiConfig {
-            database_url: "test".to_string(),
-            server_address: "127.0.0.1:0".to_string(),
-            jwt_secret: "test_secret".to_string(),
-            jwt_expiration_hours: 24,
-            environment: "test".to_string(),
+        config: crate::router::ApiConfig {
+            server_name: "Test API".to_string(),
+            version: "1.0.0".to_string(),
+            max_batch_size: 10,
+            enable_debug_endpoints: true,
         },
-        batch_processor: Some(BatchProcessorHandle::new()),
+        batch_processor: None,
         ads_service,
-        auth_service,
         withdrawal_service,
         balance_service,
         metrics_handle: None, // No metrics in tests
@@ -122,33 +188,40 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
     use crate::{
         auth::AuthService,
         batch_processor::BatchProcessorHandle,
-        BalanceVerificationService, WithdrawalTransactionService,
         email_service::EmailService,
+        magic_link_service::{MagicLinkConfig, MagicLinkService},
         middleware::EmailRateLimiter,
-        magic_link_service::{MagicLinkService, MagicLinkConfig},
         session_service::SessionService,
+        BalanceVerificationService, WithdrawalTransactionService,
     };
 
     // Create ADS service
-    let ads_service = Arc::new(RwLock::new(IndexedMerkleTreeADS::new()));
+    let ads_service = Arc::new(RwLock::new(
+        IndexedMerkleTreeADS::new(pool.clone(), AdsConfig::default())
+            .await
+            .unwrap(),
+    ));
 
     // Create auth service
-    let auth_service = Arc::new(AuthService::new("test-jwt-secret-key-minimum-32-characters-for-testing".to_string(), Some(24)));
+    let auth_service = Arc::new(AuthService::new(
+        "test-jwt-secret-key-minimum-32-characters-for-testing".to_string(),
+        Some(24),
+    ));
 
     // Create withdrawal service
-    let withdrawal_service = WithdrawalTransactionService::new();
+    let withdrawal_service = WithdrawalTransactionService::new(pool.clone());
 
     // Create balance service
-    let balance_service = BalanceVerificationService::new();
+    let balance_service = BalanceVerificationService::new(pool.clone());
 
     // Create session service
     let session_service = Arc::new(SessionService::new(pool.clone()));
 
     // Create mock email service for testing
-    let email_service = Arc::new(create_mock_email_service());
+    let email_service = Arc::new(create_mock_email_service().await);
 
     // Create email rate limiter
-    let email_rate_limiter = Arc::new(EmailRateLimiter::new(3, 3600)); // 3 per hour
+    let email_rate_limiter = Arc::new(EmailRateLimiter::new()); // 3 per hour
 
     // Create magic link service
     let magic_link_config = MagicLinkConfig {
@@ -161,7 +234,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
         pool.clone(),
         magic_link_config,
         email_service,
-        email_rate_limiter.clone(),
+        Arc::new(crate::middleware::RateLimiter::new(100)), // Allow 100 requests per minute
         session_service.clone(),
     ));
 
@@ -173,7 +246,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
             max_batch_size: 50,
             enable_debug_endpoints: true,
         },
-        batch_processor: Some(BatchProcessorHandle::new()),
+        batch_processor: None,
         ads_service,
         session_service,
         magic_link_service: Some(magic_link_service),
@@ -225,30 +298,25 @@ pub async fn create_test_user(pool: &PgPool, email: &str, user_type: &str) -> Te
 }
 
 /// Create a mock email service for testing
-pub fn create_mock_email_service() -> crate::email_service::EmailService {
+pub async fn create_mock_email_service() -> crate::email_service::EmailService {
     // This is a simplified mock - in a real implementation you'd use a proper mock
     // For now, we'll create a service that doesn't actually send emails
-    use crate::email_service::{EmailService, EmailConfig};
-    use aws_config::BehaviorVersion;
-    use aws_sdk_sesv2::Client;
+    use crate::email_config::EmailConfig;
+    use crate::email_service::EmailService;
 
-    // Create a mock SES client that doesn't send emails
-    // This is a placeholder - you'd need to implement proper mocking
-    EmailService::new(
-        EmailConfig {
-            region: "us-east-1".to_string(),
-            from_email: "test@example.com".to_string(),
-            reply_to: None,
-            configuration_set: None,
-        },
-        Client::from_conf(
-            aws_sdk_sesv2::config::Builder::new()
-                .behavior_version(BehaviorVersion::v2024_03_28())
-                .build()
-        ),
-    )
+    // Create a disabled email service for testing
+    let config = EmailConfig {
+        ses_region: "us-east-1".to_string(),
+        email_from: "test@example.com".to_string(),
+        email_reply_to: "support@example.com".to_string(),
+        configuration_set: None,
+        magic_base_url: "https://app.arda.xyz/auth/verify".to_string(),
+        enabled: false,
+        debug_mode: false,
+    };
+
+    EmailService::new(config).await.unwrap()
 }
-
 
 /// Test magic link data for testing
 #[derive(Debug, Clone)]
@@ -280,41 +348,6 @@ impl TestContext {
         Self {
             pool: test_db.pool,
             state,
-        }
-    }
-}
-
-impl TestUser {
-    pub fn new_investor() -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            email: format!("investor_{}@test.com", Uuid::new_v4().simple()),
-            user_type: "investor".to_string(),
-            first_name: Some("Test".to_string()),
-            last_name: Some("Investor".to_string()),
-            wallet_address: Some(format!("0x{}", hex::encode(Uuid::new_v4().as_bytes()))),
-        }
-    }
-
-    pub fn new_merchant() -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            email: format!("merchant_{}@test.com", Uuid::new_v4().simple()),
-            user_type: "originator".to_string(),
-            first_name: Some("Test".to_string()),
-            last_name: Some("Merchant".to_string()),
-            wallet_address: Some(format!("0x{}", hex::encode(Uuid::new_v4().as_bytes()))),
-        }
-    }
-
-    pub fn new_admin() -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            email: format!("admin_{}@test.com", Uuid::new_v4().simple()),
-            user_type: "admin".to_string(),
-            first_name: Some("Test".to_string()),
-            last_name: Some("Admin".to_string()),
-            wallet_address: Some(format!("0x{}", hex::encode(Uuid::new_v4().as_bytes()))),
         }
     }
 }
@@ -440,12 +473,11 @@ pub mod http_utils {
             .header("content-type", "application/json");
 
         if let Some(body) = body {
-            req = req.body(Body::from(serde_json::to_string(&body).unwrap()));
+            req.body(Body::from(serde_json::to_string(&body).unwrap()))
         } else {
-            req = req.body(Body::empty());
+            req.body(Body::empty())
         }
-
-        req.unwrap()
+        .unwrap()
     }
 
     /// Extract JSON response body
@@ -453,7 +485,7 @@ pub mod http_utils {
         response: axum::response::Response,
     ) -> Result<T, Box<dyn std::error::Error>> {
         let body = response.into_body();
-        let bytes = hyper::body::to_bytes(body).await?;
+        let bytes = axum::body::to_bytes(body, usize::MAX).await?;
         let json: T = serde_json::from_slice(&bytes)?;
         Ok(json)
     }

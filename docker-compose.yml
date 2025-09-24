@@ -61,7 +61,7 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
     ports:
-      - "3000:3000"
+      - "3100:3100" # changed from 3000 to 3100 to not conflict with frontend default port
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
