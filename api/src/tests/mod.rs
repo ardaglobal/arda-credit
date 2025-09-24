@@ -6,6 +6,7 @@
 //! ## Test Organization
 //!
 //! - `auth_tests.rs` - Authentication and authorization tests
+//! - `email_service_test.rs` - Email service integration tests
 //! - `user_tests.rs` - User management tests
 //! - `loan_tests.rs` - Loan lifecycle tests
 //! - `pool_tests.rs` - Liquidity pool tests
@@ -27,12 +28,17 @@
 //! ```
 
 pub mod auth_tests;
+pub mod email_service_test;
 pub mod user_tests;
 pub mod loan_tests;
 pub mod pool_tests;
 pub mod credit_line_tests;
 pub mod financial_tests;
 pub mod admin_tests;
+pub mod magic_link_integration_test;
+pub mod magic_link_security_test;
+pub mod magic_link_error_test;
+pub mod magic_link_performance_test;
 
 // Re-export common test utilities
 pub use crate::test_utils::*;

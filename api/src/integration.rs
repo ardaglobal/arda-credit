@@ -312,11 +312,11 @@ impl VAppApiIntegration {
 
     /// Build complete router with all middleware and endpoints
     #[instrument(skip(self), level = "info")]
-    pub fn build_production_router(&self) -> Router<ApiState> {
+    pub async fn build_production_router(&self) -> Router<ApiState> {
         info!("🔧 Building production-ready API router");
 
         // Start with the base API router
-        let mut router = self.api_server.create_router();
+        let mut router = self.api_server.create_router().await;
 
         // Add comprehensive health endpoints
         router = router

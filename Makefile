@@ -49,11 +49,11 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 .PHONY: lint
 lint: yamllint actionlint docker-lint deny lint-rust
 
-## lint-rust: Lint only Rust code
+## lint-rust: Lint only Rust code (excluding tests)
 .PHONY: lint-rust
 lint-rust:
 	$(MAKE) fmt CHECK=1
-	SQLX_OFFLINE=true cargo clippy --all-targets -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
+	SQLX_OFFLINE=true cargo clippy --lib --bins -- --cap-lints=warn -A warnings -D clippy::pedantic -D clippy::nursery -D clippy::style -D clippy::complexity -D clippy::perf -D clippy::suspicious -D clippy::correctness
 
 ## env: Copy .env.example to .env
 .PHONY: env

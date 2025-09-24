@@ -2,6 +2,42 @@
 
 This document outlines the standardized file structure and coding conventions for the Arda Credit CLI package.
 
+## Authentication
+
+The Arda Credit CLI integrates with the magic link authentication system.
+
+### Configuration
+
+Set your API endpoint:
+```bash
+export ARDA_CREDIT_API_URL=http://localhost:8080
+```
+
+### Authentication Commands
+
+The CLI doesn't handle interactive authentication. For development:
+
+```bash
+# Register a new user (creates account for magic link auth)
+make cli ARGS="register-user --user-type investor --email developer@example.com"
+
+# The CLI will work with session-based authentication in the future
+# Currently, magic link auth is web-only
+```
+
+### API Integration
+
+For programmatic access, use the API endpoints directly:
+
+```bash
+# Request magic link
+curl -X POST $ARDA_CREDIT_API_URL/api/v1/auth/magic-link \
+  -H "Content-Type: application/json" \
+  -d '{"email":"developer@example.com"}'
+```
+
+See the [Magic Link Authentication Guide](../docs/integrations/magic-link-authentication.md) for complete API integration.
+
 ## Overview
 
 ### Core Infrastructure (Fixed Structure)

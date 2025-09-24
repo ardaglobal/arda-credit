@@ -15,8 +15,8 @@ pub use crate::admin_handlers::{
     PlatformMetricsResponse,
 };
 pub use crate::authentication_handlers::{
-    GenerateInviteCodeRequest, GenerateInviteCodeResponse, LoginRequest, LoginResponse,
-    LogoutResponse, ValidateInviteCodeResponse,
+    GenerateInviteCodeRequest, GenerateInviteCodeResponse, LogoutResponse,
+    ValidateInviteCodeResponse,
 };
 pub use crate::balance_service::AvailableBalance;
 pub use crate::contract_handlers::{
@@ -40,6 +40,13 @@ pub use crate::loan_handlers::{
     CreateLoanRequest, DeleteLoanResponse, ListLoansQuery, ListLoansResponse, LoanDetailsResponse,
     LoanPaymentHistoryResponse, LoanStatsResponse, PaymentDetailsResponse, PaymentResponse,
     RecordPaymentRequest, UpdateLoanRequest, UpdateLoanResponse,
+};
+use crate::magic_link_handlers::{
+    get_current_user, logout_endpoint, request_magic_link, verify_magic_link,
+};
+use crate::magic_link_types::{
+    MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
+    VerifyMagicLinkResponse,
 };
 pub use crate::merchant_handlers::{
     InvestorProfileQuery, InvestorProfileResponse, MerchantProfileQuery, MerchantProfileResponse,
@@ -126,7 +133,7 @@ fn default_limit() -> u32 {
     info(
         title = "Arda Credit API",
         version = "v1",
-        description = "REST API for the Arda Credit platform providing credit and investment services"
+        description = "REST API for the Arda Credit platform with magic link authentication providing credit and investment services"
     ),
     servers(
         (url = "http://localhost:8080", description = "Development server"),
@@ -137,9 +144,13 @@ fn default_limit() -> u32 {
         crate::health_handlers::health_check,
         crate::health_handlers::api_info,
 
-        // Authentication endpoints
-        crate::authentication_handlers::login_endpoint,
-        crate::authentication_handlers::logout_endpoint,
+        // Magic Link Authentication endpoints (NEW)
+        crate::magic_link_handlers::request_magic_link,
+        crate::magic_link_handlers::verify_magic_link,
+        crate::magic_link_handlers::get_current_user,
+        crate::magic_link_handlers::logout_endpoint,
+
+        // Authentication utilities (keep these)
         crate::authentication_handlers::validate_invite_code_endpoint,
         crate::authentication_handlers::generate_invite_code_endpoint,
 
@@ -322,8 +333,6 @@ fn default_limit() -> u32 {
         RegisterUserResponse,
         UserDetailsResponse,
         UpdateUserRequest,
-        LoginRequest,
-        LoginResponse,
         LogoutResponse,
         RegisterInvestorRequest,
         RegisterMerchantRequest,
@@ -507,7 +516,38 @@ fn default_limit() -> u32 {
         DocumentDiffResponse,
         ImpactLevel,
         NegotiationInsight,
-        RiskFactor
-    ))
+        RiskFactor,
+        // Magic Link Authentication schemas (NEW)
+        MagicLinkRequest,
+        MagicLinkResponse,
+        VerifyMagicLinkRequest,
+        VerifyMagicLinkResponse,
+        UserInfo,
+        MagicLinkErrorResponse,
+
+        // REMOVE these old schemas (password-based auth removed):
+        // LoginRequest, (DELETED)
+        // LoginResponse, (DELETED)
+        // UserSummary, (DELETED)
+    )),
+    modifiers(&SecurityAddon)
 )]
 pub struct ApiDoc;
+
+/// Security addon to configure session cookie authentication
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "session_cookie",
+                utoipa::openapi::security::SecurityScheme::ApiKey(
+                    utoipa::openapi::security::ApiKey::Cookie(
+                        utoipa::openapi::security::ApiKeyValue::new(String::from("session_token")),
+                    ),
+                ),
+            );
+        }
+    }
+}

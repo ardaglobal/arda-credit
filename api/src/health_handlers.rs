@@ -145,10 +145,13 @@ pub async fn health_check(
         timestamp: Utc::now(),
         database_connected: db_connected,
         api_version: state.config.version.clone(),
-        git_tag: env!("GIT_TAG").to_string(),
-        git_sha: env!("GIT_SHA").to_string(),
-        git_sha_short: env!("GIT_SHA_SHORT").to_string(),
-        git_dirty: env!("GIT_DIRTY").parse().unwrap_or(false),
+        git_tag: std::env::var("GIT_TAG").unwrap_or_else(|_| "unknown".to_string()),
+        git_sha: std::env::var("GIT_SHA").unwrap_or_else(|_| "unknown".to_string()),
+        git_sha_short: std::env::var("GIT_SHA_SHORT").unwrap_or_else(|_| "unknown".to_string()),
+        git_dirty: std::env::var("GIT_DIRTY")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse()
+            .unwrap_or(false),
     };
 
     // Final span attributes

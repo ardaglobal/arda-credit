@@ -1,152 +1,165 @@
-# Swagger Documentation Implementation
+# Arda Credit API Documentation
 
-This document outlines the Swagger/OpenAPI documentation that has been successfully added to the Arda Credit API. For authentication integration details, see [`docs/integrations/authentication.md`](../integrations/authentication.md).
+## Authentication
 
-## Overview
+Arda Credit uses **magic link authentication** for secure, passwordless access.
 
-I have successfully implemented comprehensive Swagger documentation for the API server using the Rust `utoipa` ecosystem. Here's what was completed:
+### Quick Start
 
-### 1. Dependencies Added ✅
-- `utoipa = { version = "4.0", features = ["axum_extras", "chrono", "uuid"] }`
-- `utoipa-swagger-ui = { version = "6.0", features = ["axum"] }`
+1. **Request Magic Link**: `POST /api/v1/auth/magic-link`
+2. **Check Email**: Click the magic link in your email
+3. **Automatic Login**: Session cookie is set automatically
+4. **Make Requests**: Include session cookie in subsequent requests
 
-### 2. Schema Annotations ✅
-All request/response models have been annotated with `#[derive(ToSchema)]`:
+### Complete Guide
 
-#### Core API Models
-- `HealthResponse`, `ApiInfoResponse`, `EndpointInfo`
-- `SubmitTransactionRequest`, `SubmitTransactionResponse`, `TransactionInfo`
-- `PendingTransactionsResponse`, `CreateBatchRequest`, `CreateBatchResponse`
-- `BatchListQuery`, `BatchListResponse`, `BatchInfo`
-- `UpdateBatchProofRequest`, `CurrentStateResponse`
+See [Magic Link Authentication Guide](./magic-link-authentication.md) for detailed integration instructions.
 
-#### User Management Models
-- `RegisterUserRequest`, `RegisterUserResponse`, `UserDetailsResponse`
-- `SubmitKycRequest`, `KycData`, `SubmitKycResponse`
-- `UpdateKycStatusRequest`, `ListIdentitiesQuery`, `ListIdentitiesResponse`
+### OpenAPI Specification
 
-#### Loan Management Models
-- `CreateLoanRequest`, `LoanDetailsResponse`, `ListLoansQuery`
-- `ListLoansResponse`, `LoanStatsResponse`
+- **Interactive Docs**: [http://localhost:8080/api-docs](http://localhost:8080/api-docs)
+- **JSON Spec**: [http://localhost:8080/api-docs/openapi.json](http://localhost:8080/api-docs/openapi.json)
 
-#### Payment Processing Models
-- `RecordPaymentRequest`, `PaymentResponse`, `PaymentDetailsResponse`
-- `LoanPaymentHistoryResponse`
+### Authentication Endpoints
 
-#### State Management & ZK Proof Models
-- `StateSummaryResponse`, `TransactionProofResponse`, `ProofData`
-- `VerificationData`, `VerifyTransactionRequest`, `TransactionVerificationResponse`
-- And many more...
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/auth/magic-link` | POST | Request magic link via email |
+| `/api/v1/auth/verify` | POST | Verify magic link and create session |
+| `/api/v1/auth/me` | GET | Get current authenticated user |
+| `/api/v1/auth/logout` | POST | Logout and invalidate session |
 
-### 3. Endpoint Annotations ✅
-Key API endpoints have been annotated with `#[utoipa::path(...)]` including:
+~~**Deprecated**: Password-based authentication has been removed.~~
 
-- **Health Endpoints**: `GET /api/v1/health`
-- **Transaction Endpoints**: 
-  - `POST /api/v1/transactions` (Submit transaction)
-  - `GET /api/v1/transactions/pending` (Get pending transactions)
-- **Batch Endpoints**:
-  - `POST /api/v1/batches` (Create batch)
-  - `GET /api/v1/batches` (List batches)
-  - `GET /api/v1/batches/{batch_id}` (Get specific batch)
+## Session Management
 
-### 4. OpenAPI Specification ✅
-A comprehensive OpenAPI specification has been created in `api/src/rest.rs`:
+All protected endpoints require a valid session cookie. Sessions are automatically managed through magic link authentication.
 
-```rust
-#[derive(OpenApi)]
-#[openapi(
-    paths(
-        health_check,
-        submit_transaction_endpoint,
-        get_pending_transactions_endpoint,
-        create_batch_endpoint,
-        get_batches_endpoint,
-        get_batch_endpoint
-    ),
-    components(schemas(/* All 40+ schemas */)),
-    tags(
-        (name = "Health", description = "Health check and system status endpoints"),
-        (name = "Transactions", description = "Transaction submission and management"),
-        (name = "Batches", description = "Batch processing and proof management"),
-        (name = "Users", description = "User registration and KYC management"),
-        (name = "Loans", description = "Loan creation and management"),
-        (name = "Payments", description = "Payment processing and history"),
-        (name = "State", description = "System state and proof verification"),
-        (name = "Proofs", description = "Zero-knowledge proof generation and verification")
-    ),
-    info(
-        title = "Arda Credit API",
-        version = "2.0.0",
-        description = "Zero-knowledge proof system for batched transaction processing and loan management",
-        contact(name = "Arda Global", url = "https://ardaglobal.com")
-    )
-)]
-pub struct ApiDoc;
+### Protected Endpoints
+
+Most API endpoints require authentication. Anonymous endpoints include:
+
+- `GET /health`
+- `GET /api/v1/info`
+- `POST /api/v1/user` (registration)
+- Magic link authentication endpoints
+
+For all other endpoints, include the session cookie received after magic link verification.
+
+## OpenAPI Documentation
+
+The API is fully documented using OpenAPI 3.0 specifications with interactive Swagger UI.
+
+### Interactive Documentation
+
+- **Swagger UI**: [http://localhost:8080/api-docs](http://localhost:8080/api-docs)
+  - Try endpoints directly in your browser
+  - View request/response schemas
+  - Test authentication flows
+
+- **OpenAPI JSON**: [http://localhost:8080/api-docs/openapi.json](http://localhost:8080/api-docs/openapi.json)
+  - Import into Postman, Insomnia, or other API tools
+  - Generate client SDKs for your preferred language
+
+### API Endpoints Overview
+
+| Category | Endpoints | Description |
+|----------|-----------|-------------|
+| **Authentication** | `/api/v1/auth/*` | Magic link authentication |
+| **Users** | `/api/v1/user/*` | User registration and profiles |
+| **Loans** | `/api/v1/loan/*` | Loan origination and management |
+| **Payments** | `/api/v1/payment/*` | Payment processing |
+| **Pools** | `/api/v1/pool/*` | Liquidity pool management |
+| **Withdrawals** | `/api/v1/withdrawal/*` | USDC withdrawal operations |
+| **State** | `/api/v1/state/*` | Batch processing and ZK proofs |
+| **Admin** | `/api/v1/admin/*` | Administrative operations |
+
+### Schema Documentation
+
+All request and response models are fully documented with:
+
+- Field descriptions and examples
+- Required/optional field indicators
+- Data type validation rules
+- Enum values where applicable
+
+### Code Generation
+
+The OpenAPI specification supports automatic code generation for:
+
+- **Frontend**: TypeScript interfaces, React hooks
+- **Backend**: API clients in Python, Java, Go
+- **Mobile**: iOS/Android SDKs
+- **Testing**: Automated test generation
+
+## Development Workflow
+
+### Testing API Changes
+
+1. **Start the server**: `make server`
+2. **Open Swagger UI**: Visit `http://localhost:8080/api-docs`
+3. **Test endpoints**: Use the "Try it out" buttons
+4. **Check schemas**: View request/response models
+
+### Authentication in Swagger UI
+
+To test protected endpoints in Swagger UI:
+
+1. **Request magic link** using the auth endpoint
+2. **Check email** and click the magic link
+3. **Session cookie** will be set automatically
+4. **All subsequent requests** will include the session cookie
+
+## Common Integration Patterns
+
+### JavaScript/TypeScript
+
+```javascript
+// Authenticated request with session cookie
+const response = await fetch('/api/v1/auth/me', {
+  credentials: 'include'  // Important: includes session cookie
+});
 ```
 
-### 5. Swagger UI Integration ✅
-Swagger UI has been integrated into the routing system:
+### Python
 
-```rust
-// OpenAPI documentation routes
-.merge(
-    SwaggerUi::new("/api-docs")
-        .url("/api-docs/openapi.json", get_openapi_spec())
-)
+```python
+import requests
+
+# Include session cookie from previous auth
+cookies = {'session_token': 'your_session_token'}
+response = requests.get('/api/v1/auth/me', cookies=cookies)
 ```
 
-### 6. Server Startup Messages Updated ✅
-The server startup messages now include information about the documentation:
+### cURL
 
+```bash
+# Include session cookie
+curl -H "Cookie: session_token=your_session_token" \
+  http://localhost:8080/api/v1/auth/me
 ```
-📖 API Documentation:
-   • Swagger UI:     http://localhost:8080/api-docs/
-   • OpenAPI JSON:   http://localhost:8080/api-docs/openapi.json
+
+## Troubleshooting
+
+### Common Issues
+
+1. **401 Unauthorized**: Session cookie missing or expired
+2. **403 Forbidden**: User doesn't have permission for the operation
+3. **429 Too Many Requests**: Rate limit exceeded
+4. **422 Unprocessable Entity**: Invalid request data
+
+### Debug Headers
+
+Enable debug headers by setting the environment variable:
+```bash
+DEBUG_HEADERS=true
 ```
 
-## Usage
+This adds detailed information about authentication and rate limiting to response headers.
 
-Once the server is running, developers can access:
+## Version History
 
-1. **Swagger UI Interface**: `http://localhost:8080/api-docs/`
-   - Interactive API documentation
-   - Try-it-out functionality for all endpoints
-   - Request/response examples
-   - Schema definitions
-
-2. **OpenAPI JSON Spec**: `http://localhost:8080/api-docs/openapi.json`
-   - Raw OpenAPI 3.0 specification
-   - Can be imported into tools like Postman, Insomnia, etc.
-   - Can be used for code generation (as mentioned in the original issue)
-
-## Code Generation Support
-
-As requested in the original Linear issue, this implementation supports auto-generation of API specs that can be consumed by front-end applications. The OpenAPI specification can be used with various code generation tools:
-
-- **TypeScript/JavaScript**: OpenAPI Generator, openapi-fetch
-- **Python**: openapi-generator-cli
-- **Java**: openapi-generator-cli
-- **And many more languages**
-
-## Future Enhancements
-
-To complete the implementation (when database connectivity is available):
-
-1. **Add remaining endpoint annotations**: All endpoint handlers can be annotated with `#[utoipa::path(...)]`
-2. **Expand OpenAPI paths**: Add all endpoints to the `paths()` section of the OpenAPI derive macro
-3. **Add request/response examples**: Include example data in the schema annotations
-4. **Add authentication documentation**: If authentication is added to the API
-
-## Compilation Status
-
-The Swagger implementation is syntactically correct and complete. The current compilation issues are related to SQLx database query validation, which requires a database connection. The OpenAPI/Swagger code itself is fully functional and will work once the database dependency issues are resolved.
-
-## Technical Details
-
-- **Framework**: Rust + Axum web framework
-- **OpenAPI Library**: `utoipa` (most popular and actively maintained Rust OpenAPI library)
-- **UI Framework**: `utoipa-swagger-ui` (official Swagger UI integration)
-- **OpenAPI Version**: 3.0 compatible
-- **Schema Validation**: Automatic validation of request/response schemas
-- **Type Safety**: Full Rust type safety for all API models
+- **v1.0**: Initial magic link authentication implementation
+- **v1.1**: Added liquidity pool management
+- **v1.2**: Enhanced withdrawal system
+- **v1.3**: Batch processing improvements

@@ -30,34 +30,6 @@ use arda_credit_db::{
 // AUTHENTICATION TYPES (MOVED FROM rest.rs)
 // ============================================================================
 
-/// Request to login with email and password
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct LoginRequest {
-    #[schema(example = "user@example.com")]
-    pub email: String,
-    #[schema(example = "SecureP@ssw0rd123")]
-    pub password: String,
-}
-
-/// Response for successful login
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct LoginResponse {
-    pub access_token: String,
-    pub token_type: String,
-    pub expires_in: i64,
-    pub user: UserSummary,
-}
-
-/// Summary user information for login response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UserSummary {
-    pub user_id: String,
-    pub email: String,
-    pub user_type: UserType,
-    pub kyc_status: String,
-    pub email_verified: bool,
-}
-
 /// Request to logout (optional - for token blacklisting)
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct LogoutRequest {
@@ -112,106 +84,6 @@ pub struct GenerateInviteCodeResponse {
 // ============================================================================
 // AUTHENTICATION ENDPOINTS
 // ============================================================================
-
-/// Login endpoint for user authentication
-#[utoipa::path(
-    post,
-    path = "/api/v1/auth/login",
-    request_body = LoginRequest,
-    responses(
-        (status = 200, description = "Login successful", body = LoginResponse),
-        (status = 401, description = "Invalid credentials"),
-        (status = 400, description = "Invalid request parameters"),
-        (status = 403, description = "Account not verified or locked"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Authentication"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn login_endpoint(
-    State(state): State<ApiState>,
-    Json(request): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, (StatusCode, String)> {
-    info!("🔐 API: Login attempt: email={}", request.email);
-
-    // Get user by email
-    let user = match get_identity_by_email(&state.pool, &request.email).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            warn!("❌ API: Login failed - user not found: {}", request.email);
-            return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
-        }
-        Err(e) => {
-            error!("❌ API: Database error during login: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Authentication error".to_string(),
-            ));
-        }
-    };
-
-    // Check if user has a password set
-    let password_hash = user.password_hash.as_ref().ok_or_else(|| {
-        warn!("❌ API: User has no password set: {}", request.email);
-        (StatusCode::UNAUTHORIZED, "Invalid credentials".to_string())
-    })?;
-
-    // Verify password
-    let is_valid_password = match state
-        .auth_service
-        .verify_password(&request.password, password_hash)
-    {
-        Ok(valid) => valid,
-        Err(e) => {
-            error!("❌ API: Password verification error: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Authentication error".to_string(),
-            ));
-        }
-    };
-
-    if !is_valid_password {
-        warn!("❌ API: Login failed - invalid password: {}", request.email);
-        return Err((StatusCode::UNAUTHORIZED, "Invalid credentials".to_string()));
-    }
-
-    // Generate JWT token
-    let token = match state
-        .auth_service
-        .generate_token(user.id, &user.email, &user.user_type)
-    {
-        Ok(token) => token,
-        Err(e) => {
-            error!("❌ API: Token generation error: {}", e);
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Authentication error".to_string(),
-            ));
-        }
-    };
-
-    // Update last login timestamp
-    if let Err(e) = update_last_login(&state.pool, user.id).await {
-        warn!("⚠️ API: Failed to update last login: {}", e);
-        // Don't fail the login for this
-    }
-
-    info!("✅ API: Login successful: user_id={}", user.id);
-
-    Ok(Json(LoginResponse {
-        access_token: token,
-        token_type: "Bearer".to_string(),
-        expires_in: state.auth_service.token_expiry_seconds(),
-        user: UserSummary {
-            user_id: user.id.to_string(),
-            email: user.email,
-            user_type: user.user_type.parse().unwrap_or(UserType::User),
-            kyc_status: user.kyc_status,
-            email_verified: user.email_verified.unwrap_or(false),
-        },
-    }))
-}
 
 /// Logout endpoint (stateless JWT - mainly for logging)
 #[utoipa::path(
@@ -287,7 +159,7 @@ pub async fn validate_invite_code_endpoint(
             let message = if invite_info.is_valid {
                 format!(
                     "Invite code is valid for {} user registration",
-                    invite_info.user_type.as_deref().unwrap_or("regular")
+                    invite_info.user_type.as_deref().unwrap_or("investor")
                 )
             } else {
                 "Invite code is invalid or expired".to_string()
@@ -346,14 +218,14 @@ pub async fn generate_invite_code_endpoint(
     let expires_in_hours = request_body.expires_in_hours.unwrap_or(24 * 7); // Default 7 days
     let user_type = request_body
         .user_type
-        .unwrap_or_else(|| "regular".to_string());
+        .unwrap_or_else(|| "investor".to_string());
 
     // Validate user_type
-    if user_type != "admin" && user_type != "regular" {
+    if user_type != "admin" && user_type != "investor" && user_type != "originator" {
         warn!("❌ API: Invalid user_type provided: {}", user_type);
         return Err((
             StatusCode::BAD_REQUEST,
-            "user_type must be either 'admin' or 'regular'".to_string(),
+            "user_type must be one of: 'investor', 'originator', 'admin'".to_string(),
         ));
     }
 

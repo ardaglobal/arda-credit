@@ -1,5 +1,16 @@
 [workspace]
-members  = [ "api", "cli", "db", "ethereum-client", "lib", "program", "script", "scripts", "utils" ]
+members = [
+    "api",
+    "cli",
+    "db",
+    "ethereum-client",
+    "lib",
+    "program",
+    "script",
+    "scripts",
+    "scripts/create-user-magic-link",
+    "utils",
+]
 resolver = "2"
 
 [workspace.dependencies]

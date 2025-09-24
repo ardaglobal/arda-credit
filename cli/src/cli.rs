@@ -21,6 +21,7 @@ use tracing_subscriber;
 use arda_credit_api::BatchApiClient;
 
 use crate::{
+    auth::{handle_auth_command, AuthCommands},
     balance::{handle_balance_command, BalanceCommands},
     batch::{handle_batch_command, BatchCommands},
     loans::{handle_loan_command, LoanCommands},
@@ -86,6 +87,10 @@ pub enum Commands {
     /// Batch processing, proofs, and state operations
     #[command(subcommand)]
     Batch(BatchCommands),
+
+    /// Magic link authentication testing (NEW)
+    #[command(subcommand)]
+    Auth(AuthCommands),
 
     /// Performance benchmarks and analytics operations (requires testing feature)
     #[cfg(any(test, feature = "testing"))]
@@ -168,6 +173,9 @@ pub async fn run_cli() -> Result<()> {
         }
         Commands::Batch(cmd) => {
             handle_batch_command(&client, cmd, cli.verbose).await?;
+        }
+        Commands::Auth(cmd) => {
+            handle_auth_command(&client, cmd, cli.verbose).await?;
         }
         #[cfg(any(test, feature = "testing"))]
         Commands::Benchmark(cmd) => {

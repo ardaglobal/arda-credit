@@ -729,6 +729,7 @@ mod tests {
             s3_client: S3Client::from_conf(
                 aws_sdk_s3::Config::builder()
                     .region(Region::new("us-east-1"))
+                    .behavior_version(aws_config::BehaviorVersion::latest())
                     .build(),
             ),
             kms_client: None,

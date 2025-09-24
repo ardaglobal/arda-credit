@@ -16,9 +16,9 @@ use crate::admin_handlers::{
 };
 use crate::auth::AuthService;
 use crate::authentication_handlers::{
-    generate_invite_code_endpoint, login_endpoint, logout_endpoint, validate_invite_code_endpoint,
-    GenerateInviteCodeRequest, GenerateInviteCodeResponse, InviteCodeResponse, LoginRequest,
-    LoginResponse, LogoutRequest, LogoutResponse, UserSummary, ValidateInviteCodeResponse,
+    generate_invite_code_endpoint, logout_endpoint, validate_invite_code_endpoint,
+    GenerateInviteCodeRequest, GenerateInviteCodeResponse, InviteCodeResponse, LogoutRequest,
+    LogoutResponse, ValidateInviteCodeResponse,
 };
 use crate::batch_processor::BatchProcessorHandle;
 use crate::company_handlers;
@@ -57,6 +57,7 @@ use crate::pool_handlers::{
     get_pool_performance, get_pool_transactions, get_pool_utilization, list_pools,
     update_pool_status,
 };
+use crate::session_service::SessionService;
 use crate::state_handlers::{
     create_batch_endpoint, get_batch_details_endpoint, get_batches_endpoint,
     get_contract_submission_data_endpoint, get_current_state_endpoint,
@@ -102,7 +103,7 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
     UserDetailsResponse {
         user_id: identity.id.to_string(),
         email: identity.email,
-        user_type: identity.user_type.parse().unwrap_or(UserType::User),
+        user_type: identity.user_type.parse().unwrap_or(UserType::Investor),
         kyc_status: identity.kyc_status,
         kyc_submitted_at: identity.kyc_submitted_at,
         kyc_verified_at: identity.kyc_verified_at,
@@ -126,12 +127,14 @@ pub struct ApiState {
     pub config: ApiConfig,
     pub batch_processor: Option<BatchProcessorHandle>,
     pub ads_service: Arc<RwLock<IndexedMerkleTreeADS>>,
-    pub auth_service: Arc<AuthService>,
+    pub session_service: Arc<SessionService>,
+    pub magic_link_service: Option<Arc<crate::magic_link_service::MagicLinkService>>,
     pub withdrawal_service: WithdrawalTransactionService,
     pub balance_service: BalanceVerificationService,
     pub withdrawal_executor:
         Option<crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
     pub metrics_handle: Option<Arc<crate::metrics::MetricsHandle>>,
+    pub email_rate_limiter: Option<Arc<crate::middleware::EmailRateLimiter>>,
     pub document_service: Option<Arc<DocumentService>>,
 }
 
@@ -172,14 +175,22 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/metrics/health", get(metrics_health_handler))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
-        // Authentication endpoints
+        // Magic Link Authentication endpoints
         .route(
-            paths::AUTH_LOGIN,
-            post(crate::authentication_handlers::login_endpoint),
+            paths::AUTH_MAGIC_LINK,
+            post(crate::magic_link_handlers::request_magic_link),
+        )
+        .route(
+            paths::AUTH_VERIFY,
+            post(crate::magic_link_handlers::verify_magic_link),
+        )
+        .route(
+            paths::AUTH_ME,
+            get(crate::magic_link_handlers::get_current_user),
         )
         .route(
             paths::AUTH_LOGOUT,
-            post(crate::authentication_handlers::logout_endpoint),
+            post(crate::magic_link_handlers::logout_endpoint),
         )
         // Admin KYC endpoints
         .route(

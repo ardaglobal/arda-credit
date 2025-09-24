@@ -461,8 +461,8 @@ mod auth_integration_tests {
         let register_request = RegisterUserRequest {
             email: "test@example.com".to_string(),
             password: "SecureP@ssw0rd123".to_string(),
-            user_type: UserType::Investor,
             jurisdiction: None,
+            invite_code: "INVESTOR2025".to_string(),
         };
         
         // Test registration

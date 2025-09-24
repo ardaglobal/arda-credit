@@ -26,21 +26,17 @@ pub use crate::router::{ApiConfig, ApiState};
 #[derive(Debug, Serialize, Deserialize, ToSchema, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum UserType {
-    User,
     Investor,
     Originator,
     Admin,
-    Merchant,
 }
 
 impl std::fmt::Display for UserType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::User => write!(f, "user"),
             Self::Investor => write!(f, "investor"),
             Self::Originator => write!(f, "originator"),
             Self::Admin => write!(f, "admin"),
-            Self::Merchant => write!(f, "merchant"),
         }
     }
 }
@@ -50,10 +46,8 @@ impl std::str::FromStr for UserType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "user" => Ok(Self::User),
             "investor" => Ok(Self::Investor),
             "originator" => Ok(Self::Originator),
-            "merchant" => Ok(Self::Merchant),
             "admin" => Ok(Self::Admin),
             _ => Err(format!("Invalid user type: {}", s)),
         }

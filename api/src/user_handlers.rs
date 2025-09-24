@@ -33,16 +33,15 @@ use sqlx::Error as SqlxError;
 // ============================================================================
 
 /// Request to register a new user identity
+/// User type is determined by the invite code provided
+/// Registration is passwordless - authentication uses magic links
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RegisterUserRequest {
-    pub user_type: UserType,
     #[schema(example = "user@example.com")]
     pub email: String,
-    #[schema(example = "SecureP@ssw0rd123")]
-    pub password: String,
     pub jurisdiction: Option<String>, // Optional, defaults to "US"
-    #[schema(example = "ABC123DEF456")]
-    pub invite_code: Option<String>, // Optional invite code for registration
+    #[schema(example = "INVESTOR2025")]
+    pub invite_code: String, // Required - determines user type
 }
 
 /// Response from user registration
@@ -193,7 +192,7 @@ pub struct DepositTransactionInfo {
 fn identity_to_register_response(identity: Identity) -> RegisterUserResponse {
     RegisterUserResponse {
         user_id: identity.id.to_string(),
-        user_type: identity.user_type.parse().unwrap_or(UserType::User),
+        user_type: identity.user_type.parse().unwrap_or(UserType::Investor),
         kyc_status: identity.kyc_status,
         created_at: identity.created_at,
     }
@@ -228,126 +227,94 @@ pub async fn register_user_endpoint(
         .increment(1);
 
     info!(
-        "👤 API: Registering new user: type={}, email={}, invite_code={:?}",
-        request.user_type, request.email, request.invite_code
+        "👤 API: Registering new user: email={}, invite_code={}",
+        request.email, request.invite_code
     );
 
-    // If invite code is provided, validate it first
-    if let Some(ref invite_code) = request.invite_code {
-        info!(
-            "🎫 API: Validating invite code during registration: {}",
-            invite_code
-        );
+    // Validate invite code (required)
+    let invite_code = &request.invite_code;
+    info!(
+        "🎫 API: Validating invite code during registration: {}",
+        invite_code
+    );
 
-        match get_invite_code_info(&state.pool, invite_code).await {
-            Ok(invite_info) => {
-                if !invite_info.is_valid {
-                    warn!(
-                        "❌ API: Invalid invite code provided during registration: {}",
-                        invite_code
-                    );
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        "Invalid or expired invite code".to_string(),
-                    ));
-                }
-
-                // Check invite code restrictions: only admin codes require admin users
-                if let Some(ref code_user_type) = invite_info.user_type {
-                    let requested_type = request.user_type.to_string();
-
-                    // Only restrict admin codes to admin users
-                    if code_user_type == "admin" && requested_type != "admin" {
-                        warn!(
-                            "❌ API: Admin invite code used for non-admin registration: code={}, requested={}",
-                            code_user_type, requested_type
-                        );
-                        return Err((
-                            StatusCode::BAD_REQUEST,
-                            "This is an admin invite code and can only be used for admin user registration".to_string(),
-                        ));
-                    }
-
-                    info!(
-                        "✅ API: Invite code type check passed: code_type={}, user_type={}",
-                        code_user_type, requested_type
-                    );
-                }
-
-                info!(
-                    "✅ API: Invite code validated successfully: {}",
+    let invite_info = match get_invite_code_info(&state.pool, invite_code).await {
+        Ok(invite_info) => {
+            if !invite_info.is_valid {
+                warn!(
+                    "❌ API: Invalid invite code provided during registration: {}",
                     invite_code
                 );
-            }
-            Err(e) => {
-                error!(
-                    "❌ API: Failed to validate invite code during registration: {}",
-                    e
-                );
                 return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to validate invite code".to_string(),
+                    StatusCode::BAD_REQUEST,
+                    "Invalid or expired invite code".to_string(),
                 ));
             }
+
+            if invite_info.user_type.is_none() {
+                warn!(
+                    "❌ API: Invite code does not specify a user type: {}",
+                    invite_code
+                );
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "Invalid invite code - no user type specified".to_string(),
+                ));
+            }
+
+            info!(
+                "✅ API: Invite code validated successfully: {} (user_type={})",
+                invite_code,
+                invite_info.user_type.as_ref().unwrap()
+            );
+
+            invite_info
         }
-    }
-
-    // Validate email and password using AuthService
-    if let Err(e) = state.auth_service.validate_email(&request.email) {
-        warn!("❌ API: Invalid email format: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
-    }
-
-    if let Err(e) = state.auth_service.validate_password(&request.password) {
-        warn!("❌ API: Invalid password format: {}", e);
-        return Err((StatusCode::BAD_REQUEST, e.user_message().to_string()));
-    }
-
-    // Hash the password
-    let password_hash = match state.auth_service.hash_password(&request.password) {
-        Ok(hash) => hash,
         Err(e) => {
-            error!("❌ API: Failed to hash password: {}", e);
+            error!(
+                "❌ API: Failed to validate invite code during registration: {}",
+                e
+            );
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                e.user_message().to_string(),
+                "Failed to validate invite code".to_string(),
             ));
         }
     };
 
+    // Extract user type from invite code
+    let user_type = invite_info.user_type.as_ref().unwrap().clone();
+
+    // Validate email format (basic validation)
+    if !request.email.contains('@') || !request.email.contains('.') {
+        warn!("❌ API: Invalid email format: {}", request.email);
+        return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
+    }
+
     // Create or re-register user with soft delete handling
-    match register_or_reregister_user(
-        &state.pool,
-        &request.user_type.to_string(),
-        &request.email,
-        &password_hash,
-    )
-    .await
-    {
+    match register_or_reregister_user(&state.pool, &user_type, &request.email).await {
         Ok(RegisterResult::Created(identity)) => {
             info!(
                 "✅ API: New user registered successfully: id={}",
                 identity.id
             );
 
-            // If invite code was provided, mark it as used now that user is created
-            if let Some(ref invite_code) = request.invite_code {
-                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
-                    Ok(was_used) => {
-                        if was_used {
-                            info!(
-                                "✅ API: Invite code marked as used: code={}, user_id={}",
-                                invite_code, identity.id
-                            );
-                        } else {
-                            warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
-                        }
+            // Mark invite code as used now that user is created
+            match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
+                Ok(was_used) => {
+                    if was_used {
+                        info!(
+                            "✅ API: Invite code marked as used: code={}, user_id={}",
+                            invite_code, identity.id
+                        );
+                    } else {
+                        warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
                     }
-                    Err(e) => {
-                        error!("❌ API: Failed to mark invite code as used: {}", e);
-                        // Note: We don't fail the registration here since the user was already created
-                        // This is logged for monitoring but shouldn't block the successful registration
-                    }
+                }
+                Err(e) => {
+                    error!("❌ API: Failed to mark invite code as used: {}", e);
+                    // Note: We don't fail the registration here since the user was already created
+                    // This is logged for monitoring but shouldn't block the successful registration
                 }
             }
 
@@ -364,27 +331,25 @@ pub async fn register_user_endpoint(
                 identity.id
             );
 
-            // If invite code was provided, mark it as used for the re-registered user
-            if let Some(ref invite_code) = request.invite_code {
-                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
-                    Ok(was_used) => {
-                        if was_used {
-                            info!(
-                                "✅ API: Invite code marked as used for re-registered user: code={}, user_id={}",
-                                invite_code, identity.id
-                            );
-                        } else {
-                            warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            "❌ API: Failed to mark invite code as used for re-registered user: {}",
-                            e
+            // Mark invite code as used for the re-registered user
+            match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
+                Ok(was_used) => {
+                    if was_used {
+                        info!(
+                            "✅ API: Invite code marked as used for re-registered user: code={}, user_id={}",
+                            invite_code, identity.id
                         );
-                        // Note: We don't fail the registration here since the user was already re-registered
-                        // This is logged for monitoring but shouldn't block the successful re-registration
+                    } else {
+                        warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
                     }
+                }
+                Err(e) => {
+                    error!(
+                        "❌ API: Failed to mark invite code as used for re-registered user: {}",
+                        e
+                    );
+                    // Note: We don't fail the registration here since the user was already re-registered
+                    // This is logged for monitoring but shouldn't block the successful re-registration
                 }
             }
 
@@ -500,7 +465,7 @@ pub async fn list_identities_endpoint(
                 .map(|row| UserDetailsResponse {
                     user_id: row.id.to_string(),
                     email: row.email,
-                    user_type: row.user_type.parse().unwrap_or(UserType::User),
+                    user_type: row.user_type.parse().unwrap_or(UserType::Investor),
                     kyc_status: row.kyc_status,
                     kyc_submitted_at: row.kyc_submitted_at,
                     kyc_verified_at: row.kyc_verified_at,
@@ -930,7 +895,7 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
     UserDetailsResponse {
         user_id: identity.id.to_string(),
         email: identity.email,
-        user_type: identity.user_type.parse().unwrap_or(UserType::User),
+        user_type: identity.user_type.parse().unwrap_or(UserType::Investor),
         kyc_status: identity.kyc_status,
         kyc_submitted_at: identity.kyc_submitted_at,
         kyc_verified_at: identity.kyc_verified_at,

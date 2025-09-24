@@ -326,12 +326,12 @@ impl GlobalLoanState {
                     .add_pool(pool)
                     .map_err(|_| ProcessingError::InvalidTransactionData)?;
             }
-            TransactionType::MerchantRegistration => {
+            TransactionType::AdminRegistration => {
                 // Process merchant registration in both user and merchant state
                 let mut user_state = UserState {
                     users: self.users.clone(),
                 };
-                user_state.process_merchant_registration(transaction)?;
+                user_state.process_admin_registration(transaction)?;
                 self.users = user_state.users;
 
                 // Also register in merchant state
@@ -352,15 +352,15 @@ impl GlobalLoanState {
                             user_id: transaction.user_id,
                         }))?;
 
-                // Ensure user is a merchant
-                if !matches!(user.user_type, UserType::Merchant) {
+                // Ensure user is an admin
+                if !matches!(user.user_type, UserType::Admin) {
                     return Err(ProcessingError::UserError(UserError::InvalidUserType {
-                        expected: UserType::Merchant,
+                        expected: UserType::Admin,
                         actual: user.user_type,
                     }));
                 }
 
-                // Ensure merchant is KYC approved for credit line requests
+                // Ensure admin is KYC approved for credit line requests
                 if !user.is_kyc_approved() {
                     return Err(ProcessingError::UserError(UserError::UserNotKycApproved {
                         user_id: transaction.user_id,
@@ -688,7 +688,7 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
         | TransactionType::UserDeposit
         | TransactionType::UserWithdrawal
         | TransactionType::InvestorRegistration
-        | TransactionType::MerchantRegistration
+        | TransactionType::AdminRegistration
         | TransactionType::MerchantProfileUpdate
         | TransactionType::CreditLineRequest
         | TransactionType::CreditLineApproval
@@ -1321,7 +1321,7 @@ mod tests {
 
         // Register lender
         let mut lender_metadata = MetadataArray::empty();
-        lender_metadata.as_mut_bytes()[0] = UserType::Lender as u8;
+        lender_metadata.as_mut_bytes()[0] = UserType::Originator as u8;
         let lender_reg_tx = LoanTransaction {
             transaction_id: [5u8; 32],
             user_id: lender_id,

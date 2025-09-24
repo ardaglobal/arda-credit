@@ -56,8 +56,8 @@ pub enum TransactionType {
     // New pool operations
     InvestorRegistration = 9,
     PoolCreation = 10,
-    // Merchant operations
-    MerchantRegistration = 11,
+    // Admin operations
+    AdminRegistration = 11,
     MerchantProfileUpdate = 12,
     CreditLineRequest = 13,
     CreditLineApproval = 14,

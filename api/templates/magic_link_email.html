@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ data.app_name }} Sign-In Link</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; text-align: center; margin-bottom: 30px;">
+        <h1 style="margin: 0; font-size: 28px;">{{ data.app_name }}</h1>
+        <p style="margin: 10px 0 0 0; opacity: 0.9;">Secure access to your account</p>
+    </div>
+
+    <div style="background: #f8f9fa; padding: 30px; border-radius: 10px; margin-bottom: 30px;">
+        <h2 style="color: #495057; margin-top: 0;">Sign in to your account</h2>
+        <p style="color: #6c757d; margin-bottom: 25px;">Click the button below to securely access your {{ data.app_name }} account:</p>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{ data.magic_link_url }}"
+               style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; font-weight: 600; display: inline-block;">
+                Access My Account
+            </a>
+        </div>
+
+        <p style="color: #6c757d; font-size: 14px; margin-top: 25px;">
+            <strong>This link expires in {{ data.expiry_minutes }} minutes</strong> for your security.
+        </p>
+    </div>
+
+    <div style="border-top: 1px solid #e9ecef; padding-top: 20px; color: #6c757d; font-size: 14px;">
+        <p><strong>Security notice:</strong> This email was sent to {{ data.user_email }}. If you didn't request this sign-in link, you can safely ignore this email.</p>
+
+        <p>Need help? Contact our support team at <a href="mailto:{{ data.support_email }}" style="color: #667eea;">{{ data.support_email }}</a></p>
+
+        <p style="margin-top: 20px; font-size: 12px; color: #adb5bd;">
+            {{ data.app_name }} - Privacy-preserving credit platform
+        </p>
+    </div>
+</body>
+</html>
+

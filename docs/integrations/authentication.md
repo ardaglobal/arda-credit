@@ -1,14 +1,40 @@
 # Authentication Integration Guide
 
-This guide shows how to integrate with the Arda Credit API authentication system from your frontend application. For comprehensive frontend integration examples organized by framework, see [`docs/integrations/frontend-examples.md`](../integrations/frontend-examples.md).
+⚠️ **DEPRECATED**: This document previously described password-based authentication, which has been **completely replaced** with magic link authentication.
 
-## Overview
+## Current Authentication System
 
-The Arda Credit API uses JWT (JSON Web Token) authentication with the following flow:
-1. **Registration**: Create user account with email and password
-2. **Login**: Exchange email/password for JWT token
-3. **Authenticated Requests**: Include JWT token in requests
-4. **Token Management**: Handle token expiry and refresh
+**Arda Credit now uses magic link authentication exclusively.**
+
+### Migration Guide
+
+If you previously integrated with password-based authentication:
+
+1. **Remove password fields** from your user registration forms
+2. **Replace login forms** with email-only magic link request
+3. **Update session handling** to use cookies instead of Bearer tokens
+4. **Update API calls** to include `credentials: 'include'` for cookies
+
+### New Integration
+
+See the **[Magic Link Authentication Guide](./magic-link-authentication.md)** for complete integration instructions.
+
+### Key Changes
+
+| Old (Password-based) | New (Magic Link) |
+|---------------------|------------------|
+| `POST /auth/login` | `POST /auth/magic-link` |
+| Password + Email | Email only |
+| Bearer tokens | Session cookies |
+| JWT validation | Cookie-based sessions |
+| Stateless | Session storage |
+
+### Benefits
+
+- **Enhanced Security**: No password storage or transmission
+- **Better UX**: No password requirements or resets
+- **Reduced Risk**: No password database breaches
+- **Simplified Flow**: One-step authentication
 
 ## API Endpoints
 
@@ -391,7 +417,8 @@ const RegisterForm = () => {
                     disabled={loading}
                 >
                     <option value="investor">Investor</option>
-                    <option value="lender">Lender</option>
+                    <option value="originator">Originator</option>
+                    <option value="admin">Admin</option>
                 </select>
             </div>
             
@@ -684,3 +711,11 @@ describe('AuthService', () => {
 ```
 
 This guide provides everything needed to integrate with the Arda Credit authentication system. The examples are production-ready and include proper error handling, security considerations, and common integration patterns.
+
+---
+
+⚠️ **DEPRECATED CONTENT NOTICE**
+
+All content in this document below the migration guide describes the **deprecated password-based authentication system** and is kept for historical reference only.
+
+**For current integration instructions, see: [Magic Link Authentication Guide](./magic-link-authentication.md)**

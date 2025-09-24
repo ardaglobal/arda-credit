@@ -1,12 +1,11 @@
 use chrono::Utc;
 use db::{
     create_credit_line, create_credit_line_request, create_identity_with_password,
-    create_investor_profile, create_liquidity_pool, create_merchant, create_merchant_profile,
-    create_usdc_deposit, find_matching_liquidity_pools, set_pool_borough_limit, submit_kyc_data,
+    create_investor_profile, create_liquidity_pool, create_usdc_deposit,
+    find_matching_liquidity_pools, set_pool_borough_limit, submit_kyc_data,
     update_borough_allocation, update_credit_line_request_status, update_identity_profile,
     CreateCreditLineRequestData, CreateInvestorProfileRequest, CreateLiquidityPoolRequest,
-    CreateMerchantProfileRequest, CreateMerchantRequest, CreditLineStatus, PoolMatchingCriteria,
-    SetPoolBoroughLimitRequest,
+    CreditLineStatus, PoolMatchingCriteria, SetPoolBoroughLimitRequest,
 };
 use rand::Rng;
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
@@ -36,21 +35,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Based on docs/architecture/performance-targets.md:
     // - 100 new users per day (U=100)
     // - 10 new loans per day (L=10)
-    // Mix of investors, lenders, and merchants
+    // Mix of investors and originators
 
     let mut rng = rand::rng();
 
-    // Create 200 users total (mix of investors, lenders, merchants)
+    // Create 200 users total (mix of investors and originators)
     println!("👥 Creating users...");
     let mut user_ids = Vec::new();
     let mut investor_ids = Vec::new();
-    let mut merchant_ids = Vec::new();
+    let mut originator_ids: Vec<uuid::Uuid> = Vec::new();
 
     for i in 0..200 {
         let user_type = match i % 3 {
             0 => "investor",
-            1 => "lender",
-            _ => "merchant",
+            1 => "investor",
+            _ => "originator",
         };
 
         let email = format!("user{}{}@example.com", i, Utc::now().timestamp());
@@ -114,83 +113,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 create_investor_profile(&pool, user.id, &profile_request).await?;
             }
-            "merchant" => {
-                // Diverse NYC boroughs for testing borough limits
-                let boroughs = vec![
-                    "Manhattan",
-                    "Brooklyn",
-                    "Queens",
-                    "Bronx",
-                    "Staten Island",
-                    "Long Island",
-                    "Westchester",
-                    "New Jersey",
-                    "Connecticut",
-                ];
-                let selected_borough = boroughs[rng.random_range(0..boroughs.len())];
-
-                // Create merchant
-                let merchant_request = CreateMerchantRequest {
-                    legal_name: format!("Business LLC {} - {}", i, selected_borough),
-                    dba: Some(format!("Store {} - {}", i, selected_borough)),
-                    tax_id: Some(format!("12-{}{}", 1000000 + i, Utc::now().timestamp())),
-                    mcc: Some("5411".to_string()), // Grocery stores
-                    country: "US".to_string(),
-                    business_type: Some("LLC".to_string()),
-                };
-
-                let merchant = create_merchant(&pool, user.id, &merchant_request).await?;
-                merchant_ids.push(merchant.id);
-
-                // Update merchant with borough information
-                sqlx::query!(
-                    "UPDATE merchants SET borough = $1 WHERE id = $2",
-                    selected_borough,
-                    merchant.id
-                )
-                .execute(&pool)
-                .await?;
-
-                // Create merchant profile with varied data
-                let industries = vec![
-                    "Retail",
-                    "Food Service",
-                    "Technology",
-                    "Healthcare",
-                    "Manufacturing",
-                ];
-                let profile_request = CreateMerchantProfileRequest {
-                    industry: Some(industries[rng.random_range(0..industries.len())].to_string()),
-                    years_in_business: Some(rng.random_range(1..20)),
-                    employee_count: Some(rng.random_range(1..50)),
-                    monthly_revenue_estimate: Some(Decimal::from(rng.random_range(5000..100000))),
-                    business_description: Some(format!(
-                        "{} business specializing in {} services in {}",
-                        industries[rng.random_range(0..industries.len())],
-                        if selected_borough == "Manhattan" {
-                            "premium"
-                        } else {
-                            "community"
-                        },
-                        selected_borough
-                    )),
-                };
-                create_merchant_profile(&pool, merchant.id, &profile_request).await?;
-
-                println!(
-                    "Created merchant in {}: {}",
-                    selected_borough, merchant.legal_name
-                );
+            "originator" => {
+                // Originators are loan creators - no special profile setup needed for test data
+                // They can create loans directly
+                originator_ids.push(user.id);
+                println!("Created originator: user {}", user.id);
             }
             _ => {} // lender - no additional setup needed
         }
     }
 
     println!(
-        "✅ Created {} users ({} investors, {} merchants)",
+        "✅ Created {} users ({} investors, {} originators)",
         user_ids.len(),
         investor_ids.len(),
-        merchant_ids.len()
+        originator_ids.len()
     );
 
     // Create liquidity pools (based on investors)
@@ -479,10 +416,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("═══════════════════════════");
     println!("👥 Users: {}", user_ids.len());
     println!("   - Investors: {}", investor_ids.len());
-    println!("   - Merchants: {} (across 9 boroughs)", merchant_ids.len());
+    println!("   - Originators: {}", originator_ids.len());
     println!(
-        "   - Lenders: {}",
-        user_ids.len() - investor_ids.len() - merchant_ids.len()
+        "   - Admins: {}",
+        user_ids.len() - investor_ids.len() - originator_ids.len()
     );
     println!("💰 Liquidity Pools: {}", pool_ids.len());
     println!(
