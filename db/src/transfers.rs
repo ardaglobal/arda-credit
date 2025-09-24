@@ -533,6 +533,7 @@ pub async fn cancel_transfer(
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[tokio::test]

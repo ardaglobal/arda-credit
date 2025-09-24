@@ -365,29 +365,17 @@ pub async fn validate_loan_for_transfer(
 /// This helps verify the schema works and provides data for both workers to test against.
 pub async fn create_sample_marketplace_data(
     pool: &PgPool,
-    test_user_id: Uuid,
+    test_lender_id: Uuid,
     test_loan_id: Uuid,
 ) -> Result<LoanListing, sqlx::Error> {
-    // First ensure test loan exists and is owned by test user
-    sqlx::query!(
-        r#"
-        INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance, interest_rate_bps, loan_status)
-        VALUES ($1, $2, $2, 100000, 75000, 1200, 'active')
-        ON CONFLICT (id) DO UPDATE SET
-            lender_id = $2,
-            loan_status = 'active'
-        "#,
-        test_loan_id,
-        test_user_id
-    )
-    .execute(pool)
-    .await?;
+    // Note: This function assumes the loan already exists
+    // The caller should create the loan with proper borrower/lender before calling this
 
     // Create sample listing
     create_loan_listing(
         pool,
         test_loan_id,
-        test_user_id,
+        test_lender_id,
         Decimal::new(95000, 2), // $950.00 (example asking price)
         Some("Sample loan listing for testing".to_string()),
     )
@@ -399,23 +387,65 @@ pub async fn create_sample_marketplace_data(
 /// This runs basic validation to ensure the foundation is solid for both workers.
 pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Error> {
     // Test 1: Can we create a listing?
-    let test_user_id = Uuid::new_v4();
+    let test_lender_id = Uuid::new_v4();
+    let test_borrower_id = Uuid::new_v4();
     let test_loan_id = Uuid::new_v4();
 
-    // Insert test identity
+    // Insert test lender identity with unique email
+    let lender_email = format!(
+        "test-schema-lender-{}-{}.example.com",
+        test_lender_id.simple(),
+        chrono::Utc::now().timestamp()
+    );
+
     sqlx::query!(
         r#"
         INSERT INTO identities (id, email, kyc_status, user_type)
-        VALUES ($1, 'test@example.com', 'approved', 'lender')
+        VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
-        test_user_id
+        test_lender_id,
+        lender_email
+    )
+    .execute(pool)
+    .await?;
+
+    // Insert test borrower identity with unique email
+    let borrower_email = format!(
+        "test-schema-borrower-{}-{}.example.com",
+        test_borrower_id.simple(),
+        chrono::Utc::now().timestamp()
+    );
+
+    sqlx::query!(
+        r#"
+        INSERT INTO identities (id, email, kyc_status, user_type)
+        VALUES ($1, $2, 'approved', 'investor')
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_borrower_id,
+        borrower_email
+    )
+    .execute(pool)
+    .await?;
+
+    // Insert test loan that the listing can reference
+    sqlx::query!(
+        r#"
+        INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance, 
+                          interest_rate_bps, loan_status, originated_at)
+        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_loan_id,
+        test_borrower_id,
+        test_lender_id
     )
     .execute(pool)
     .await?;
 
     // Test create listing
-    let listing = create_sample_marketplace_data(pool, test_user_id, test_loan_id).await?;
+    let _listing = create_sample_marketplace_data(pool, test_lender_id, test_loan_id).await?;
 
     // Test 2: Can we retrieve the listing?
     let retrieved = get_loan_listing_by_loan_id(pool, test_loan_id).await?;
@@ -457,6 +487,7 @@ pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Er
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     // These tests ensure the foundation is solid

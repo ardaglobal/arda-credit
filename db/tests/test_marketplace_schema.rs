@@ -3,6 +3,7 @@
 //! This test validates that the database foundation created for Worker A
 //! provides all the necessary components for Worker B to start their work.
 
+use chrono;
 use db::init_db;
 use db::marketplace;
 
@@ -31,7 +32,8 @@ async fn test_marketplace_foundation_complete() {
     )
     .fetch_one(&pool)
     .await
-    .expect("Should be able to query table existence");
+    .expect("Should be able to query table existence")
+    .expect("Tables existence query should return a value");
 
     assert!(
         tables_exist,
@@ -63,7 +65,8 @@ async fn test_marketplace_foundation_complete() {
     )
     .fetch_one(&pool)
     .await
-    .expect("Should be able to query view existence");
+    .expect("Should be able to query view existence")
+    .expect("View existence query should return a value");
 
     assert!(view_exists, "marketplace_loans view should exist");
 
@@ -72,7 +75,8 @@ async fn test_marketplace_foundation_complete() {
     let view_count: i64 = sqlx::query_scalar!("SELECT COUNT(*) FROM marketplace_loans")
         .fetch_one(&pool)
         .await
-        .expect("Should be able to query marketplace view");
+        .expect("Should be able to query marketplace view")
+        .expect("Marketplace view count query should return a value");
 
     // Count can be 0, that's fine - we just need the query to work
     assert!(
@@ -89,29 +93,73 @@ async fn test_marketplace_crud_operations() {
     // Initialize database connection
     let pool = init_db().await.expect("Failed to initialize database");
 
-    // Create test user and loan for testing
-    let test_user_id = uuid::Uuid::new_v4();
+    // Create test users and loan for testing
+    let test_lender_id = uuid::Uuid::new_v4();
+    let test_borrower_id = uuid::Uuid::new_v4();
     let test_loan_id = uuid::Uuid::new_v4();
 
-    // Insert test identity
+    // Insert test lender identity with unique email
+    let lender_email = format!(
+        "test-lender-{}-{}.example.com",
+        test_lender_id.simple(),
+        chrono::Utc::now().timestamp()
+    );
+
     sqlx::query!(
         r#"
         INSERT INTO identities (id, email, kyc_status, user_type)
-        VALUES ($1, 'test@example.com', 'approved', 'lender')
+        VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
-        test_user_id
+        test_lender_id,
+        lender_email
     )
     .execute(&pool)
     .await
-    .expect("Should be able to create test identity");
+    .expect("Should be able to create test lender identity");
+
+    // Insert test borrower identity with unique email
+    let borrower_email = format!(
+        "test-borrower-{}-{}.example.com",
+        test_borrower_id.simple(),
+        chrono::Utc::now().timestamp()
+    );
+
+    sqlx::query!(
+        r#"
+        INSERT INTO identities (id, email, kyc_status, user_type)
+        VALUES ($1, $2, 'approved', 'investor')
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_borrower_id,
+        borrower_email
+    )
+    .execute(&pool)
+    .await
+    .expect("Should be able to create test borrower identity");
+
+    // Insert test loan that the listing can reference
+    sqlx::query!(
+        r#"
+        INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance, 
+                          interest_rate_bps, loan_status, originated_at)
+        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_loan_id,
+        test_borrower_id,
+        test_lender_id
+    )
+    .execute(&pool)
+    .await
+    .expect("Should be able to create test loan");
 
     // Test create_loan_listing
     println!("Testing create_loan_listing...");
     let listing = marketplace::create_loan_listing(
         &pool,
         test_loan_id,
-        test_user_id,
+        test_lender_id,
         rust_decimal::Decimal::new(95000, 2), // $950.00
         Some("Test listing".to_string()),
     )
@@ -119,7 +167,7 @@ async fn test_marketplace_crud_operations() {
     .expect("Should be able to create loan listing");
 
     assert_eq!(listing.loan_id, test_loan_id);
-    assert_eq!(listing.seller_id, test_user_id);
+    assert_eq!(listing.seller_id, test_lender_id);
 
     // Test get_loan_listing_by_loan_id
     println!("Testing get_loan_listing_by_loan_id...");
@@ -150,7 +198,7 @@ async fn test_marketplace_crud_operations() {
     assert!(validation.is_some(), "Loan should be valid for transfer");
     assert_eq!(
         validation.as_ref().unwrap().0,
-        test_user_id,
+        test_lender_id,
         "Should return correct owner"
     );
 
