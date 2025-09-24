@@ -39,7 +39,10 @@ mod integration_tests {
     use api::user_handlers::RegisterUserResponse;
 
     /// Main integration test - runs all test scenarios
+    /// Note: This test requires a live API server running on localhost:8080
+    /// Run with: cargo test test_complete_user_type_flow -- --ignored
     #[tokio::test]
+    #[ignore = "requires live API server on localhost:8080"]
     pub async fn test_complete_user_type_flow() {
         println!("🚀 Starting comprehensive user type integration tests...");
 

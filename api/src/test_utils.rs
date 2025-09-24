@@ -279,7 +279,7 @@ pub async fn create_test_user(pool: &PgPool, email: &str, user_type: &str) -> Te
         INSERT INTO identities (
             id, email, user_type, first_name, last_name, wallet_address,
             kyc_status, created_at, updated_at
-        ) VALUES ($1, $2, $3, 'Test', 'User', NULL, 'NOT_SUBMITTED', NOW(), NOW())
+        ) VALUES ($1, $2, $3, 'Test', 'User', NULL, 'not_submitted', NOW(), NOW())
         "#,
     )
     .bind(user_id)
@@ -373,7 +373,7 @@ impl TestDataFactory {
             INSERT INTO identities (
                 id, email, user_type, first_name, last_name, wallet_address,
                 kyc_status, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, 'NOT_SUBMITTED', NOW(), NOW())
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'not_submitted', NOW(), NOW())
             "#,
         )
         .bind(user.id)
