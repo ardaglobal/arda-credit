@@ -436,7 +436,7 @@ async fn get_latest_magic_link(pool: &sqlx::PgPool, user_id: uuid::Uuid) -> Test
         VALUES ($1, $2, $3, $4)
         "#,
         user_id,
-        "dummy-hash",
+        "dummy-hash".as_bytes(),
         "test-state-1234567890123456789012345678901",
         Utc::now() + Duration::minutes(10)
     )
@@ -465,7 +465,7 @@ async fn get_latest_magic_link(pool: &sqlx::PgPool, user_id: uuid::Uuid) -> Test
         state: row.state,
         redirect_uri: None,
         expires_at: row.expires_at,
-        created_at: row.created_at,
+        created_at: row.created_at.expect("created_at should always be set"),
     }
 }
 

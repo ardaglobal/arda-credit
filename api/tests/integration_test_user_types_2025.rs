@@ -439,7 +439,7 @@ mod integration_tests {
             .expect(&format!("Failed to query invite code {}", code));
 
             println!(
-                "   ✅ {}: {}/{} uses",
+                "   ✅ {}: {:?}/{:?} uses",
                 code, code_result.current_uses, code_result.max_uses
             );
         }

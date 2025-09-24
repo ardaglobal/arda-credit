@@ -124,7 +124,17 @@ impl AuthService {
     /// Validate email format
     pub fn validate_email(&self, email: &str) -> Result<(), AuthError> {
         // Simple email validation: contains @ and . with basic structure
-        if email.contains('@') && email.contains('.') && email.len() >= 5 {
+        // Must not start or end with @ or .
+        if email.contains('@')
+            && email.contains('.')
+            && email.len() >= 5
+            && !email.starts_with('@')
+            && !email.starts_with('.')
+            && !email.ends_with('@')
+            && !email.ends_with('.')
+            && email.split('@').count() == 2
+        // Exactly one @
+        {
             Ok(())
         } else {
             Err(AuthError::ValidationError(

@@ -421,7 +421,7 @@ async fn get_latest_magic_link(pool: &PgPool, user_id: uuid::Uuid) -> TestMagicL
         state: row.state,
         redirect_uri: row.redirect_uri,
         expires_at: row.expires_at,
-        created_at: row.created_at,
+        created_at: row.created_at.expect("created_at should always be set"),
     }
 }
 

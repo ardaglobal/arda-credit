@@ -609,7 +609,7 @@ mod tests {
     async fn test_test_database_creation() {
         let test_db = TestDatabase::new().await;
         // Verify we can execute a simple query
-        let result: (i64,) = sqlx::query_as("SELECT 1")
+        let result: (i32,) = sqlx::query_as("SELECT 1")
             .fetch_one(&test_db.pool)
             .await
             .unwrap();
