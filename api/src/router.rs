@@ -645,6 +645,8 @@ pub fn create_router(state: ApiState) -> Router {
             get(document_handlers::get_audit_logs),
         )
         .route(paths::DOCUMENT_HEALTH, get(document_handlers::health_check))
+        // AI Analysis endpoints
+        .merge(crate::ai_analysis_handlers::create_ai_analysis_router())
         .with_state(state)
 }
 

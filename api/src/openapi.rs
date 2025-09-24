@@ -94,6 +94,17 @@ pub use crate::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
 };
 
+// AI Analysis types
+pub use crate::ai_analysis_handlers::{
+    AnalysisHistoryResponse, AnalysisSummary, AnalyticsDashboardResponse, AnalyzeDocumentQuery,
+    ApiError as AiApiError, DocumentActivity, RiskTrendPoint, TriggerAnalysisRequest,
+    TriggerAnalysisResponse,
+};
+pub use crate::ai_analysis_service::{
+    AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
+    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
+};
+
 /// Pagination parameters for list endpoints
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct PaginationParams {
@@ -257,9 +268,30 @@ fn default_limit() -> u32 {
         // Contract configuration endpoints
         crate::contract_handlers::get_contract_config,
         crate::contract_handlers::get_transaction_updates,
+
+        // Document Management endpoints
+        crate::document_handlers::upload_document,
+        crate::document_handlers::download_document,
+        crate::document_handlers::get_document,
+        crate::document_handlers::list_documents,
+        crate::document_handlers::approve_document,
+        crate::document_handlers::reject_document,
+        crate::document_handlers::delete_document,
+        crate::document_handlers::verify_document,
+        crate::document_handlers::get_audit_logs,
+
+        // AI Analysis endpoints
+        crate::ai_analysis_handlers::analyze_document_diff,
+        crate::ai_analysis_handlers::trigger_analysis,
+        crate::ai_analysis_handlers::get_negotiation_insights,
+        crate::ai_analysis_handlers::get_analysis_history,
+        crate::ai_analysis_handlers::process_chat_message,
+        crate::ai_analysis_handlers::get_chat_history,
+        crate::ai_analysis_handlers::get_analytics_dashboard,
     ),
     tags(
         (name = "Authentication", description = "User authentication endpoints"),
+        (name = "Documents", description = "Document upload, download, and management"),
         (name = "User Management", description = "User profile and account management"),
         (name = "Users", description = "User identity and profile operations"),
         (name = "Investor", description = "Investor-specific operations"),
@@ -290,7 +322,10 @@ fn default_limit() -> u32 {
         (name = "Health", description = "Health check and system information"),
         (name = "Info", description = "API information and discovery"),
         (name = "contract", description = "Contract configuration and blockchain integration"),
-        (name = "transactions", description = "Real-time transaction monitoring and updates")
+        (name = "transactions", description = "Real-time transaction monitoring and updates"),
+        (name = "AI Analysis", description = "AI-powered document analysis and change detection"),
+        (name = "AI Chat", description = "Conversational AI for document analysis and negotiation advice"),
+        (name = "AI Analytics", description = "Analytics and insights from AI document analysis")
     ),
     components(schemas(
         // Authentication types
@@ -308,6 +343,15 @@ fn default_limit() -> u32 {
         UpdateMerchantProfileRequest,
         UpdateInvestorProfileRequest,
         UserType,
+
+        // Document types
+        crate::document_handlers::DocumentUploadResponse,
+        crate::document_handlers::DocumentDownloadHeaders,
+        crate::document_handlers::DocumentVerificationResponse,
+        crate::document_handlers::DocumentListResponse,
+        crate::document_handlers::AuditLogsResponse,
+        crate::document_service::DocumentResponseDto,
+        crate::document_service::DocumentAuditLogDto,
 
         // Admin types
         AdminUserIdentity,
@@ -450,6 +494,29 @@ fn default_limit() -> u32 {
         TransactionUpdateEvent,
         TransactionUpdatesQuery,
 
+        // AI Analysis types
+        AnalyzeDocumentQuery,
+        AnalysisHistoryResponse,
+        AnalysisSummary,
+        AnalyticsDashboardResponse,
+        AiApiError,
+        DocumentActivity,
+        RiskTrendPoint,
+        TriggerAnalysisRequest,
+        TriggerAnalysisResponse,
+
+        // AI Service types
+        AiChatMessage,
+        AiChatRequest,
+        AiChatResponse,
+        ChangeAnalysis,
+        ChangeCategory,
+        ChangeType,
+        DocumentDiffRequest,
+        DocumentDiffResponse,
+        ImpactLevel,
+        NegotiationInsight,
+        RiskFactor,
         // Magic Link Authentication schemas (NEW)
         MagicLinkRequest,
         MagicLinkResponse,

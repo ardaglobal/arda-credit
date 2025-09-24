@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            da.id,\n            da.analysis_type,\n            da.total_changes,\n            COUNT(CASE WHEN ca.impact_level = '\"critical\"' THEN 1 END) as critical_changes,\n            AVG(ca.confidence_score) as avg_risk_score,\n            da.created_at\n        FROM ai_document_analyses da\n        LEFT JOIN ai_change_analyses ca ON da.id = ca.analysis_id\n        WHERE da.document_id = $1\n        GROUP BY da.id, da.analysis_type, da.total_changes, da.created_at\n        ORDER BY da.created_at DESC\n        LIMIT $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "analysis_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_changes",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 3,
+        "name": "critical_changes",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "avg_risk_score",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null,
+      null,
+      true
+    ]
+  },
+  "hash": "9005bfcf7e439961e5a9952e85cd081da4ad9a43087ae5a5361c94bf80f4b826"
+}

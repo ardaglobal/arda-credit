@@ -21,45 +21,60 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 use tracing::{error, info, warn};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 use validator::Validate;
 
 /// Document upload response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentUploadResponse {
+    /// The uploaded document details
     pub document: DocumentResponseDto,
+    /// Success message
     pub message: String,
 }
 
 /// Document download response headers
-#[derive(Debug)]
+#[derive(Debug, ToSchema)]
 pub struct DocumentDownloadHeaders {
+    /// MIME type of the document
     pub content_type: String,
+    /// Content disposition header value
     pub content_disposition: String,
+    /// Size of the document in bytes
     pub content_length: usize,
 }
 
 /// Document verification response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentVerificationResponse {
+    /// ID of the verified document
     pub document_id: Uuid,
+    /// Whether the document is valid
     pub is_valid: bool,
+    /// Verification result message
     pub message: String,
 }
 
 /// Document list response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentListResponse {
+    /// List of documents
     pub documents: Vec<DocumentResponseDto>,
+    /// Total count of documents
     pub total_count: Option<i64>,
+    /// Whether there are more documents available
     pub has_more: bool,
 }
 
 /// Audit logs response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AuditLogsResponse {
+    /// List of audit log entries
     pub logs: Vec<DocumentAuditLogDto>,
+    /// Total count of log entries
     pub total_count: Option<i64>,
+    /// Whether there are more log entries available
     pub has_more: bool,
 }
 
@@ -192,6 +207,25 @@ impl IntoResponse for DocumentServiceError {
 
 /// Upload document endpoint
 /// POST /api/companies/{company_id}/documents/upload
+#[utoipa::path(
+    post,
+    path = "/api/companies/{company_id}/documents/upload",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    responses(
+        (status = 201, description = "Document uploaded successfully", body = DocumentUploadResponse),
+        (status = 400, description = "Invalid request or file format"),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 413, description = "File too large"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn upload_document(
     State(state): State<ApiState>,
     Path(company_id): Path<Uuid>,
@@ -220,6 +254,25 @@ pub async fn upload_document(
 
 /// Download document endpoint
 /// GET /api/companies/{company_id}/documents/{document_id}/download
+#[utoipa::path(
+    get,
+    path = "/api/companies/{company_id}/documents/{document_id}/download",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID"),
+        ("document_id" = Uuid, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "Document content", content_type = "application/octet-stream"),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn download_document(
     State(state): State<ApiState>,
     Path((company_id, document_id)): Path<(Uuid, Uuid)>,
@@ -271,6 +324,25 @@ pub async fn download_document(
 
 /// Get document metadata endpoint
 /// GET /api/companies/{company_id}/documents/{document_id}
+#[utoipa::path(
+    get,
+    path = "/api/companies/{company_id}/documents/{document_id}",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID"),
+        ("document_id" = Uuid, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "Document metadata retrieved successfully", body = DocumentResponseDto),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_document(
     State(state): State<ApiState>,
     Path((company_id, document_id)): Path<(Uuid, Uuid)>,
@@ -298,6 +370,23 @@ pub async fn get_document(
 
 /// List documents endpoint
 /// GET /api/companies/{company_id}/documents
+#[utoipa::path(
+    get,
+    path = "/api/companies/{company_id}/documents",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    responses(
+        (status = 200, description = "Documents retrieved successfully", body = DocumentListResponse),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn list_documents(
     State(state): State<ApiState>,
     Path(company_id): Path<Uuid>,
@@ -356,6 +445,25 @@ pub async fn list_documents(
 
 /// Approve document endpoint
 /// POST /api/companies/{company_id}/documents/{document_id}/approve
+#[utoipa::path(
+    post,
+    path = "/api/companies/{company_id}/documents/{document_id}/approve",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID"),
+        ("document_id" = Uuid, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "Document approved successfully"),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn approve_document(
     State(state): State<ApiState>,
     Path((company_id, document_id)): Path<(Uuid, Uuid)>,
@@ -392,6 +500,25 @@ pub async fn approve_document(
 
 /// Reject document endpoint
 /// POST /api/companies/{company_id}/documents/{document_id}/reject
+#[utoipa::path(
+    post,
+    path = "/api/companies/{company_id}/documents/{document_id}/reject",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID"),
+        ("document_id" = Uuid, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "Document rejected successfully"),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn reject_document(
     State(state): State<ApiState>,
     Path((company_id, document_id)): Path<(Uuid, Uuid)>,
@@ -419,6 +546,25 @@ pub async fn reject_document(
 
 /// Delete document endpoint
 /// DELETE /api/companies/{company_id}/documents/{document_id}
+#[utoipa::path(
+    delete,
+    path = "/api/companies/{company_id}/documents/{document_id}",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID"),
+        ("document_id" = Uuid, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 204, description = "Document deleted successfully"),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn delete_document(
     State(state): State<ApiState>,
     Path((company_id, document_id)): Path<(Uuid, Uuid)>,
@@ -455,6 +601,25 @@ pub async fn delete_document(
 
 /// Verify document integrity endpoint
 /// POST /api/companies/{company_id}/documents/{document_id}/verify
+#[utoipa::path(
+    post,
+    path = "/api/companies/{company_id}/documents/{document_id}/verify",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID"),
+        ("document_id" = Uuid, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "Document verification completed", body = DocumentVerificationResponse),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn verify_document(
     State(state): State<ApiState>,
     Path((company_id, document_id)): Path<(Uuid, Uuid)>,
@@ -502,6 +667,23 @@ pub async fn verify_document(
 
 /// Get document audit logs endpoint
 /// GET /api/companies/{company_id}/documents/audit
+#[utoipa::path(
+    get,
+    path = "/api/companies/{company_id}/documents/audit",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    responses(
+        (status = 200, description = "Audit logs retrieved successfully", body = AuditLogsResponse),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Insufficient permissions"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
 pub async fn get_audit_logs(
     State(state): State<ApiState>,
     Path(company_id): Path<Uuid>,

@@ -203,3 +203,55 @@ mod tests {
 1. Implement services in appropriate `*_service.rs` file
 1. Add integration tests in `tests/` directory
 1. Update this README if adding new file types
+
+## 🤖 AI Functionality Configuration
+
+The API includes comprehensive AI-powered document analysis functionality that requires configuration for various LLM providers.
+
+### Available LLM Providers
+- **OpenAI** - GPT-4, GPT-3.5-turbo models
+- **Anthropic** - Claude models
+- **Azure OpenAI** - Azure-hosted OpenAI models
+- **OpenRouter** - Multi-model access platform
+- **Local** - Self-hosted models
+
+### Required Environment Variables
+
+Choose **one** of the following provider configurations:
+
+#### OpenAI Configuration
+```bash
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+#### Anthropic Configuration
+```bash
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+```
+
+#### Azure OpenAI Configuration
+```bash
+AZURE_OPENAI_KEY=your_azure_openai_key_here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+```
+
+#### OpenRouter Configuration
+```bash
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_SITE_URL=https://yoursite.com  # Optional
+OPENROUTER_SITE_NAME=YourAppName         # Optional
+```
+
+#### Local Model Configuration
+No API keys required - configure the local model URL in the application code.
+
+### AI Features Enabled
+- **Document Analysis** - Intelligent diff analysis between document versions
+- **Change Detection** - Automatic identification of critical changes
+- **Risk Assessment** - AI-powered risk scoring for document modifications
+- **Negotiation Insights** - Strategic insights for contract negotiations
+- **Chat Interface** - Conversational AI for document discussions
+- **Analytics Dashboard** - AI-powered analytics and reporting
+
+### API Endpoints
+All AI functionality is accessible through the `/api/v1/` endpoints and fully documented in the Swagger/OpenAPI specification.
