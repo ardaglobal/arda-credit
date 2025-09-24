@@ -4,11 +4,9 @@
 //! ensuring privacy-preserving document operations while maintaining verifiable integrity.
 
 use crate::{
-    document::{
-        Document, DocumentAction, DocumentAuditLog, DocumentStateTransition, StateTransitionType,
-    },
+    document::{Document, DocumentAction, DocumentStateTransition, StateTransitionType},
     transactions::{LoanTransaction, TransactionType},
-    zkvm_ads::{StateTransition, ZkVMAds},
+    zkvm_ads::StateTransition,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -22,7 +20,10 @@ pub enum DocumentZkError {
     InvalidStateTransition { message: String },
 
     #[error("Document hash mismatch: expected {expected:?}, got {actual:?}")]
-    HashMismatch { expected: [u8; 32], actual: [u8; 32] },
+    HashMismatch {
+        expected: [u8; 32],
+        actual: [u8; 32],
+    },
 
     #[error("Invalid proof generation: {message}")]
     InvalidProofGeneration { message: String },
@@ -61,23 +62,23 @@ impl DocumentZkState {
     #[must_use]
     pub fn calculate_state_commitment(&self) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        
+
         // Hash merkle root
         hasher.update(&self.merkle_root);
-        
+
         // Hash total documents count
         hasher.update(&self.total_documents.to_le_bytes());
-        
+
         // Hash last transition timestamp
         hasher.update(&self.last_transition_timestamp.to_le_bytes());
-        
+
         // Hash all document IDs (sorted for determinism)
         let mut document_ids: Vec<[u8; 32]> = self.documents.keys().cloned().collect();
         document_ids.sort();
         for doc_id in document_ids {
             hasher.update(&doc_id);
         }
-        
+
         hasher.finalize().into()
     }
 
@@ -103,7 +104,8 @@ impl DocumentZkState {
         };
 
         // Add document to state
-        self.documents.insert(document.document_id, document.clone());
+        self.documents
+            .insert(document.document_id, document.clone());
         self.total_documents += 1;
         self.last_transition_timestamp = timestamp;
 
@@ -139,16 +141,21 @@ impl DocumentZkState {
         approved_by: [u8; 32],
         timestamp: u64,
     ) -> Result<DocumentStateTransition, DocumentZkError> {
-        // Get document
-        let document = self.documents.get_mut(&document_id)
-            .ok_or_else(|| DocumentZkError::InvalidStateTransition {
+        // Check that document exists first
+        if !self.documents.contains_key(&document_id) {
+            return Err(DocumentZkError::InvalidStateTransition {
                 message: "Document not found".to_string(),
-            })?;
+            });
+        }
+
+        // Get company_id first (before mutable borrow)
+        let company_id = self.documents.get(&document_id).unwrap().company_id;
 
         // Calculate previous state hash
         let previous_state_hash = Some(self.calculate_state_commitment());
 
-        // Update document approval
+        // Get document and update approval
+        let document = self.documents.get_mut(&document_id).unwrap();
         document.approve(approved_by, timestamp);
         self.last_transition_timestamp = timestamp;
 
@@ -160,7 +167,7 @@ impl DocumentZkState {
         let state_transition = DocumentStateTransition {
             transition_id,
             document_id,
-            company_id: document.company_id,
+            company_id,
             transition_type: StateTransitionType::DocumentApproval,
             previous_state_hash,
             new_state_hash,
@@ -184,16 +191,21 @@ impl DocumentZkState {
         deleted_by: [u8; 32],
         timestamp: u64,
     ) -> Result<DocumentStateTransition, DocumentZkError> {
-        // Get document
-        let document = self.documents.get_mut(&document_id)
-            .ok_or_else(|| DocumentZkError::InvalidStateTransition {
+        // Check that document exists first
+        if !self.documents.contains_key(&document_id) {
+            return Err(DocumentZkError::InvalidStateTransition {
                 message: "Document not found".to_string(),
-            })?;
+            });
+        }
+
+        // Get company_id first (before mutable borrow)
+        let company_id = self.documents.get(&document_id).unwrap().company_id;
 
         // Calculate previous state hash
         let previous_state_hash = Some(self.calculate_state_commitment());
 
-        // Update document status
+        // Get document and update status
+        let document = self.documents.get_mut(&document_id).unwrap();
         document.delete();
         self.last_transition_timestamp = timestamp;
 
@@ -205,7 +217,7 @@ impl DocumentZkState {
         let state_transition = DocumentStateTransition {
             transition_id,
             document_id,
-            company_id: document.company_id,
+            company_id,
             transition_type: StateTransitionType::DocumentDeletion,
             previous_state_hash,
             new_state_hash,
@@ -227,10 +239,11 @@ impl DocumentZkState {
         &self,
         document_id: &[u8; 32],
     ) -> Result<DocumentInclusionProof, DocumentZkError> {
-        let document = self.documents.get(document_id)
-            .ok_or_else(|| DocumentZkError::InvalidStateTransition {
+        let document = self.documents.get(document_id).ok_or_else(|| {
+            DocumentZkError::InvalidStateTransition {
                 message: "Document not found".to_string(),
-            })?;
+            }
+        })?;
 
         // In a real implementation, this would generate a proper Merkle proof
         // For now, we'll create a simplified proof structure
@@ -276,7 +289,10 @@ impl DocumentZkState {
 
     /// Get all state transitions for a document
     #[must_use]
-    pub fn get_document_transitions(&self, document_id: &[u8; 32]) -> Vec<&DocumentStateTransition> {
+    pub fn get_document_transitions(
+        &self,
+        document_id: &[u8; 32],
+    ) -> Vec<&DocumentStateTransition> {
         self.state_transitions
             .iter()
             .filter(|t| t.document_id == *document_id)
@@ -285,7 +301,10 @@ impl DocumentZkState {
 
     /// Get state transitions by type
     #[must_use]
-    pub fn get_transitions_by_type(&self, transition_type: StateTransitionType) -> Vec<&DocumentStateTransition> {
+    pub fn get_transitions_by_type(
+        &self,
+        transition_type: StateTransitionType,
+    ) -> Vec<&DocumentStateTransition> {
         self.state_transitions
             .iter()
             .filter(|t| t.transition_type == transition_type)
@@ -305,7 +324,10 @@ impl DocumentZkState {
     }
 
     /// Generate Merkle proof path (simplified)
-    fn generate_merkle_proof_path(&self, document_id: &[u8; 32]) -> Result<Vec<[u8; 32]>, DocumentZkError> {
+    fn generate_merkle_proof_path(
+        &self,
+        _document_id: &[u8; 32],
+    ) -> Result<Vec<[u8; 32]>, DocumentZkError> {
         // In a real implementation, this would generate the actual Merkle proof path
         // For now, return a placeholder path
         Ok(vec![self.merkle_root])
@@ -365,14 +387,17 @@ impl DocumentBatch {
     }
 
     /// Calculate batch ID
-    fn calculate_batch_id(state_transitions: &[DocumentStateTransition], timestamp: u64) -> [u8; 32] {
+    fn calculate_batch_id(
+        state_transitions: &[DocumentStateTransition],
+        timestamp: u64,
+    ) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        
+
         // Hash all transition IDs
         for transition in state_transitions {
             hasher.update(&transition.transition_id);
         }
-        
+
         hasher.update(&timestamp.to_le_bytes());
         hasher.update(b"document_batch");
         hasher.finalize().into()
@@ -381,7 +406,8 @@ impl DocumentBatch {
     /// Verify batch integrity
     pub fn verify_batch_integrity(&self) -> Result<bool, DocumentZkError> {
         // Verify batch ID
-        let calculated_batch_id = Self::calculate_batch_id(&self.state_transitions, self.batch_timestamp);
+        let calculated_batch_id =
+            Self::calculate_batch_id(&self.state_transitions, self.batch_timestamp);
         if calculated_batch_id != self.batch_id {
             return Ok(false);
         }
@@ -409,7 +435,10 @@ impl DocumentBatch {
 
     /// Get transitions by type
     #[must_use]
-    pub fn get_transitions_by_type(&self, transition_type: StateTransitionType) -> Vec<&DocumentStateTransition> {
+    pub fn get_transitions_by_type(
+        &self,
+        transition_type: StateTransitionType,
+    ) -> Vec<&DocumentStateTransition> {
         self.state_transitions
             .iter()
             .filter(|t| t.transition_type == transition_type)
@@ -449,11 +478,11 @@ impl DocumentProofPublicValues {
     /// Calculate hash of transition types
     fn calculate_transition_types_hash(transitions: &[DocumentStateTransition]) -> [u8; 32] {
         let mut hasher = Sha256::new();
-        
+
         for transition in transitions {
             hasher.update(&[transition.transition_type as u8]);
         }
-        
+
         hasher.finalize().into()
     }
 }
@@ -462,10 +491,15 @@ impl DocumentProofPublicValues {
 impl From<DocumentStateTransition> for StateTransition {
     fn from(doc_transition: DocumentStateTransition) -> Self {
         StateTransition {
-            nullifier: doc_transition.transition_id,
-            commitment: doc_transition.new_state_hash,
-            value: 0, // Documents don't have monetary value in this context
-            timestamp: doc_transition.created_at,
+            old_root: doc_transition.previous_state_hash.unwrap_or([0u8; 32]),
+            new_root: doc_transition.new_state_hash,
+            nullifiers_inserted: vec![doc_transition
+                .transition_id
+                .iter()
+                .take(8)
+                .enumerate()
+                .map(|(i, &b)| (b as i64) << (i * 8))
+                .sum()],
         }
     }
 }
@@ -536,7 +570,10 @@ mod tests {
             .process_document_upload(document.clone(), uploaded_by, timestamp)
             .unwrap();
 
-        assert_eq!(transition.transition_type, StateTransitionType::DocumentUpload);
+        assert_eq!(
+            transition.transition_type,
+            StateTransitionType::DocumentUpload
+        );
         assert_eq!(transition.document_id, document.document_id);
         assert_eq!(transition.created_by, uploaded_by);
         assert_eq!(state.total_documents, 1);
@@ -561,7 +598,10 @@ mod tests {
             .process_document_approval(document.document_id, approved_by, timestamp + 100)
             .unwrap();
 
-        assert_eq!(transition.transition_type, StateTransitionType::DocumentApproval);
+        assert_eq!(
+            transition.transition_type,
+            StateTransitionType::DocumentApproval
+        );
         assert_eq!(transition.created_by, approved_by);
 
         let stored_document = state.get_document(&document.document_id).unwrap();

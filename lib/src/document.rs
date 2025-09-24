@@ -3,12 +3,10 @@
 //! This module contains document-related types and operations for the company-based
 //! document storage system with role-based access controls and ZK proof integration.
 
-use crate::transactions::{LoanTransaction, TransactionType};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use thiserror::Error;
-use uuid::Uuid;
 
 /// Company types in the document system
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,9 +30,9 @@ pub enum KybStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TeamRole {
-    Admin = 1,  // Full document access, upload, download, delete
-    Write = 2,  // Upload, download, approve documents, no deletion
-    Read = 3,   // View and download only, no upload capabilities
+    Admin = 1, // Full document access, upload, download, delete
+    Write = 2, // Upload, download, approve documents, no deletion
+    Read = 3,  // View and download only, no upload capabilities
 }
 
 /// Document types supported by the system
@@ -79,13 +77,13 @@ pub enum DocumentStatus {
 /// Company entity (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Company {
-    pub company_id: [u8; 32],        // Hashed UUID for privacy
+    pub company_id: [u8; 32], // Hashed UUID for privacy
     pub company_type: CompanyType,
     pub kyb_status: KybStatus,
-    pub kyb_submitted_at: u64,       // Unix timestamp, 0 if not submitted
-    pub kyb_verified_at: u64,        // Unix timestamp, 0 if not verified
+    pub kyb_submitted_at: u64,        // Unix timestamp, 0 if not submitted
+    pub kyb_verified_at: u64,         // Unix timestamp, 0 if not verified
     pub document_retention_days: u32, // Document retention policy
-    pub created_at: u64,             // Unix timestamp
+    pub created_at: u64,              // Unix timestamp
 }
 
 impl Company {
@@ -105,9 +103,9 @@ impl Company {
 /// Team member within a company (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamMember {
-    pub member_id: [u8; 32],         // Hashed UUID for privacy
-    pub company_id: [u8; 32],        // Hashed company UUID
-    pub user_id: [u8; 32],           // Hashed user UUID
+    pub member_id: [u8; 32],  // Hashed UUID for privacy
+    pub company_id: [u8; 32], // Hashed company UUID
+    pub user_id: [u8; 32],    // Hashed user UUID
     pub role: TeamRole,
     pub can_upload_documents: bool,
     pub can_download_documents: bool,
@@ -115,8 +113,8 @@ pub struct TeamMember {
     pub can_approve_documents: bool,
     pub can_manage_team: bool,
     pub can_view_audit_logs: bool,
-    pub joined_at: u64,              // Unix timestamp
-    pub last_active_at: u64,         // Unix timestamp
+    pub joined_at: u64,      // Unix timestamp
+    pub last_active_at: u64, // Unix timestamp
 }
 
 impl TeamMember {
@@ -173,7 +171,7 @@ impl TeamMember {
 }
 
 /// Document actions for permission checking
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DocumentAction {
     Upload,
     Download,
@@ -188,23 +186,23 @@ pub enum DocumentAction {
 /// Document metadata (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Document {
-    pub document_id: [u8; 32],       // Hashed UUID for privacy
-    pub company_id: [u8; 32],        // Hashed company UUID
-    pub deal_id: Option<[u8; 32]>,   // Optional hashed deal UUID
+    pub document_id: [u8; 32],     // Hashed UUID for privacy
+    pub company_id: [u8; 32],      // Hashed company UUID
+    pub deal_id: Option<[u8; 32]>, // Optional hashed deal UUID
     pub document_type: DocumentType,
     pub file_size_bytes: u64,
-    pub sha256_hash: [u8; 32],       // SHA-256 hash for integrity
+    pub sha256_hash: [u8; 32],          // SHA-256 hash for integrity
     pub document_fingerprint: [u8; 32], // Additional fingerprint for duplicate detection
     pub access_level: AccessLevel,
     pub approval_status: ApprovalStatus,
     pub status: DocumentStatus,
     pub version: u32,
     pub parent_document_id: Option<[u8; 32]>, // For document revisions
-    pub uploaded_by: [u8; 32],       // Hashed user UUID
-    pub approved_by: Option<[u8; 32]>, // Hashed user UUID
-    pub created_at: u64,             // Unix timestamp
-    pub approved_at: u64,            // Unix timestamp, 0 if not approved
-    pub expires_at: u64,             // Unix timestamp, 0 if no expiration
+    pub uploaded_by: [u8; 32],                // Hashed user UUID
+    pub approved_by: Option<[u8; 32]>,        // Hashed user UUID
+    pub created_at: u64,                      // Unix timestamp
+    pub approved_at: u64,                     // Unix timestamp, 0 if not approved
+    pub expires_at: u64,                      // Unix timestamp, 0 if no expiration
 }
 
 impl Document {
@@ -311,13 +309,13 @@ impl Document {
 /// Document audit log entry (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentAuditLog {
-    pub log_id: [u8; 32],            // Hashed UUID for privacy
-    pub document_id: [u8; 32],       // Hashed document UUID
-    pub company_id: [u8; 32],        // Hashed company UUID
-    pub user_id: [u8; 32],           // Hashed user UUID
+    pub log_id: [u8; 32],      // Hashed UUID for privacy
+    pub document_id: [u8; 32], // Hashed document UUID
+    pub company_id: [u8; 32],  // Hashed company UUID
+    pub user_id: [u8; 32],     // Hashed user UUID
     pub action: DocumentAction,
     pub result: AuditResult,
-    pub created_at: u64,             // Unix timestamp
+    pub created_at: u64, // Unix timestamp
 }
 
 /// Audit result types
@@ -332,14 +330,14 @@ pub enum AuditResult {
 /// Document state transition for ZK proofs (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DocumentStateTransition {
-    pub transition_id: [u8; 32],     // Hashed UUID for privacy
-    pub document_id: [u8; 32],       // Hashed document UUID
-    pub company_id: [u8; 32],        // Hashed company UUID
+    pub transition_id: [u8; 32], // Hashed UUID for privacy
+    pub document_id: [u8; 32],   // Hashed document UUID
+    pub company_id: [u8; 32],    // Hashed company UUID
     pub transition_type: StateTransitionType,
     pub previous_state_hash: Option<[u8; 32]>,
     pub new_state_hash: [u8; 32],
-    pub created_by: [u8; 32],        // Hashed user UUID
-    pub created_at: u64,             // Unix timestamp
+    pub created_by: [u8; 32], // Hashed user UUID
+    pub created_at: u64,      // Unix timestamp
 }
 
 /// State transition types for ZK proofs
@@ -368,7 +366,9 @@ pub enum DocumentError {
         company_id: [u8; 32],
     },
 
-    #[error("Access denied: user {user_id:?} cannot perform {action:?} on document {document_id:?}")]
+    #[error(
+        "Access denied: user {user_id:?} cannot perform {action:?} on document {document_id:?}"
+    )]
     AccessDenied {
         user_id: [u8; 32],
         document_id: [u8; 32],
@@ -783,7 +783,13 @@ mod tests {
 
         // Add team member with write permissions
         state
-            .add_team_member(member_id, company_id, user_id, TeamRole::Write, 1_234_567_890)
+            .add_team_member(
+                member_id,
+                company_id,
+                user_id,
+                TeamRole::Write,
+                1_234_567_890,
+            )
             .unwrap();
 
         // Upload document
@@ -821,7 +827,13 @@ mod tests {
         company.kyb_status = KybStatus::Approved;
 
         state
-            .add_team_member(member_id, company_id, user_id, TeamRole::Admin, 1_234_567_890)
+            .add_team_member(
+                member_id,
+                company_id,
+                user_id,
+                TeamRole::Admin,
+                1_234_567_890,
+            )
             .unwrap();
 
         // Upload document
@@ -864,11 +876,23 @@ mod tests {
 
         // Add admin and read-only users
         state
-            .add_team_member([4u8; 32], company_id, admin_user_id, TeamRole::Admin, 1_234_567_890)
+            .add_team_member(
+                [4u8; 32],
+                company_id,
+                admin_user_id,
+                TeamRole::Admin,
+                1_234_567_890,
+            )
             .unwrap();
 
         state
-            .add_team_member([5u8; 32], company_id, read_user_id, TeamRole::Read, 1_234_567_890)
+            .add_team_member(
+                [5u8; 32],
+                company_id,
+                read_user_id,
+                TeamRole::Read,
+                1_234_567_890,
+            )
             .unwrap();
 
         // Upload document as admin
@@ -896,5 +920,36 @@ mod tests {
         assert!(state
             .can_access_document(read_user_id, document_id, DocumentAction::Download)
             .unwrap());
+    }
+}
+
+impl std::fmt::Display for AccessLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AccessLevel::Public => write!(f, "public"),
+            AccessLevel::Company => write!(f, "company"),
+            AccessLevel::Deal => write!(f, "deal"),
+            AccessLevel::Restricted => write!(f, "restricted"),
+        }
+    }
+}
+
+impl std::fmt::Display for ApprovalStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ApprovalStatus::Pending => write!(f, "pending"),
+            ApprovalStatus::Approved => write!(f, "approved"),
+            ApprovalStatus::Rejected => write!(f, "rejected"),
+        }
+    }
+}
+
+impl std::fmt::Display for DocumentStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DocumentStatus::Active => write!(f, "active"),
+            DocumentStatus::Archived => write!(f, "archived"),
+            DocumentStatus::Deleted => write!(f, "deleted"),
+        }
     }
 }

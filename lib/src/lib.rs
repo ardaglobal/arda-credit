@@ -88,8 +88,8 @@ pub use document_storage::{
 // Re-export document ZK types
 #[cfg(feature = "document_storage")]
 pub use document_zkvm::{
-    DocumentBatch, DocumentInclusionProof, DocumentProofPublicValues, DocumentZkError,
-    DocumentZkState, document_operation_to_loan_transaction,
+    document_operation_to_loan_transaction, DocumentBatch, DocumentInclusionProof,
+    DocumentProofPublicValues, DocumentZkError, DocumentZkState,
 };
 
 // Keep the old LoanState type alias for backward compatibility

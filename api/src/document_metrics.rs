@@ -3,7 +3,7 @@
 //! This module provides comprehensive metrics, logging, and monitoring
 //! for document storage operations with security and performance tracking.
 
-use metrics::{counter, gauge, histogram, register_counter, register_gauge, register_histogram};
+use metrics::{counter, gauge, histogram};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,13 +24,7 @@ pub struct DocumentMetrics {
 impl DocumentMetrics {
     /// Create a new document metrics collector
     pub fn new() -> Self {
-        // Register Prometheus metrics
-        register_counter!("document_operations_total", "Total document operations");
-        register_counter!("document_errors_total", "Total document operation errors");
-        register_histogram!("document_operation_duration_seconds", "Document operation duration");
-        register_gauge!("document_active_uploads", "Currently active document uploads");
-        register_gauge!("document_storage_size_bytes", "Total document storage size");
-        register_counter!("document_security_events_total", "Document security events");
+        // Metrics are automatically registered when first used
 
         Self {
             operation_counters: Arc::new(RwLock::new(HashMap::new())),
@@ -49,7 +43,11 @@ impl DocumentMetrics {
         duration: Duration,
         success: bool,
     ) {
-        let operation_key = format!("{}_{}", operation, if success { "success" } else { "failure" });
+        let operation_key = format!(
+            "{}_{}",
+            operation,
+            if success { "success" } else { "failure" }
+        );
 
         // Update internal counters
         {
@@ -73,11 +71,12 @@ impl DocumentMetrics {
         }
 
         // Update Prometheus metrics
-        counter!("document_operations_total", 1, "operation" => operation, "success" => success.to_string());
-        histogram!("document_operation_duration_seconds", duration.as_secs_f64(), "operation" => operation);
+        counter!("document_operations_total", "operation" => operation.to_string(), "success" => success.to_string()).increment(1);
+        histogram!("document_operation_duration_seconds", "operation" => operation.to_string())
+            .record(duration.as_secs_f64());
 
         if !success {
-            counter!("document_errors_total", 1, "operation" => operation);
+            counter!("document_errors_total", "operation" => operation.to_string()).increment(1);
         }
 
         info!(
@@ -116,42 +115,44 @@ impl DocumentMetrics {
             events.push(event.clone());
 
             // Keep only last 10000 events
-            if events.len() > 10000 {
-                events.drain(0..events.len() - 10000);
+            let events_len = events.len();
+            if events_len > 10000 {
+                events.drain(0..events_len - 10000);
             }
         }
 
         // Update Prometheus metrics
         counter!(
-            "document_security_events_total", 1,
-            "event_type" => event_type.to_string(),
-            "severity" => severity.to_string()
-        );
+            "document_security_events_total",
+            "event_type" => event.event_type.to_string(),
+            "severity" => event.severity.to_string()
+        )
+        .increment(1);
 
         // Log security event
-        match severity {
+        match event.severity {
             SecuritySeverity::Low => info!(
-                event_type = %event_type,
-                company_id = %company_id,
-                user_id = ?user_id,
-                document_id = ?document_id,
-                details = ?details,
+                event_type = %event.event_type,
+                company_id = %event.company_id,
+                user_id = ?event.user_id,
+                document_id = ?event.document_id,
+                details = ?event.details,
                 "Security event recorded"
             ),
             SecuritySeverity::Medium => warn!(
-                event_type = %event_type,
-                company_id = %company_id,
-                user_id = ?user_id,
-                document_id = ?document_id,
-                details = ?details,
+                event_type = %event.event_type,
+                company_id = %event.company_id,
+                user_id = ?event.user_id,
+                document_id = ?event.document_id,
+                details = ?event.details,
                 "Security event recorded"
             ),
             SecuritySeverity::High | SecuritySeverity::Critical => error!(
-                event_type = %event_type,
-                company_id = %company_id,
-                user_id = ?user_id,
-                document_id = ?document_id,
-                details = ?details,
+                event_type = %event.event_type,
+                company_id = %event.company_id,
+                user_id = ?event.user_id,
+                document_id = ?event.document_id,
+                details = ?event.details,
                 "Security event recorded"
             ),
         }
@@ -160,9 +161,10 @@ impl DocumentMetrics {
     /// Record file size metrics
     pub async fn record_file_size(&self, operation: &str, size_bytes: u64) {
         histogram!(
-            "document_file_size_bytes", size_bytes as f64,
-            "operation" => operation
-        );
+            "document_file_size_bytes",
+            "operation" => operation.to_string()
+        )
+        .record(size_bytes as f64);
 
         info!(
             operation = operation,
@@ -174,12 +176,12 @@ impl DocumentMetrics {
 
     /// Update active uploads gauge
     pub fn update_active_uploads(&self, count: i64) {
-        gauge!("document_active_uploads", count as f64);
+        gauge!("document_active_uploads").set(count as f64);
     }
 
     /// Update total storage size
     pub fn update_storage_size(&self, size_bytes: u64) {
-        gauge!("document_storage_size_bytes", size_bytes as f64);
+        gauge!("document_storage_size_bytes").set(size_bytes as f64);
     }
 
     /// Get operation statistics
@@ -363,7 +365,13 @@ impl DocumentOperationTimer {
     pub async fn complete(self, success: bool) {
         let duration = self.start_time.elapsed();
         self.metrics
-            .record_operation(&self.operation, self.company_id, self.user_id, duration, success)
+            .record_operation(
+                &self.operation,
+                self.company_id,
+                self.user_id,
+                duration,
+                success,
+            )
             .await;
     }
 
@@ -371,7 +379,13 @@ impl DocumentOperationTimer {
     pub async fn complete_with_error(self, error: &str) {
         let duration = self.start_time.elapsed();
         self.metrics
-            .record_operation(&self.operation, self.company_id, self.user_id, duration, false)
+            .record_operation(
+                &self.operation,
+                self.company_id,
+                self.user_id,
+                duration,
+                false,
+            )
             .await;
 
         error!(
@@ -460,11 +474,11 @@ pub struct DocumentAlertThresholds {
 impl Default for DocumentAlertThresholds {
     fn default() -> Self {
         Self {
-            error_rate_percent: 5.0,     // 5% error rate
-            avg_response_time_ms: 5000,  // 5 seconds
+            error_rate_percent: 5.0,      // 5% error rate
+            avg_response_time_ms: 5000,   // 5 seconds
             security_events_per_hour: 10, // 10 security events per hour
-            storage_size_gb: 1000,       // 1TB storage
-            failed_uploads_per_hour: 50, // 50 failed uploads per hour
+            storage_size_gb: 1000,        // 1TB storage
+            failed_uploads_per_hour: 50,  // 50 failed uploads per hour
         }
     }
 }
@@ -478,7 +492,10 @@ pub struct DocumentAlertManager {
 impl DocumentAlertManager {
     /// Create a new alert manager
     pub fn new(thresholds: DocumentAlertThresholds, metrics: Arc<DocumentMetrics>) -> Self {
-        Self { thresholds, metrics }
+        Self {
+            thresholds,
+            metrics,
+        }
     }
 
     /// Check for alert conditions
@@ -537,8 +554,10 @@ impl DocumentAlertManager {
         let high_severity_events = recent_events
             .iter()
             .filter(|e| {
-                matches!(e.severity, SecuritySeverity::High | SecuritySeverity::Critical)
-                    && e.timestamp > chrono::Utc::now() - chrono::Duration::hours(1)
+                matches!(
+                    e.severity,
+                    SecuritySeverity::High | SecuritySeverity::Critical
+                ) && e.timestamp > chrono::Utc::now() - chrono::Duration::hours(1)
             })
             .count();
 
@@ -596,7 +615,13 @@ mod tests {
         let user_id = Uuid::new_v4();
 
         metrics
-            .record_operation("upload", company_id, user_id, Duration::from_millis(100), true)
+            .record_operation(
+                "upload",
+                company_id,
+                user_id,
+                Duration::from_millis(100),
+                true,
+            )
             .await;
 
         let stats = metrics.get_operation_stats().await;
@@ -691,14 +716,26 @@ mod tests {
         // Record some failed operations to trigger alert
         for _ in 0..5 {
             metrics
-                .record_operation("test", company_id, user_id, Duration::from_millis(100), false)
+                .record_operation(
+                    "test",
+                    company_id,
+                    user_id,
+                    Duration::from_millis(100),
+                    false,
+                )
                 .await;
         }
 
         // Record some successful operations
         for _ in 0..5 {
             metrics
-                .record_operation("test", company_id, user_id, Duration::from_millis(100), true)
+                .record_operation(
+                    "test",
+                    company_id,
+                    user_id,
+                    Duration::from_millis(100),
+                    true,
+                )
                 .await;
         }
 
@@ -722,7 +759,9 @@ mod tests {
             company_id,
             user_id,
             metrics.clone(),
-            || async { Ok::<String, Box<dyn std::error::Error + Send + Sync>>("success".to_string()) },
+            || async {
+                Ok::<String, Box<dyn std::error::Error + Send + Sync>>("success".to_string())
+            },
         )
         .await;
 

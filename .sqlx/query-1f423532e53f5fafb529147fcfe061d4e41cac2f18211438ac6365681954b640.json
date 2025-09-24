@@ -1,0 +1,131 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT tm.*, c.kyb_status, i.kyc_status\n            FROM team_members tm\n            JOIN companies c ON tm.company_id = c.id\n            JOIN identities i ON tm.user_id = i.id\n            WHERE tm.user_id = $1 AND tm.company_id = $2 AND tm.status = 'active'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "company_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "role",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "can_upload_documents",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "can_download_documents",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "can_delete_documents",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "can_approve_documents",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "can_manage_team",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "can_view_audit_logs",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 11,
+        "name": "invited_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "joined_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "last_active_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 16,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 17,
+        "name": "kyb_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 18,
+        "name": "kyc_status",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "1f423532e53f5fafb529147fcfe061d4e41cac2f18211438ac6365681954b640"
+}

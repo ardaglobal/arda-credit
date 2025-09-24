@@ -7,15 +7,15 @@ use aws_config::{BehaviorVersion, Region};
 use aws_sdk_kms::Client as KmsClient;
 use aws_sdk_s3::{
     operation::get_object::GetObjectOutput,
-    primitives::{ByteStream, SdkBody},
+    presigning::PresigningConfigError,
+    primitives::ByteStream,
     types::{
-        BucketLifecycleConfiguration, Delete, LifecycleRule, LifecycleRuleStatus, ObjectIdentifier,
+        BucketLifecycleConfiguration, Delete, ExpirationStatus, LifecycleRule, ObjectIdentifier,
         ServerSideEncryption, Transition, TransitionStorageClass,
     },
     Client as S3Client,
 };
 use chrono::{DateTime, Utc};
-use mime_guess::from_path;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -85,7 +85,7 @@ pub struct StorageConfig {
     pub region: String,
     pub kms_key_id: Option<String>,
     pub max_file_size_mb: u64,
-    pub lifecycle_days_to_ia: i32,     // Days to move to Infrequent Access
+    pub lifecycle_days_to_ia: i32, // Days to move to Infrequent Access
     pub lifecycle_days_to_glacier: i32, // Days to move to Glacier
     pub lifecycle_days_to_delete: i32, // Days to delete (for non-permanent docs)
 }
@@ -147,6 +147,12 @@ pub enum StorageError {
 
     #[error("AWS KMS error: {0}")]
     KmsError(#[from] aws_sdk_kms::Error),
+    #[error("AWS KMS build error: {0}")]
+    KmsBuildError(#[from] aws_sdk_kms::error::BuildError),
+    #[error("AWS S3 presigning config error: {0}")]
+    PresigningError(#[from] PresigningConfigError),
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
 
     #[error("Invalid file type: {file_type}. Supported types: PDF, DOC, DOCX, CSV")]
     InvalidFileType { file_type: String },
@@ -156,6 +162,8 @@ pub enum StorageError {
 
     #[error("Document not found: bucket={bucket}, key={key}")]
     DocumentNotFound { bucket: String, key: String },
+    #[error("Configuration error: {0}")]
+    ConfigurationError(String),
 
     #[error("Access denied: {operation} on {resource}")]
     AccessDenied { operation: String, resource: String },
@@ -225,7 +233,11 @@ impl DocumentStorageClient {
     }
 
     /// Validate file type and size
-    fn validate_file(&self, filename: &str, content: &[u8]) -> Result<SupportedFileType, StorageError> {
+    fn validate_file(
+        &self,
+        filename: &str,
+        content: &[u8],
+    ) -> Result<SupportedFileType, StorageError> {
         // Extract file extension
         let extension = std::path::Path::new(filename)
             .extension()
@@ -233,10 +245,11 @@ impl DocumentStorageClient {
             .unwrap_or("");
 
         // Validate file type
-        let file_type = SupportedFileType::from_extension(extension)
-            .ok_or_else(|| StorageError::InvalidFileType {
+        let file_type = SupportedFileType::from_extension(extension).ok_or_else(|| {
+            StorageError::InvalidFileType {
                 file_type: extension.to_string(),
-            })?;
+            }
+        })?;
 
         // Validate file size
         let size_mb = content.len() as u64 / (1024 * 1024);
@@ -284,6 +297,10 @@ impl DocumentStorageClient {
             s3_metadata.insert(format!("custom-{}", key), value);
         }
 
+        // Store values before move
+        let content_length = request.content.len() as u64;
+        let content_type = request.content_type.clone();
+
         // Create put object request
         let mut put_request = self
             .s3_client
@@ -304,7 +321,10 @@ impl DocumentStorageClient {
         }
 
         // Execute upload
-        let response = put_request.send().await.map_err(StorageError::S3Error)?;
+        let response = put_request
+            .send()
+            .await
+            .map_err(|e| StorageError::S3Error(e.into()))?;
 
         // Return metadata
         Ok(S3Metadata {
@@ -312,8 +332,8 @@ impl DocumentStorageClient {
             key: s3_key,
             version_id: response.version_id,
             etag: response.e_tag.unwrap_or_default(),
-            content_type: request.content_type,
-            content_length: request.content.len() as u64,
+            content_type,
+            content_length,
             last_modified: Some(chrono::Utc::now()),
             server_side_encryption: response.server_side_encryption.map(|sse| sse.to_string()),
             kms_key_id: self.config.kms_key_id.clone(),
@@ -335,7 +355,10 @@ impl DocumentStorageClient {
         }
 
         // Execute download
-        let response: GetObjectOutput = get_request.send().await.map_err(StorageError::S3Error)?;
+        let response: GetObjectOutput = get_request
+            .send()
+            .await
+            .map_err(|e| StorageError::S3Error(e.into()))?;
 
         // Read content
         let content = response
@@ -360,19 +383,23 @@ impl DocumentStorageClient {
                     .to_string()
             });
 
+        // Store content_type before first use
+        let content_type = response.content_type.unwrap_or_default();
+
         Ok(DocumentDownloadResponse {
             content,
-            content_type: response.content_type.unwrap_or_default(),
+            content_type: content_type.clone(),
             filename,
             metadata: S3Metadata {
                 bucket: bucket.to_string(),
                 key: key.to_string(),
                 version_id: response.version_id,
                 etag: response.e_tag.unwrap_or_default(),
-                content_type: response.content_type.unwrap_or_default(),
+                content_type,
                 content_length: response.content_length.unwrap_or(0) as u64,
                 last_modified: response.last_modified.map(|dt| {
-                    chrono::DateTime::from_timestamp(dt.secs(), dt.subsec_nanos()).unwrap_or_default()
+                    chrono::DateTime::from_timestamp(dt.secs(), dt.subsec_nanos())
+                        .unwrap_or_default()
                 }),
                 server_side_encryption: response.server_side_encryption.map(|sse| sse.to_string()),
                 kms_key_id: response.ssekms_key_id,
@@ -396,7 +423,7 @@ impl DocumentStorageClient {
         delete_request
             .send()
             .await
-            .map_err(StorageError::S3Error)?;
+            .map_err(|e| StorageError::S3Error(e.into()))?;
 
         Ok(())
     }
@@ -430,7 +457,7 @@ impl DocumentStorageClient {
             .delete(delete)
             .send()
             .await
-            .map_err(StorageError::S3Error)?;
+            .map_err(|e| StorageError::S3Error(e.into()))?;
 
         Ok(())
     }
@@ -477,12 +504,11 @@ impl DocumentStorageClient {
                     .get_object()
                     .bucket(bucket)
                     .key(key)
-                    .presigned(
-                        aws_sdk_s3::presigning::PresigningConfig::expires_in(expires_in)
-                            .map_err(|e| StorageError::S3Error(e.into()))?,
-                    )
+                    .presigned(aws_sdk_s3::presigning::PresigningConfig::expires_in(
+                        expires_in,
+                    )?)
                     .await
-                    .map_err(StorageError::S3Error)?;
+                    .map_err(|e| StorageError::S3Error(e.into()))?;
 
                 Ok(presigned_request.uri().to_string())
             }
@@ -492,12 +518,11 @@ impl DocumentStorageClient {
                     .put_object()
                     .bucket(bucket)
                     .key(key)
-                    .presigned(
-                        aws_sdk_s3::presigning::PresigningConfig::expires_in(expires_in)
-                            .map_err(|e| StorageError::S3Error(e.into()))?,
-                    )
+                    .presigned(aws_sdk_s3::presigning::PresigningConfig::expires_in(
+                        expires_in,
+                    )?)
                     .await
-                    .map_err(StorageError::S3Error)?;
+                    .map_err(|e| StorageError::S3Error(e.into()))?;
 
                 Ok(presigned_request.uri().to_string())
             }
@@ -508,7 +533,7 @@ impl DocumentStorageClient {
     pub async fn setup_bucket_lifecycle(&self) -> Result<(), StorageError> {
         let lifecycle_rule = LifecycleRule::builder()
             .id("arda-document-lifecycle")
-            .status(LifecycleRuleStatus::Enabled)
+            .status(ExpirationStatus::Enabled)
             .transitions(
                 Transition::builder()
                     .days(self.config.lifecycle_days_to_ia)
@@ -525,7 +550,12 @@ impl DocumentStorageClient {
 
         let lifecycle_config = BucketLifecycleConfiguration::builder()
             .rules(lifecycle_rule)
-            .build();
+            .build()
+            .map_err(|_| {
+                StorageError::ConfigurationError(
+                    "Failed to build lifecycle configuration".to_string(),
+                )
+            })?;
 
         self.s3_client
             .put_bucket_lifecycle_configuration()
@@ -533,7 +563,7 @@ impl DocumentStorageClient {
             .lifecycle_configuration(lifecycle_config)
             .send()
             .await
-            .map_err(StorageError::S3Error)?;
+            .map_err(|e| StorageError::S3Error(e.into()))?;
 
         Ok(())
     }
@@ -560,7 +590,10 @@ impl DocumentStorageClient {
             list_request = list_request.max_keys(max_keys);
         }
 
-        let response = list_request.send().await.map_err(StorageError::S3Error)?;
+        let response = list_request
+            .send()
+            .await
+            .map_err(|e| StorageError::S3Error(e.into()))?;
 
         let keys = response
             .contents
@@ -621,7 +654,10 @@ impl DocumentWatermark {
         let mut metadata = HashMap::new();
         metadata.insert("watermark-company".to_string(), self.company_name.clone());
         metadata.insert("watermark-user".to_string(), self.user_email.clone());
-        metadata.insert("watermark-timestamp".to_string(), self.timestamp.to_rfc3339());
+        metadata.insert(
+            "watermark-timestamp".to_string(),
+            self.timestamp.to_rfc3339(),
+        );
         metadata
     }
 }
@@ -666,10 +702,8 @@ mod tests {
 
     #[test]
     fn test_document_watermark() {
-        let watermark = DocumentWatermark::new(
-            "Test Company".to_string(),
-            "user@example.com".to_string(),
-        );
+        let watermark =
+            DocumentWatermark::new("Test Company".to_string(), "user@example.com".to_string());
 
         let text = watermark.generate_text();
         assert!(text.contains("CONFIDENTIAL"));
@@ -677,8 +711,14 @@ mod tests {
         assert!(text.contains("user@example.com"));
 
         let metadata = watermark.generate_metadata();
-        assert_eq!(metadata.get("watermark-company"), Some(&"Test Company".to_string()));
-        assert_eq!(metadata.get("watermark-user"), Some(&"user@example.com".to_string()));
+        assert_eq!(
+            metadata.get("watermark-company"),
+            Some(&"Test Company".to_string())
+        );
+        assert_eq!(
+            metadata.get("watermark-user"),
+            Some(&"user@example.com".to_string())
+        );
         assert!(metadata.contains_key("watermark-timestamp"));
     }
 
@@ -709,17 +749,15 @@ mod tests {
         );
         assert_eq!(
             key_with_deal,
-            format!("{}/{}/loan_contract/{}.pdf", company_id, deal_id, document_id)
+            format!(
+                "{}/{}/loan_contract/{}.pdf",
+                company_id, deal_id, document_id
+            )
         );
 
         // Test without deal ID
-        let key_without_deal = client.generate_s3_key(
-            &company_id,
-            None,
-            "kyc_document",
-            &document_id,
-            "pdf",
-        );
+        let key_without_deal =
+            client.generate_s3_key(&company_id, None, "kyc_document", &document_id, "pdf");
         assert_eq!(
             key_without_deal,
             format!("{}/general/kyc_document/{}.pdf", company_id, document_id)

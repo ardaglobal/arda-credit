@@ -10,6 +10,7 @@ use arda_credit_lib::{
     S3Metadata, StorageConfig, StorageError, SupportedFileType, TeamMember, TeamRole,
 };
 use chrono::{DateTime, Utc};
+use ipnetwork::IpNetwork;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
@@ -145,7 +146,7 @@ pub struct DocumentAuditLogDto {
     pub user_id: Uuid,
     pub action: String,
     pub result: String,
-    pub ip_address: Option<String>,
+    pub ip_address: Option<IpNetwork>,
     pub user_agent: Option<String>,
     pub request_id: Option<String>,
     pub details: Option<serde_json::Value>,
@@ -161,7 +162,10 @@ pub struct DocumentService {
 
 impl DocumentService {
     /// Create a new document service
-    pub async fn new(db_pool: PgPool, storage_config: StorageConfig) -> Result<Self, DocumentServiceError> {
+    pub async fn new(
+        db_pool: PgPool,
+        storage_config: StorageConfig,
+    ) -> Result<Self, DocumentServiceError> {
         let storage_client = DocumentStorageClient::new(storage_config).await?;
 
         Ok(Self {
@@ -182,17 +186,21 @@ impl DocumentService {
         request.validate()?;
 
         // Parse user ID from claims
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| DocumentServiceError::UserNotFound { user_id: Uuid::nil() })?;
+        let user_id =
+            Uuid::parse_str(&claims.sub).map_err(|_| DocumentServiceError::UserNotFound {
+                user_id: Uuid::nil(),
+            })?;
 
         // Check permissions
-        self.check_document_permission(user_id, company_id, DocumentAction::Upload).await?;
+        self.check_document_permission(user_id, company_id, DocumentAction::Upload)
+            .await?;
 
         // Validate file type
         let file_type = self.validate_file_type(&request.filename, &file_content)?;
 
         // Check for duplicate documents
-        self.check_duplicate_document(company_id, &file_content).await?;
+        self.check_duplicate_document(company_id, &file_content)
+            .await?;
 
         // Generate document ID
         let document_id = Uuid::new_v4();
@@ -215,13 +223,16 @@ impl DocumentService {
         };
 
         // Upload to S3
-        let s3_metadata = self.storage_client.upload_document(document_id, s3_request).await?;
+        let s3_metadata = self
+            .storage_client
+            .upload_document(document_id, s3_request)
+            .await?;
 
         // Parse access level
         let access_level = self.parse_access_level(&request.access_level)?;
 
         // Store document metadata in database
-        let document_row = sqlx::query!(
+        let document_row = sqlx::query(
             r#"
             INSERT INTO documents (
                 id, company_id, filename, original_filename, file_extension, mime_type,
@@ -231,30 +242,30 @@ impl DocumentService {
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
             ) RETURNING *
-            "#,
-            document_id,
-            company_id,
-            request.filename,
-            request.filename,
-            file_type.extension(),
-            mime_type,
-            file_content.len() as i64,
-            request.document_type,
-            request.deal_id,
-            request.category,
-            request.tags.as_deref(),
-            hex::encode(&sha256_hash),
-            hex::encode(self.calculate_document_fingerprint(&file_content, &document_id)),
-            access_level.to_string(),
-            ApprovalStatus::Pending.to_string(),
-            DocumentStatus::Active.to_string(),
-            1i32,
-            user_id,
-            s3_metadata.bucket,
-            s3_metadata.key,
-            s3_metadata.version_id,
-            "encrypted"
+            "#
         )
+        .bind(document_id)
+        .bind(company_id)
+        .bind(&request.filename)
+        .bind(&request.filename)
+        .bind(file_type.extension())
+        .bind(&mime_type)
+        .bind(file_content.len() as i64)
+        .bind(&request.document_type)
+        .bind(request.deal_id)
+        .bind(&request.category)
+        .bind(request.tags.as_deref())
+        .bind(hex::encode(&sha256_hash))
+        .bind(hex::encode(self.calculate_document_fingerprint(&file_content, &document_id)))
+        .bind(access_level.to_string())
+        .bind(ApprovalStatus::Pending.to_string())
+        .bind(DocumentStatus::Active.to_string())
+        .bind(1i32)
+        .bind(user_id)
+        .bind(&s3_metadata.bucket)
+        .bind(&s3_metadata.key)
+        .bind(s3_metadata.version_id.as_deref())
+        .bind("encrypted")
         .fetch_one(&self.db_pool)
         .await?;
 
@@ -270,7 +281,8 @@ impl DocumentService {
             None,
             None,
             None,
-        ).await?;
+        )
+        .await?;
 
         info!(
             document_id = %document_id,
@@ -291,14 +303,17 @@ impl DocumentService {
         document_id: Uuid,
     ) -> Result<(Vec<u8>, String, String), DocumentServiceError> {
         // Parse user ID from claims
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| DocumentServiceError::UserNotFound { user_id: Uuid::nil() })?;
+        let user_id =
+            Uuid::parse_str(&claims.sub).map_err(|_| DocumentServiceError::UserNotFound {
+                user_id: Uuid::nil(),
+            })?;
 
         // Get document metadata
         let document = self.get_document_by_id(document_id).await?;
 
         // Check permissions
-        self.check_document_permission(user_id, document.company_id, DocumentAction::Download).await?;
+        self.check_document_permission(user_id, document.company_id, DocumentAction::Download)
+            .await?;
 
         // Check if document is active
         if document.status != DocumentStatus::Active.to_string() {
@@ -313,19 +328,22 @@ impl DocumentService {
 
         // Verify integrity
         let calculated_hash = self.calculate_sha256_hash(&download_response.content);
-        let stored_hash = hex::decode(&document.sha256_hash)
-            .map_err(|_| DocumentServiceError::DocumentError(DocumentError::IntegrityVerificationFailed { 
-                document_id: [0u8; 32] // This would need proper conversion in real implementation
-            }))?;
+        let stored_hash = hex::decode(&document.sha256_hash).map_err(|_| {
+            DocumentServiceError::DocumentError(DocumentError::IntegrityVerificationFailed {
+                document_id: [0u8; 32], // This would need proper conversion in real implementation
+            })
+        })?;
 
         if calculated_hash != stored_hash.as_slice() {
             error!(
                 document_id = %document_id,
                 "Document integrity verification failed"
             );
-            return Err(DocumentServiceError::DocumentError(DocumentError::IntegrityVerificationFailed { 
-                document_id: [0u8; 32] // This would need proper conversion in real implementation
-            }));
+            return Err(DocumentServiceError::DocumentError(
+                DocumentError::IntegrityVerificationFailed {
+                    document_id: [0u8; 32], // This would need proper conversion in real implementation
+                },
+            ));
         }
 
         // Log the download action
@@ -340,7 +358,8 @@ impl DocumentService {
             None,
             None,
             None,
-        ).await?;
+        )
+        .await?;
 
         info!(
             document_id = %document_id,
@@ -363,27 +382,30 @@ impl DocumentService {
         document_id: Uuid,
     ) -> Result<DocumentResponseDto, DocumentServiceError> {
         // Parse user ID from claims
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| DocumentServiceError::UserNotFound { user_id: Uuid::nil() })?;
+        let user_id =
+            Uuid::parse_str(&claims.sub).map_err(|_| DocumentServiceError::UserNotFound {
+                user_id: Uuid::nil(),
+            })?;
 
         // Get document metadata
         let document = self.get_document_by_id(document_id).await?;
 
         // Check permissions
-        self.check_document_permission(user_id, document.company_id, DocumentAction::Approve).await?;
+        self.check_document_permission(user_id, document.company_id, DocumentAction::Approve)
+            .await?;
 
         // Update document approval status
-        let updated_document = sqlx::query!(
+        let updated_document = sqlx::query(
             r#"
-            UPDATE documents 
+            UPDATE documents
             SET approval_status = $1, approved_by = $2, approved_at = NOW(), updated_at = NOW()
             WHERE id = $3
             RETURNING *
             "#,
-            ApprovalStatus::Approved.to_string(),
-            user_id,
-            document_id
         )
+        .bind(ApprovalStatus::Approved.to_string())
+        .bind(user_id)
+        .bind(document_id)
         .fetch_one(&self.db_pool)
         .await?;
 
@@ -399,7 +421,8 @@ impl DocumentService {
             None,
             None,
             None,
-        ).await?;
+        )
+        .await?;
 
         info!(
             document_id = %document_id,
@@ -417,19 +440,22 @@ impl DocumentService {
         document_id: Uuid,
     ) -> Result<(), DocumentServiceError> {
         // Parse user ID from claims
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| DocumentServiceError::UserNotFound { user_id: Uuid::nil() })?;
+        let user_id =
+            Uuid::parse_str(&claims.sub).map_err(|_| DocumentServiceError::UserNotFound {
+                user_id: Uuid::nil(),
+            })?;
 
         // Get document metadata
         let document = self.get_document_by_id(document_id).await?;
 
         // Check permissions
-        self.check_document_permission(user_id, document.company_id, DocumentAction::Delete).await?;
+        self.check_document_permission(user_id, document.company_id, DocumentAction::Delete)
+            .await?;
 
         // Soft delete document
         sqlx::query!(
             r#"
-            UPDATE documents 
+            UPDATE documents
             SET status = $1, deleted_at = NOW(), updated_at = NOW()
             WHERE id = $2
             "#,
@@ -451,7 +477,8 @@ impl DocumentService {
             None,
             None,
             None,
-        ).await?;
+        )
+        .await?;
 
         info!(
             document_id = %document_id,
@@ -472,22 +499,26 @@ impl DocumentService {
         request.validate()?;
 
         // Parse user ID from claims
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| DocumentServiceError::UserNotFound { user_id: Uuid::nil() })?;
+        let user_id =
+            Uuid::parse_str(&claims.sub).map_err(|_| DocumentServiceError::UserNotFound {
+                user_id: Uuid::nil(),
+            })?;
 
         // Check permissions
-        self.check_document_permission(user_id, request.company_id, DocumentAction::View).await?;
+        self.check_document_permission(user_id, request.company_id, DocumentAction::View)
+            .await?;
 
         // Build query with filters
         let mut query = String::from(
             r#"
-            SELECT * FROM documents 
+            SELECT * FROM documents
             WHERE company_id = $1 AND status != 'deleted'
             "#,
         );
 
         let mut param_count = 1;
-        let mut params: Vec<Box<dyn sqlx::Encode<'_, sqlx::Postgres> + Send + Sync>> = vec![Box::new(request.company_id)];
+        let mut params: Vec<Box<dyn sqlx::Encode<'_, sqlx::Postgres> + Send + Sync>> =
+            vec![Box::new(request.company_id)];
 
         if let Some(document_type) = &request.document_type {
             param_count += 1;
@@ -551,16 +582,19 @@ impl DocumentService {
         offset: Option<i64>,
     ) -> Result<Vec<DocumentAuditLogDto>, DocumentServiceError> {
         // Parse user ID from claims
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| DocumentServiceError::UserNotFound { user_id: Uuid::nil() })?;
+        let user_id =
+            Uuid::parse_str(&claims.sub).map_err(|_| DocumentServiceError::UserNotFound {
+                user_id: Uuid::nil(),
+            })?;
 
         // Check permissions
-        self.check_document_permission(user_id, company_id, DocumentAction::ViewAuditLogs).await?;
+        self.check_document_permission(user_id, company_id, DocumentAction::ViewAuditLogs)
+            .await?;
 
         // Build query
         let mut query = String::from(
             r#"
-            SELECT * FROM document_audit_logs 
+            SELECT * FROM document_audit_logs
             WHERE company_id = $1
             "#,
         );
@@ -621,14 +655,17 @@ impl DocumentService {
         document_id: Uuid,
     ) -> Result<bool, DocumentServiceError> {
         // Parse user ID from claims
-        let user_id = Uuid::parse_str(&claims.sub)
-            .map_err(|_| DocumentServiceError::UserNotFound { user_id: Uuid::nil() })?;
+        let user_id =
+            Uuid::parse_str(&claims.sub).map_err(|_| DocumentServiceError::UserNotFound {
+                user_id: Uuid::nil(),
+            })?;
 
         // Get document metadata
         let document = self.get_document_by_id(document_id).await?;
 
         // Check permissions
-        self.check_document_permission(user_id, document.company_id, DocumentAction::View).await?;
+        self.check_document_permission(user_id, document.company_id, DocumentAction::View)
+            .await?;
 
         // Download document content
         let download_response = self
@@ -638,10 +675,11 @@ impl DocumentService {
 
         // Verify integrity
         let calculated_hash = self.calculate_sha256_hash(&download_response.content);
-        let stored_hash = hex::decode(&document.sha256_hash)
-            .map_err(|_| DocumentServiceError::DocumentError(DocumentError::IntegrityVerificationFailed { 
-                document_id: [0u8; 32] // This would need proper conversion in real implementation
-            }))?;
+        let stored_hash = hex::decode(&document.sha256_hash).map_err(|_| {
+            DocumentServiceError::DocumentError(DocumentError::IntegrityVerificationFailed {
+                document_id: [0u8; 32], // This would need proper conversion in real implementation
+            })
+        })?;
 
         let is_valid = calculated_hash == stored_hash.as_slice();
 
@@ -657,8 +695,13 @@ impl DocumentService {
             None,
             None,
             None,
-            if is_valid { None } else { Some("Integrity verification failed".to_string()) },
-        ).await?;
+            if is_valid {
+                None
+            } else {
+                Some("Integrity verification failed".to_string())
+            },
+        )
+        .await?;
 
         Ok(is_valid)
     }
@@ -693,13 +736,16 @@ impl DocumentService {
         })?;
 
         // Check KYC status for user
-        if team_member.kyc_status != Some("approved".to_string()) {
+        if team_member.kyc_status != "approved" {
             return Err(DocumentServiceError::KycNotApproved { user_id });
         }
 
         // Check KYB status for company (for sensitive operations)
-        if matches!(action, DocumentAction::Upload | DocumentAction::Delete | DocumentAction::Approve) {
-            if team_member.kyb_status != Some("approved".to_string()) {
+        if matches!(
+            action,
+            DocumentAction::Upload | DocumentAction::Delete | DocumentAction::Approve
+        ) {
+            if team_member.kyb_status != "approved" {
                 return Err(DocumentServiceError::KybNotApproved { company_id });
             }
         }
@@ -707,16 +753,23 @@ impl DocumentService {
         // Check specific permissions based on action
         let has_permission = match action {
             DocumentAction::Upload => team_member.can_upload_documents.unwrap_or(false),
-            DocumentAction::Download | DocumentAction::View => team_member.can_download_documents.unwrap_or(false),
+            DocumentAction::Download | DocumentAction::View => {
+                team_member.can_download_documents.unwrap_or(false)
+            }
             DocumentAction::Delete => team_member.can_delete_documents.unwrap_or(false),
-            DocumentAction::Approve | DocumentAction::Reject => team_member.can_approve_documents.unwrap_or(false),
+            DocumentAction::Approve | DocumentAction::Reject => {
+                team_member.can_approve_documents.unwrap_or(false)
+            }
             DocumentAction::ViewAuditLogs => team_member.can_view_audit_logs.unwrap_or(false),
             DocumentAction::ManageTeam => team_member.can_manage_team.unwrap_or(false),
         };
 
         if !has_permission {
             return Err(DocumentServiceError::AccessDenied {
-                message: format!("User {} cannot perform {:?} in company {}", user_id, action, company_id),
+                message: format!(
+                    "User {} cannot perform {:?} in company {}",
+                    user_id, action, company_id
+                ),
             });
         }
 
@@ -724,30 +777,37 @@ impl DocumentService {
     }
 
     /// Get document by ID
-    async fn get_document_by_id(&self, document_id: Uuid) -> Result<DocumentResponseDto, DocumentServiceError> {
-        let document_row = sqlx::query!(
-            "SELECT * FROM documents WHERE id = $1",
-            document_id
-        )
-        .fetch_optional(&self.db_pool)
-        .await?;
+    async fn get_document_by_id(
+        &self,
+        document_id: Uuid,
+    ) -> Result<DocumentResponseDto, DocumentServiceError> {
+        let document_row = sqlx::query("SELECT * FROM documents WHERE id = $1")
+            .bind(document_id)
+            .fetch_optional(&self.db_pool)
+            .await?;
 
-        let document_row = document_row.ok_or(DocumentServiceError::DocumentNotFound { document_id })?;
+        let document_row =
+            document_row.ok_or(DocumentServiceError::DocumentNotFound { document_id })?;
 
         Ok(self.row_to_document_dto(document_row))
     }
 
     /// Validate file type
-    fn validate_file_type(&self, filename: &str, content: &[u8]) -> Result<SupportedFileType, DocumentServiceError> {
+    fn validate_file_type(
+        &self,
+        filename: &str,
+        content: &[u8],
+    ) -> Result<SupportedFileType, DocumentServiceError> {
         let extension = std::path::Path::new(filename)
             .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
 
-        let file_type = SupportedFileType::from_extension(extension)
-            .ok_or_else(|| DocumentServiceError::InvalidFileType {
+        let file_type = SupportedFileType::from_extension(extension).ok_or_else(|| {
+            DocumentServiceError::InvalidFileType {
                 file_type: extension.to_string(),
-            })?;
+            }
+        })?;
 
         // Check file size (100MB limit)
         let size_mb = content.len() as u64 / (1024 * 1024);
@@ -808,7 +868,7 @@ impl DocumentService {
             "deal" => Ok(AccessLevel::Deal),
             "restricted" => Ok(AccessLevel::Restricted),
             _ => Err(DocumentServiceError::ValidationError(
-                validator::ValidationErrors::new()
+                validator::ValidationErrors::new(),
             )),
         }
     }
@@ -821,7 +881,7 @@ impl DocumentService {
         user_id: Uuid,
         action: &str,
         result: &str,
-        ip_address: Option<String>,
+        ip_address: Option<IpNetwork>,
         user_agent: Option<String>,
         request_id: Option<String>,
         details: Option<serde_json::Value>,
@@ -879,37 +939,6 @@ impl DocumentService {
             expires_at: row.get("expires_at"),
             s3_bucket: row.get("s3_bucket"),
             s3_key: row.get("s3_key"),
-        }
-    }
-}
-
-impl ToString for AccessLevel {
-    fn to_string(&self) -> String {
-        match self {
-            AccessLevel::Public => "public".to_string(),
-            AccessLevel::Company => "company".to_string(),
-            AccessLevel::Deal => "deal".to_string(),
-            AccessLevel::Restricted => "restricted".to_string(),
-        }
-    }
-}
-
-impl ToString for ApprovalStatus {
-    fn to_string(&self) -> String {
-        match self {
-            ApprovalStatus::Pending => "pending".to_string(),
-            ApprovalStatus::Approved => "approved".to_string(),
-            ApprovalStatus::Rejected => "rejected".to_string(),
-        }
-    }
-}
-
-impl ToString for DocumentStatus {
-    fn to_string(&self) -> String {
-        match self {
-            DocumentStatus::Active => "active".to_string(),
-            DocumentStatus::Archived => "archived".to_string(),
-            DocumentStatus::Deleted => "deleted".to_string(),
         }
     }
 }

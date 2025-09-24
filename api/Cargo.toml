@@ -20,6 +20,7 @@ default = [ "tikv-jemallocator" ]
 [dependencies]
 # Core dependencies
 chrono       = { version = "0.4", features = [ "serde" ] }
+ipnetwork    = "0.20"
 rust_decimal = "1.38"
 serde        = { workspace = true }
 thiserror    = "2.0"
@@ -35,7 +36,7 @@ alloy-signer-local = { workspace = true }
 alloy-sol-types    = { workspace = true }
 anyhow             = { workspace = true }
 arda-credit-db     = { path = "../db", package = "db" }
-arda-credit-lib    = { path = "../lib", package = "lib", features = [ "sp1", "document_storage" ] }
+arda-credit-lib    = { path = "../lib", package = "lib", features = [ "document_storage", "sp1" ] }
 ethereum-client    = { path = "../ethereum-client" }
 sindri             = { version = "0.3.1", features = [ "sp1-v5" ] }
 sp1-sdk            = "5.2.1"
