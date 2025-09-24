@@ -10,20 +10,26 @@ You are implementing the **Marketplace API and CLI** for loan trading. The datab
 
 ---
 
-## ✅ **Phase 1 Dependencies (Already Complete)**
+## ✅ **Phase 1 Dependencies (COMPLETED ✅)**
 
 From the Database Foundation phase, you now have:
-- ✅ Database migration with `loan_listings` and `loan_transfers` tables
-- ✅ Core database functions in `db/src/marketplace.rs`
+- ✅ Database migration `060_add_loan_trading_foundation.sql` applied
+- ✅ Core database functions in `db/src/marketplace.rs` implemented
 - ✅ Loan status enum extended with `for_sale` and `transfer_pending`
 - ✅ Schema validation complete and tested
 
+**⚠️ IMPORTANT - Schema Reference Update:**
+- **Use `loans.id`** (not `loans.loan_id` as originally planned)
+- The implemented database functions already use the correct schema
+- All your API implementations should follow the existing database functions
+
 **Available Functions** (from Phase 1):
 - `create_loan_listing()` - List loan for sale
-- `list_marketplace_loans()` - Browse marketplace with filters
+- `get_marketplace_loans_basic()` - Browse marketplace with filters  
 - `get_loan_listing_by_loan_id()` - Get specific listing
 - `remove_loan_listing()` - Cancel sale
-- `get_marketplace_stats()` - Admin statistics
+- `update_listing_status()` - Update listing status
+- `validate_loan_for_transfer()` - Basic transfer validation
 
 ---
 

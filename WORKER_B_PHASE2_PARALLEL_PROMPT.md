@@ -10,18 +10,25 @@ You are implementing the **Transfer Engine** for loan trading. The database foun
 
 ---
 
-## ✅ **Phase 1 Dependencies (Already Complete)**
+## ✅ **Phase 1 Dependencies (COMPLETED ✅)**
 
 From the Database Foundation phase, you now have:
-- ✅ Database tables: `loan_listings` and `loan_transfers`
+- ✅ Database migration `060_add_loan_trading_foundation.sql` applied
+- ✅ Database tables: `loan_listings` and `loan_transfers` implemented
 - ✅ Loan status enum with `for_sale` and `transfer_pending` values
-- ✅ Core marketplace functions available for import
+- ✅ Core marketplace functions in `db/src/marketplace.rs` ready to use
 - ✅ Schema validated and tested
+
+**⚠️ IMPORTANT - Schema Reference Update:**
+- **Use `loans.id`** (not `loans.loan_id` as originally planned)
+- The existing database functions use the correct schema
+- All your transfer implementations should follow the existing database functions
 
 **Available Database Functions** (from Phase 1):
 - `get_loan_listing_by_loan_id()` - Validate loan is for sale
 - `update_listing_status()` - Mark listing as sold
 - `validate_loan_for_transfer()` - Basic transfer validation
+- `create_loan_listing()`, `remove_loan_listing()` - Listing management
 - Plus existing: `get_user_balance_by_id()`, `update_user_balance_*()` functions
 
 ---
