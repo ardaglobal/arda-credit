@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE loan_transfers SET transfer_status = 'cancelled' WHERE transfer_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e8e6fe42dd0da08d303ea2397af045071682b897965ad9df39a708c091b4fc38"
+}

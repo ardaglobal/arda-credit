@@ -21,7 +21,9 @@ pub mod balance;
 pub mod batch;
 pub mod cli;
 pub mod loans;
+pub mod marketplace;
 pub mod pools;
+pub mod transfers;
 pub mod user;
 
 // Performance benchmarks (available for both internal and integration tests)
@@ -34,6 +36,7 @@ pub use balance::*;
 pub use batch::*;
 pub use cli::*;
 pub use loans::*;
+pub use marketplace::*;
 pub use pools::*;
 pub use user::*;
 

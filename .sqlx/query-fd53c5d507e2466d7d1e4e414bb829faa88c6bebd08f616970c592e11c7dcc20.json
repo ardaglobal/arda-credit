@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT l.id, l.lender_id, l.loan_status, l.principal_amount,\n               ll.asking_price, ll.status as listing_status\n        FROM loans l\n        LEFT JOIN loan_listings ll ON l.id = ll.loan_id AND ll.status = 'active'\n        WHERE l.id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "lender_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "loan_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "principal_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "asking_price",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "listing_status",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fd53c5d507e2466d7d1e4e414bb829faa88c6bebd08f616970c592e11c7dcc20"
+}

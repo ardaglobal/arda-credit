@@ -25,7 +25,9 @@ use crate::{
     balance::{handle_balance_command, BalanceCommands},
     batch::{handle_batch_command, BatchCommands},
     loans::{handle_loan_command, LoanCommands},
+    marketplace::{handle_marketplace_command, MarketplaceCommands},
     pools::{handle_pool_command, PoolCommands},
+    transfers::{handle_transfer_command, TransferCommands},
     user::{handle_user_command, UserCommands},
 };
 
@@ -87,6 +89,14 @@ pub enum Commands {
     /// Batch processing, proofs, and state operations
     #[command(subcommand)]
     Batch(BatchCommands),
+
+    /// Marketplace loan trading operations (Worker A)
+    #[command(subcommand)]
+    Marketplace(MarketplaceCommands),
+
+    /// Transfer loan ownership operations (Worker B)
+    #[command(subcommand)]
+    Transfer(TransferCommands),
 
     /// Magic link authentication testing (NEW)
     #[command(subcommand)]
@@ -173,6 +183,16 @@ pub async fn run_cli() -> Result<()> {
         }
         Commands::Batch(cmd) => {
             handle_batch_command(&client, cmd, cli.verbose).await?;
+        }
+        Commands::Marketplace(cmd) => {
+            handle_marketplace_command(cmd)
+                .await
+                .map_err(|e| eyre::eyre!("Marketplace command failed: {}", e))?;
+        }
+        Commands::Transfer(cmd) => {
+            handle_transfer_command(cmd)
+                .await
+                .map_err(|e| eyre::eyre!("Transfer command failed: {}", e))?;
         }
         Commands::Auth(cmd) => {
             handle_auth_command(&client, cmd, cli.verbose).await?;
@@ -261,4 +281,45 @@ impl CliMiddleware {
             }
         }
     }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS FOR MARKETPLACE AND TRANSFER CLI
+// ============================================================================
+
+/// Get the API base URL from environment or default
+pub fn get_api_base_url() -> String {
+    std::env::var("ARDA_CREDIT_API_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
+}
+
+/// Handle API error responses consistently
+pub async fn handle_api_error(response: reqwest::Response) -> Result<()> {
+    let status = response.status();
+    let url = response.url().clone();
+
+    // Try to get the error response body
+    let error_text = match response.text().await {
+        Ok(text) => {
+            // Try to parse as JSON to get a cleaner error message
+            match serde_json::from_str::<serde_json::Value>(&text) {
+                Ok(json) => json
+                    .get("error")
+                    .or(json.get("message"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&text)
+                    .to_string(),
+                Err(_) => text,
+            }
+        }
+        Err(_) => format!("HTTP {} - No response body", status),
+    };
+
+    error!("❌ API request failed: {} {} - {}", status, url, error_text);
+
+    // Return a user-friendly error
+    Err(eyre::eyre!(
+        "API request failed: {} ({})",
+        error_text,
+        status
+    ))
 }

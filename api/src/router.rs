@@ -38,6 +38,10 @@ use crate::financial_transaction_handlers::{
 };
 use crate::health_handlers::EndpointInfo;
 use crate::loan_handlers::DeleteLoanResponse;
+use crate::marketplace_handlers::{
+    browse_marketplace_endpoint, list_loan_for_sale_endpoint, marketplace_stats_endpoint,
+    remove_loan_from_sale_endpoint,
+};
 use crate::merchant_handlers::{
     InvestorProfileQuery, InvestorProfileResponse, MerchantProfileResponse,
     RegisterInvestorRequest, RegisterInvestorResponse, RegisterMerchantRequest,
@@ -65,6 +69,10 @@ use crate::state_handlers::{
     update_batch_proof_endpoint,
 };
 use crate::transaction_history_handlers::{get_pool_transaction_history, get_transaction_history};
+use crate::transfer_handlers::{
+    get_loan_transfer_history_endpoint, get_user_transfer_history_endpoint,
+    transfer_loan_ownership_endpoint, validate_transfer_endpoint,
+};
 use crate::turnover_handlers::{
     create_turnover_endpoint, get_profile_completion_endpoint, get_turnover_analytics_endpoint,
     get_turnover_endpoint, update_turnover_endpoint,
@@ -432,6 +440,32 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::LOANS_STATS,
             get(crate::loan_handlers::get_loan_stats_endpoint),
+        )
+        // ========================================================================
+        // MARKETPLACE ENDPOINTS (Worker A)
+        // ========================================================================
+        .route(paths::LOANS_FOR_SALE, get(browse_marketplace_endpoint))
+        .route(paths::LOAN_LIST_FOR_SALE, post(list_loan_for_sale_endpoint))
+        .route(
+            paths::LOAN_LIST_FOR_SALE,
+            delete(remove_loan_from_sale_endpoint),
+        )
+        .route(paths::MARKETPLACE_STATS, get(marketplace_stats_endpoint))
+        // ========================================================================
+        // TRANSFER ENDPOINTS (Worker B)
+        // ========================================================================
+        .route(paths::LOAN_TRANSFER, post(transfer_loan_ownership_endpoint))
+        .route(
+            paths::LOAN_TRANSFER_HISTORY,
+            get(get_loan_transfer_history_endpoint),
+        )
+        .route(
+            paths::USER_TRANSFER_HISTORY,
+            get(get_user_transfer_history_endpoint),
+        )
+        .route(
+            paths::LOAN_TRANSFER_VALIDATE,
+            post(validate_transfer_endpoint),
         )
         // Payment Processing
         .route(

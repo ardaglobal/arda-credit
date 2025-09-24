@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT lt.loan_id, lt.from_lender_id, lt.to_lender_id, lt.transfer_status\n        FROM loan_transfers lt\n        WHERE lt.transfer_id = $1\n          AND (lt.from_lender_id = $2 OR lt.to_lender_id = $2)\n          AND lt.transfer_status = 'pending'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "loan_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "from_lender_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "to_lender_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "transfer_status",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ccec3ebe16bd6408c2d435e91386e8cd8d9a5dbbb1530ed05c10011675430fd0"
+}

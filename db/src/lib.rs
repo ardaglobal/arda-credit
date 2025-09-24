@@ -40,6 +40,7 @@ pub mod credit_line_operations;
 pub mod merkle_tree;
 pub mod merkle_tree_32;
 pub mod telemetry;
+pub mod transfers;
 pub mod vapp_integration;
 
 pub mod ccr;
@@ -57,6 +58,20 @@ pub use credit_line_operations::{
     update_credit_line_request_status, update_credit_line_utilization, ActiveCreditLineWithPool,
     CreateCreditLineRequestData, CreditLine, CreditLineRequest, CreditLineStatus,
     MerchantCreditLineStats,
+};
+
+// Re-export marketplace operations
+pub use marketplace::{
+    create_loan_listing, get_loan_listing_by_loan_id, get_marketplace_loans_basic,
+    remove_loan_listing, update_listing_status, validate_loan_for_transfer, LoanListing,
+    MarketplaceLoan,
+};
+
+// Re-export transfer operations
+pub use transfers::{
+    cancel_transfer, execute_loan_transfer, get_loan_transfer_history, get_user_transfer_history,
+    validate_transfer_eligibility, ExecuteTransferRequest, LoanTransferHistory,
+    TransferValidationRequest,
 };
 
 // Re-export batch processing types and functions
