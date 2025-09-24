@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE team_members\n        SET status = 'inactive', updated_at = NOW()\n        WHERE user_id = $1 AND company_id = $2\n        AND EXISTS (\n            SELECT 1 FROM team_members tm\n            WHERE tm.user_id = $3 AND tm.company_id = $2\n            AND tm.status = 'active' AND tm.can_manage_team = true\n        )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b2db5d2169a4b874bacf89527e32397d4388934369c29f668ee849585fdc4d34"
+}

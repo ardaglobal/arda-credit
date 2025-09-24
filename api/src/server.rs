@@ -150,6 +150,7 @@ impl ApiServer {
             withdrawal_service,
             balance_service,
             withdrawal_executor: None, // Not configured in this constructor
+            document_service: None,    // Document service not configured in basic constructor
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
         };
@@ -290,6 +291,7 @@ impl ApiServer {
             withdrawal_service,
             balance_service,
             withdrawal_executor,
+            document_service: None, // Document service not configured in this constructor
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
         };

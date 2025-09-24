@@ -39,12 +39,17 @@ pub mod authentication_handlers;
 pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
+pub mod company_handlers;
+pub mod company_service;
 pub mod contract_handlers;
 pub mod cookie_utils;
 pub mod credit_line_handlers;
 pub mod email_config;
 pub mod email_service;
 pub mod email_templates;
+pub mod document_handlers;
+pub mod document_metrics;
+pub mod document_service;
 pub mod financial_transaction_handlers;
 pub mod health_handlers;
 pub mod kyc_service;
@@ -128,6 +133,12 @@ pub use kyc_service::{KycValidationResult, KycValidationService};
 
 pub use balance_service::{
     AvailableBalance, BalanceVerificationResult, BalanceVerificationService,
+};
+
+pub use company_service::{
+    BeneficialOwnerInfo, CompanyRegistrationRequest, CompanyResponseDto, CompanyService,
+    CompanyServiceError, KybSubmissionRequest, TeamInvitationRequest, TeamMemberPermissions,
+    TeamMemberResponseDto,
 };
 
 pub use withdrawal_service::{

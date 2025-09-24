@@ -21,10 +21,13 @@ use crate::authentication_handlers::{
     LogoutResponse, ValidateInviteCodeResponse,
 };
 use crate::batch_processor::BatchProcessorHandle;
+use crate::company_handlers;
 use crate::credit_line_handlers::{
     browse_available_pools, check_credit_eligibility, list_active_credit_lines_with_pool_details,
     list_credit_line_requests, submit_credit_line_request,
 };
+use crate::document_handlers;
+use crate::document_service::DocumentService;
 use crate::financial_transaction_handlers::{
     get_account_financial_transactions, get_credit_line_financial_transactions,
     get_merchant_credit_line_financial_transactions, get_pool_financial_transactions,
@@ -132,6 +135,7 @@ pub struct ApiState {
         Option<crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
     pub metrics_handle: Option<Arc<crate::metrics::MetricsHandle>>,
     pub email_rate_limiter: Option<Arc<crate::middleware::EmailRateLimiter>>,
+    pub document_service: Option<Arc<DocumentService>>,
 }
 
 /// Configuration for API server
@@ -568,6 +572,79 @@ pub fn create_router(state: ApiState) -> Router {
             paths::ADMIN_WITHDRAWAL_DASHBOARD,
             get(withdrawal_handlers::get_admin_withdrawal_dashboard),
         )
+        // ========================================================================
+        // COMPANY MANAGEMENT ENDPOINTS
+        // ========================================================================
+        .route(
+            paths::REGISTER_COMPANY,
+            post(company_handlers::register_company_endpoint),
+        )
+        .route(
+            paths::COMPANY_BY_ID,
+            get(company_handlers::get_company_endpoint),
+        )
+        .route(
+            paths::COMPANY_DASHBOARD,
+            get(company_handlers::get_company_dashboard_endpoint),
+        )
+        .route(
+            paths::SUBMIT_KYB,
+            post(company_handlers::submit_kyb_endpoint),
+        )
+        .route(
+            paths::KYB_STATUS,
+            get(company_handlers::get_kyb_status_endpoint),
+        )
+        .route(
+            paths::INVITE_TEAM_MEMBER,
+            post(company_handlers::invite_team_member_endpoint),
+        )
+        .route(
+            paths::LIST_TEAM_MEMBERS,
+            get(company_handlers::list_team_members_endpoint),
+        )
+        .route(
+            paths::UPDATE_TEAM_MEMBER_ROLE,
+            put(company_handlers::update_team_member_role_endpoint),
+        )
+        .route(
+            paths::REMOVE_TEAM_MEMBER,
+            delete(company_handlers::remove_team_member_endpoint),
+        )
+        // ========================================================================
+        // DOCUMENT MANAGEMENT ENDPOINTS
+        // ========================================================================
+        .route(
+            paths::DOCUMENT_UPLOAD,
+            post(document_handlers::upload_document),
+        )
+        .route(
+            paths::DOCUMENT_DOWNLOAD,
+            get(document_handlers::download_document),
+        )
+        .route(paths::DOCUMENT_BY_ID, get(document_handlers::get_document))
+        .route(
+            paths::DOCUMENT_BY_ID,
+            delete(document_handlers::delete_document),
+        )
+        .route(paths::DOCUMENTS, get(document_handlers::list_documents))
+        .route(
+            paths::DOCUMENT_APPROVE,
+            post(document_handlers::approve_document),
+        )
+        .route(
+            paths::DOCUMENT_REJECT,
+            post(document_handlers::reject_document),
+        )
+        .route(
+            paths::DOCUMENT_VERIFY,
+            post(document_handlers::verify_document),
+        )
+        .route(
+            paths::DOCUMENT_AUDIT,
+            get(document_handlers::get_audit_logs),
+        )
+        .route(paths::DOCUMENT_HEALTH, get(document_handlers::health_check))
         .with_state(state)
 }
 
