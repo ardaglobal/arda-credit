@@ -381,6 +381,7 @@ impl ApiServer {
             withdrawal_executor: self.state.withdrawal_executor.clone(),
             metrics_handle: self.state.metrics_handle.clone(),
             email_rate_limiter: Some(email_rate_limiter),
+            document_service: None,
         };
 
         // Use REST API routes (includes health endpoints and state)

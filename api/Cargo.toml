@@ -20,7 +20,6 @@ default = [ "tikv-jemallocator" ]
 [dependencies]
 # Core dependencies
 chrono       = { version = "0.4", features = [ "serde" ] }
-ipnetwork    = "0.20"
 rust_decimal = "1.38"
 serde        = { workspace = true }
 thiserror    = "2.0"
