@@ -90,7 +90,7 @@ pub async fn create_test_merchant(pool: &PgPool) -> Result<Merchant, sqlx::Error
     let timestamp = Utc::now().timestamp();
     let test_email = format!("test-merchant-{}.example.com", timestamp);
     let identity =
-        create_identity_with_password(pool, "merchant", &test_email, "test_password_hash").await?;
+        create_identity_with_password(pool, "admin", &test_email, "test_password_hash").await?;
 
     let request = CreateMerchantRequest {
         legal_name: "Test Merchant LLC".to_string(),

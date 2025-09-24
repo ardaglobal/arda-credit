@@ -257,7 +257,7 @@ pub async fn register_merchant_endpoint(
     let password_hash = String::new();
 
     // Register the user first as merchant
-    match register_or_reregister_user(&state.pool, "merchant", &request.email).await {
+    match register_or_reregister_user(&state.pool, "originator", &request.email).await {
         Ok(result) => {
             let identity = match result {
                 RegisterResult::Created(identity) => identity,
@@ -293,7 +293,7 @@ pub async fn register_merchant_endpoint(
                             return Ok(Json(RegisterMerchantResponse {
                                 user_id: existing_identity.id.to_string(),
                                 merchant_id: merchant.id.to_string(),
-                                user_type: UserType::Merchant,
+                                user_type: UserType::Originator,
                                 legal_name: merchant.legal_name,
                                 kyc_status: existing_identity.kyc_status,
                                 created_at: existing_identity.created_at,
@@ -366,7 +366,7 @@ pub async fn register_merchant_endpoint(
                     Ok(Json(RegisterMerchantResponse {
                         user_id: identity.id.to_string(),
                         merchant_id: merchant.id.to_string(),
-                        user_type: UserType::Merchant,
+                        user_type: UserType::Originator,
                         legal_name: merchant.legal_name,
                         kyc_status: identity.kyc_status,
                         created_at: identity.created_at,
@@ -503,7 +503,7 @@ pub async fn get_merchant_profile_endpoint(
                 merchant_id: merchant.id.to_string(),
                 user_id: merchant.user_id.to_string(),
                 email: identity.email,
-                user_type: UserType::Merchant,
+                user_type: UserType::Originator,
                 kyc_status: identity.kyc_status,
                 kyc_submitted_at: identity.kyc_submitted_at,
                 kyc_verified_at: identity.kyc_verified_at,
@@ -688,7 +688,7 @@ pub async fn update_merchant_profile_endpoint(
                 merchant_id: updated_merchant.id.to_string(),
                 user_id: updated_merchant.user_id.to_string(),
                 email: identity.email,
-                user_type: UserType::Merchant,
+                user_type: UserType::Originator,
                 kyc_status: identity.kyc_status,
                 kyc_submitted_at: identity.kyc_submitted_at,
                 kyc_verified_at: identity.kyc_verified_at,

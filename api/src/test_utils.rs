@@ -300,7 +300,7 @@ impl TestUser {
         Self {
             id: Uuid::new_v4(),
             email: format!("merchant_{}@test.com", Uuid::new_v4().simple()),
-            user_type: "merchant".to_string(),
+            user_type: "originator".to_string(),
             first_name: Some("Test".to_string()),
             last_name: Some("Merchant".to_string()),
             wallet_address: Some(format!("0x{}", hex::encode(Uuid::new_v4().as_bytes()))),
@@ -480,8 +480,8 @@ pub mod mock_data {
         for i in 0..count {
             let user_type = match i % 3 {
                 0 => "investor",
-                1 => "merchant",
-                _ => "user",
+                1 => "originator",
+                _ => "admin",
             };
 
             users.push(TestUser {

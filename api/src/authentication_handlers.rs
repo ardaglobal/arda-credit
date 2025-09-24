@@ -159,7 +159,7 @@ pub async fn validate_invite_code_endpoint(
             let message = if invite_info.is_valid {
                 format!(
                     "Invite code is valid for {} user registration",
-                    invite_info.user_type.as_deref().unwrap_or("regular")
+                    invite_info.user_type.as_deref().unwrap_or("investor")
                 )
             } else {
                 "Invite code is invalid or expired".to_string()
@@ -218,14 +218,14 @@ pub async fn generate_invite_code_endpoint(
     let expires_in_hours = request_body.expires_in_hours.unwrap_or(24 * 7); // Default 7 days
     let user_type = request_body
         .user_type
-        .unwrap_or_else(|| "regular".to_string());
+        .unwrap_or_else(|| "investor".to_string());
 
     // Validate user_type
-    if user_type != "admin" && user_type != "regular" {
+    if user_type != "admin" && user_type != "investor" && user_type != "originator" {
         warn!("❌ API: Invalid user_type provided: {}", user_type);
         return Err((
             StatusCode::BAD_REQUEST,
-            "user_type must be either 'admin' or 'regular'".to_string(),
+            "user_type must be one of: 'investor', 'originator', 'admin'".to_string(),
         ));
     }
 

@@ -2236,7 +2236,7 @@ pub async fn get_identity_by_reset_token(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InviteCodeInfo {
     pub is_valid: bool,
-    pub user_type: Option<String>, // 'admin' or 'regular'
+    pub user_type: Option<String>, // 'admin', 'investor', or 'originator'
     pub expires_at: Option<DateTime<Utc>>,
     pub description: Option<String>,
 }
@@ -2304,18 +2304,18 @@ pub async fn generate_invite_code(
     created_by: uuid::Uuid,
     max_uses: Option<i32>,
     expires_in_hours: Option<i32>,
-    user_type: Option<String>, // 'admin' or 'regular'
+    user_type: Option<String>, // 'admin', 'investor', or 'originator'
 ) -> Result<String, sqlx::Error> {
-    let user_type = user_type.unwrap_or_else(|| "regular".to_string());
+    let user_type = user_type.unwrap_or_else(|| "investor".to_string());
     debug!(
         "Generating new invite code for user: {} (user_type: {})",
         created_by, user_type
     );
 
     // Validate user_type
-    if user_type != "admin" && user_type != "regular" {
+    if !["admin", "investor", "originator"].contains(&user_type.as_str()) {
         return Err(sqlx::Error::Protocol(format!(
-            "Invalid user_type '{}'. Must be 'admin' or 'regular'",
+            "Invalid user_type '{}'. Must be 'admin', 'investor', or 'originator'",
             user_type
         )));
     }

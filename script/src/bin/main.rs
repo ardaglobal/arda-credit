@@ -384,9 +384,9 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     // Create a batch demonstrating the complete loan workflow
     let mut transactions = Vec::new();
 
-    // 1. Register Alice as a lender
+    // 1. Register Alice as an originator
     let mut alice_metadata = MetadataArray::empty();
-    alice_metadata.as_mut_bytes()[0] = UserType::Lender as u8;
+    alice_metadata.as_mut_bytes()[0] = UserType::Originator as u8;
 
     transactions.push(LoanTransaction {
         transaction_id: [1u8; 32],
@@ -715,7 +715,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
         // 2. Lender registration
         {
             let mut lender_metadata = MetadataArray::empty();
-            lender_metadata.as_mut_bytes()[0] = 2; // UserType::Lender
+            lender_metadata.as_mut_bytes()[0] = 2; // UserType::Originator
             LoanTransaction {
                 transaction_id: [2u8; 32],
                 user_id: lender_id,

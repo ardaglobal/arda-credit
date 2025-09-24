@@ -18,7 +18,7 @@ use crate::authentication_handlers::{
 };
 use crate::types::ApiState;
 
-/// Test user registration endpoint
+/// Test user registration endpoint with invite code
 #[tokio::test]
 async fn test_user_registration() {
     let test_db = TestDatabase::new().await;
@@ -29,13 +29,11 @@ async fn test_user_registration() {
         .route("/api/v1/auth/register", post(register_user_endpoint))
         .with_state(api_state);
 
-    // Test data
+    // Test data - use INVESTOR2025 invite code which creates investor users
     let request_body = json!({
         "email": "test@example.com",
         "password": "securepassword123",
-        "user_type": "investor",
-        "first_name": "Test",
-        "last_name": "User"
+        "invite_code": "INVESTOR2025"
     });
 
     // Create request
@@ -58,7 +56,7 @@ async fn test_user_registration() {
 
     assert!(response_json.get("user_id").is_some());
     assert!(response_json.get("user_type").is_some());
-    assert_eq!(response_json["user_type"], "investor");
+    assert_eq!(response_json["user_type"], "investor"); // INVESTOR2025 creates investor users
 
     // Cleanup
     test_db.cleanup().await.unwrap();
@@ -74,9 +72,7 @@ async fn test_user_login() {
     let register_request = json!({
         "email": "login_test@example.com",
         "password": "testpassword",
-        "user_type": "merchant",
-        "first_name": "Login",
-        "last_name": "Test"
+        "invite_code": "ORIGINATOR2025" // Creates originator users
     });
 
     // Register user first
@@ -228,9 +224,7 @@ async fn test_duplicate_registration() {
     let request_body = json!({
         "email": "duplicate@example.com",
         "password": "password123",
-        "user_type": "investor",
-        "first_name": "Test",
-        "last_name": "User"
+        "invite_code": "INVESTOR2025"
     });
 
     // First registration
@@ -255,6 +249,41 @@ async fn test_duplicate_registration() {
     let response2 = app.oneshot(request2).await.unwrap();
     // Should fail due to duplicate email
     assert_eq!(response2.status(), StatusCode::CONFLICT);
+
+    // Cleanup
+    test_db.cleanup().await.unwrap();
+}
+
+/// Test registration fails without invite code
+#[tokio::test]
+async fn test_registration_fails_without_invite_code() {
+    let test_db = TestDatabase::new().await;
+    let api_state = create_test_api_state(&test_db.pool).await;
+
+    // Create test router
+    let app = Router::new()
+        .route("/api/v1/auth/register", post(register_user_endpoint))
+        .with_state(api_state);
+
+    // Test data - missing invite_code (now required)
+    let request_body = json!({
+        "email": "test@example.com",
+        "password": "securepassword123"
+    });
+
+    // Create request
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/auth/register")
+        .header("content-type", "application/json")
+        .body(Body::from(serde_json::to_string(&request_body).unwrap()))
+        .unwrap();
+
+    // Execute request
+    let response = app.oneshot(request).await.unwrap();
+
+    // Assert response fails
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     // Cleanup
     test_db.cleanup().await.unwrap();

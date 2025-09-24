@@ -262,7 +262,7 @@ async fn test_magic_link_different_user_types() {
     let ctx = MagicLinkTestContext::new().await;
 
     // Test different user types
-    let user_types = vec!["investor", "merchant", "admin"];
+    let user_types = vec!["investor", "originator", "admin"];
 
     for user_type in user_types {
         let email = format!("test_{}@example.com", user_type);

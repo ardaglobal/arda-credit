@@ -2585,6 +2585,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "create_user_and_magic_link"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -13,8 +13,8 @@ use thiserror::Error;
 #[repr(u8)]
 pub enum UserType {
     Investor = 1,
-    Lender = 2,
-    Merchant = 3,
+    Originator = 2,
+    Admin = 3,
 }
 
 /// KYC status for compliance tracking
@@ -108,8 +108,8 @@ impl UserState {
         // Decode user data from metadata
         let user_type = match transaction.metadata.as_bytes()[0] {
             1 => UserType::Investor,
-            2 => UserType::Lender,
-            3 => UserType::Merchant,
+            2 => UserType::Originator,
+            3 => UserType::Admin,
             _ => return Err(UserError::InvalidTransactionType),
         };
 
@@ -203,15 +203,15 @@ impl UserState {
         Ok(user.is_kyc_approved())
     }
 
-    /// Process merchant registration transaction (alias for user registration with merchant type)
+    /// Process admin registration transaction (alias for user registration with admin type)
     ///
     /// # Errors
     /// Returns `UserError` if transaction type is invalid or user already exists.
-    pub fn process_merchant_registration(
+    pub fn process_admin_registration(
         &mut self,
         transaction: &LoanTransaction,
     ) -> Result<(), UserError> {
-        if transaction.transaction_type != TransactionType::MerchantRegistration {
+        if transaction.transaction_type != TransactionType::AdminRegistration {
             return Err(UserError::InvalidTransactionType);
         }
 
@@ -221,10 +221,10 @@ impl UserState {
             return Err(UserError::DuplicateUser { user_id });
         }
 
-        // For merchant registration, we explicitly set the user type to Merchant
+        // For admin registration, we explicitly set the user type to Admin
         let user = User {
             user_id,
-            user_type: UserType::Merchant,
+            user_type: UserType::Admin,
             kyc_status: KycStatus::NotSubmitted,
             kyc_submitted_at: 0,
             kyc_verified_at: 0,

@@ -231,7 +231,7 @@ pub async fn request_magic_link_test(
                             404 => {
                                 println!();
                                 println!("💡 User not found - register first:");
-                                println!("   make cli ARGS=\"user create --user-type investor --email {} --password test123\"", email);
+                                println!("   make cli ARGS=\"user create --invite-code INVESTOR2025 --email {} --password test123\"", email);
                             }
                             429 => {
                                 println!();

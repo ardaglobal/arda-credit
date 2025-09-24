@@ -104,7 +104,7 @@ async fn create_test_identities(pool: &sqlx::PgPool) -> Result<Vec<Identity>, sq
             "alice.johnson@example.com",
             "approved",
         ),
-        ("Bob Smith", "lender", "bob.smith@example.com", "approved"),
+        ("Bob Smith", "originator", "bob.smith@example.com", "approved"),
         (
             "Carol Davis",
             "investor",
@@ -113,28 +113,28 @@ async fn create_test_identities(pool: &sqlx::PgPool) -> Result<Vec<Identity>, sq
         ),
         (
             "David Wilson",
-            "lender",
+            "originator",
             "david.wilson@example.com",
             "approved",
         ),
         ("Eve Brown", "investor", "eve.brown@example.com", "rejected"),
         (
             "Frank Miller",
-            "lender",
+            "originator",
             "frank.miller@example.com",
             "not_submitted",
         ),
         ("Grace Lee", "investor", "grace.lee@example.com", "approved"),
         (
             "Henry Taylor",
-            "lender",
+            "originator",
             "henry.taylor@example.com",
             "approved",
         ),
         ("Ivy Chen", "investor", "ivy.chen@example.com", "pending"),
         (
             "Jack Rodriguez",
-            "lender",
+            "originator",
             "jack.rodriguez@example.com",
             "approved",
         ),
@@ -199,9 +199,9 @@ async fn create_test_loans(
         .copied()
         .collect();
 
-    let lenders: Vec<&Identity> = approved_identities
+    let originators: Vec<&Identity> = approved_identities
         .iter()
-        .filter(|i| i.user_type == "lender")
+        .filter(|i| i.user_type == "originator")
         .copied()
         .collect();
 
@@ -220,12 +220,12 @@ async fn create_test_loans(
 
     for (i, (amount_str, interest_rate_bps, status, days_ago)) in loan_scenarios.iter().enumerate()
     {
-        if i >= investors.len() || i >= lenders.len() {
+        if i >= investors.len() || i >= originators.len() {
             break;
         }
 
         let borrower = investors[i];
-        let lender = lenders[i % lenders.len()];
+        let originator = originators[i % originators.len()];
         let amount = Decimal::from_str(amount_str).map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
         let originated_at = Utc::now() - chrono::Duration::days(*days_ago as i64);
 
@@ -238,13 +238,13 @@ async fn create_test_loans(
 
         sqlx::query!(
             r#"
-            INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance, 
+            INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance,
                              interest_rate_bps, loan_status, originated_at, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)
             "#,
             loan_id,
             borrower.id,
-            lender.id,
+            originator.id,
             amount,
             outstanding_balance,
             *interest_rate_bps,
@@ -257,7 +257,7 @@ async fn create_test_loans(
         let loan = Loan {
             id: loan_id,
             borrower_id: borrower.id,
-            lender_id: lender.id,
+            lender_id: originator.id,
             principal_amount: amount,
             outstanding_balance,
             interest_rate_bps: *interest_rate_bps,
@@ -273,7 +273,7 @@ async fn create_test_loans(
             "  💰 Created ${} loan: {} -> {} ({})",
             amount,
             borrower.email.split('@').next().unwrap_or("unknown"),
-            lender.email.split('@').next().unwrap_or("unknown"),
+            originator.email.split('@').next().unwrap_or("unknown"),
             status
         );
     }

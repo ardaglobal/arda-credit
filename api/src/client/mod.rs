@@ -442,6 +442,26 @@ impl BatchApiClient {
         self.handle_response(response).await
     }
 
+    /// Register a new user with invite code (new method for simplified user types)
+    pub async fn register_user(
+        &self,
+        invite_code: &str,
+        email: &str,
+        password: &str,
+        jurisdiction: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}{}", self.base_url, paths::USER);
+        let request = serde_json::json!({
+            "invite_code": invite_code,
+            "email": email,
+            "password": password,
+            "jurisdiction": jurisdiction.unwrap_or("US")
+        });
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
     /// Get user details by ID
     pub async fn get_user(&self, user_id: &str) -> Result<serde_json::Value, ApiClientError> {
         let url = format!("{}{}", self.base_url, paths::user_path(user_id));
@@ -564,9 +584,19 @@ impl BatchApiClient {
     }
 
     /// Generate a new invite code
-    pub async fn generate_invite_code(&self) -> Result<serde_json::Value, ApiClientError> {
+    pub async fn generate_invite_code(
+        &self,
+        user_type: &str,
+        max_uses: Option<i32>,
+        expires_in_hours: Option<i32>,
+    ) -> Result<serde_json::Value, ApiClientError> {
         let url = format!("{}{}", self.base_url, paths::INVITE_CODE_GENERATE);
-        let response = self.client.get(&url).send().await?;
+        let request = serde_json::json!({
+            "user_type": user_type,
+            "max_uses": max_uses,
+            "expires_in_hours": expires_in_hours
+        });
+        let response = self.client.post(&url).json(&request).send().await?;
         self.handle_response(response).await
     }
 

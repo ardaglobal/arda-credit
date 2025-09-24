@@ -34,7 +34,7 @@ async fn test_partial_user_profile_updates() {
 
     // Create a test user
     let test_email = format!("test-user-profile-{}.example.com", Utc::now().timestamp());
-    let user = create_identity_with_password(&pool, "user", &test_email, "hashed_password_123")
+    let user = create_identity_with_password(&pool, "investor", &test_email, "hashed_password_123")
         .await
         .expect("Failed to create test user");
 
@@ -55,7 +55,7 @@ async fn test_partial_user_profile_updates() {
     assert_eq!(update_result.first_name, Some("John".to_string()));
     assert_eq!(update_result.last_name, None); // Should remain None
     assert_eq!(update_result.email, test_email); // Should remain unchanged
-    assert_eq!(update_result.user_type, "user"); // Should remain unchanged
+    assert_eq!(update_result.user_type, "investor"); // Should remain unchanged
 
     // Test 2: Update only last_name
     let update_result = update_identity_profile(
@@ -155,7 +155,7 @@ async fn test_user_profile_update_validation() {
         "test-user-validation-{}.example.com",
         Utc::now().timestamp()
     );
-    let user = create_identity_with_password(&pool, "user", &test_email, "hashed_password_123")
+    let user = create_identity_with_password(&pool, "investor", &test_email, "hashed_password_123")
         .await
         .expect("Failed to create test user");
 
@@ -175,7 +175,7 @@ async fn test_user_profile_update_timestamp_tracking() {
 
     // Create a test user
     let test_email = format!("test-user-timestamp-{}.example.com", Utc::now().timestamp());
-    let user = create_identity_with_password(&pool, "user", &test_email, "hashed_password_123")
+    let user = create_identity_with_password(&pool, "investor", &test_email, "hashed_password_123")
         .await
         .expect("Failed to create test user");
 
@@ -215,7 +215,7 @@ async fn test_jurisdiction_field_functionality() {
 
     // Create a test user
     let test_email = format!("test-jurisdiction-{}.example.com", Utc::now().timestamp());
-    let user = create_identity_with_password(&pool, "user", &test_email, "hashed_password_123")
+    let user = create_identity_with_password(&pool, "investor", &test_email, "hashed_password_123")
         .await
         .expect("Failed to create test user");
 
@@ -280,7 +280,7 @@ async fn test_kyc_auto_approval() {
 
     // Create a test user
     let test_email = format!("test-kyc-auto-{}.example.com", Utc::now().timestamp());
-    let user = create_identity_with_password(&pool, "user", &test_email, "hashed_password_123")
+    let user = create_identity_with_password(&pool, "investor", &test_email, "hashed_password_123")
         .await
         .expect("Failed to create test user");
 

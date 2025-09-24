@@ -233,7 +233,7 @@ impl TransactionMapper {
                 Ok(vec![])
             }
 
-            TransactionType::MerchantRegistration
+            TransactionType::AdminRegistration
             | TransactionType::MerchantProfileUpdate
             | TransactionType::CreditLineRequest => {
                 // Merchant operations don't generate CCR operations

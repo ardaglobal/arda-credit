@@ -21,9 +21,9 @@ use arda_credit_api::BatchApiClient;
 pub enum UserCommands {
     /// Create a new user account
     Create {
-        /// User type (user, investor, originator, admin)
+        /// Invite code for user registration
         #[arg(long)]
-        user_type: String,
+        invite_code: String,
         /// User email address
         #[arg(long)]
         email: String,
@@ -139,6 +139,9 @@ pub enum UserCommands {
 
     /// Generate an invite code for user registration
     GenerateInviteCode {
+        /// User type for the invite code (investor, originator, admin)
+        #[arg(long)]
+        user_type: String,
         /// Number of times this code can be used
         #[arg(long, default_value = "1")]
         max_uses: Option<i32>,
@@ -181,8 +184,8 @@ pub enum UserCommands {
         /// Number of users to create for testing
         #[arg(long, default_value = "5")]
         count: Option<i32>,
-        /// Test user type (user, investor, originator)
-        #[arg(long, default_value = "user")]
+        /// Test user type for invite code generation (investor, originator, admin)
+        #[arg(long, default_value = "investor")]
         user_type: Option<String>,
         /// Enable KYC testing
         #[arg(long)]
@@ -204,7 +207,7 @@ pub async fn handle_user_command(
 ) -> Result<()> {
     match command {
         UserCommands::Create {
-            user_type,
+            invite_code,
             email,
             password,
             jurisdiction,
@@ -212,7 +215,7 @@ pub async fn handle_user_command(
         } => {
             create_user(
                 client,
-                &user_type,
+                &invite_code,
                 &email,
                 &password,
                 jurisdiction.as_deref(),
@@ -298,6 +301,7 @@ pub async fn handle_user_command(
             .await
         }
         UserCommands::GenerateInviteCode {
+            user_type,
             max_uses,
             expires_in_hours,
             description,
@@ -305,6 +309,7 @@ pub async fn handle_user_command(
         } => {
             generate_invite_code(
                 client,
+                &user_type,
                 max_uses,
                 expires_in_hours,
                 description.as_deref(),
@@ -344,7 +349,7 @@ pub async fn handle_user_command(
 /// Create a new user account
 pub async fn create_user(
     client: &BatchApiClient,
-    user_type: &str,
+    invite_code: &str,
     email: &str,
     password: &str,
     jurisdiction: Option<&str>,
@@ -353,7 +358,7 @@ pub async fn create_user(
     println!("👤 Creating new user account...");
 
     match client
-        .create_user(user_type, email, password, jurisdiction)
+        .register_user(invite_code, email, password, jurisdiction)
         .await
     {
         Ok(response) => {
@@ -403,13 +408,16 @@ pub async fn create_user(
                 "   • Update profile using: cli user update --user-id {}",
                 response["user_id"].as_str().unwrap_or("USER_ID")
             );
+            println!(
+                "   • Generate invite codes using: cli user generate-invite-code --user-type investor"
+            );
         }
         Err(e) => {
             let error_msg = e.to_string();
             if error_msg.contains("400") {
                 println!("❌ Invalid request parameters");
                 if verbose {
-                    println!("   Common causes: invalid email format, unsupported user type, or missing required fields");
+                    println!("   Common causes: invalid email format, invalid invite code, or missing required fields");
                 }
             } else if error_msg.contains("409") {
                 println!("❌ User with this email already exists");
@@ -510,7 +518,7 @@ pub async fn list_users(
                     println!("💡 Try adjusting your filters or removing them to see all users");
                 } else {
                     println!("💡 No users exist in the system yet");
-                    println!("💡 Create users using: cli user create");
+                    println!("💡 Create users using: cli user create --invite-code INVESTOR2025 --email user@example.com --password secure123");
                 }
             } else {
                 println!();
@@ -601,7 +609,7 @@ pub async fn list_users(
             if error_msg.contains("400") {
                 println!("❌ Invalid filter parameters");
                 if verbose {
-                    println!("   Supported user types: user, investor, originator, admin");
+                    println!("   Supported user types: investor, originator, admin");
                     println!(
                         "   Supported KYC statuses: pending, approved, rejected, under_review"
                     );
@@ -711,7 +719,7 @@ pub async fn update_user(
                     println!("   Common causes:");
                     println!("   • Invalid email format");
                     println!(
-                        "   • Unsupported user type (must be: user, investor, originator, admin)"
+                        "   • Unsupported user type (must be: investor, originator, admin)"
                     );
                     println!("   • Invalid jurisdiction code");
                     println!("   • Attempting to update immutable fields");
@@ -1146,12 +1154,25 @@ pub async fn update_kyc_status(
 /// Generate an invite code for user registration
 pub async fn generate_invite_code(
     client: &BatchApiClient,
+    user_type: &str,
     max_uses: Option<i32>,
     expires_in_hours: Option<i32>,
     description: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
     println!("🎫 Generating invite code...");
+
+    // Validate user type
+    match user_type.to_lowercase().as_str() {
+        "investor" | "originator" | "admin" => {
+            println!("   User Type: {}", user_type);
+        }
+        _ => {
+            println!("❌ Invalid user type: {}", user_type);
+            println!("💡 Valid user types: investor, originator, admin");
+            return Ok(());
+        }
+    }
 
     let max_uses = max_uses.unwrap_or(1);
     let expires_in_hours = expires_in_hours.unwrap_or(168);
@@ -1178,7 +1199,7 @@ pub async fn generate_invite_code(
         return Ok(());
     }
 
-    match client.generate_invite_code().await {
+    match client.generate_invite_code(user_type, Some(max_uses), Some(expires_in_hours)).await {
         Ok(response) => {
             // Extract the actual invite code from the response
             let invite_code = response["invite_code"]
@@ -1442,7 +1463,7 @@ pub async fn use_invite_code(
     println!();
 
     println!("💡 To use an invite code:");
-    println!("   1. During user registration: cli user create --user-type <type> --email <email> --password <password>");
+    println!("   1. During user registration: cli user create --invite-code <code> --email <email> --password <password>");
     println!("   2. Invite codes are automatically validated during the registration flow");
     println!("   3. No separate step is needed to 'use' the invite code");
 
@@ -1452,7 +1473,7 @@ pub async fn use_invite_code(
 
     println!();
     println!("💡 To generate new invite codes (admin only):");
-    println!("   cli user generate-invite-code");
+    println!("   cli user generate-invite-code --user-type investor");
 
     if verbose {
         println!();
@@ -1476,7 +1497,7 @@ pub async fn test_user_operations(
     verbose: bool,
 ) -> Result<()> {
     let count = count.unwrap_or(5);
-    let user_type = user_type.unwrap_or("user");
+    let user_type = user_type.unwrap_or("investor");
 
     println!("🧪 Testing user operations...");
     println!("   Users to create: {}", count);

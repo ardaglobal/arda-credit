@@ -417,7 +417,8 @@ const RegisterForm = () => {
                     disabled={loading}
                 >
                     <option value="investor">Investor</option>
-                    <option value="lender">Lender</option>
+                    <option value="originator">Originator</option>
+                    <option value="admin">Admin</option>
                 </select>
             </div>
             
