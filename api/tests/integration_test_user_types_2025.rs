@@ -36,6 +36,7 @@ struct TestUser {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
+    use api::user_handlers::RegisterUserResponse;
 
     /// Main integration test - runs all test scenarios
     #[tokio::test]
@@ -405,7 +406,7 @@ mod integration_tests {
             .expect(&format!("Failed to query user {}", email));
 
             if let Some(user) = user_result {
-                let expected_type = match email.as_str() {
+                let expected_type = match email.as_ref() {
                     "investor-test@arda.xyz" => "investor",
                     "originator-test@arda.xyz" => "originator",
                     "admin-test@arda.xyz" => "admin",

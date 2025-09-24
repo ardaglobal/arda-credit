@@ -42,6 +42,17 @@ impl EmailService {
             config.ses_region
         );
 
+        // Debug log the full configuration (excluding sensitive data)
+        debug!(
+            "📧 Email service config - enabled: {}, debug_mode: {}, region: {}, from: {}, reply_to: {}, config_set: {:?}",
+            config.enabled,
+            config.debug_mode,
+            config.ses_region,
+            config.email_from,
+            config.email_reply_to,
+            config.configuration_set
+        );
+
         if !config.enabled {
             warn!("📧 Email service is DISABLED via configuration");
             return Ok(Self {
@@ -51,11 +62,13 @@ impl EmailService {
         }
 
         // Create AWS config for the specified region
+        debug!("🔧 Creating AWS config for region: {}", config.ses_region);
         let aws_config = aws_config::defaults(aws_config::BehaviorVersion::v2024_03_28())
             .region(Region::new(config.ses_region.clone()))
             .load()
             .await;
 
+        debug!("🔧 Creating SES client with AWS config");
         let client = SesClient::new(&aws_config);
 
         info!("✅ AWS SES client initialized successfully");
@@ -125,6 +138,10 @@ impl EmailService {
         recipient: &str,
         email_content: TemplateContent,
     ) -> Result<String, EmailError> {
+        debug!(
+            "📤 Preparing SES email: from={}, to={}, subject='{}'",
+            self.config.email_from, recipient, email_content.subject
+        );
         // Create the email message
         let message = Message::builder()
             .subject(
@@ -170,15 +187,64 @@ impl EmailService {
         // Add reply-to address
         request = request.reply_to_addresses(&self.config.email_reply_to);
 
+        // Log detailed request information before sending
+        debug!(
+            "📧 SES Request Details: from={}, to={}, reply_to={}, config_set={:?}",
+            self.config.email_from,
+            recipient,
+            self.config.email_reply_to,
+            self.config.configuration_set
+        );
+
         // Send the email
+        debug!("🚀 Sending email via AWS SES...");
         match request.send().await {
             Ok(output) => {
                 let message_id = output.message_id().unwrap_or("unknown").to_string();
+                info!("✅ SES send successful: message_id={}", message_id);
                 debug!("📧 SES send successful: {}", message_id);
                 Ok(message_id)
             }
             Err(e) => {
-                error!("❌ SES send failed: {}", e);
+                error!("❌ SES send failed with detailed error: {:#?}", e);
+
+                // Log additional debugging information
+                error!("🔍 SES Error Debug Info:");
+                error!("   - Error type: {}", std::any::type_name_of_val(&e));
+                error!("   - From address: {}", self.config.email_from);
+                error!("   - To address: {}", recipient);
+                error!("   - SES region: {}", self.config.ses_region);
+                error!(
+                    "   - Configuration set: {:?}",
+                    self.config.configuration_set
+                );
+
+                // Try to extract more specific error information
+                let error_message = format!("{}", e);
+                if error_message.contains("MessageRejected") {
+                    error!("🚫 MessageRejected: Email was rejected by SES (check domain/email verification)");
+                } else if error_message.contains("SendingPausedException") {
+                    error!("⏸️  SendingPausedException: SES sending is paused for this account");
+                } else if error_message.contains("MailFromDomainNotVerifiedException") {
+                    error!(
+                        "🏷️  MailFromDomainNotVerifiedException: From domain not verified in SES"
+                    );
+                } else if error_message.contains("ConfigurationSetDoesNotExistException") {
+                    error!("⚙️  ConfigurationSetDoesNotExistException: SES configuration set doesn't exist");
+                } else if error_message.contains("SignatureDoesNotMatch")
+                    || error_message.contains("InvalidSignatureException")
+                {
+                    error!(
+                        "🔑 SignatureDoesNotMatch: AWS credentials issue (check access key/secret)"
+                    );
+                } else if error_message.contains("AccessDenied")
+                    || error_message.contains("UnauthorizedOperation")
+                {
+                    error!("🛡️  AccessDenied: Insufficient SES permissions for this AWS user");
+                } else {
+                    error!("❓ Unknown SES error - check AWS SES console for more details");
+                }
+
                 Err(EmailError::SesError(format!("SES API error: {}", e)))
             }
         }

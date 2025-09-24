@@ -274,7 +274,7 @@ async fn test_concurrent_magic_link_requests() {
     // At least one should succeed (rate limiting might affect others)
     let success_count = results
         .iter()
-        .filter(|result| matches!(result, Ok(response) if response.status().is_success()))
+        .filter(|result| matches!(result, Ok(Ok(response)) if response.status().is_success()))
         .count();
 
     assert!(success_count >= 1, "At least one request should succeed");

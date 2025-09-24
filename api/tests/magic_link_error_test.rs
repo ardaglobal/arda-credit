@@ -39,7 +39,9 @@ impl ErrorTestContext {
                     .method("POST")
                     .uri("/api/v1/auth/magic-link")
                     .header("content-type", "application/json")
-                    .body(serde_json::to_string(request).unwrap().into())
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(request).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -57,7 +59,9 @@ impl ErrorTestContext {
                     .method("POST")
                     .uri("/api/v1/auth/verify")
                     .header("content-type", "application/json")
-                    .body(serde_json::to_string(request).unwrap().into())
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(request).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -347,7 +351,7 @@ async fn test_invalid_json_requests() {
                     .method("POST")
                     .uri("/api/v1/auth/magic-link")
                     .header("content-type", "application/json")
-                    .body(json_body.into())
+                    .body(axum::body::Body::from(json_body))
                     .unwrap(),
             )
             .await
@@ -376,7 +380,7 @@ async fn test_missing_required_fields() {
                 .method("POST")
                 .uri("/api/v1/auth/magic-link")
                 .header("content-type", "application/json")
-                .body(r#"{"redirect_uri": "/dashboard"}"#.into())
+                .body(axum::body::Body::from(r#"{"redirect_uri": "/dashboard"}"#))
                 .unwrap(),
         )
         .await
@@ -393,7 +397,7 @@ async fn test_missing_required_fields() {
                 .method("POST")
                 .uri("/api/v1/auth/verify")
                 .header("content-type", "application/json")
-                .body(r#"{"state": "test-state"}"#.into())
+                .body(axum::body::Body::from(r#"{"state": "test-state"}"#))
                 .unwrap(),
         )
         .await
@@ -410,7 +414,7 @@ async fn test_missing_required_fields() {
                 .method("POST")
                 .uri("/api/v1/auth/verify")
                 .header("content-type", "application/json")
-                .body(r#"{"token": "test-token"}"#.into())
+                .body(axum::body::Body::from(r#"{"token": "test-token"}"#))
                 .unwrap(),
         )
         .await
@@ -432,7 +436,7 @@ async fn test_wrong_content_type() {
                 .method("POST")
                 .uri("/api/v1/auth/magic-link")
                 .header("content-type", "text/plain")
-                .body(r#"email=test@example.com"#.into())
+                .body(axum::body::Body::from(r#"email=test@example.com"#))
                 .unwrap(),
         )
         .await
@@ -517,7 +521,9 @@ async fn test_concurrent_request_conflicts() {
                         .method("POST")
                         .uri("/api/v1/auth/magic-link")
                         .header("content-type", "application/json")
-                        .body(serde_json::to_string(&request).unwrap().into())
+                        .body(axum::body::Body::from(
+                            serde_json::to_string(&request).unwrap(),
+                        ))
                         .unwrap(),
                 )
                 .await
@@ -525,18 +531,17 @@ async fn test_concurrent_request_conflicts() {
         })
         .collect();
 
-    let results: Vec<Result<reqwest::Response, Box<dyn std::error::Error + Send + Sync>>> =
-        futures::future::join_all(tasks).await;
+    let results = futures::future::join_all(tasks).await;
 
     // Count successes and failures
     let success_count = results
         .iter()
-        .filter(|result| matches!(result, Ok(response) if response.status().is_success()))
+        .filter(|result| matches!(result, Ok(Ok(response)) if response.status().is_success()))
         .count();
 
     let rate_limit_count = results.iter()
         .filter(|result| {
-            matches!(result, Ok(response) if response.status() == StatusCode::TOO_MANY_REQUESTS)
+            matches!(result, Ok(Ok(response)) if response.status() == StatusCode::TOO_MANY_REQUESTS)
         })
         .count();
 

@@ -12,6 +12,7 @@ use tower::ServiceExt;
 use api::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
 use api::test_utils::{
     create_test_app_with_magic_links, create_test_user, TestApp, TestContext, TestMagicLink,
+    TestUser,
 };
 use api::types::ApiState;
 
@@ -49,7 +50,9 @@ impl SecurityTestContext {
                     .uri("/api/v1/auth/magic-link")
                     .header("content-type", "application/json")
                     .header("x-forwarded-for", "127.0.0.1")
-                    .body(serde_json::to_string(request).unwrap().into())
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(request).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -67,7 +70,9 @@ impl SecurityTestContext {
                     .method("POST")
                     .uri("/api/v1/auth/verify")
                     .header("content-type", "application/json")
-                    .body(serde_json::to_string(request).unwrap().into())
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(request).unwrap(),
+                    ))
                     .unwrap(),
             )
             .await
@@ -127,8 +132,8 @@ async fn test_email_rate_limiting_different_ips() {
                     .method("POST")
                     .uri("/api/v1/auth/magic-link")
                     .header("content-type", "application/json")
-                    .header("x-forwarded-for", ip)
-                    .body(r#"{"email":"test@example.com"}"#.into())
+                    .header("x-forwarded-for", *ip)
+                    .body(axum::body::Body::from(r#"{"email":"test@example.com"}"#))
                     .unwrap(),
             )
             .await
@@ -486,7 +491,9 @@ async fn complete_auth_flow(
                 .method("POST")
                 .uri("/api/v1/auth/verify")
                 .header("content-type", "application/json")
-                .body(serde_json::to_string(&verify_request).unwrap().into())
+                .body(axum::body::Body::from(
+                    serde_json::to_string(&verify_request).unwrap(),
+                ))
                 .unwrap(),
         )
         .await
