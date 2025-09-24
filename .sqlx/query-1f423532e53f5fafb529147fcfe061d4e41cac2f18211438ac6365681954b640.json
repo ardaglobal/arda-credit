@@ -90,11 +90,21 @@
       },
       {
         "ordinal": 17,
+        "name": "invited_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 18,
+        "name": "invitation_message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
         "name": "kyb_status",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 18,
+        "ordinal": 20,
         "name": "kyc_status",
         "type_info": "Varchar"
       }
@@ -117,6 +127,8 @@
       true,
       true,
       false,
+      true,
+      true,
       true,
       true,
       true,

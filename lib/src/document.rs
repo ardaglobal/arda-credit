@@ -953,3 +953,33 @@ impl std::fmt::Display for DocumentStatus {
         }
     }
 }
+
+impl std::fmt::Display for TeamRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TeamRole::Admin => write!(f, "admin"),
+            TeamRole::Write => write!(f, "write"),
+            TeamRole::Read => write!(f, "read"),
+        }
+    }
+}
+
+impl std::fmt::Display for CompanyType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompanyType::Originator => write!(f, "originator"),
+            CompanyType::Investor => write!(f, "investor"),
+        }
+    }
+}
+
+impl std::fmt::Display for KybStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KybStatus::NotSubmitted => write!(f, "not_submitted"),
+            KybStatus::Pending => write!(f, "pending"),
+            KybStatus::Approved => write!(f, "approved"),
+            KybStatus::Rejected => write!(f, "rejected"),
+        }
+    }
+}
