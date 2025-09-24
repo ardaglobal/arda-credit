@@ -25,6 +25,8 @@ use crate::credit_line_handlers::{
     browse_available_pools, check_credit_eligibility, list_active_credit_lines_with_pool_details,
     list_credit_line_requests, submit_credit_line_request,
 };
+use crate::document_handlers;
+use crate::document_service::DocumentService;
 use crate::financial_transaction_handlers::{
     get_account_financial_transactions, get_credit_line_financial_transactions,
     get_merchant_credit_line_financial_transactions, get_pool_financial_transactions,
@@ -129,6 +131,7 @@ pub struct ApiState {
     pub withdrawal_executor:
         Option<crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
     pub metrics_handle: Option<Arc<crate::metrics::MetricsHandle>>,
+    pub document_service: Option<Arc<DocumentService>>,
 }
 
 /// Configuration for API server
@@ -557,6 +560,40 @@ pub fn create_router(state: ApiState) -> Router {
             paths::ADMIN_WITHDRAWAL_DASHBOARD,
             get(withdrawal_handlers::get_admin_withdrawal_dashboard),
         )
+        // ========================================================================
+        // DOCUMENT MANAGEMENT ENDPOINTS
+        // ========================================================================
+        .route(
+            paths::DOCUMENT_UPLOAD,
+            post(document_handlers::upload_document),
+        )
+        .route(
+            paths::DOCUMENT_DOWNLOAD,
+            get(document_handlers::download_document),
+        )
+        .route(paths::DOCUMENT_BY_ID, get(document_handlers::get_document))
+        .route(
+            paths::DOCUMENT_BY_ID,
+            delete(document_handlers::delete_document),
+        )
+        .route(paths::DOCUMENTS, get(document_handlers::list_documents))
+        .route(
+            paths::DOCUMENT_APPROVE,
+            post(document_handlers::approve_document),
+        )
+        .route(
+            paths::DOCUMENT_REJECT,
+            post(document_handlers::reject_document),
+        )
+        .route(
+            paths::DOCUMENT_VERIFY,
+            post(document_handlers::verify_document),
+        )
+        .route(
+            paths::DOCUMENT_AUDIT,
+            get(document_handlers::get_audit_logs),
+        )
+        .route(paths::DOCUMENT_HEALTH, get(document_handlers::health_check))
         .with_state(state)
 }
 

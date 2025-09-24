@@ -4,6 +4,13 @@ use alloy_sol_types::sol;
 pub mod balance;
 pub mod credit_evaluation;
 pub mod credit_line;
+pub mod document; // Document storage and management
+
+#[cfg(feature = "document_storage")]
+pub mod document_storage; // AWS S3 document storage integration
+
+#[cfg(feature = "document_storage")]
+pub mod document_zkvm; // ZK proof integration for document operations
 pub mod loan;
 pub mod loan_processor;
 pub mod merchant;
@@ -63,6 +70,27 @@ pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};
 pub use utils::{cents_to_decimal, decimal_to_cents, hash_uuid};
 pub use zkvm_ads::{StateTransition, ZkVMAds, ZkVMNullifier};
+
+// Re-export document types
+pub use document::{
+    AccessLevel, ApprovalStatus, AuditResult, Company, CompanyType, Document, DocumentAction,
+    DocumentAuditLog, DocumentError, DocumentState, DocumentStateTransition, DocumentStatus,
+    DocumentType, KybStatus, StateTransitionType, TeamMember, TeamRole,
+};
+
+// Re-export document storage types
+#[cfg(feature = "document_storage")]
+pub use document_storage::{
+    DocumentDownloadResponse, DocumentStorageClient, DocumentUploadRequest, DocumentWatermark,
+    PresignedOperation, S3Metadata, StorageConfig, StorageError, SupportedFileType,
+};
+
+// Re-export document ZK types
+#[cfg(feature = "document_storage")]
+pub use document_zkvm::{
+    document_operation_to_loan_transaction, DocumentBatch, DocumentInclusionProof,
+    DocumentProofPublicValues, DocumentZkError, DocumentZkState,
+};
 
 // Keep the old LoanState type alias for backward compatibility
 pub type LoanState = GlobalLoanState;
