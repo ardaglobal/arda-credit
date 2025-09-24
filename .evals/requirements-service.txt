@@ -2,4 +2,5 @@ fastapi>=0.112.0
 uvicorn[standard]>=0.30.0
 requests>=2.32.0
 openai>=1.0.0
+code2prompt>=0.4.0
 python-dotenv>=1.0.0

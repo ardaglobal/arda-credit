@@ -18,8 +18,7 @@ env:
 
 jobs:
   build-and-push:
-    runs-on:
-      - codebuild-arda-credit-${{ github.run_id }}-${{ github.run_attempt }} image:ubuntu-7.0 instance-size:large
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -33,7 +32,6 @@ jobs:
         uses: hadolint/hadolint-action@v3.3.0
         with:
           dockerfile: .evals/Dockerfile.i2p
-          config: .hadolint.yaml
           no-fail: false
 
       - name: Set up Docker Buildx
