@@ -17,6 +17,7 @@ use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use thiserror::Error;
 use tracing::{error, info, warn};
+use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;
 
@@ -92,7 +93,7 @@ pub struct DocumentUploadRequestDto {
 }
 
 /// Document response DTO
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DocumentResponseDto {
     pub id: Uuid,
     pub company_id: Uuid,
@@ -138,7 +139,7 @@ pub struct DocumentListRequest {
 }
 
 /// Document audit log entry
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DocumentAuditLogDto {
     pub id: Uuid,
     pub document_id: Uuid,
@@ -146,6 +147,7 @@ pub struct DocumentAuditLogDto {
     pub user_id: Uuid,
     pub action: String,
     pub result: String,
+    #[schema(value_type = Option<String>)]
     pub ip_address: Option<IpNetwork>,
     pub user_agent: Option<String>,
     pub request_id: Option<String>,

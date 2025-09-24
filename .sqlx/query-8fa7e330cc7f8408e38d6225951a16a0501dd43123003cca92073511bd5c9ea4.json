@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE ai_analysis_notifications\n            SET delivery_status = 'failed'\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8fa7e330cc7f8408e38d6225951a16a0501dd43123003cca92073511bd5c9ea4"
+}

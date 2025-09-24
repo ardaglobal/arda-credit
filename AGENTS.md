@@ -234,6 +234,13 @@ make env                            # Copies .env.example to .env
 - `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
 - `ETHEREUM_RPC_URL` - Ethereum RPC endpoint for contract interactions
 
+**AI functionality variables (choose one provider):**
+- `OPENAI_API_KEY` - OpenAI API key for GPT models
+- `ANTHROPIC_API_KEY` - Anthropic API key for Claude models
+- `AZURE_OPENAI_KEY` + `AZURE_OPENAI_ENDPOINT` - Azure OpenAI configuration
+- `OPENROUTER_API_KEY` - OpenRouter API key for multi-model access
+- `OPENROUTER_SITE_URL` + `OPENROUTER_SITE_NAME` - OpenRouter site info (optional)
+
 For production deployment, see [`docs/deployment/security-production.md`](docs/deployment/security-production.md).
 
 ## Loan Data Structures
@@ -441,6 +448,10 @@ cargo check --workspace     # Works without PostgreSQL
 - API Server: `http://localhost:8080`
 - Health Check: `http://localhost:8080/api/v1/health`
 - GraphQL Playground: `http://localhost:8080/playground` (dev only)
+- **Swagger/OpenAPI Documentation**: `http://localhost:8080/swagger-ui/`
+- **AI Document Analysis**: `http://localhost:8080/api/v1/documents/{id}/analyze`
+- **AI Chat Interface**: `http://localhost:8080/api/v1/ai/chat`
+- **AI Analytics Dashboard**: `http://localhost:8080/api/v1/ai/analytics/dashboard`
 
 ## Documentation References
 
