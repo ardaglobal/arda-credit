@@ -409,6 +409,37 @@ pub const CONTRACT_CONFIG: &str = api_path!("/contract/config");
 pub const TRANSACTION_UPDATES_SSE: &str = api_path!("/transactions/updates");
 
 // ============================================================================
+// COMPANY MANAGEMENT PATHS
+// ============================================================================
+
+/// Company registration
+pub const REGISTER_COMPANY: &str = api_path!("/companies/register");
+
+/// Company details
+pub const COMPANY_BY_ID: &str = api_path!("/companies/{company_id}");
+
+/// Company dashboard
+pub const COMPANY_DASHBOARD: &str = api_path!("/companies/{company_id}/dashboard");
+
+/// KYB submission
+pub const SUBMIT_KYB: &str = api_path!("/companies/{company_id}/kyb");
+
+/// KYB status
+pub const KYB_STATUS: &str = api_path!("/companies/{company_id}/kyb/status");
+
+/// Team member invitation
+pub const INVITE_TEAM_MEMBER: &str = api_path!("/companies/{company_id}/team/invite");
+
+/// Team member list
+pub const LIST_TEAM_MEMBERS: &str = api_path!("/companies/{company_id}/team");
+
+/// Update team member role
+pub const UPDATE_TEAM_MEMBER_ROLE: &str = api_path!("/companies/{company_id}/team/{user_id}/role");
+
+/// Remove team member
+pub const REMOVE_TEAM_MEMBER: &str = api_path!("/companies/{company_id}/team/{user_id}");
+
+// ============================================================================
 // DOCUMENT MANAGEMENT PATHS
 // ============================================================================
 
