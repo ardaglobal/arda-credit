@@ -233,7 +233,7 @@ impl TransactionMapper {
                 Ok(vec![])
             }
 
-            TransactionType::MerchantRegistration
+            TransactionType::AdminRegistration
             | TransactionType::MerchantProfileUpdate
             | TransactionType::CreditLineRequest => {
                 // Merchant operations don't generate CCR operations
@@ -610,12 +610,9 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             // Authentication fields
-            password_hash: None,
             last_login_at: None,
             email_verified: Some(true), // Test user is verified
             email_verification_token: None,
-            password_reset_token: None,
-            password_reset_expires_at: None,
             first_name: None,
             last_name: None,
             jurisdiction: None,

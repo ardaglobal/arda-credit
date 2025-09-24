@@ -111,7 +111,7 @@ impl MerchantState {
         &mut self,
         transaction: &LoanTransaction,
     ) -> Result<(), MerchantError> {
-        if transaction.transaction_type != TransactionType::MerchantRegistration {
+        if transaction.transaction_type != TransactionType::AdminRegistration {
             return Err(MerchantError::InvalidTransactionType);
         }
 

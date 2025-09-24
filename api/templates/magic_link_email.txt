@@ -1,0 +1,19 @@
+{{ data.app_name }} - Sign in to your account
+
+Hello,
+
+Click this link to sign in to your {{ data.app_name }} account:
+{{ data.magic_link_url }}
+
+This link expires in {{ data.expiry_minutes }} minutes for your security.
+
+SECURITY NOTICE:
+- This email was sent to {{ data.user_email }}
+- If you didn't request this sign-in link, you can safely ignore this email
+- Never share this link with anyone else
+
+Need help? Contact us at {{ data.support_email }}
+
+---
+{{ data.app_name }} - Privacy-preserving credit platform
+

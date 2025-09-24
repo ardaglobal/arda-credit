@@ -41,3 +41,6 @@ hex              = { workspace = true }
 arda-credit-api = { path = "../api", package = "api", default-features = false }
 rust_decimal    = { workspace = true }
 sha2            = { workspace = true }
+
+# Database access for development testing
+sqlx = { workspace = true, features = [ "chrono", "postgres", "uuid" ] }

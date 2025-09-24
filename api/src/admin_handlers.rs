@@ -192,7 +192,7 @@ pub async fn list_pending_kyc_endpoint(
                 .map(|identity| UserDetailsResponse {
                     user_id: identity.id.to_string(),
                     email: identity.email,
-                    user_type: identity.user_type.parse().unwrap_or(UserType::User),
+                    user_type: identity.user_type.parse().unwrap_or(UserType::Investor),
                     kyc_status: identity.kyc_status,
                     kyc_submitted_at: identity.kyc_submitted_at,
                     kyc_verified_at: identity.kyc_verified_at,

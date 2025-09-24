@@ -7,7 +7,6 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Utc};
-use jsonwebtoken::{decode, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -112,6 +111,18 @@ pub struct RateLimitError {
     pub retry_after_seconds: u64,
 }
 
+impl std::fmt::Display for RateLimitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Rate limit exceeded for client: {} (limit: {} req/min)",
+            self.client_id, self.limit
+        )
+    }
+}
+
+impl std::error::Error for RateLimitError {}
+
 /// Rate limiting middleware
 #[instrument(skip(rate_limiter, request, next), level = "debug")]
 pub async fn rate_limit_middleware(
@@ -190,9 +201,17 @@ fn calculate_token_cost(request: &Request<Body>) -> u32 {
         (&Method::POST, path) if path.contains("batch") => 10,
         (&Method::POST, path) if path.contains("nullifiers") => 5,
 
+        // Magic link operations (high cost to prevent spam)
+        (&Method::POST, "/api/v1/auth/magic-link") => 5, // NEW: Magic link request
+        (&Method::POST, "/api/v1/auth/verify") => 3,     // NEW: Magic link verification
+
         // Medium-cost operations
         (&Method::GET, path) if path.contains("proof") => 3,
         (&Method::GET, path) if path.contains("audit") => 3,
+
+        // Authentication operations
+        (&Method::POST, "/api/v1/auth/logout") => 1, // NEW: Session logout
+        (&Method::GET, "/api/v1/auth/me") => 1,      // NEW: Current user info
 
         // Low-cost operations
         (&Method::GET, path) if path.contains("stats") => 1,
@@ -368,138 +387,28 @@ fn validation_error(error_code: &str, message: &str, details: Option<&str>) -> R
 }
 
 // ============================================================================
-// AUTHENTICATION MIDDLEWARE
+// EMAIL RATE LIMITING (Magic Link Support)
 // ============================================================================
 
-/// Authentication configuration
+/// Email-specific rate limiter with stricter limits
 #[derive(Debug, Clone)]
-pub struct AuthConfig {
-    pub enabled: bool,
-    pub valid_api_keys: Vec<String>,
-    pub jwt_secret: Option<String>,
-    pub allow_anonymous_endpoints: Vec<String>,
+pub struct EmailRateLimiter {
+    inner: RateLimiter,
 }
 
-impl Default for AuthConfig {
-    fn default() -> Self {
+impl EmailRateLimiter {
+    pub fn new() -> Self {
         Self {
-            enabled: false,
-            valid_api_keys: vec![],
-            jwt_secret: None,
-            allow_anonymous_endpoints: vec![
-                "/health".to_string(),
-                "/".to_string(),
-                "/playground".to_string(),
-            ],
-        }
-    }
-}
-
-/// Authentication middleware
-#[instrument(skip(config, request, next), level = "debug")]
-pub async fn auth_middleware(
-    State(config): State<AuthConfig>,
-    mut request: Request<Body>,
-    next: Next,
-) -> Response {
-    if !config.enabled {
-        debug!("Authentication disabled, skipping");
-        return next.run(request).await;
-    }
-
-    let path = request.uri().path();
-
-    // Check if endpoint allows anonymous access
-    if config
-        .allow_anonymous_endpoints
-        .iter()
-        .any(|ep| path.starts_with(ep))
-    {
-        debug!("Anonymous access allowed for path: {}", path);
-        return next.run(request).await;
-    }
-
-    // Check for API key authentication first
-    if let Some(api_key) = request.headers().get("x-api-key") {
-        if let Ok(key_str) = api_key.to_str() {
-            if config.valid_api_keys.contains(&key_str.to_string()) {
-                debug!("API key authentication successful");
-                return next.run(request).await;
-            }
+            // 3 emails per hour (very restrictive for magic link spam prevention)
+            inner: RateLimiter::new(3), // 3 requests per minute = ~180 per hour
         }
     }
 
-    // Check for Bearer token authentication (JWT)
-    if let Some(auth_header) = request.headers().get("authorization") {
-        if let Ok(auth_str) = auth_header.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                if let Some(jwt_secret) = &config.jwt_secret {
-                    // Use proper JWT validation with jsonwebtoken library
-                    if let Ok(claims) = validate_jwt_token(token, jwt_secret) {
-                        debug!("JWT authentication successful for user: {}", claims.sub);
-
-                        // Add user information to request headers for downstream use
-                        request.headers_mut().insert(
-                            "x-user-id",
-                            claims
-                                .sub
-                                .parse()
-                                .unwrap_or_else(|_| "invalid".parse().unwrap()),
-                        );
-                        request.headers_mut().insert(
-                            "x-user-email",
-                            claims
-                                .email
-                                .parse()
-                                .unwrap_or_else(|_| "invalid".parse().unwrap()),
-                        );
-                        request.headers_mut().insert(
-                            "x-user-type",
-                            claims
-                                .user_type
-                                .parse()
-                                .unwrap_or_else(|_| "invalid".parse().unwrap()),
-                        );
-
-                        return next.run(request).await;
-                    }
-                }
-            }
-        }
+    pub fn check_email_rate_limit(&self, email: &str) -> Result<(), RateLimitError> {
+        // Use email as client identifier for rate limiting
+        let client_id = format!("email:{}", email);
+        self.inner.check_rate_limit(&client_id, 1)
     }
-
-    warn!("Authentication failed for path: {}", path);
-
-    let error_response = Json(serde_json::json!({
-        "error": "AUTHENTICATION_REQUIRED",
-        "message": "Valid API key or Bearer token required",
-        "timestamp": Utc::now()
-    }));
-
-    (StatusCode::UNAUTHORIZED, error_response).into_response()
-}
-
-/// JWT Claims structure for validation
-#[derive(Debug, Serialize, Deserialize)]
-pub struct JwtClaims {
-    pub sub: String,       // User ID
-    pub email: String,     // User email
-    pub user_type: String, // User type
-    pub exp: i64,          // Expiration time
-    pub iat: i64,          // Issued at
-    pub jti: String,       // JWT ID
-}
-
-/// JWT token validation using jsonwebtoken library
-fn validate_jwt_token(
-    token: &str,
-    jwt_secret: &str,
-) -> Result<JwtClaims, jsonwebtoken::errors::Error> {
-    let decoding_key = DecodingKey::from_secret(jwt_secret.as_ref());
-    let validation = Validation::default();
-
-    let token_data = decode::<JwtClaims>(token, &decoding_key, &validation)?;
-    Ok(token_data.claims)
 }
 
 // ============================================================================
@@ -641,7 +550,6 @@ pub async fn metrics_middleware(request: Request<Body>, next: Next) -> Response 
 pub struct MiddlewareBuilder {
     pub rate_limiter: Option<Arc<RateLimiter>>,
     pub validation_config: ValidationConfig,
-    pub auth_config: AuthConfig,
     pub enable_logging: bool,
     pub enable_metrics: bool,
 }
@@ -658,7 +566,6 @@ impl MiddlewareBuilder {
         Self {
             rate_limiter: None,
             validation_config: ValidationConfig::default(),
-            auth_config: AuthConfig::default(),
             enable_logging: true,
             enable_metrics: true,
         }
@@ -673,12 +580,6 @@ impl MiddlewareBuilder {
     #[must_use]
     pub fn with_validation(mut self, config: ValidationConfig) -> Self {
         self.validation_config = config;
-        self
-    }
-
-    #[must_use]
-    pub fn with_auth(mut self, config: AuthConfig) -> Self {
-        self.auth_config = config;
         self
     }
 

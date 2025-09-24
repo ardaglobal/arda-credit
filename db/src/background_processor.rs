@@ -342,6 +342,12 @@ mod tests {
         let test_db = TestDatabase::new().await.unwrap();
         let pool = &test_db.pool;
 
+        // Clear any existing transactions from other tests
+        sqlx::query!("DELETE FROM incoming_transactions")
+            .execute(pool)
+            .await
+            .unwrap();
+
         // Store some test transactions
         submit_transaction(pool, 15).await.unwrap();
         submit_transaction(pool, 50).await.unwrap();

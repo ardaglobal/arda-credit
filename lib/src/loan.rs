@@ -738,7 +738,7 @@ mod tests {
 
         let lender = User {
             user_id: lender_id,
-            user_type: UserType::Lender,
+            user_type: UserType::Originator,
             kyc_status: KycStatus::Approved,
             kyc_submitted_at: 1_234_567_890,
             kyc_verified_at: 1_234_567_900,

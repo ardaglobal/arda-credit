@@ -91,6 +91,43 @@ make server        # Start API server locally
 - **KYC compliance** - Prove KYC requirements were met
 - **Payment completion** - Verify payments without revealing amounts
 
+## Authentication
+
+Arda Credit uses **magic link authentication** for secure, passwordless access.
+
+### Quick Start
+
+```bash
+# 1. Request magic link
+curl -X POST http://localhost:8080/api/v1/auth/magic-link \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com"}'
+
+# 2. Check your email and click the magic link
+
+# 3. Use the session for authenticated requests
+curl -H "Cookie: session_token=your_session" \
+  http://localhost:8080/api/v1/auth/me
+```
+
+### Configuration
+
+Required environment variables:
+```bash
+# AWS SES (Email Service)
+SES_REGION=us-east-1
+EMAIL_FROM=auth@arda.xyz
+
+# Magic Link Settings
+MAGIC_BASE_URL=https://app.arda.xyz/auth/verify
+MAGIC_LINK_TTL_MINUTES=10
+
+# Session Management
+SESSION_EXPIRY_DAYS=30
+```
+
+See [`MAGIC_LINK_ENV_VARS.md`](MAGIC_LINK_ENV_VARS.md) for complete configuration.
+
 ## Development
 
 See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for detailed development guidelines.
@@ -129,6 +166,8 @@ Perfect for testing the borough percentage system, credit line requests, and poo
 - **[`docs/architecture/performance-targets.md`](./docs/architecture/performance-targets.md)** - Performance and capacity planning
 
 ### 🔧 Development & Operations
+- **[`docs/integrations/magic-link-authentication.md`](./docs/integrations/magic-link-authentication.md)** - Magic link authentication integration guide
+- **[`docs/integrations/api-swagger.md`](./docs/integrations/api-swagger.md)** - API documentation and OpenAPI specs
 - **[`docs/development/local-testing.md`](./docs/development/local-testing.md)** - Local testing with GitHub Actions
 - **[`docs/deployment/security-production.md`](./docs/deployment/security-production.md)** - Production deployment and security
 - **[`docs/deployment/monitoring.md`](./docs/deployment/monitoring.md)** - OpenTelemetry monitoring setup
