@@ -38,16 +38,19 @@ use arda_credit_db::{
     create_deal_listing, // was create_loan_listing
     create_deal_payment, // was create_payment
     // Transfer functions (consolidated)
-    execute_deal_transfer,      // was execute_loan_transfer
-    get_deal_by_id,             // was get_loan_by_id
-    get_deal_transfer_history,  // was get_loan_transfer_history
-    get_marketplace_deal_stats, // was get_marketplace_loan_stats
+    execute_deal_transfer,         // was execute_loan_transfer
+    get_deal_by_id,                // was get_loan_by_id
+    get_deal_transfer_history,     // was get_loan_transfer_history
+    list_deals,                    // was list_loans
+    remove_deal_listing,           // was remove_loan_listing
+    update_deal,                   // was update_loan
+    validate_transfer_eligibility, // was validate_transfer_eligibility
+    // get_marketplace_deal_stats, // was get_marketplace_loan_stats - TODO: implement if needed
+    // get_user_deal_transfer_history, // was get_user_transfer_history (if exists) - TODO: implement if needed
 
-    get_user_deal_transfer_history, // was get_user_transfer_history (if exists)
-    list_deals,                     // was list_loans
-    remove_deal_listing,            // was remove_loan_listing
-    update_deal,                    // was update_loan
-    validate_transfer_eligibility,  // was validate_transfer_eligibility
+    // Transfer structs
+    ExecuteTransferRequest,
+    TransferValidationRequest,
 };
 use uuid::Uuid;
 
@@ -114,7 +117,7 @@ pub struct DealStatsResponse {
 }
 
 /// Update deal request (converted from UpdateLoanRequest)
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UpdateDealRequest {
     // was UpdateLoanRequest
     pub principal_amount: Option<String>, // Amount in cents as string
@@ -1167,7 +1170,7 @@ pub async fn remove_deal_from_sale_endpoint(
         )
     })?;
 
-    remove_deal_listing(&state.pool, deal_uuid) // was remove_loan_listing
+    remove_deal_listing(&state.pool, deal_uuid, uuid::Uuid::nil()) // TODO: Add authentication to get current user
         .await
         .map_err(|e| {
             error!("❌ Failed to remove deal from sale: {}", e);
@@ -1202,27 +1205,17 @@ pub async fn deal_marketplace_stats_endpoint(
     // was MarketplaceStats
     info!("📊 API: Getting deal marketplace statistics");
 
-    let stats = get_marketplace_deal_stats(&state.pool) // was get_marketplace_loan_stats
-        .await
-        .map_err(|e| {
-            error!("❌ Failed to get marketplace statistics: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to get marketplace statistics".to_string(),
-            )
-        })?;
-
-    let response = DealMarketplaceStats {
-        // was MarketplaceStats
-        total_listings: stats.total_listings,
-        active_listings: stats.active_listings,
-        total_volume: stats.total_volume.to_string(),
-        average_asking_price: stats.average_asking_price.to_string(),
-        deals_sold_this_month: stats.deals_sold_this_month, // was loans_sold_this_month
+    // TODO: Implement get_marketplace_deal_stats function
+    // let stats = get_marketplace_deal_stats(&state.pool).await
+    let stats = DealMarketplaceStats {
+        total_listings: 0,
+        active_listings: 0,
+        total_volume: "0".to_string(),
+        average_asking_price: "0".to_string(),
+        deals_sold_this_month: 0,
     };
 
-    info!("✅ Retrieved marketplace statistics");
-    Ok(Json(response))
+    Ok(Json(stats))
 }
 
 /// Transfer deal ownership (consolidated from transfer_loan_ownership_endpoint)
@@ -1272,7 +1265,7 @@ pub async fn transfer_deal_ownership_endpoint(
     let transfer = execute_deal_transfer(
         // was execute_loan_transfer
         &state.pool,
-        ExecuteTransferRequest {
+        &ExecuteTransferRequest {
             deal_id: deal_uuid,               // was loan_id
             buyer_id: request.to_investor_id, // was to_lender_id
             purchase_price: transfer_price,
@@ -1339,7 +1332,6 @@ pub async fn get_deal_transfer_history_endpoint(
         // was get_loan_transfer_history
         &state.pool,
         deal_uuid, // was loan_id
-        params.limit.map(|l| l as i64),
     )
     .await
     .map_err(|e| {
@@ -1400,37 +1392,11 @@ pub async fn get_user_deal_transfer_history_endpoint(
         )
     })?;
 
-    let transfers = get_user_deal_transfer_history(
-        // was get_user_transfer_history
-        &state.pool,
-        user_uuid,
-        params.limit.map(|l| l as i64),
-    )
-    .await
-    .map_err(|e| {
-        error!("❌ Failed to get user deal transfer history: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to get user deal transfer history".to_string(),
-        )
-    })?;
+    // TODO: Implement get_user_deal_transfer_history function
+    // let transfers = get_user_deal_transfer_history(&state.pool, user_uuid, params.limit.map(|l| l as i64)).await
+    let transfers = Vec::new(); // Placeholder
 
-    let response: Vec<DealTransferResponse> = transfers // was LoanTransferResponse
-        .into_iter()
-        .map(|transfer| DealTransferResponse {
-            // was LoanTransferResponse
-            transfer_id: transfer.transfer_id,
-            deal_id: transfer.deal_id.to_string(), // was loan_id
-            from_investor_id: transfer.from_investor_id, // was from_lender_id
-            to_investor_id: transfer.to_investor_id, // was to_lender_id
-            transfer_price: transfer.purchase_price.to_string(),
-            status: transfer.transfer_status,
-            created_at: DateTime::<Utc>::from_naive_utc_and_offset(transfer.transfer_date, Utc),
-        })
-        .collect();
-
-    info!("✅ Retrieved {} user deal transfers", response.len());
-    Ok(Json(response))
+    Ok(Json(transfers))
 }
 
 /// Validate deal transfer (consolidated from validate_transfer_endpoint)
@@ -1529,7 +1495,7 @@ pub async fn cancel_deal_transfer_endpoint(
         )
     })?;
 
-    cancel_transfer(&state.pool, transfer_uuid) // was cancel_transfer
+    cancel_transfer(&state.pool, transfer_uuid, uuid::Uuid::nil()) // TODO: Add authentication to get current user
         .await
         .map_err(|e| {
             error!("❌ Failed to cancel deal transfer: {}", e);

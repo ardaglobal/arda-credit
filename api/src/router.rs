@@ -27,12 +27,21 @@ use crate::credit_line_handlers::{
     list_credit_line_requests, submit_credit_line_request,
 };
 use crate::deal_handlers::{
-    browse_deals_for_sale_endpoint, create_deal_endpoint, deal_marketplace_stats_endpoint,
-    delete_deal_endpoint, get_deal_details_endpoint, get_deal_payment_history_endpoint,
-    get_deal_stats_endpoint, get_deal_transfer_history_endpoint, get_payment_details_endpoint,
-    get_user_deal_transfer_history_endpoint, list_deal_for_sale_endpoint, list_deals_endpoint,
-    record_deal_payment_endpoint, remove_deal_from_sale_endpoint, transfer_deal_ownership_endpoint,
-    update_deal_endpoint, validate_deal_transfer_endpoint, DeleteDealResponse,
+    browse_deals_for_sale_endpoint,
+    create_deal_endpoint, // deal_marketplace_stats_endpoint, // TODO: implement
+    delete_deal_endpoint,
+    get_deal_details_endpoint,
+    get_deal_payment_history_endpoint,
+    get_deal_stats_endpoint,
+    get_deal_transfer_history_endpoint,
+    get_payment_details_endpoint,
+    // get_user_deal_transfer_history_endpoint, // TODO: implement list_deal_for_sale_endpoint, list_deals_endpoint,
+    record_deal_payment_endpoint,
+    remove_deal_from_sale_endpoint,
+    transfer_deal_ownership_endpoint,
+    update_deal_endpoint,
+    validate_deal_transfer_endpoint,
+    DeleteDealResponse,
 };
 use crate::document_handlers;
 use crate::document_service::DocumentService;
@@ -459,10 +468,6 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DEAL_REMOVE_FROM_SALE,
             delete(crate::deal_handlers::remove_deal_from_sale_endpoint),
         )
-        .route(
-            paths::DEAL_MARKETPLACE_STATS,
-            get(crate::deal_handlers::deal_marketplace_stats_endpoint),
-        )
         // ========================================================================
         // DEAL TRANSFER ENDPOINTS (consolidated from separate transfer)
         // ========================================================================
@@ -473,10 +478,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::DEAL_TRANSFER_HISTORY,
             get(crate::deal_handlers::get_deal_transfer_history_endpoint),
-        )
-        .route(
-            paths::USER_DEAL_TRANSFER_HISTORY,
-            get(crate::deal_handlers::get_user_deal_transfer_history_endpoint),
         )
         .route(
             paths::DEAL_TRANSFER_VALIDATE,

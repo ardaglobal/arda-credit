@@ -88,8 +88,8 @@ pub async fn create_deal_listing(
         seller_id,
         asking_price,
         description,
-        now,
-        expires_at
+        now.naive_utc(),
+        expires_at.map(|dt| dt.naive_utc())
     )
     .execute(pool)
     .await?;
@@ -270,7 +270,7 @@ pub async fn browse_marketplace_deals(
             interest_rate_bps: row.interest_rate_bps,
             loan_status: row.loan_status,
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
-            maturity_date: row.maturity_date.map(|dt| dt.and_utc()),
+            maturity_date: row.maturity_date,
         })
         .collect();
 

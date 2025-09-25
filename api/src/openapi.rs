@@ -194,10 +194,6 @@ API requests are subject to rate limiting for system stability.
         license(
             name = "MIT",
             url = "https://opensource.org/licenses/MIT"
-        ),
-        external_docs(
-            description = "Arda Credit Deal System Documentation",
-            url = "https://docs.arda.xyz/deals"
         )
     ),
     servers(

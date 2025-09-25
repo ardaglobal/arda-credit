@@ -33,8 +33,8 @@ pub enum MappingError {
     #[error("User not found: {user_id}")]
     UserNotFound { user_id: String },
 
-    #[error("Deal not found: {loan_id}")]
-    LoanNotFound { loan_id: String },
+    #[error("Deal not found: {deal_id}")]
+    DealNotFound { deal_id: String },
 
     #[error("Invalid transaction amount: {amount}")]
     InvalidAmount { amount: u64 },
@@ -123,16 +123,16 @@ impl TransactionMapper {
         let created_at = self.timestamp_to_datetime(transaction.created_at)?;
 
         match transaction.transaction_type {
-            TransactionType::LoanOrigination => {
-                let loan_id = self.bytes_to_uuid(&transaction.loan_id)?;
+            TransactionType::DealOrigination => {
+                let loan_id = self.bytes_to_uuid(&transaction.deal_id)?;
                 let borrower_id = self.bytes_to_uuid(&transaction.user_id)?;
 
-                // For loan origination, we need to extract lender_id from metadata or context
+                // For deal origination, we need to extract lender_id from metadata or context
                 let loan =
                     self.context
                         .get_deal(&loan_id)
-                        .ok_or_else(|| MappingError::LoanNotFound {
-                            loan_id: loan_id.to_string(),
+                        .ok_or_else(|| MappingError::DealNotFound {
+                            deal_id: loan_id.to_string(),
                         })?;
 
                 let lender_id = loan.investor_id;
@@ -146,8 +146,8 @@ impl TransactionMapper {
                 }])
             }
 
-            TransactionType::LoanPayment => {
-                let loan_id = self.bytes_to_uuid(&transaction.loan_id)?;
+            TransactionType::DealPayment => {
+                let loan_id = self.bytes_to_uuid(&transaction.deal_id)?;
                 let payer_id = self.bytes_to_uuid(&transaction.user_id)?;
                 let payment_id = self.generate_payment_id(&transaction.transaction_id);
 
@@ -166,8 +166,8 @@ impl TransactionMapper {
                 let loan =
                     self.context
                         .get_deal(&loan_id)
-                        .ok_or_else(|| MappingError::LoanNotFound {
-                            loan_id: loan_id.to_string(),
+                        .ok_or_else(|| MappingError::DealNotFound {
+                            deal_id: loan_id.to_string(),
                         })?;
 
                 // Payer balance decreases
@@ -194,9 +194,9 @@ impl TransactionMapper {
                 Ok(operations)
             }
 
-            TransactionType::LoanCloseout => {
+            TransactionType::DealCloseout => {
                 // Deal closeout is treated as a final payment
-                let loan_id = self.bytes_to_uuid(&transaction.loan_id)?;
+                let loan_id = self.bytes_to_uuid(&transaction.deal_id)?;
                 let payer_id = self.bytes_to_uuid(&transaction.user_id)?;
                 let payment_id = self.generate_payment_id(&transaction.transaction_id);
 
@@ -277,8 +277,8 @@ impl TransactionMapper {
                 let loan =
                     self.context
                         .get_deal(&loan_id)
-                        .ok_or_else(|| MappingError::LoanNotFound {
-                            loan_id: loan_id.to_string(),
+                        .ok_or_else(|| MappingError::DealNotFound {
+                            deal_id: loan_id.to_string(),
                         })?;
 
                 Ok(vec![CcrOperation::LoanCreation {
@@ -380,10 +380,10 @@ impl TransactionMapper {
     /// This provides the reverse mapping for compatibility with existing zkVM code
     pub fn ccr_to_transaction_type(operation: &CcrOperation) -> TransactionType {
         match operation {
-            CcrOperation::LoanCreation { .. } => TransactionType::LoanOrigination,
-            CcrOperation::LoanFunding { .. } => TransactionType::LoanOrigination, // Funding is part of origination
-            CcrOperation::Payment { .. } => TransactionType::LoanPayment,
-            CcrOperation::BalanceUpdate { .. } => TransactionType::LoanPayment, // Balance updates are side effects of payments
+            CcrOperation::LoanCreation { .. } => TransactionType::DealOrigination,
+            CcrOperation::LoanFunding { .. } => TransactionType::DealOrigination, // Funding is part of origination
+            CcrOperation::Payment { .. } => TransactionType::DealPayment,
+            CcrOperation::BalanceUpdate { .. } => TransactionType::DealPayment, // Balance updates are side effects of payments
         }
     }
 
@@ -640,7 +640,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lib_loan_origination_mapping() {
+    fn test_lib_deal_origination_mapping() {
         let context = create_test_context();
         let mapper = TransactionMapper::new(context);
 
@@ -660,7 +660,7 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            transaction_type: TransactionType::LoanOrigination,
+            transaction_type: TransactionType::DealOrigination,
             amount: 100_000,
             created_at: 1_640_995_200, // 2022-01-01
             metadata: lib::transactions::MetadataArray::empty(),
@@ -685,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lib_loan_payment_mapping() {
+    fn test_lib_deal_payment_mapping() {
         let context = create_test_context();
         let mapper = TransactionMapper::new(context);
 
@@ -705,7 +705,7 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            transaction_type: TransactionType::LoanPayment,
+            transaction_type: TransactionType::DealPayment,
             amount: 5000,
             created_at: 1_640_995_200,
             metadata: lib::transactions::MetadataArray::empty(),
@@ -755,7 +755,7 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            transaction_type: TransactionType::LoanOrigination,
+            transaction_type: TransactionType::DealOrigination,
             amount: 100_000,
             created_at: 1_640_995_200,
             metadata: lib::transactions::MetadataArray::empty(),

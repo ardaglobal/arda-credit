@@ -294,7 +294,7 @@ pub async fn test_deal_operations(
         println!();
         println!("🔧 Test Statistics:");
         let total_tests =
-            count + if test_payments { count } else { 0 } + if test_merchants { 3 } else { 0 };
+            count + if test_payments { count } else { 0 } + if test_marketplace { 3 } else { 0 };
         println!("   Total tests: {}", total_tests);
         println!("   Success rate: 100%");
         println!("   Average loan creation time: 0.8s");

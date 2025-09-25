@@ -823,12 +823,12 @@ impl UnifiedBatchService {
     /// Convert database loan transaction to LoanOperation
     pub fn loan_transaction_to_operation(
         &self,
-        loan_transaction: &arda_credit_db::LoanTransactionDb,
+        loan_transaction: &arda_credit_db::DealTransactionDb,
     ) -> Result<LoanOperation, String> {
         // Convert database transaction to loan operation
         let operation = LoanOperation {
             operation_type: loan_transaction.transaction_type.clone(),
-            loan_id: loan_transaction.loan_id,
+            loan_id: loan_transaction.deal_id,
             payment_id: loan_transaction.payment_id,
             borrower_id: loan_transaction.identity_id, // Assuming identity is borrower
             lender_id: None, // Would need to be populated from loan record

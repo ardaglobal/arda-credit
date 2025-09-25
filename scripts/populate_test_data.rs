@@ -85,8 +85,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Clear existing test data from the database
 async fn clear_test_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
     // Delete in dependency order
-    sqlx::query!("DELETE FROM payments").execute(pool).await?;
-    sqlx::query!("DELETE FROM loans").execute(pool).await?;
+    sqlx::query!("DELETE FROM deal_payments")
+        .execute(pool)
+        .await?;
+    sqlx::query!("DELETE FROM deals").execute(pool).await?;
     sqlx::query!("DELETE FROM balances").execute(pool).await?;
     sqlx::query!("DELETE FROM identities").execute(pool).await?;
     Ok(())
@@ -243,7 +245,7 @@ async fn create_test_loans(
 
         sqlx::query!(
             r#"
-            INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance,
+            INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
                              interest_rate_bps, loan_status, originated_at, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)
             "#,
@@ -328,7 +330,7 @@ async fn create_test_payments(
 
             sqlx::query!(
                 r#"
-                INSERT INTO payments (id, loan_id, payer_id, amount, payment_type, 
+                INSERT INTO deal_payments (id, deal_id, payer_id, amount, payment_type,
                                     processed_at, created_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $6)
                 "#,

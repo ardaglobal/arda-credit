@@ -1031,6 +1031,7 @@ impl BatchApiClient {
         outstanding_balance: Option<&str>,
         interest_rate_bps: Option<u16>,
         loan_status: Option<&str>, // keeping same field name
+        maturity_date: Option<Option<&str>>, // Optional maturity date (ISO 8601), Option<Option<T>> to handle NULL
     ) -> Result<DealDetailsResponse, ApiClientError> {
         // was LoanDetailsResponse
         let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id); // was /loan/{}
@@ -1040,6 +1041,7 @@ impl BatchApiClient {
             outstanding_balance: outstanding_balance.map(|s| s.to_string()),
             interest_rate_bps,
             loan_status: loan_status.map(|s| s.to_string()), // keeping same field name
+            maturity_date: maturity_date.map(|md| md.map(|s| s.to_string())),
         };
 
         let response = self.client.put(&url).json(&request).send().await?;

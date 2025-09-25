@@ -1983,17 +1983,17 @@ impl IndexedMerkleTreeADS {
 
         let loan_operation_data = sqlx::query!(
             r#"
-            SELECT lt.loan_id, lt.payment_id, lt.transaction_type, lt.amount, lt.identity_id,
-                   l.borrower_id, l.lender_id, l.loan_status, lt.created_at
-            FROM loan_transactions lt
-            JOIN loans l ON lt.loan_id = l.id
+            SELECT dt.deal_id, dt.payment_id, dt.transaction_type, dt.amount, dt.identity_id,
+                   d.originator_id, d.investor_id, d.loan_status, dt.created_at
+            FROM deal_transactions dt
+            JOIN deals d ON dt.deal_id = d.id
             WHERE (
-                ($1::UUID IS NOT NULL AND lt.payment_id = $1) OR
-                ($2::UUID IS NOT NULL AND lt.loan_id = $2)
+                ($1::UUID IS NOT NULL AND dt.payment_id = $1) OR
+                ($2::UUID IS NOT NULL AND dt.deal_id = $2)
             )
-            AND (l.borrower_id = $3 OR l.lender_id = $3)
-            AND lt.transaction_type = $4
-            ORDER BY lt.created_at DESC
+            AND (d.originator_id = $3 OR d.investor_id = $3)
+            AND dt.transaction_type = $4
+            ORDER BY dt.created_at DESC
             LIMIT 1
             "#,
             request.payment_id,
@@ -2014,10 +2014,10 @@ impl IndexedMerkleTreeADS {
         // Convert database row to LoanOperation
         let loan_operation = LoanOperation {
             operation_type: row.transaction_type,
-            loan_id: row.loan_id,
+            loan_id: row.deal_id,
             payment_id: row.payment_id,
-            borrower_id: Some(row.borrower_id),
-            lender_id: Some(row.lender_id),
+            borrower_id: Some(row.originator_id),
+            lender_id: Some(row.investor_id),
             amount: Some(row.amount),
             loan_status: Some(row.loan_status),
             transaction_data: serde_json::json!({

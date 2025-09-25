@@ -938,42 +938,42 @@ pub fn get_all_endpoints() -> Vec<crate::health_handlers::EndpointInfo> {
         // Loan Management
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
-            path: LOANS.to_string(),
+            path: DEALS.to_string(),
             description: "List loans with filters".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "POST".to_string(),
-            path: LOAN.to_string(),
+            path: DEAL.to_string(),
             description: "Create new loan".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
-            path: LOAN_BY_ID.to_string(),
+            path: DEAL_BY_ID.to_string(),
             description: "Get loan details by ID".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "DELETE".to_string(),
-            path: LOAN_BY_ID.to_string(),
+            path: DEAL_BY_ID.to_string(),
             description: "Close loan by ID".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
-            path: LOAN_PAYMENTS.to_string(),
+            path: DEAL_PAYMENTS.to_string(),
             description: "Get loan payment history".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
-            path: LOANS_STATS.to_string(),
+            path: DEALS_STATS.to_string(),
             description: "Get loan statistics".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
-            path: LOAN_AUDIT_TRAIL.to_string(),
+            path: DEAL_AUDIT_TRAIL.to_string(),
             description: "Get loan audit trail".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
-            path: LOAN_LIFECYCLE_SUMMARY.to_string(),
+            path: DEAL_LIFECYCLE_SUMMARY.to_string(),
             description: "Get loan lifecycle summary".to_string(),
         },
         // State Management - Core State
