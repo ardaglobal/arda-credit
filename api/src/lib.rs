@@ -34,6 +34,9 @@
 #![allow(clippy::suboptimal_flops)]
 
 pub mod admin_handlers;
+pub mod ai_analysis_handlers;
+pub mod ai_analysis_service;
+pub mod ai_notification_service;
 pub mod auth;
 pub mod authentication_handlers;
 pub mod balance_service;
@@ -53,6 +56,7 @@ pub mod email_templates;
 pub mod financial_transaction_handlers;
 pub mod health_handlers;
 pub mod kyc_service;
+pub mod llm_integration;
 pub mod loan_handlers;
 pub mod magic_link_cleanup;
 pub mod magic_link_handlers;
@@ -120,6 +124,7 @@ pub use router::{create_router, ApiConfig, ApiState};
 
 // Re-export new handler modules
 pub use admin_handlers::*;
+pub use ai_analysis_handlers::*;
 pub use contract_handlers::*;
 pub use merchant_handlers::*;
 pub use state_handlers::*;
@@ -147,6 +152,21 @@ pub use company_service::{
 pub use withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
     WithdrawalStatusResponse, WithdrawalTransactionService,
+};
+
+pub use ai_analysis_service::{
+    AiAnalysisService, AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis,
+    ChangeCategory, ChangeType, DocumentDiffRequest, DocumentDiffResponse, ImpactLevel,
+    NegotiationInsight, RiskFactor,
+};
+
+pub use ai_notification_service::{
+    AiNotificationService, DeliveryMethod, NotificationPriority, NotificationRecord,
+    UserNotificationPreferences, WebhookConfig,
+};
+
+pub use llm_integration::{
+    ChatPrompt, DocumentAnalysisPrompt, LlmProvider, LlmRequest, LlmResponse, LlmService,
 };
 
 pub use pool_api::{

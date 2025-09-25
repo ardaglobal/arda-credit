@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO ai_analysis_notifications (\n                id, analysis_id, user_id, notification_type, title, message,\n                priority, delivery_method, is_read, delivery_status, created_at\n            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, false, 'pending', NOW())\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "830341a89ed40da8b77ff6d8d1695d00de67b2cf2e4af541c91cf55fe2af4ad6"
+}
