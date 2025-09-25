@@ -1,8 +1,16 @@
-//! Loan management logic for zkVM execution
+//! Deal management logic for zkVM execution
 //!
-//! This module contains loan-related types and state transition logic
-//! including loan origination, payment processing, closeout operations,
+//! This module contains deal-related types and state transition logic
+//! including deal origination, payment processing, closeout operations,
 //! and liquidity pool management for auto-deployment.
+//!
+//! ## Recent Changes
+//! Converted from loan-based terminology to deal-based terminology:
+//! - Loan → Deal
+//! - Borrower → Originator
+//! - Lender → Investor
+//! - LoanOrigination → DealOrigination
+//! - All processing functions updated accordingly
 
 use crate::transactions::{LoanTransaction, TransactionType};
 use crate::user::{User, UserError};
@@ -269,24 +277,24 @@ impl LiquidityPool {
     }
 }
 
-/// Loan record (zkVM compatible)
+/// Deal record (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Loan {
-    pub loan_id: [u8; 32],        // Hashed UUID
-    pub borrower_id: [u8; 32],    // Hashed user ID
-    pub lender_id: [u8; 32],      // Hashed user ID
+pub struct Deal {
+    pub deal_id: [u8; 32],        // Hashed UUID
+    pub originator_id: [u8; 32],  // Hashed user ID (was borrower_id)
+    pub investor_id: [u8; 32],    // Hashed user ID (was lender_id)
     pub principal_amount: u64,    // Amount in smallest currency unit (cents)
     pub outstanding_balance: u64, // Current balance owed
     pub interest_rate: u32,       // Rate in basis points (7.5% = 750)
-    pub term_months: u16,         // Loan term
-    pub loan_status: LoanStatus,
-    pub originated_at: u64, // Unix timestamp
-    pub funded_at: u64,     // Unix timestamp, 0 if not funded
-    pub maturity_date: u64, // Unix timestamp
+    pub term_months: u16,         // Deal term
+    pub loan_status: LoanStatus,  // Keeping LoanStatus for compatibility
+    pub originated_at: u64,       // Unix timestamp
+    pub funded_at: u64,           // Unix timestamp, 0 if not funded
+    pub maturity_date: u64,       // Unix timestamp
 }
 
-impl Loan {
-    /// Check if loan can accept payments
+impl Deal {
+    /// Check if deal can accept payments
     #[must_use]
     pub const fn can_accept_payment(&self) -> bool {
         matches!(
@@ -295,32 +303,32 @@ impl Loan {
         )
     }
 
-    /// Check if loan is fully paid off
+    /// Check if deal is fully paid off
     #[must_use]
     pub const fn is_paid_off(&self) -> bool {
         self.outstanding_balance == 0
     }
 }
 
-/// Errors specific to loan operations
+/// Errors specific to deal operations
 #[derive(Error, Debug, Clone)]
-pub enum LoanError {
-    #[error("Loan not found: {loan_id:?}")]
-    LoanNotFound { loan_id: [u8; 32] },
+pub enum DealError {
+    #[error("Deal not found: {deal_id:?}")]
+    DealNotFound { deal_id: [u8; 32] },
 
-    #[error("Invalid loan state transition: {current_status:?} -> {requested_operation:?}")]
-    InvalidLoanStateTransition {
+    #[error("Invalid deal state transition: {current_status:?} -> {requested_operation:?}")]
+    InvalidDealStateTransition {
         current_status: LoanStatus,
         requested_operation: TransactionType,
     },
 
-    #[error("Insufficient loan balance: requested {amount}, available {balance}")]
-    InsufficientLoanBalance { amount: u64, balance: u64 },
+    #[error("Insufficient deal balance: requested {amount}, available {balance}")]
+    InsufficientDealBalance { amount: u64, balance: u64 },
 
-    #[error("Duplicate loan: {loan_id:?}")]
-    DuplicateLoan { loan_id: [u8; 32] },
+    #[error("Duplicate deal: {deal_id:?}")]
+    DuplicateDeal { deal_id: [u8; 32] },
 
-    #[error("Invalid transaction type for loan operation")]
+    #[error("Invalid transaction type for deal operation")]
     InvalidTransactionType,
 
     #[error("User error: {0}")]
@@ -366,9 +374,9 @@ pub enum PoolError {
     UserError(#[from] UserError),
 }
 
-/// Loan state management
-pub struct LoanState {
-    pub loans: HashMap<[u8; 32], Loan>,
+/// Deal state management
+pub struct DealState {
+    pub deals: HashMap<[u8; 32], Deal>,
 }
 
 /// Liquidity pool state management
@@ -519,68 +527,68 @@ impl Default for PoolState {
     }
 }
 
-impl LoanState {
-    /// Create a new empty loan state
+impl DealState {
+    /// Create a new empty deal state
     #[must_use]
     pub fn new() -> Self {
         Self {
-            loans: HashMap::new(),
+            deals: HashMap::new(),
         }
     }
 
-    /// Process loan origination transaction
+    /// Process deal origination transaction
     ///
     /// # Errors
-    /// Returns various `LoanError` variants for invalid transaction type, duplicate loans, invalid users, or KYC failures
-    pub fn process_loan_origination(
+    /// Returns various `DealError` variants for invalid transaction type, duplicate deals, invalid users, or KYC failures
+    pub fn process_deal_origination(
         &mut self,
         transaction: &LoanTransaction,
         users: &HashMap<[u8; 32], User>,
         loan_terms: &LoanTerms,
-    ) -> Result<(), LoanError> {
-        if transaction.transaction_type != TransactionType::LoanOrigination {
-            return Err(LoanError::InvalidTransactionType);
+    ) -> Result<(), DealError> {
+        if transaction.transaction_type != TransactionType::DealOrigination {
+            return Err(DealError::InvalidTransactionType);
         }
 
-        let loan_id = transaction.loan_id;
-        // Note: initiator_id not currently used in loan origination logic
+        let deal_id = transaction.deal_id;  // was loan_id
+        // Note: initiator_id not currently used in deal origination logic
 
-        // Check for duplicate loan
-        if self.loans.contains_key(&loan_id) {
-            return Err(LoanError::DuplicateLoan { loan_id });
+        // Check for duplicate deal
+        if self.deals.contains_key(&deal_id) {
+            return Err(DealError::DuplicateDeal { deal_id });
         }
 
-        // Decode loan participants from metadata (borrower_id and lender_id)
+        // Decode deal participants from metadata (originator_id and investor_id)
         let metadata = transaction.metadata.as_bytes();
-        let mut borrower_id = [0u8; 32];
-        let mut lender_id = [0u8; 32];
-        borrower_id.copy_from_slice(&metadata[0..32]);
-        lender_id.copy_from_slice(&metadata[32..64]);
+        let mut originator_id = [0u8; 32];
+        let mut investor_id = [0u8; 32];
+        originator_id.copy_from_slice(&metadata[0..32]);
+        investor_id.copy_from_slice(&metadata[32..64]);
 
         // Verify both parties are KYC'd
-        let borrower = users.get(&borrower_id).ok_or(UserError::UserNotFound {
-            user_id: borrower_id,
+        let originator = users.get(&originator_id).ok_or(UserError::UserNotFound {
+            user_id: originator_id,
         })?;
-        let lender = users
-            .get(&lender_id)
-            .ok_or(UserError::UserNotFound { user_id: lender_id })?;
+        let investor = users
+            .get(&investor_id)
+            .ok_or(UserError::UserNotFound { user_id: investor_id })?;
 
-        if !borrower.is_kyc_approved() {
-            return Err(LoanError::UserError(UserError::KycNotApproved {
-                user_id: borrower_id,
+        if !originator.is_kyc_approved() {
+            return Err(DealError::UserError(UserError::KycNotApproved {
+                user_id: originator_id,
             }));
         }
-        if !lender.is_kyc_approved() {
-            return Err(LoanError::UserError(UserError::KycNotApproved {
-                user_id: lender_id,
+        if !investor.is_kyc_approved() {
+            return Err(DealError::UserError(UserError::KycNotApproved {
+                user_id: investor_id,
             }));
         }
 
-        // Create new loan
-        let loan = Loan {
-            loan_id,
-            borrower_id,
-            lender_id,
+        // Create new deal
+        let deal = Deal {
+            deal_id,
+            originator_id,
+            investor_id,
             principal_amount: transaction.amount,
             outstanding_balance: transaction.amount,
             interest_rate: loan_terms.interest_rate,
@@ -591,24 +599,24 @@ impl LoanState {
             maturity_date: loan_terms.calculate_maturity_date(transaction.created_at),
         };
 
-        self.loans.insert(loan_id, loan);
+        self.deals.insert(deal_id, deal);
         Ok(())
     }
 
-    /// Process loan payment transaction
+    /// Process deal payment transaction
     ///
     /// # Errors
-    /// Returns various `LoanError` variants for invalid transaction type, loan not found, or payment validation failures
-    pub fn process_loan_payment(
+    /// Returns various `DealError` variants for invalid transaction type, deal not found, or payment validation failures
+    pub fn process_deal_payment(
         &mut self,
         transaction: &LoanTransaction,
         users: &HashMap<[u8; 32], User>,
-    ) -> Result<(), LoanError> {
-        if transaction.transaction_type != TransactionType::LoanPayment {
-            return Err(LoanError::InvalidTransactionType);
+    ) -> Result<(), DealError> {
+        if transaction.transaction_type != TransactionType::DealPayment {
+            return Err(DealError::InvalidTransactionType);
         }
 
-        let loan_id = transaction.loan_id;
+        let deal_id = transaction.deal_id;  // was loan_id
         let payer_id = transaction.user_id;
 
         // Verify payer is KYC approved
@@ -616,63 +624,63 @@ impl LoanState {
             .get(&payer_id)
             .ok_or(UserError::UserNotFound { user_id: payer_id })?;
         if !payer.is_kyc_approved() {
-            return Err(LoanError::UserError(UserError::KycNotApproved {
+            return Err(DealError::UserError(UserError::KycNotApproved {
                 user_id: payer_id,
             }));
         }
 
-        let loan = self
-            .loans
-            .get_mut(&loan_id)
-            .ok_or(LoanError::LoanNotFound { loan_id })?;
+        let deal = self
+            .deals
+            .get_mut(&deal_id)
+            .ok_or(DealError::DealNotFound { deal_id })?;
 
-        // Verify loan can accept payments
-        if !loan.can_accept_payment() {
-            return Err(LoanError::InvalidLoanStateTransition {
-                current_status: loan.loan_status,
-                requested_operation: TransactionType::LoanPayment,
+        // Verify deal can accept payments
+        if !deal.can_accept_payment() {
+            return Err(DealError::InvalidDealStateTransition {
+                current_status: deal.loan_status,
+                requested_operation: TransactionType::DealPayment,
             });
         }
 
         let payment_amount = transaction.amount;
 
         // Check if payment exceeds outstanding balance
-        if payment_amount > loan.outstanding_balance {
-            return Err(LoanError::InsufficientLoanBalance {
+        if payment_amount > deal.outstanding_balance {
+            return Err(DealError::InsufficientDealBalance {
                 amount: payment_amount,
-                balance: loan.outstanding_balance,
+                balance: deal.outstanding_balance,
             });
         }
 
         // Apply payment
-        loan.outstanding_balance -= payment_amount;
+        deal.outstanding_balance -= payment_amount;
 
-        // Update loan status based on remaining balance
-        if loan.outstanding_balance == 0 {
-            loan.loan_status = LoanStatus::PaidOff;
-        } else if loan.loan_status == LoanStatus::Originated {
-            // First payment activates the loan
-            loan.loan_status = LoanStatus::Active;
-            loan.funded_at = transaction.created_at;
+        // Update deal status based on remaining balance
+        if deal.outstanding_balance == 0 {
+            deal.loan_status = LoanStatus::PaidOff;
+        } else if deal.loan_status == LoanStatus::Originated {
+            // First payment activates the deal
+            deal.loan_status = LoanStatus::Active;
+            deal.funded_at = transaction.created_at;
         }
 
         Ok(())
     }
 
-    /// Process loan closeout transaction
+    /// Process deal closeout transaction
     ///
     /// # Errors
-    /// Returns various `LoanError` variants for invalid transaction type, loan not found, or closeout validation failures
-    pub fn process_loan_closeout(
+    /// Returns various `DealError` variants for invalid transaction type, deal not found, or closeout validation failures
+    pub fn process_deal_closeout(
         &mut self,
         transaction: &LoanTransaction,
         users: &HashMap<[u8; 32], User>,
-    ) -> Result<(), LoanError> {
-        if transaction.transaction_type != TransactionType::LoanCloseout {
-            return Err(LoanError::InvalidTransactionType);
+    ) -> Result<(), DealError> {
+        if transaction.transaction_type != TransactionType::DealCloseout {
+            return Err(DealError::InvalidTransactionType);
         }
 
-        let loan_id = transaction.loan_id;
+        let deal_id = transaction.deal_id;  // was loan_id
         let closer_id = transaction.user_id;
 
         // Verify closer is KYC approved
@@ -680,37 +688,37 @@ impl LoanState {
             .get(&closer_id)
             .ok_or(UserError::UserNotFound { user_id: closer_id })?;
         if !closer.is_kyc_approved() {
-            return Err(LoanError::UserError(UserError::KycNotApproved {
+            return Err(DealError::UserError(UserError::KycNotApproved {
                 user_id: closer_id,
             }));
         }
 
-        let loan = self
-            .loans
-            .get_mut(&loan_id)
-            .ok_or(LoanError::LoanNotFound { loan_id })?;
+        let deal = self
+            .deals
+            .get_mut(&deal_id)
+            .ok_or(DealError::DealNotFound { deal_id })?;
 
-        // Only allow closeout of paid off loans
-        match loan.loan_status {
+        // Only allow closeout of paid off deals
+        match deal.loan_status {
             LoanStatus::PaidOff => {
-                loan.loan_status = LoanStatus::Closed;
+                deal.loan_status = LoanStatus::Closed;
                 Ok(())
             }
-            _ => Err(LoanError::InvalidLoanStateTransition {
-                current_status: loan.loan_status,
-                requested_operation: TransactionType::LoanCloseout,
+            _ => Err(DealError::InvalidDealStateTransition {
+                current_status: deal.loan_status,
+                requested_operation: TransactionType::DealCloseout,
             }),
         }
     }
 
-    /// Get loan by ID (read-only)
+    /// Get deal by ID (read-only)
     #[must_use]
-    pub fn get_loan(&self, loan_id: &[u8; 32]) -> Option<&Loan> {
-        self.loans.get(loan_id)
+    pub fn get_deal(&self, deal_id: &[u8; 32]) -> Option<&Deal> {
+        self.deals.get(deal_id)
     }
 }
 
-impl Default for LoanState {
+impl Default for DealState {
     fn default() -> Self {
         Self::new()
     }
@@ -724,11 +732,11 @@ mod tests {
 
     fn setup_test_users() -> (HashMap<[u8; 32], User>, [u8; 32], [u8; 32]) {
         let mut users = HashMap::new();
-        let borrower_id = [1u8; 32];
-        let lender_id = [2u8; 32];
+        let originator_id = [1u8; 32];
+        let investor_id = [2u8; 32];
 
-        let borrower = User {
-            user_id: borrower_id,
+        let originator = User {
+            user_id: originator_id,
             user_type: UserType::Investor,
             kyc_status: KycStatus::Approved,
             kyc_submitted_at: 1_234_567_890,
@@ -736,8 +744,8 @@ mod tests {
             created_at: 1_234_567_880,
         };
 
-        let lender = User {
-            user_id: lender_id,
+        let investor = User {
+            user_id: investor_id,
             user_type: UserType::Originator,
             kyc_status: KycStatus::Approved,
             kyc_submitted_at: 1_234_567_890,
@@ -745,28 +753,28 @@ mod tests {
             created_at: 1_234_567_880,
         };
 
-        users.insert(borrower_id, borrower);
-        users.insert(lender_id, lender);
+        users.insert(originator_id, originator);
+        users.insert(investor_id, investor);
 
-        (users, borrower_id, lender_id)
+        (users, originator_id, investor_id)
     }
 
-    fn create_loan_origination_transaction(
-        loan_id: [u8; 32],
+    fn create_deal_origination_transaction(
+        deal_id: [u8; 32],
         user_id: [u8; 32],
-        borrower_id: [u8; 32],
-        lender_id: [u8; 32],
+        originator_id: [u8; 32],
+        investor_id: [u8; 32],
         amount: u64,
     ) -> LoanTransaction {
         let mut metadata = vec![0u8; 64];
-        metadata[0..32].copy_from_slice(&borrower_id);
-        metadata[32..64].copy_from_slice(&lender_id);
+        metadata[0..32].copy_from_slice(&originator_id);
+        metadata[32..64].copy_from_slice(&investor_id);
 
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id,
-            loan_id,
-            transaction_type: TransactionType::LoanOrigination,
+            deal_id,  // was loan_id field
+            transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount,
             created_at: 1_234_567_920,
             metadata: MetadataArray::from_bytes(&metadata),
@@ -774,227 +782,227 @@ mod tests {
     }
 
     #[test]
-    fn test_loan_origination() {
-        let mut loan_state = LoanState::new();
-        let (users, borrower_id, lender_id) = setup_test_users();
-        let loan_id = [10u8; 32];
+    fn test_deal_origination() {
+        let mut deal_state = DealState::new();
+        let (users, originator_id, investor_id) = setup_test_users();
+        let deal_id = [10u8; 32];
 
-        let transaction = create_loan_origination_transaction(
-            loan_id,
-            borrower_id, // Borrower initiates
-            borrower_id,
-            lender_id,
+        let transaction = create_deal_origination_transaction(
+            deal_id,
+            originator_id, // Originator initiates
+            originator_id,
+            investor_id,
             10000, // $100.00
         );
 
         let loan_terms = LoanTerms::default();
-        let result = loan_state.process_loan_origination(&transaction, &users, &loan_terms);
+        let result = deal_state.process_deal_origination(&transaction, &users, &loan_terms);
         assert!(result.is_ok());
 
-        let loan = loan_state.get_loan(&loan_id).unwrap();
-        assert_eq!(loan.principal_amount, 10000);
-        assert_eq!(loan.outstanding_balance, 10000);
-        assert_eq!(loan.loan_status, LoanStatus::Originated);
+        let deal = deal_state.get_deal(&deal_id).unwrap();
+        assert_eq!(deal.principal_amount, 10000);
+        assert_eq!(deal.outstanding_balance, 10000);
+        assert_eq!(deal.loan_status, LoanStatus::Originated);
     }
 
     #[test]
-    fn test_loan_payment() {
-        let mut loan_state = LoanState::new();
-        let (users, borrower_id, lender_id) = setup_test_users();
-        let loan_id = [10u8; 32];
+    fn test_deal_payment() {
+        let mut deal_state = DealState::new();
+        let (users, originator_id, investor_id) = setup_test_users();
+        let deal_id = [10u8; 32];
 
-        // First originate loan
-        let origination = create_loan_origination_transaction(
-            loan_id,
-            borrower_id,
-            borrower_id,
-            lender_id,
+        // First originate deal
+        let origination = create_deal_origination_transaction(
+            deal_id,
+            originator_id,
+            originator_id,
+            investor_id,
             10000,
         );
-        let loan_terms = LoanTerms::default();
-        loan_state
-            .process_loan_origination(&origination, &users, &loan_terms)
+        let loan_terms = LoanTerms::default(); // Keep LoanTerms for compatibility
+        deal_state
+            .process_deal_origination(&origination, &users, &loan_terms) // was process_loan_origination
             .unwrap();
 
         // Then make payment
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: borrower_id,
-            loan_id,
-            transaction_type: TransactionType::LoanPayment,
+            user_id: originator_id, // was borrower_id
+            deal_id,  // was loan_id field
+            transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 5000, // $50.00 payment
             created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
 
-        let result = loan_state.process_loan_payment(&payment_transaction, &users);
+        let result = deal_state.process_deal_payment(&payment_transaction, &users); // was process_loan_payment
         assert!(result.is_ok());
 
-        let loan = loan_state.get_loan(&loan_id).unwrap();
-        assert_eq!(loan.outstanding_balance, 5000);
-        assert_eq!(loan.loan_status, LoanStatus::Active); // First payment activates loan
+        let deal = deal_state.get_deal(&deal_id).unwrap(); // was get_loan
+        assert_eq!(deal.outstanding_balance, 5000);
+        assert_eq!(deal.loan_status, LoanStatus::Active); // First payment activates deal (keep loan_status field)
     }
 
     #[test]
-    fn test_loan_full_payoff() {
-        let mut loan_state = LoanState::new();
-        let (users, borrower_id, lender_id) = setup_test_users();
-        let loan_id = [10u8; 32];
+    fn test_deal_full_payoff() {
+        let mut deal_state = DealState::new();
+        let (users, originator_id, investor_id) = setup_test_users();
+        let deal_id = [10u8; 32];
 
-        // Originate loan
-        let origination = create_loan_origination_transaction(
-            loan_id,
-            borrower_id,
-            borrower_id,
-            lender_id,
+        // Originate deal
+        let origination = create_deal_origination_transaction(
+            deal_id,
+            originator_id,
+            originator_id,
+            investor_id,
             10000,
         );
-        let loan_terms = LoanTerms::default();
-        loan_state
-            .process_loan_origination(&origination, &users, &loan_terms)
+        let loan_terms = LoanTerms::default(); // Keep LoanTerms for compatibility
+        deal_state
+            .process_deal_origination(&origination, &users, &loan_terms) // was process_loan_origination
             .unwrap();
 
         // Full payment
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: borrower_id,
-            loan_id,
-            transaction_type: TransactionType::LoanPayment,
+            user_id: originator_id, // was borrower_id
+            deal_id,  // was loan_id field
+            transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 10000, // Full payment
             created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
 
-        let result = loan_state.process_loan_payment(&payment_transaction, &users);
+        let result = deal_state.process_deal_payment(&payment_transaction, &users); // was process_loan_payment
         assert!(result.is_ok());
 
-        let loan = loan_state.get_loan(&loan_id).unwrap();
-        assert_eq!(loan.outstanding_balance, 0);
-        assert_eq!(loan.loan_status, LoanStatus::PaidOff);
-        assert!(loan.is_paid_off());
+        let deal = deal_state.get_deal(&deal_id).unwrap(); // was get_loan
+        assert_eq!(deal.outstanding_balance, 0);
+        assert_eq!(deal.loan_status, LoanStatus::PaidOff); // Keep loan_status field for compatibility
+        assert!(deal.is_paid_off());
     }
 
     #[test]
-    fn test_loan_closeout() {
-        let mut loan_state = LoanState::new();
-        let (users, borrower_id, lender_id) = setup_test_users();
-        let loan_id = [10u8; 32];
+    fn test_deal_closeout() {
+        let mut deal_state = DealState::new();
+        let (users, originator_id, investor_id) = setup_test_users();
+        let deal_id = [10u8; 32];
 
-        // Setup: Originate and fully pay off loan
-        let origination = create_loan_origination_transaction(
-            loan_id,
-            borrower_id,
-            borrower_id,
-            lender_id,
+        // Setup: Originate and fully pay off deal
+        let origination = create_deal_origination_transaction(
+            deal_id,
+            originator_id,
+            originator_id,
+            investor_id,
             10000,
         );
-        let loan_terms = LoanTerms::default();
-        loan_state
-            .process_loan_origination(&origination, &users, &loan_terms)
+        let loan_terms = LoanTerms::default(); // Keep LoanTerms for compatibility
+        deal_state
+            .process_deal_origination(&origination, &users, &loan_terms) // was process_loan_origination
             .unwrap();
 
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: borrower_id,
-            loan_id,
-            transaction_type: TransactionType::LoanPayment,
+            user_id: originator_id, // was borrower_id
+            deal_id,  // was loan_id field
+            transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 10000, // Full payment
             created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
-        loan_state
-            .process_loan_payment(&payment_transaction, &users)
+        deal_state
+            .process_deal_payment(&payment_transaction, &users) // was process_loan_payment
             .unwrap();
 
         // Now closeout
         let closeout_transaction = LoanTransaction {
             transaction_id: [5u8; 32],
-            user_id: borrower_id,
-            loan_id,
-            transaction_type: TransactionType::LoanCloseout,
+            user_id: originator_id, // was borrower_id
+            deal_id,  // was loan_id field
+            transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
             created_at: 1_234_567_940,
             metadata: MetadataArray::empty(),
         };
 
-        let result = loan_state.process_loan_closeout(&closeout_transaction, &users);
+        let result = deal_state.process_deal_closeout(&closeout_transaction, &users); // was process_loan_closeout
         assert!(result.is_ok());
 
-        let loan = loan_state.get_loan(&loan_id).unwrap();
-        assert_eq!(loan.loan_status, LoanStatus::Closed);
+        let deal = deal_state.get_deal(&deal_id).unwrap(); // was get_loan
+        assert_eq!(deal.loan_status, LoanStatus::Closed); // Keep loan_status field for compatibility
     }
 
     #[test]
-    fn test_loan_closeout_without_payoff_fails() {
-        let mut loan_state = LoanState::new();
-        let (users, borrower_id, lender_id) = setup_test_users();
-        let loan_id = [10u8; 32];
+    fn test_deal_closeout_without_payoff_fails() {
+        let mut deal_state = DealState::new();
+        let (users, originator_id, investor_id) = setup_test_users();
+        let deal_id = [10u8; 32];
 
-        // Setup: Originate loan but don't pay it off
-        let origination = create_loan_origination_transaction(
-            loan_id,
-            borrower_id,
-            borrower_id,
-            lender_id,
+        // Setup: Originate deal but don't pay it off
+        let origination = create_deal_origination_transaction(
+            deal_id,
+            originator_id,
+            originator_id,
+            investor_id,
             10000,
         );
-        let loan_terms = LoanTerms::default();
-        loan_state
-            .process_loan_origination(&origination, &users, &loan_terms)
+        let loan_terms = LoanTerms::default(); // Keep LoanTerms for compatibility
+        deal_state
+            .process_deal_origination(&origination, &users, &loan_terms) // was process_loan_origination
             .unwrap();
 
         // Try to closeout without paying off
         let closeout_transaction = LoanTransaction {
             transaction_id: [5u8; 32],
-            user_id: borrower_id,
-            loan_id,
-            transaction_type: TransactionType::LoanCloseout,
+            user_id: originator_id, // was borrower_id
+            deal_id,  // was loan_id field
+            transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
             created_at: 1_234_567_940,
             metadata: MetadataArray::empty(),
         };
 
-        let result = loan_state.process_loan_closeout(&closeout_transaction, &users);
+        let result = deal_state.process_deal_closeout(&closeout_transaction, &users); // was process_loan_closeout
         assert!(matches!(
             result,
-            Err(LoanError::InvalidLoanStateTransition { .. })
+            Err(DealError::InvalidDealStateTransition { .. }) // was LoanError::InvalidLoanStateTransition
         ));
     }
 
     #[test]
     fn test_overpayment_fails() {
-        let mut loan_state = LoanState::new();
-        let (users, borrower_id, lender_id) = setup_test_users();
-        let loan_id = [10u8; 32];
+        let mut deal_state = DealState::new();
+        let (users, originator_id, investor_id) = setup_test_users();
+        let deal_id = [10u8; 32];
 
-        // Originate loan
-        let origination = create_loan_origination_transaction(
-            loan_id,
-            borrower_id,
-            borrower_id,
-            lender_id,
+        // Originate deal
+        let origination = create_deal_origination_transaction(
+            deal_id,
+            originator_id,
+            originator_id,
+            investor_id,
             10000,
         );
-        let loan_terms = LoanTerms::default();
-        loan_state
-            .process_loan_origination(&origination, &users, &loan_terms)
+        let loan_terms = LoanTerms::default(); // Keep LoanTerms for compatibility
+        deal_state
+            .process_deal_origination(&origination, &users, &loan_terms) // was process_loan_origination
             .unwrap();
 
         // Try to overpay
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: borrower_id,
-            loan_id,
-            transaction_type: TransactionType::LoanPayment,
+            user_id: originator_id, // was borrower_id
+            deal_id,  // was loan_id field
+            transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 15000, // More than outstanding balance
             created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
 
-        let result = loan_state.process_loan_payment(&payment_transaction, &users);
+        let result = deal_state.process_deal_payment(&payment_transaction, &users); // was process_loan_payment
         assert!(matches!(
             result,
-            Err(LoanError::InsufficientLoanBalance { .. })
+            Err(DealError::InsufficientDealBalance { .. }) // was LoanError::InsufficientLoanBalance
         ));
     }
 }

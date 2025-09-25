@@ -304,12 +304,12 @@ pub struct UpdateMerchantProfileRequest {
     pub business_description: Option<String>,
 }
 
-/// Loan record with borrower/lender relationship
+/// Deal record with originator/investor relationship (converted from Loan)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct Loan {
+pub struct Deal {  // was Loan
     pub id: uuid::Uuid,
-    pub borrower_id: uuid::Uuid,
-    pub lender_id: uuid::Uuid,
+    pub originator_id: uuid::Uuid,  // was borrower_id
+    pub investor_id: uuid::Uuid,    // was lender_id
     pub principal_amount: rust_decimal::Decimal,
     pub outstanding_balance: rust_decimal::Decimal,
     pub interest_rate_bps: i32, // Basis points
@@ -320,11 +320,11 @@ pub struct Loan {
     pub updated_at: DateTime<Utc>,
 }
 
-/// Payment record for loan servicing
+/// Deal payment record (converted from Payment)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct Payment {
+pub struct DealPayment {  // was Payment
     pub id: uuid::Uuid,
-    pub loan_id: uuid::Uuid,
+    pub deal_id: uuid::Uuid,  // was loan_id
     pub payer_id: uuid::Uuid,
     pub amount: rust_decimal::Decimal,
     pub payment_type: String, // regular, principal, interest, penalty
@@ -355,17 +355,17 @@ pub struct Balance {
     pub created_at: DateTime<Utc>,
 }
 
-/// Loan transaction for zkVM processing
+/// Deal transaction for zkVM processing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct LoanTransactionDb {
+pub struct DealTransactionDb {
     pub id: uuid::Uuid,
     pub transaction_id_hash: Vec<u8>,
     pub user_id_hash: Vec<u8>,
-    pub loan_id_hash: Option<Vec<u8>>,
+    pub deal_id_hash: Option<Vec<u8>>,
     pub transaction_type: String,
     pub amount: rust_decimal::Decimal,
     pub identity_id: Option<uuid::Uuid>,
-    pub loan_id: Option<uuid::Uuid>,
+    pub deal_id: Option<uuid::Uuid>,
     pub payment_id: Option<uuid::Uuid>,
     pub included_in_batch_id: Option<i32>,
     pub metadata: Option<serde_json::Value>,
@@ -1798,26 +1798,26 @@ pub async fn delete_identity(pool: &PgPool, identity_id: uuid::Uuid) -> Result<b
     Ok(result.rows_affected() > 0)
 }
 
-/// Create a new loan
-pub async fn create_loan(
+/// Create a new deal (was create_loan)
+pub async fn create_deal(  // was create_loan
     pool: &PgPool,
-    borrower_id: uuid::Uuid,
-    lender_id: uuid::Uuid,
+    originator_id: uuid::Uuid,  // was borrower_id
+    investor_id: uuid::Uuid,    // was lender_id
     principal_amount: rust_decimal::Decimal,
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,
-) -> Result<Loan, sqlx::Error> {
+) -> Result<Deal, sqlx::Error> {  // was Loan
     let id = uuid::Uuid::new_v4();
     let now = Utc::now();
 
     sqlx::query!(
         r#"
-        INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at)
+        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7)
-        "#,
+        "#,  // was loans, borrower_id, lender_id
         id,
-        borrower_id,
-        lender_id,
+        originator_id,  // was borrower_id
+        investor_id,    // was lender_id
         principal_amount,
         interest_rate_bps,
         maturity_date,
@@ -1826,10 +1826,10 @@ pub async fn create_loan(
     .execute(pool)
     .await?;
 
-    let loan = Loan {
+    let deal = Deal {  // was Loan
         id,
-        borrower_id,
-        lender_id,
+        originator_id,  // was borrower_id
+        investor_id,    // was lender_id
         principal_amount,
         outstanding_balance: principal_amount,
         interest_rate_bps,
@@ -1840,17 +1840,17 @@ pub async fn create_loan(
         updated_at: now,
     };
 
-    Ok(loan)
+    Ok(deal)
 }
 
-/// Get loan by ID
-pub async fn get_loan_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Loan>, sqlx::Error> {
+/// Get deal by ID (was get_loan_by_id)
+pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal>, sqlx::Error> {  // was Loan
     let row = sqlx::query!(
         r#"
         SELECT
             id,
-            borrower_id,
-            lender_id,
+            originator_id,    -- was borrower_id
+            investor_id,      -- was lender_id
             principal_amount,
             outstanding_balance,
             interest_rate_bps,
@@ -1859,7 +1859,7 @@ pub async fn get_loan_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Loan
             maturity_date,
             created_at,
             updated_at
-        FROM loans
+        FROM deals  -- was loans
         WHERE id = $1
         "#,
         id
@@ -1868,10 +1868,10 @@ pub async fn get_loan_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Loan
     .await?;
 
     match row {
-        Some(row) => Ok(Some(Loan {
+        Some(row) => Ok(Some(Deal {  // was Loan
             id: row.id,
-            borrower_id: row.borrower_id,
-            lender_id: row.lender_id,
+            originator_id: row.originator_id,  // was borrower_id
+            investor_id: row.investor_id,      // was lender_id
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
@@ -1885,22 +1885,22 @@ pub async fn get_loan_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Loan
     }
 }
 
-/// List loans with optional filtering
-pub async fn list_loans(
+/// List deals with optional filtering (was list_loans)
+pub async fn list_deals(  // was list_loans
     pool: &PgPool,
     limit: Option<i64>,
     offset: Option<i64>,
     status: Option<&str>,
-    borrower_id: Option<uuid::Uuid>,
-    lender_id: Option<uuid::Uuid>,
-) -> Result<Vec<Loan>, sqlx::Error> {
+    originator_id: Option<uuid::Uuid>,  // was borrower_id
+    investor_id: Option<uuid::Uuid>,    // was lender_id
+) -> Result<Vec<Deal>, sqlx::Error> {  // was Loan
     // Use a unified query with optional filtering
     let rows = sqlx::query!(
         r#"
         SELECT
             id,
-            borrower_id,
-            lender_id,
+            originator_id,    -- was borrower_id
+            investor_id,      -- was lender_id
             principal_amount,
             outstanding_balance,
             interest_rate_bps,
@@ -1909,28 +1909,28 @@ pub async fn list_loans(
             maturity_date,
             created_at,
             updated_at
-        FROM loans
+        FROM deals  -- was loans
         WHERE ($1::text IS NULL OR loan_status = $1)
-          AND ($2::uuid IS NULL OR borrower_id = $2)
-          AND ($3::uuid IS NULL OR lender_id = $3)
+          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id
+          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id
         ORDER BY created_at DESC
         LIMIT $4 OFFSET $5
         "#,
         status,
-        borrower_id,
-        lender_id,
+        originator_id,  // was borrower_id
+        investor_id,    // was lender_id
         limit.unwrap_or(100),
         offset.unwrap_or(0)
     )
     .fetch_all(pool)
     .await?;
 
-    let result: Vec<Loan> = rows
+    let result: Vec<Deal> = rows  // was Loan
         .into_iter()
-        .map(|row| Loan {
+        .map(|row| Deal {  // was Loan
             id: row.id,
-            borrower_id: row.borrower_id,
-            lender_id: row.lender_id,
+            originator_id: row.originator_id,  // was borrower_id
+            investor_id: row.investor_id,      // was lender_id
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
@@ -1945,8 +1945,8 @@ pub async fn list_loans(
     Ok(result)
 }
 
-/// Update loan details
-pub async fn update_loan(
+/// Update deal details (was update_loan)
+pub async fn update_deal(  // was update_loan
     pool: &PgPool,
     id: uuid::Uuid,
     principal_amount: Option<rust_decimal::Decimal>,
@@ -1954,26 +1954,26 @@ pub async fn update_loan(
     interest_rate_bps: Option<i32>,
     loan_status: Option<&str>,
     maturity_date: Option<Option<DateTime<Utc>>>, // Option<Option<T>> to handle setting to NULL
-) -> Result<Option<Loan>, sqlx::Error> {
+) -> Result<Option<Deal>, sqlx::Error> {  // was Loan
     let now = Utc::now();
 
-    // First check if the loan exists
-    let existing_loan = get_loan_by_id(pool, id).await?;
-    if existing_loan.is_none() {
+    // First check if the deal exists (was loan)
+    let existing_deal = get_deal_by_id(pool, id).await?;  // was get_loan_by_id
+    if existing_deal.is_none() {
         return Ok(None);
     }
-    let existing_loan = existing_loan.unwrap();
+    let existing_deal = existing_deal.unwrap();  // was existing_loan
 
     // Update only the provided fields
-    let new_principal = principal_amount.unwrap_or(existing_loan.principal_amount);
-    let new_outstanding = outstanding_balance.unwrap_or(existing_loan.outstanding_balance);
-    let new_rate = interest_rate_bps.unwrap_or(existing_loan.interest_rate_bps);
-    let new_status = loan_status.unwrap_or(&existing_loan.loan_status);
-    let new_maturity = maturity_date.unwrap_or(existing_loan.maturity_date);
+    let new_principal = principal_amount.unwrap_or(existing_deal.principal_amount);
+    let new_outstanding = outstanding_balance.unwrap_or(existing_deal.outstanding_balance);
+    let new_rate = interest_rate_bps.unwrap_or(existing_deal.interest_rate_bps);
+    let new_status = loan_status.unwrap_or(&existing_deal.loan_status);
+    let new_maturity = maturity_date.unwrap_or(existing_deal.maturity_date);
 
     sqlx::query!(
         r#"
-        UPDATE loans
+        UPDATE deals  -- was loans
         SET
             principal_amount = $2,
             outstanding_balance = $3,
@@ -1994,29 +1994,29 @@ pub async fn update_loan(
     .execute(pool)
     .await?;
 
-    // Return the updated loan
-    get_loan_by_id(pool, id).await
+    // Return the updated deal (was loan)
+    get_deal_by_id(pool, id).await  // was get_loan_by_id
 }
 
-/// Record a payment - Simple implementation for now
-pub async fn create_payment(
+/// Record a deal payment - Simple implementation for now (was create_payment)
+pub async fn create_deal_payment(  // was create_payment
     pool: &PgPool,
-    loan_id: uuid::Uuid,
+    deal_id: uuid::Uuid,  // was loan_id
     payer_id: uuid::Uuid,
     amount: rust_decimal::Decimal,
     payment_type: &str,
     transaction_hash: Option<&str>,
-) -> Result<Payment, sqlx::Error> {
+) -> Result<DealPayment, sqlx::Error> {  // was Payment
     let id = uuid::Uuid::new_v4();
     let now = Utc::now();
 
     sqlx::query!(
         r#"
-        INSERT INTO payments (id, loan_id, payer_id, amount, payment_type, transaction_hash, processed_at, created_at)
+        INSERT INTO deal_payments (id, deal_id, payer_id, amount, payment_type, transaction_hash, processed_at, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-        "#,
+        "#,  // was payments table with loan_id column
         id,
-        loan_id,
+        deal_id,
         payer_id,
         amount,
         payment_type,
@@ -2026,9 +2026,9 @@ pub async fn create_payment(
     .execute(pool)
     .await?;
 
-    let payment = Payment {
+    let payment = DealPayment {  // was Payment
         id,
-        loan_id,
+        deal_id,  // was loan_id
         payer_id,
         amount,
         payment_type: payment_type.to_string(),
@@ -2040,13 +2040,13 @@ pub async fn create_payment(
     Ok(payment)
 }
 
-/// Get payments for a loan - Simple implementation for now
-pub async fn get_payments_by_loan(
+/// Get payments for a deal - Simple implementation for now (was get_payments_by_loan)
+pub async fn get_payments_by_deal(  // was get_payments_by_loan
     _pool: &PgPool,
-    _loan_id: uuid::Uuid,
+    _deal_id: uuid::Uuid,  // was _loan_id
     _limit: Option<i64>,
     _offset: Option<i64>,
-) -> Result<Vec<Payment>, sqlx::Error> {
+) -> Result<Vec<DealPayment>, sqlx::Error> {  // was Payment
     // For now, return empty - can be implemented later
     Ok(vec![])
 }

@@ -515,14 +515,14 @@ pub fn document_operation_to_loan_transaction(
     let transaction_type = match operation {
         DocumentAction::Upload => TransactionType::UserRegistration, // Reuse existing type
         DocumentAction::Approve => TransactionType::KycVerification,
-        DocumentAction::Delete => TransactionType::LoanCloseout,
+        DocumentAction::Delete => TransactionType::DealCloseout,  // was LoanCloseout
         _ => TransactionType::UserRegistration,
     };
 
     LoanTransaction {
         transaction_id: document_id,
         user_id,
-        loan_id: company_id, // Use company_id as loan_id for document operations
+        deal_id: company_id, // Use company_id as deal_id for document operations
         transaction_type,
         amount: 0, // Documents don't have monetary amounts
         created_at: timestamp,

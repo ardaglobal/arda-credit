@@ -20,8 +20,8 @@ mod consistency_tests {
         let transaction = LoanTransaction {
             transaction_id,
             user_id: [1u8; 32],
-            loan_id: [2u8; 32],
-            transaction_type: TransactionType::LoanPayment,
+            deal_id: [2u8; 32], // was loan_id field
+            transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 15,
             created_at: 1_000_000_000,
             metadata: MetadataArray::empty(),
@@ -280,8 +280,8 @@ mod consistency_tests {
         LoanTransaction {
             transaction_id,
             user_id: [1u8; 32],
-            loan_id: [2u8; 32],
-            transaction_type: TransactionType::LoanPayment,
+            deal_id: [2u8; 32], // was loan_id field
+            transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount,
             created_at: 1_000_000_000, // Fixed timestamp for deterministic testing
             metadata: MetadataArray::empty(),

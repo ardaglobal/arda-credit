@@ -8,6 +8,7 @@ use crate::merchant::MerchantRecord;
 use crate::transactions::MetadataArray;
 use crate::user::KycStatus;
 use crate::LiquidityPool;
+use crate::PoolStatus;
 use serde::{Deserialize, Serialize};
 
 /// Configuration constants for credit evaluation
@@ -214,7 +215,7 @@ impl CreditEvaluator {
         let matching_pools: Vec<_> = available_pools
             .iter()
             .filter(|pool| {
-                pool.status == crate::loan::PoolStatus::Active
+                pool.status == PoolStatus::Active  // was crate::loan::PoolStatus::Active
                     && pool.available_liquidity >= requested_amount
                     && ltv_ratio <= (pool.deployment_terms.max_ltv_ratio as u64 * 100) // Convert to basis points
                     && max_rate
@@ -450,7 +451,7 @@ pub fn evaluate_credit_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loan::{LiquidityPool, PoolStatus};
+    use crate::deal::{LiquidityPool, PoolStatus};  // was loan module
     use crate::merchant::MerchantRecord;
     use crate::user::KycStatus;
 
