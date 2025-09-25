@@ -37,11 +37,15 @@ use crate::financial_transaction_handlers::{
     record_pool_withdrawal,
 };
 use crate::health_handlers::EndpointInfo;
-use crate::loan_handlers::DeleteLoanResponse;
-use crate::marketplace_handlers::{
-    browse_marketplace_endpoint, list_loan_for_sale_endpoint, marketplace_stats_endpoint,
-    remove_loan_from_sale_endpoint,
+use crate::deal_handlers::{
+    browse_deals_for_sale_endpoint, create_deal_endpoint, delete_deal_endpoint, deal_marketplace_stats_endpoint,
+    get_deal_details_endpoint, get_deal_payment_history_endpoint, get_deal_stats_endpoint,
+    get_deal_transfer_history_endpoint, get_payment_details_endpoint, get_user_deal_transfer_history_endpoint,
+    list_deals_endpoint, list_deal_for_sale_endpoint, record_deal_payment_endpoint, remove_deal_from_sale_endpoint,
+    transfer_deal_ownership_endpoint, update_deal_endpoint, validate_deal_transfer_endpoint, DeleteDealResponse,
 };
+// REMOVED: Marketplace handlers consolidated into deal_handlers
+// use crate::marketplace_handlers::*;
 use crate::merchant_handlers::{
     InvestorProfileQuery, InvestorProfileResponse, MerchantProfileResponse,
     RegisterInvestorRequest, RegisterInvestorResponse, RegisterMerchantRequest,
@@ -69,10 +73,8 @@ use crate::state_handlers::{
     update_batch_proof_endpoint,
 };
 use crate::transaction_history_handlers::{get_pool_transaction_history, get_transaction_history};
-use crate::transfer_handlers::{
-    get_loan_transfer_history_endpoint, get_user_transfer_history_endpoint,
-    transfer_loan_ownership_endpoint, validate_transfer_endpoint,
-};
+// REMOVED: Transfer handlers consolidated into deal_handlers
+// use crate::transfer_handlers::*;
 use crate::turnover_handlers::{
     create_turnover_endpoint, get_profile_completion_endpoint, get_turnover_analytics_endpoint,
     get_turnover_endpoint, update_turnover_endpoint,
@@ -170,7 +172,7 @@ impl Default for ApiConfig {
 // ROUTER CREATION
 // ============================================================================
 
-/// Create the main API router with all batch processing and loan endpoints
+/// Create the main API router with all batch processing and deal endpoints
 pub fn create_router(state: ApiState) -> Router {
     Router::new()
         // Health and info endpoints
@@ -417,68 +419,80 @@ pub fn create_router(state: ApiState) -> Router {
         // ========================================================================
         .route(paths::TRANSACTION_HISTORY, get(get_transaction_history))
         // ========================================================================
-        // LOAN MANAGEMENT ENDPOINTS
+        // DEAL MANAGEMENT ENDPOINTS (converted from LOAN MANAGEMENT)
         // ========================================================================
-        // Loan Management
+        // Deal Management
         .route(
-            paths::LOAN,
-            post(crate::loan_handlers::create_loan_endpoint),
+            paths::DEAL,
+            post(crate::deal_handlers::create_deal_endpoint),
         )
-        .route(paths::LOANS, get(crate::loan_handlers::list_loans_endpoint))
+        .route(paths::DEALS, get(crate::deal_handlers::list_deals_endpoint))
         .route(
-            paths::LOAN_BY_ID,
-            get(crate::loan_handlers::get_loan_details_endpoint),
-        )
-        .route(
-            paths::LOAN_BY_ID,
-            put(crate::loan_handlers::update_loan_endpoint),
+            paths::DEAL_BY_ID,
+            get(crate::deal_handlers::get_deal_details_endpoint),
         )
         .route(
-            paths::LOAN_BY_ID,
-            delete(crate::loan_handlers::delete_loan_endpoint),
+            paths::DEAL_BY_ID,
+            put(crate::deal_handlers::update_deal_endpoint),
         )
         .route(
-            paths::LOANS_STATS,
-            get(crate::loan_handlers::get_loan_stats_endpoint),
+            paths::DEAL_BY_ID,
+            delete(crate::deal_handlers::delete_deal_endpoint),
+        )
+        .route(
+            paths::DEALS_STATS,
+            get(crate::deal_handlers::get_deal_stats_endpoint),
         )
         // ========================================================================
-        // MARKETPLACE ENDPOINTS (Worker A)
+        // DEAL MARKETPLACE ENDPOINTS (consolidated from separate marketplace)
         // ========================================================================
-        .route(paths::LOANS_FOR_SALE, get(browse_marketplace_endpoint))
-        .route(paths::LOAN_LIST_FOR_SALE, post(list_loan_for_sale_endpoint))
         .route(
-            paths::LOAN_LIST_FOR_SALE,
-            delete(remove_loan_from_sale_endpoint),
+            paths::DEALS_FOR_SALE,
+            get(crate::deal_handlers::browse_deals_for_sale_endpoint)
         )
-        .route(paths::MARKETPLACE_STATS, get(marketplace_stats_endpoint))
+        .route(
+            paths::DEAL_LIST_FOR_SALE,
+            post(crate::deal_handlers::list_deal_for_sale_endpoint)
+        )
+        .route(
+            paths::DEAL_REMOVE_FROM_SALE,
+            delete(crate::deal_handlers::remove_deal_from_sale_endpoint),
+        )
+        .route(
+            paths::DEAL_MARKETPLACE_STATS,
+            get(crate::deal_handlers::deal_marketplace_stats_endpoint)
+        )
         // ========================================================================
-        // TRANSFER ENDPOINTS (Worker B)
+        // DEAL TRANSFER ENDPOINTS (consolidated from separate transfer)
         // ========================================================================
-        .route(paths::LOAN_TRANSFER, post(transfer_loan_ownership_endpoint))
         .route(
-            paths::LOAN_TRANSFER_HISTORY,
-            get(get_loan_transfer_history_endpoint),
+            paths::DEAL_TRANSFER,
+            post(crate::deal_handlers::transfer_deal_ownership_endpoint)
         )
         .route(
-            paths::USER_TRANSFER_HISTORY,
-            get(get_user_transfer_history_endpoint),
+            paths::DEAL_TRANSFER_HISTORY,
+            get(crate::deal_handlers::get_deal_transfer_history_endpoint),
         )
         .route(
-            paths::LOAN_TRANSFER_VALIDATE,
-            post(validate_transfer_endpoint),
+            paths::USER_DEAL_TRANSFER_HISTORY,
+            get(crate::deal_handlers::get_user_deal_transfer_history_endpoint),
         )
-        // Payment Processing
+        .route(
+            paths::DEAL_TRANSFER_VALIDATE,
+            post(crate::deal_handlers::validate_deal_transfer_endpoint),
+        )
+        // Deal Payment Processing
         .route(
             paths::STATE_PAYMENTS,
-            post(crate::loan_handlers::record_payment_endpoint),
+            post(crate::deal_handlers::record_deal_payment_endpoint),
         )
         .route(
             paths::STATE_PAYMENT_BY_ID,
-            get(crate::loan_handlers::get_payment_details_endpoint),
+            get(crate::deal_handlers::get_payment_details_endpoint),
         )
         .route(
-            paths::LOAN_PAYMENTS,
-            get(crate::loan_handlers::get_loan_payment_history_endpoint),
+            paths::DEAL_PAYMENTS,
+            get(crate::deal_handlers::get_deal_payment_history_endpoint),
         )
         // ========================================================================
         // LIQUIDITY POOL QUERY ENDPOINTS
@@ -683,6 +697,30 @@ pub fn create_router(state: ApiState) -> Router {
         .merge(crate::ai_analysis_handlers::create_ai_analysis_router())
         .with_state(state)
 }
+
+// ============================================================================
+// ROUTER DOCUMENTATION
+// ============================================================================
+
+/*
+## API Router Configuration
+
+This module configures all HTTP routes for the Arda Credit API.
+
+## Deal Management Routes
+- Deal CRUD operations
+- Deal payment processing
+- Deal marketplace operations (consolidated)
+- Deal transfer operations (consolidated)
+
+## Recent Changes
+Converted from loan-based routing to deal-based routing:
+- All /loan/* routes → /deal/* routes
+- All /loans/* routes → /deals/* routes
+- Marketplace routes consolidated into deal routes
+- Transfer routes consolidated into deal routes
+- Removed separate marketplace and transfer handler modules
+*/
 
 // ============================================================================
 // SWAGGER UI SETUP

@@ -1,12 +1,24 @@
-//! Marketplace API handlers for loan trading
+//! 🚫 DEPRECATED: Marketplace API handlers have been consolidated
 //!
-//! This module contains all marketplace-related API endpoints including:
+//! This file has been DEPRECATED as part of the loan-to-deal conversion (Phase 5, Task 5.3).
+//!
+//! ALL MARKETPLACE FUNCTIONALITY HAS BEEN MOVED TO:
+//!   `api/src/deal_handlers.rs`
+//!
+//! New endpoints:
+//! - GET /api/v1/deals/for-sale (was /marketplace/loans)
+//! - POST /api/v1/deal/{id}/list-for-sale (was /marketplace/loan/{id})
+//! - DELETE /api/v1/deal/{id}/remove-from-sale (was /marketplace/loan/{id})
+//! - GET /api/v1/deals/marketplace/stats (was /marketplace/stats)
+//!
+//! This file can be safely REMOVED after confirming the new consolidated
+//! endpoints work correctly.
+//!
+//! Original functionality:
 //! - Browse marketplace loans for sale
 //! - List loan for sale
 //! - Remove loan from sale
 //! - Marketplace statistics
-//!
-//! All routes use OpenAPI documentation and consistent error handling.
 
 use axum::{
     extract::{Path, Query, State},

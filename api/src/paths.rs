@@ -7,7 +7,7 @@
 //! Path Structure:
 //! - root: /api/v1
 //! - users: {root}/user and {root}/users
-//! - loans: {root}/loan and {root}/loans
+//! - deals: {root}/deal and {root}/deals (converted from loans)
 //! - state: {root}/state (includes batch and proofs as sub roots)
 
 /// Current API version (for reference and documentation)
@@ -183,29 +183,82 @@ pub const INVITE_CODE_GENERATE: &str = api_path!("/invite-code");
 pub const INVITE_CODE_VALIDATE: &str = api_path!("/invite-code/{code}/validate");
 
 // ============================================================================
-// LOAN MANAGEMENT PATHS
+// DEAL MANAGEMENT PATHS (converted from LOAN MANAGEMENT PATHS)
 // ============================================================================
 
-/// Loans collection (list loans)
-pub const LOANS: &str = api_path!("/loans");
+/// Deals collection (list deals) - was LOANS
+pub const DEALS: &str = api_path!("/deals");
 
-/// Loan creation (single loan)
-pub const LOAN: &str = api_path!("/loan");
+/// Deal creation (single deal) - was LOAN
+pub const DEAL: &str = api_path!("/deal");
 
-/// Individual loan operations
-pub const LOAN_BY_ID: &str = api_path!("/loan/{loan_id}");
+/// Individual deal operations - was LOAN_BY_ID
+pub const DEAL_BY_ID: &str = api_path!("/deal/{deal_id}");
 
-/// Loan payment history
-pub const LOAN_PAYMENTS: &str = api_path!("/loan/{loan_id}/payments");
+/// Deal payment history - was LOAN_PAYMENTS
+pub const DEAL_PAYMENTS: &str = api_path!("/deal/{deal_id}/payments");
 
-/// Loan statistics
-pub const LOANS_STATS: &str = api_path!("/loans/stats");
+/// Deal statistics - was LOANS_STATS
+pub const DEALS_STATS: &str = api_path!("/deals/stats");
 
-/// Loan audit trail
-pub const LOAN_AUDIT_TRAIL: &str = api_path!("/loan/{loan_id}/audit-trail");
+/// Deal audit trail - was LOAN_AUDIT_TRAIL
+pub const DEAL_AUDIT_TRAIL: &str = api_path!("/deal/{deal_id}/audit-trail");
 
-/// Loan lifecycle summary
-pub const LOAN_LIFECYCLE_SUMMARY: &str = api_path!("/loan/{loan_id}/lifecycle-summary");
+/// Deal lifecycle summary - was LOAN_LIFECYCLE_SUMMARY
+pub const DEAL_LIFECYCLE_SUMMARY: &str = api_path!("/deal/{deal_id}/lifecycle-summary");
+
+// ============================================================================
+// DEAL MARKETPLACE PATHS (consolidated from separate marketplace paths)
+// ============================================================================
+
+/// List deals for sale (consolidated from LOANS_FOR_SALE)
+pub const DEALS_FOR_SALE: &str = api_path!("/deals/for-sale");
+
+/// List a deal for sale (consolidated from LOAN_LIST_FOR_SALE)
+pub const DEAL_LIST_FOR_SALE: &str = api_path!("/deal/{deal_id}/list-for-sale");
+
+/// Remove deal from sale (consolidated from LOAN_LIST_FOR_SALE with DELETE)
+pub const DEAL_REMOVE_FROM_SALE: &str = api_path!("/deal/{deal_id}/remove-from-sale");
+
+/// Deal marketplace statistics (consolidated from MARKETPLACE_STATS)
+pub const DEAL_MARKETPLACE_STATS: &str = api_path!("/deals/marketplace/stats");
+
+// ============================================================================
+// DEAL TRANSFER PATHS (consolidated from separate transfer paths)
+// ============================================================================
+
+/// Transfer deal ownership (consolidated from LOAN_TRANSFER)
+pub const DEAL_TRANSFER: &str = api_path!("/deal/{deal_id}/transfer");
+
+/// Deal transfer history (consolidated from LOAN_TRANSFER_HISTORY)
+pub const DEAL_TRANSFER_HISTORY: &str = api_path!("/deal/{deal_id}/transfers");
+
+/// User's deal transfer history (consolidated from USER_TRANSFER_HISTORY)
+pub const USER_DEAL_TRANSFER_HISTORY: &str = api_path!("/user/{user_id}/deal-transfers");
+
+/// Validate deal transfer (consolidated from LOAN_TRANSFER_VALIDATE)
+pub const DEAL_TRANSFER_VALIDATE: &str = api_path!("/deal/{deal_id}/transfer/validate");
+
+// ============================================================================
+// DEPRECATED PATHS - REMOVED IN DEAL CONVERSION
+// ============================================================================
+
+// REMOVED: Loan management paths
+// pub const LOANS: &str = api_path!("/loans");
+// pub const LOAN: &str = api_path!("/loan");
+// pub const LOAN_BY_ID: &str = api_path!("/loan/{loan_id}");
+// pub const LOAN_PAYMENTS: &str = api_path!("/loan/{loan_id}/payments");
+
+// REMOVED: Separate marketplace paths (consolidated into deal paths)
+// pub const LOANS_FOR_SALE: &str = api_path!("/loans/for-sale");
+// pub const LOAN_LIST_FOR_SALE: &str = api_path!("/loan/{loan_id}/list-for-sale");
+// pub const MARKETPLACE_STATS: &str = api_path!("/loans/marketplace/stats");
+
+// REMOVED: Separate transfer paths (consolidated into deal paths)
+// pub const LOAN_TRANSFER: &str = api_path!("/loan/{loan_id}/transfer");
+// pub const LOAN_TRANSFER_HISTORY: &str = api_path!("/loan/{loan_id}/transfers");
+// pub const USER_TRANSFER_HISTORY: &str = api_path!("/user/{user_id}/transfers");
+// pub const LOAN_TRANSFER_VALIDATE: &str = api_path!("/loan/{loan_id}/transfer/validate");
 
 // ============================================================================
 // POOL MANAGEMENT PATHS
@@ -479,34 +532,6 @@ pub const DOCUMENT_AUDIT: &str = api_path!("/companies/{company_id}/documents/au
 /// Document service health check
 pub const DOCUMENT_HEALTH: &str = api_path!("/documents/health");
 
-// ============================================================================
-// MARKETPLACE PATHS (Worker A)
-// ============================================================================
-
-/// Browse marketplace loans for sale
-pub const LOANS_FOR_SALE: &str = api_path!("/loans/for-sale");
-
-/// List loan for sale
-pub const LOAN_LIST_FOR_SALE: &str = api_path!("/loan/{loan_id}/list-for-sale");
-
-/// Marketplace statistics
-pub const MARKETPLACE_STATS: &str = api_path!("/loans/marketplace/stats");
-
-// ============================================================================
-// TRANSFER PATHS (Worker B)
-// ============================================================================
-
-/// Execute loan ownership transfer
-pub const LOAN_TRANSFER: &str = api_path!("/loan/{loan_id}/transfer");
-
-/// Get loan transfer history
-pub const LOAN_TRANSFER_HISTORY: &str = api_path!("/loan/{loan_id}/transfers");
-
-/// Get user transfer history
-pub const USER_TRANSFER_HISTORY: &str = api_path!("/user/{user_id}/transfers");
-
-/// Validate transfer eligibility
-pub const LOAN_TRANSFER_VALIDATE: &str = api_path!("/loan/{loan_id}/transfer/validate");
 
 // ============================================================================
 // TRANSACTION HISTORY PATHS
@@ -564,25 +589,25 @@ pub fn invite_code_validate_path(code: &str) -> String {
     replace_param(INVITE_CODE_VALIDATE, "code", code)
 }
 
-// Loan Management Helper Functions
-/// Build loan path with loan_id parameter
-pub fn loan_path(loan_id: &str) -> String {
-    replace_param(LOAN_BY_ID, "loan_id", loan_id)
+// Deal Management Helper Functions
+/// Build deal path with deal_id parameter
+pub fn deal_path(deal_id: &str) -> String {
+    replace_param(DEAL_BY_ID, "deal_id", deal_id)
 }
 
-/// Build loan payments path with loan_id parameter
-pub fn loan_payments_path(loan_id: &str) -> String {
-    replace_param(LOAN_PAYMENTS, "loan_id", loan_id)
+/// Build deal payments path with deal_id parameter
+pub fn deal_payments_path(deal_id: &str) -> String {
+    replace_param(DEAL_PAYMENTS, "deal_id", deal_id)
 }
 
-/// Build loan audit trail path with loan_id parameter
-pub fn loan_audit_trail_path(loan_id: &str) -> String {
-    replace_param(LOAN_AUDIT_TRAIL, "loan_id", loan_id)
+/// Build deal audit trail path with deal_id parameter
+pub fn deal_audit_trail_path(deal_id: &str) -> String {
+    replace_param(DEAL_AUDIT_TRAIL, "deal_id", deal_id)
 }
 
-/// Build loan lifecycle summary path with loan_id parameter
-pub fn loan_lifecycle_summary_path(loan_id: &str) -> String {
-    replace_param(LOAN_LIFECYCLE_SUMMARY, "loan_id", loan_id)
+/// Build deal lifecycle summary path with deal_id parameter
+pub fn deal_lifecycle_summary_path(deal_id: &str) -> String {
+    replace_param(DEAL_LIFECYCLE_SUMMARY, "deal_id", deal_id)
 }
 
 // State Management Helper Functions
@@ -591,8 +616,8 @@ pub fn batch_path(batch_id: i32) -> String {
     replace_param(STATE_BATCH_BY_ID, "batch_id", &batch_id.to_string())
 }
 
-/// Build loan batch path with batch_id parameter
-pub fn loan_batch_path(batch_id: i32) -> String {
+/// Build deal batch path with batch_id parameter
+pub fn deal_batch_path(batch_id: i32) -> String {
     replace_param(STATE_LOAN_BATCH_BY_ID, "batch_id", &batch_id.to_string())
 }
 
@@ -611,15 +636,15 @@ pub fn payment_path(transaction_id: &str) -> String {
     replace_param(STATE_PAYMENT_BY_ID, "transaction_id", transaction_id)
 }
 
-/// Build loan payment proof path with parameters
-pub fn loan_payment_proof_path(
+/// Build deal payment proof path with parameters
+pub fn deal_payment_proof_path(
     user_id: &str,
-    loan_id: &str,
+    deal_id: &str,
     payment_id: &str,
     batch_id: i32,
 ) -> String {
     let path = replace_param(STATE_PROOFS_LOAN_PAYMENT, "user_id", user_id);
-    let path = replace_param(&path, "loan_id", loan_id);
+    let path = replace_param(&path, "deal_id", deal_id);
     let path = replace_param(&path, "payment_id", payment_id);
     replace_param(&path, "batch_id", &batch_id.to_string())
 }

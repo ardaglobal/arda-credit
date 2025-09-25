@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Loan} from "../src/Loan.sol";
+import {ARDA} from "../src/ARDA.sol";
 import {IERC20} from "lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
@@ -27,7 +27,7 @@ contract MockSP1Verifier {
 }
 
 contract UsdcWithdrawalTest is Test {
-    Loan public loan;
+    ARDA public arda;
     MockUSDC public usdc;
     MockSP1Verifier public verifier;
     
@@ -47,13 +47,13 @@ contract UsdcWithdrawalTest is Test {
 
     function setUp() public {
         verifier = new MockSP1Verifier();
-        loan = new Loan(address(verifier), PROGRAM_VKEY);
+        arda = new ARDA(address(verifier), PROGRAM_VKEY);
         
         // Deploy mock USDC token
         usdc = new MockUSDC();
         
         // Set USDC token in contract for testing
-        loan.setUsdcTokenForTesting(address(usdc));
+        arda.setUsdcTokenForTesting(address(usdc));
         
         // Mint USDC to users for testing
         usdc.mint(user1, 1000 * 10**6); // 1000 USDC
@@ -61,13 +61,13 @@ contract UsdcWithdrawalTest is Test {
         
         // Users need to deposit first before they can withdraw
         vm.startPrank(user1);
-        usdc.approve(address(loan), 1000 * 10**6);
-        loan.deposit(500 * 10**6); // Deposit 500 USDC
+        usdc.approve(address(arda), 1000 * 10**6);
+        arda.deposit(500 * 10**6); // Deposit 500 USDC
         vm.stopPrank();
         
         vm.startPrank(user2);
-        usdc.approve(address(loan), 2000 * 10**6);
-        loan.deposit(1000 * 10**6); // Deposit 1000 USDC
+        usdc.approve(address(arda), 2000 * 10**6);
+        arda.deposit(1000 * 10**6); // Deposit 1000 USDC
         vm.stopPrank();
     }
 
@@ -75,7 +75,7 @@ contract UsdcWithdrawalTest is Test {
         uint256 withdrawAmount = 200 * 10**6; // 200 USDC
         
         // Check initial state
-        assertEq(loan.getUserDeposit(user1), 500 * 10**6);
+        assertEq(arda.getUserDeposit(user1), 500 * 10**6);
         assertEq(usdc.balanceOf(recipient), 0);
         
         // Perform withdrawal
@@ -83,16 +83,16 @@ contract UsdcWithdrawalTest is Test {
         emit Withdrawal(user1, recipient, withdrawAmount, block.timestamp);
         
         vm.prank(user1);
-        loan.withdraw(withdrawAmount, recipient);
+        arda.withdraw(withdrawAmount, recipient);
         
         // Verify balances after withdrawal
-        assertEq(loan.getUserDeposit(user1), 300 * 10**6); // 500 - 200 = 300
+        assertEq(arda.getUserDeposit(user1), 300 * 10**6); // 500 - 200 = 300
         assertEq(usdc.balanceOf(recipient), withdrawAmount);
-        assertEq(loan.getTotalDeposits(), 1300 * 10**6); // Total: 1500 - 200 = 1300
+        assertEq(arda.getTotalDeposits(), 1300 * 10**6); // Total: 1500 - 200 = 1300
     }
 
     function testWithdrawAll() public {
-        uint256 initialBalance = loan.getUserDeposit(user1);
+        uint256 initialBalance = arda.getUserDeposit(user1);
         
         // Check initial state
         assertEq(initialBalance, 500 * 10**6);
@@ -103,12 +103,12 @@ contract UsdcWithdrawalTest is Test {
         emit Withdrawal(user1, user1, initialBalance, block.timestamp);
         
         vm.prank(user1);
-        loan.withdrawAll();
+        arda.withdrawAll();
         
         // Verify balances after withdrawal
-        assertEq(loan.getUserDeposit(user1), 0);
+        assertEq(arda.getUserDeposit(user1), 0);
         assertEq(usdc.balanceOf(user1), 1000 * 10**6); // Got back to 1000 USDC
-        assertEq(loan.getTotalDeposits(), 1000 * 10**6); // Only user2's deposit remains
+        assertEq(arda.getTotalDeposits(), 1000 * 10**6); // Only user2's deposit remains
     }
 
     function testWithdrawMultipleTimes() public {
@@ -118,13 +118,13 @@ contract UsdcWithdrawalTest is Test {
         vm.startPrank(user1);
         
         // First withdrawal
-        loan.withdraw(firstWithdraw, recipient);
-        assertEq(loan.getUserDeposit(user1), 400 * 10**6);
+        arda.withdraw(firstWithdraw, recipient);
+        assertEq(arda.getUserDeposit(user1), 400 * 10**6);
         assertEq(usdc.balanceOf(recipient), firstWithdraw);
         
         // Second withdrawal
-        loan.withdraw(secondWithdraw, recipient);
-        assertEq(loan.getUserDeposit(user1), 250 * 10**6);
+        arda.withdraw(secondWithdraw, recipient);
+        assertEq(arda.getUserDeposit(user1), 250 * 10**6);
         assertEq(usdc.balanceOf(recipient), firstWithdraw + secondWithdraw);
         
         vm.stopPrank();
@@ -133,13 +133,13 @@ contract UsdcWithdrawalTest is Test {
     function testRevertWhenZeroWithdrawal() public {
         vm.prank(user1);
         vm.expectRevert("Withdrawal amount must be greater than zero");
-        loan.withdraw(0, recipient);
+        arda.withdraw(0, recipient);
     }
 
     function testRevertWhenWithdrawToZeroAddress() public {
         vm.prank(user1);
         vm.expectRevert("Cannot withdraw to zero address");
-        loan.withdraw(100 * 10**6, address(0));
+        arda.withdraw(100 * 10**6, address(0));
     }
 
     function testRevertWhenInsufficientBalance() public {
@@ -147,7 +147,7 @@ contract UsdcWithdrawalTest is Test {
         
         vm.prank(user1);
         vm.expectRevert("Insufficient balance");
-        loan.withdraw(withdrawAmount, recipient);
+        arda.withdraw(withdrawAmount, recipient);
     }
 
     function testRevertWithdrawAllWhenNoBalance() public {
@@ -156,16 +156,16 @@ contract UsdcWithdrawalTest is Test {
         
         vm.prank(user3);
         vm.expectRevert("No balance to withdraw");
-        loan.withdrawAll();
+        arda.withdrawAll();
     }
 
     function testWithdrawAfterPartialWithdrawalAll() public {
         // User1 withdraws partially first
         uint256 partialWithdraw = 200 * 10**6;
         vm.prank(user1);
-        loan.withdraw(partialWithdraw, recipient);
+        arda.withdraw(partialWithdraw, recipient);
         
-        uint256 remainingBalance = loan.getUserDeposit(user1);
+        uint256 remainingBalance = arda.getUserDeposit(user1);
         assertEq(remainingBalance, 300 * 10**6);
         
         // Then withdraws all remaining
@@ -173,26 +173,26 @@ contract UsdcWithdrawalTest is Test {
         emit Withdrawal(user1, user1, remainingBalance, block.timestamp);
         
         vm.prank(user1);
-        loan.withdrawAll();
+        arda.withdrawAll();
         
-        assertEq(loan.getUserDeposit(user1), 0);
+        assertEq(arda.getUserDeposit(user1), 0);
     }
 
     function testContractUsdcBalanceAfterWithdrawals() public {
-        uint256 initialContractBalance = loan.getContractUsdcBalance();
+        uint256 initialContractBalance = arda.getContractUsdcBalance();
         assertEq(initialContractBalance, 1500 * 10**6); // Total deposits
         
         // User1 withdraws 200 USDC
         vm.prank(user1);
-        loan.withdraw(200 * 10**6, recipient);
+        arda.withdraw(200 * 10**6, recipient);
         
-        assertEq(loan.getContractUsdcBalance(), 1300 * 10**6);
+        assertEq(arda.getContractUsdcBalance(), 1300 * 10**6);
         
         // User2 withdraws all (1000 USDC)
         vm.prank(user2);
-        loan.withdrawAll();
+        arda.withdrawAll();
         
-        assertEq(loan.getContractUsdcBalance(), 300 * 10**6); // Only user1's remaining balance
+        assertEq(arda.getContractUsdcBalance(), 300 * 10**6); // Only user1's remaining balance
     }
 
     function testWithdrawToSelfVsDifferentAddress() public {
@@ -201,13 +201,13 @@ contract UsdcWithdrawalTest is Test {
         // Withdraw to self
         uint256 userBalanceBefore = usdc.balanceOf(user1);
         vm.prank(user1);
-        loan.withdraw(withdrawAmount, user1);
+        arda.withdraw(withdrawAmount, user1);
         assertEq(usdc.balanceOf(user1), userBalanceBefore + withdrawAmount);
         
         // Withdraw to different address
         uint256 recipientBalanceBefore = usdc.balanceOf(recipient);
         vm.prank(user1);
-        loan.withdraw(withdrawAmount, recipient);
+        arda.withdraw(withdrawAmount, recipient);
         assertEq(usdc.balanceOf(recipient), recipientBalanceBefore + withdrawAmount);
     }
 
@@ -219,6 +219,6 @@ contract UsdcWithdrawalTest is Test {
         emit Withdrawal(user2, recipient, withdrawAmount, 0);
         
         vm.prank(user2);
-        loan.withdraw(withdrawAmount, recipient);
+        arda.withdraw(withdrawAmount, recipient);
     }
 }

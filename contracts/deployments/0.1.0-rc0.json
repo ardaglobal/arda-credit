@@ -1,4 +1,5 @@
 {
+  "contractName": "ARDA",
   "contractAddress": "0x86Da7D0DaF3E456818fACDD919302c50363e1890",
   "deploymentTx": "0x9bec1a25e2838f05dc09edb73a2d4eed5e23790c891e5c29014c5bbe87499dd4",
   "blockNumber": "9167548",

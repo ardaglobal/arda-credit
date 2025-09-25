@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
-import {Loan} from "../src/Loan.sol";
+import {ARDA} from "../src/ARDA.sol";
 import {IERC20} from "lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/token/ERC20/ERC20.sol";
 
@@ -20,7 +20,7 @@ contract MockUSDC is ERC20 {
 }
 
 contract UsdcDepositTest is Test {
-    Loan public loan;
+    ARDA public arda;
     MockUSDC public usdc;
     address public verifier = address(0x1); // Mock verifier address
     bytes32 public constant TEST_VKEY = keccak256("test_vkey");
@@ -33,10 +33,10 @@ contract UsdcDepositTest is Test {
         usdc = new MockUSDC();
         
         // Deploy Loan contract
-        loan = new Loan(verifier, TEST_VKEY);
+        arda = new ARDA(verifier, TEST_VKEY);
         
         // Set the mock USDC token for testing
-        loan.setUsdcTokenForTesting(address(usdc));
+        arda.setUsdcTokenForTesting(address(usdc));
         
         // Mint USDC to test users
         usdc.mint(user1, 1000 * 10**6); // 1000 USDC
@@ -44,10 +44,10 @@ contract UsdcDepositTest is Test {
         
         // Approve loan contract to spend users' USDC
         vm.prank(user1);
-        usdc.approve(address(loan), type(uint256).max);
+        usdc.approve(address(arda), type(uint256).max);
         
         vm.prank(user2);
-        usdc.approve(address(loan), type(uint256).max);
+        usdc.approve(address(arda), type(uint256).max);
     }
     
     function testDeposit() public {
@@ -55,18 +55,18 @@ contract UsdcDepositTest is Test {
         
         // Record event
         vm.expectEmit(true, true, true, false);
-        emit Loan.Deposit(user1, depositAmount, block.timestamp, bytes32(0));
+        emit ARDA.Deposit(user1, depositAmount, block.timestamp, bytes32(0));
         
         // User1 deposits
         vm.prank(user1);
-        loan.deposit(depositAmount);
+        arda.deposit(depositAmount);
         
         // Check balances
-        assertEq(loan.getUserDeposit(user1), depositAmount);
-        assertEq(loan.getTotalDeposits(), depositAmount);
-        assertEq(loan.getDepositorCount(), 1);
-        assertTrue(loan.hasUserDeposited(user1));
-        assertFalse(loan.hasUserDeposited(user2));
+        assertEq(arda.getUserDeposit(user1), depositAmount);
+        assertEq(arda.getTotalDeposits(), depositAmount);
+        assertEq(arda.getDepositorCount(), 1);
+        assertTrue(arda.hasUserDeposited(user1));
+        assertFalse(arda.hasUserDeposited(user2));
     }
     
     function testMultipleDeposits() public {
@@ -75,33 +75,33 @@ contract UsdcDepositTest is Test {
         
         // First deposit from user1
         vm.prank(user1);
-        loan.deposit(deposit1);
+        arda.deposit(deposit1);
         
         // Second deposit from user1
         vm.prank(user1);
-        loan.deposit(deposit2);
+        arda.deposit(deposit2);
         
         // Deposit from user2
         vm.prank(user2);
-        loan.deposit(200 * 10**6);
+        arda.deposit(200 * 10**6);
         
         // Check user1's total
-        assertEq(loan.getUserDeposit(user1), deposit1 + deposit2);
-        assertEq(loan.getUserDeposit(user2), 200 * 10**6);
-        assertEq(loan.getTotalDeposits(), deposit1 + deposit2 + 200 * 10**6);
-        assertEq(loan.getDepositorCount(), 2);
+        assertEq(arda.getUserDeposit(user1), deposit1 + deposit2);
+        assertEq(arda.getUserDeposit(user2), 200 * 10**6);
+        assertEq(arda.getTotalDeposits(), deposit1 + deposit2 + 200 * 10**6);
+        assertEq(arda.getDepositorCount(), 2);
     }
     
     function testGetAllDepositors() public {
         // Make deposits
         vm.prank(user1);
-        loan.deposit(100 * 10**6);
+        arda.deposit(100 * 10**6);
         
         vm.prank(user2);
-        loan.deposit(200 * 10**6);
+        arda.deposit(200 * 10**6);
         
         // Get all depositors
-        (address[] memory users, uint256[] memory amounts) = loan.getAllDepositors();
+        (address[] memory users, uint256[] memory amounts) = arda.getAllDepositors();
         
         assertEq(users.length, 2);
         assertEq(amounts.length, 2);
@@ -113,9 +113,9 @@ contract UsdcDepositTest is Test {
     
     function testGetDepositorByIndex() public {
         vm.prank(user1);
-        loan.deposit(100 * 10**6);
+        arda.deposit(100 * 10**6);
         
-        (address user, uint256 amount) = loan.getDepositorByIndex(0);
+        (address user, uint256 amount) = arda.getDepositorByIndex(0);
         assertEq(user, user1);
         assertEq(amount, 100 * 10**6);
     }
@@ -123,29 +123,29 @@ contract UsdcDepositTest is Test {
     function testRevertWhenZeroDeposit() public {
         vm.prank(user1);
         vm.expectRevert("Deposit amount must be greater than zero");
-        loan.deposit(0);
+        arda.deposit(0);
     }
     
     function testRevertWhenInsufficientBalance() public {
         vm.prank(user1);
         vm.expectRevert(); // ERC20 insufficient balance revert
-        loan.deposit(2000 * 10**6); // User1 only has 1000 USDC
+        arda.deposit(2000 * 10**6); // User1 only has 1000 USDC
     }
     
     function testContractBalance() public {
         uint256 depositAmount = 100 * 10**6;
         
-        uint256 contractBalanceBefore = loan.getContractUsdcBalance();
+        uint256 contractBalanceBefore = arda.getContractUsdcBalance();
         
         vm.prank(user1);
-        loan.deposit(depositAmount);
+        arda.deposit(depositAmount);
         
-        uint256 contractBalanceAfter = loan.getContractUsdcBalance();
+        uint256 contractBalanceAfter = arda.getContractUsdcBalance();
         
         assertEq(contractBalanceAfter, contractBalanceBefore + depositAmount);
     }
     
     function testUsdcTokenAddress() public {
-        assertEq(loan.getUsdcTokenAddress(), address(usdc));
+        assertEq(arda.getUsdcTokenAddress(), address(usdc));
     }
 }

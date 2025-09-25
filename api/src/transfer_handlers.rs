@@ -1,6 +1,20 @@
-//! Transfer API handlers for loan trading
+//! TRANSFER HANDLERS - CONSOLIDATED INTO DEAL_HANDLERS
 //!
-//! This module contains all loan transfer-related API endpoints including:
+//! ⚠️  THIS FILE CAN BE REMOVED AFTER CONSOLIDATION IS COMPLETE ⚠️
+//!
+//! All transfer functionality has been consolidated into api/src/deal_handlers.rs
+//! as part of the loan-to-deal conversion. The transfer endpoints are now:
+//!
+//! - POST /api/v1/deal/{id}/transfer (was /transfer/loan/{id})
+//! - GET /api/v1/deal/{id}/transfers (was /loan/{id}/transfers)
+//! - GET /api/v1/user/{id}/deal-transfers (was /user/{id}/transfers)
+//! - POST /api/v1/deal/{id}/transfer/validate (was /transfer/loan/{id}/validate)
+//! - DELETE /api/v1/deal/transfer/{id}/cancel (was /transfer/{id}/cancel)
+//!
+//! All functionality preserved, just consolidated and updated with deal terminology.
+//!
+//! Original file: Transfer API handlers for loan trading
+//! Original functionality:
 //! - Execute loan ownership transfers with payment settlement
 //! - View transfer history for loans and users
 //! - Cancel pending transfers

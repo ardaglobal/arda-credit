@@ -1,21 +1,55 @@
-//! Integration tests for loan management endpoints
+//! Deal API integration tests
 //!
-//! Tests for loan creation, retrieval, updates, and payment processing.
+//! This module contains comprehensive integration tests for the Deal API,
+//! including all consolidated marketplace and transfer functionality.
+//!
+//! ## Test Coverage
+//!
+//! - **Core Deal Operations**: Create, read, update, delete deals
+//! - **Deal Marketplace**: Browse, list, and manage deal sales
+//! - **Deal Transfers**: Ownership transfer and validation
+//! - **Deal Payments**: Payment processing and history
+//! - **Error Handling**: Invalid inputs and edge cases
+//!
+//! ## Recent Changes
+//! Converted from loan-based tests to deal-based tests:
+//! - All loan test functions → deal test functions
+//! - Marketplace tests consolidated from separate file
+//! - Transfer tests consolidated from separate file
+//! - All endpoints updated to use deal terminology
+//! - All field names updated (borrower→originator, lender→investor)
+//!
+//! ## Test Structure
+//!
+//! Tests are organized into functional groups:
+//! 1. Core deal management tests
+//! 2. Consolidated marketplace tests
+//! 3. Consolidated transfer tests
+//! 4. Payment processing tests
+//! 5. Error handling tests
+//! 6. Integration scenario tests
 
 use axum::{
     body::Body,
     extract::State,
     http::{Request, StatusCode},
-    routing::{get, post, put},
+    routing::{get, post, put, delete},
     Router,
 };
 use serde_json::json;
 use tower::ServiceExt;
 
 use crate::test_utils::*;
-use crate::loan_handlers::{
-    create_loan_endpoint, get_loan_details_endpoint, list_loans_endpoint,
-    update_loan_endpoint, record_payment_endpoint, get_loan_payments_endpoint,
+use crate::deal_handlers::{
+    create_deal_endpoint, get_deal_details_endpoint, list_deals_endpoint,
+    update_deal_endpoint, delete_deal_endpoint, record_deal_payment_endpoint,
+    get_deal_payment_history_endpoint,
+    // Consolidated marketplace functions
+    browse_deals_for_sale_endpoint, list_deal_for_sale_endpoint,
+    remove_deal_from_sale_endpoint, deal_marketplace_stats_endpoint,
+    // Consolidated transfer functions
+    transfer_deal_ownership_endpoint, get_deal_transfer_history_endpoint,
+    get_user_deal_transfer_history_endpoint, validate_deal_transfer_endpoint,
 };
 use crate::types::ApiState;
 

@@ -57,7 +57,7 @@ pub mod financial_transaction_handlers;
 pub mod health_handlers;
 pub mod kyc_service;
 pub mod llm_integration;
-pub mod loan_handlers;
+pub mod deal_handlers;
 pub mod magic_link_cleanup;
 pub mod magic_link_handlers;
 pub mod magic_link_service;

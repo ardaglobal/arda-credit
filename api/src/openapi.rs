@@ -36,10 +36,15 @@ pub use crate::financial_transaction_handlers::{
     FinancialTransactionQuery, PaginatedFinancialTransactionsResponse,
     PoolFinancialTransactionResponse, UnifiedFinancialTransactionResponse,
 };
-pub use crate::loan_handlers::{
-    CreateLoanRequest, DeleteLoanResponse, ListLoansQuery, ListLoansResponse, LoanDetailsResponse,
-    LoanPaymentHistoryResponse, LoanStatsResponse, PaymentDetailsResponse, PaymentResponse,
-    RecordPaymentRequest, UpdateLoanRequest, UpdateLoanResponse,
+pub use crate::deal_handlers::{
+    CreateDealRequest, DeleteDealResponse, ListDealsQuery, ListDealsResponse, DealDetailsResponse,
+    DealPaymentHistoryResponse, DealStatsResponse, PaymentDetailsResponse, PaymentResponse,
+    RecordDealPaymentRequest, UpdateDealRequest, UpdateDealResponse,
+    // Consolidated marketplace types (moved from marketplace_handlers)
+    ListDealForSaleRequest, DealListingResponse, MarketplaceDealResponse,
+    // Consolidated transfer types (moved from transfer_handlers)
+    TransferDealOwnershipRequest, DealTransferResponse, ValidateDealTransferRequest,
+    DealTransferValidationResponse,
 };
 use crate::magic_link_handlers::{
     get_current_user, logout_endpoint, request_magic_link, verify_magic_link,
@@ -47,10 +52,6 @@ use crate::magic_link_handlers::{
 use crate::magic_link_types::{
     MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
     VerifyMagicLinkResponse,
-};
-pub use crate::marketplace_handlers::{
-    ListLoanForSaleRequest, ListLoanForSaleResponse, LoansForSaleResponse, MarketplaceDeal,
-    RemoveLoanFromSaleResponse,
 };
 pub use crate::merchant_handlers::{
     InvestorProfileQuery, InvestorProfileResponse, MerchantProfileQuery, MerchantProfileResponse,
@@ -80,10 +81,6 @@ pub use crate::state_handlers::{
 pub use crate::transaction_history_handlers::{
     DateRange, PaginationInfo, TransactionHistoryItem, TransactionHistoryResponse,
     TransactionSummary,
-};
-pub use crate::transfer_handlers::{
-    LoanTransferHistoryResponse, LoanTransferRequest, LoanTransferResponse, TransferHistoryItem,
-    TransferHistoryQuery, UserTransferHistoryResponse,
 };
 pub use crate::turnover_handlers::{
     ProfileCompletionResponse, TurnoverAnalyticsResponse, TurnoverCreateRequest, TurnoverResponse,
@@ -139,9 +136,56 @@ fn default_limit() -> u32 {
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Arda Credit API",
+        title = "Arda Credit Deal API",
         version = "v1",
-        description = "REST API for the Arda Credit platform with magic link authentication providing credit and investment services"
+        description = r#"
+# Arda Credit Deal Processing API
+
+A privacy-preserving deal processing system built on SP1 zero-knowledge proofs.
+
+## Overview
+
+The Arda Credit API enables deal origination, payment processing, marketplace trading, and ownership transfers while maintaining transaction privacy through zero-knowledge proofs.
+
+## Core Features
+
+- **Deal Management**: Create, update, and manage deals between originators and investors
+- **Payment Processing**: Record and track deal payments with cryptographic verification
+- **Deal Marketplace**: List deals for sale, browse available deals, and manage listings
+- **Ownership Transfers**: Transfer deal ownership between investors with validation
+- **Privacy Preservation**: All operations maintain transaction privacy through ZK proofs
+
+## Recent Changes
+
+This API has been updated from loan-based terminology to deal-based terminology:
+- All `/loan/*` endpoints → `/deal/*` endpoints
+- All `/loans/*` endpoints → `/deals/*` endpoints
+- Marketplace endpoints consolidated into deal endpoints
+- Transfer endpoints consolidated into deal endpoints
+- Field names updated: borrower → originator, lender → investor
+
+## Authentication
+
+All endpoints require proper authentication and authorization.
+KYC verification may be required for certain deal operations.
+
+## Rate Limiting
+
+API requests are subject to rate limiting for system stability.
+        "#,
+        contact(
+            name = "Arda Global",
+            email = "support@arda.xyz",
+            url = "https://arda.xyz"
+        ),
+        license(
+            name = "MIT",
+            url = "https://opensource.org/licenses/MIT"
+        ),
+        external_docs(
+            description = "Arda Credit Deal System Documentation",
+            url = "https://docs.arda.xyz/deals"
+        )
     ),
     servers(
         (url = "http://localhost:8080", description = "Development server"),
@@ -200,28 +244,28 @@ fn default_limit() -> u32 {
         crate::merchant_handlers::update_investor_profile_endpoint,
         crate::merchant_handlers::register_investor_endpoint,
 
-        // Loan Management endpoints
-        crate::loan_handlers::create_loan_endpoint,
-        crate::loan_handlers::list_loans_endpoint,
-        crate::loan_handlers::get_loan_details_endpoint,
-        crate::loan_handlers::get_loan_stats_endpoint,
-        crate::loan_handlers::update_loan_endpoint,
-        crate::loan_handlers::delete_loan_endpoint,
-        crate::loan_handlers::record_payment_endpoint,
-        crate::loan_handlers::get_payment_details_endpoint,
-        crate::loan_handlers::get_loan_payment_history_endpoint,
+        // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
+        crate::deal_handlers::create_deal_endpoint,
+        crate::deal_handlers::list_deals_endpoint,
+        crate::deal_handlers::get_deal_details_endpoint,
+        crate::deal_handlers::get_deal_stats_endpoint,
+        crate::deal_handlers::update_deal_endpoint,
+        crate::deal_handlers::delete_deal_endpoint,
+        crate::deal_handlers::record_deal_payment_endpoint,
+        crate::deal_handlers::get_payment_details_endpoint,
+        crate::deal_handlers::get_deal_payment_history_endpoint,
 
-        // Loan Trading Marketplace endpoints
-        crate::marketplace_handlers::browse_marketplace_endpoint,
-        crate::marketplace_handlers::list_loan_for_sale_endpoint,
-        crate::marketplace_handlers::remove_loan_from_sale_endpoint,
-        crate::marketplace_handlers::marketplace_stats_endpoint,
+        // Consolidated Deal Marketplace endpoints (moved from marketplace_handlers)
+        crate::deal_handlers::browse_deals_for_sale_endpoint,
+        crate::deal_handlers::list_deal_for_sale_endpoint,
+        crate::deal_handlers::remove_deal_from_sale_endpoint,
+        crate::deal_handlers::deal_marketplace_stats_endpoint,
 
-        // Loan Transfer endpoints
-        crate::transfer_handlers::transfer_loan_ownership_endpoint,
-        crate::transfer_handlers::get_loan_transfer_history_endpoint,
-        crate::transfer_handlers::get_user_transfer_history_endpoint,
-        crate::transfer_handlers::validate_transfer_endpoint,
+        // Consolidated Deal Transfer endpoints (moved from transfer_handlers)
+        crate::deal_handlers::transfer_deal_ownership_endpoint,
+        crate::deal_handlers::get_deal_transfer_history_endpoint,
+        crate::deal_handlers::get_user_deal_transfer_history_endpoint,
+        crate::deal_handlers::validate_deal_transfer_endpoint,
 
         // Pool endpoints
         crate::pool_handlers::list_pools,
@@ -329,10 +373,8 @@ fn default_limit() -> u32 {
         (name = "Transactions", description = "Transaction operations"),
         (name = "Liquidity Pools", description = "Liquidity pool management and queries"),
         (name = "Pool Metrics", description = "Platform-wide and investor-specific pool metrics and analytics"),
-        (name = "Loans", description = "Loan lifecycle management"),
+        (name = "Deals", description = "Deal lifecycle management, marketplace operations, and ownership transfers"),
         (name = "Payments", description = "Payment processing and history"),
-        (name = "Marketplace", description = "Loan marketplace operations"),
-        (name = "Transfer", description = "Loan ownership transfer operations"),
         (name = "Withdrawals", description = "Withdrawal operations"),
         (name = "Admin Withdrawals", description = "Administrative withdrawal approval and management"),
         (name = "Admin Dashboard", description = "Administrative dashboard and monitoring"),
@@ -408,34 +450,30 @@ fn default_limit() -> u32 {
         UnifiedFinancialTransactionResponse,
         FinancialSummaryResponse,
 
-        // Loan types
-        CreateLoanRequest,
-        DeleteLoanResponse,
-        ListLoansQuery,
-        ListLoansResponse,
-        LoanDetailsResponse,
-        LoanPaymentHistoryResponse,
-        LoanStatsResponse,
+        // Deal types (consolidated - includes marketplace and transfer operations)
+        CreateDealRequest,
+        DeleteDealResponse,
+        ListDealsQuery,
+        ListDealsResponse,
+        DealDetailsResponse,
+        DealPaymentHistoryResponse,
+        DealStatsResponse,
         PaymentDetailsResponse,
         PaymentResponse,
-        RecordPaymentRequest,
-        UpdateLoanRequest,
-        UpdateLoanResponse,
+        RecordDealPaymentRequest,
+        UpdateDealRequest,
+        UpdateDealResponse,
 
-        // Loan Trading Marketplace types
-        MarketplaceDeal,
-        LoansForSaleResponse,
-        ListLoanForSaleRequest,
-        ListLoanForSaleResponse,
-        RemoveLoanFromSaleResponse,
+        // Consolidated Deal Marketplace types (moved from marketplace_handlers)
+        MarketplaceDealResponse,
+        ListDealForSaleRequest,
+        DealListingResponse,
 
-        // Loan Transfer types
-        LoanTransferRequest,
-        LoanTransferResponse,
-        LoanTransferHistoryResponse,
-        UserTransferHistoryResponse,
-        TransferHistoryItem,
-        TransferHistoryQuery,
+        // Consolidated Deal Transfer types (moved from transfer_handlers)
+        TransferDealOwnershipRequest,
+        DealTransferResponse,
+        ValidateDealTransferRequest,
+        DealTransferValidationResponse,
 
         // Pool types
         PoolListQuery,

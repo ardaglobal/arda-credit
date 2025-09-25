@@ -6,7 +6,7 @@ import {EventHelpers} from "./EventHelpers.sol";
 import {IERC20} from "lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "lib/sp1-contracts/contracts/lib/openzeppelin-contracts/contracts/token/ERC20/utils/SafeERC20.sol";
 
-struct LoanBatchPublicValues {
+struct DealBatchPublicValues {
     bytes32 previous_state_root;
     bytes32 new_state_root;
     uint32 transaction_count;
@@ -16,11 +16,11 @@ struct LoanBatchPublicValues {
     uint128 current_total_balance;
 }
 
-/// @title Loan.
+/// @title ARDA Credit Contract
 /// @author Arda Global
-/// @notice This contract implements verification of batch processing proofs with continuous balance tracking.
-///         Individual transactions remain private while only initial and final balances are public.
-contract Loan is EventHelpers {
+/// @notice This contract implements verification of deal batch processing proofs with continuous balance tracking.
+///         Individual deal transactions remain private while only initial and final balances are public.
+contract ARDA is EventHelpers {
     /// @notice The address of the SP1 verifier contract.
     /// @dev This can either be a specific SP1Verifier for a specific version, or the
     ///      SP1VerifierGateway which can be used to verify proofs for any version of SP1.
@@ -28,8 +28,8 @@ contract Loan is EventHelpers {
     ///      https://github.com/succinctlabs/sp1-contracts/tree/main/contracts/deployments
     address public verifier;
 
-    /// @notice The verification key for the loan program.
-    bytes32 public loanProgramVKey;
+    /// @notice The verification key for the deal program.
+    bytes32 public dealProgramVKey;
 
     /// @notice Store state by state ID.
     mapping(bytes32 => bytes32) public currentState;
@@ -257,9 +257,9 @@ contract Loan is EventHelpers {
         _;
     }
 
-    constructor(address _verifier, bytes32 _loanProgramVKey) {
+    constructor(address _verifier, bytes32 _dealProgramVKey) {
         verifier = _verifier;
-        loanProgramVKey = _loanProgramVKey;
+        dealProgramVKey = _dealProgramVKey;
         owner = msg.sender;
         authorizedPosters[msg.sender] = true;
         emit AuthorizationChanged(msg.sender, true);
@@ -267,22 +267,22 @@ contract Loan is EventHelpers {
 
     /// @notice The entrypoint for verifying the proof of a batch processing operation.
     /// @param _proofBytes The encoded proof.
-    /// @param _publicValues The encoded public values containing loan batch information.
-    function verifyLoanProof(
+    /// @param _publicValues The encoded public values containing deal batch information.
+    function verifyDealProof(
         bytes calldata _publicValues,
         bytes calldata _proofBytes
     ) public view returns (uint128) {
         ISP1Verifier(verifier).verifyProof(
-            loanProgramVKey,
+            dealProgramVKey,
             _publicValues,
             _proofBytes
         );
 
-        // Check if this is the new LoanBatchPublicValues format (224 bytes = 7 * 32)
+        // Check if this is the new DealBatchPublicValues format (224 bytes = 7 * 32)
         if (_publicValues.length == 224) {
-            LoanBatchPublicValues memory publicValues = abi.decode(
+            DealBatchPublicValues memory publicValues = abi.decode(
                 _publicValues,
-                (LoanBatchPublicValues)
+                (DealBatchPublicValues)
             );
             return publicValues.current_total_balance;
         }
@@ -309,15 +309,15 @@ contract Loan is EventHelpers {
     ) external onlyAuthorized {
         // Verify the proof first
         ISP1Verifier(verifier).verifyProof(
-            loanProgramVKey,
+            dealProgramVKey,
             publicValues,
             proof
         );
 
         // Handle portfolio balance tracking if publicValues includes balance data
         if (publicValues.length >= 224) {
-            // 7 * 32 bytes for new LoanBatchPublicValues structure
-            try this.decodeLoanBatchPublicValues(publicValues) returns (
+            // 7 * 32 bytes for new DealBatchPublicValues structure
+            try this.decodeDealBatchPublicValues(publicValues) returns (
                 bytes32,
                 bytes32,
                 uint32,
@@ -501,7 +501,7 @@ contract Loan is EventHelpers {
 
         // Cache frequently accessed values to reduce external calls
         address cachedVerifier = verifier;
-        bytes32 cachedVKey = loanProgramVKey;
+        bytes32 cachedVKey = dealProgramVKey;
         address cachedSender = msg.sender;
         uint256 cachedTimestamp = block.timestamp;
 
@@ -653,7 +653,7 @@ contract Loan is EventHelpers {
     }
 
     // Add helper function for decoding
-    function decodeLoanBatchPublicValues(
+    function decodeDealBatchPublicValues(
         bytes calldata data
     )
         external
@@ -1044,7 +1044,7 @@ contract Loan is EventHelpers {
     }
 
     /*//////////////////////////////////////////////////////////////
-                    LOAN BATCH PUBLIC VALUES GETTERS
+                        DEAL BATCH PUBLIC VALUES GETTERS
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the previous state root from the latest batch public values
@@ -1063,7 +1063,7 @@ contract Loan is EventHelpers {
             return bytes32(0);
         }
 
-        try this.decodeLoanBatchPublicValues(publicValues) returns (
+        try this.decodeDealBatchPublicValues(publicValues) returns (
             bytes32 prev_state_root,
             bytes32,
             uint32,
@@ -1094,7 +1094,7 @@ contract Loan is EventHelpers {
             return bytes32(0);
         }
 
-        try this.decodeLoanBatchPublicValues(publicValues) returns (
+        try this.decodeDealBatchPublicValues(publicValues) returns (
             bytes32,
             bytes32 new_state_root_val,
             uint32,
@@ -1125,7 +1125,7 @@ contract Loan is EventHelpers {
             return 0;
         }
 
-        try this.decodeLoanBatchPublicValues(publicValues) returns (
+        try this.decodeDealBatchPublicValues(publicValues) returns (
             bytes32,
             bytes32,
             uint32,
@@ -1156,7 +1156,7 @@ contract Loan is EventHelpers {
             return 0;
         }
 
-        try this.decodeLoanBatchPublicValues(publicValues) returns (
+        try this.decodeDealBatchPublicValues(publicValues) returns (
             bytes32,
             bytes32,
             uint32,
@@ -1176,9 +1176,9 @@ contract Loan is EventHelpers {
     //////////////////////////////////////////////////////////////*/
 
     /// @notice Get the current program verification key used by this contract.
-    /// @return vKey The 32-byte verification key for the loan program.
+    /// @return vKey The 32-byte verification key for the deal program.
     function getProgramVerificationKey() external view returns (bytes32 vKey) {
-        return loanProgramVKey;
+        return dealProgramVKey;
     }
 
     /// @notice Check if a given verification key matches the contract's program vkey.
@@ -1187,7 +1187,7 @@ contract Loan is EventHelpers {
     function isValidProgramVerificationKey(
         bytes32 vKey
     ) external view returns (bool matches) {
-        return vKey == loanProgramVKey;
+        return vKey == dealProgramVKey;
     }
 
     /// @notice Get verification key information for debugging.
@@ -1198,7 +1198,7 @@ contract Loan is EventHelpers {
         view
         returns (bytes32 contractVKey, address verifierAddress)
     {
-        return (loanProgramVKey, verifier);
+        return (dealProgramVKey, verifier);
     }
 
     /// @notice Validate that a proof would be accepted by this contract (without executing).
@@ -1214,13 +1214,13 @@ contract Loan is EventHelpers {
         bytes calldata proof
     ) external view returns (bool isValid, string memory message) {
         // Check if the verification key matches
-        if (expectedVKey != loanProgramVKey) {
+        if (expectedVKey != dealProgramVKey) {
             return (
                 false,
                 string(
                     abi.encodePacked(
                         "Verification key mismatch. Expected: 0x",
-                        _bytes32ToHex(loanProgramVKey),
+                        _bytes32ToHex(dealProgramVKey),
                         ", Got: 0x",
                         _bytes32ToHex(expectedVKey)
                     )

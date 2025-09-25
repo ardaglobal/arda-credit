@@ -2,11 +2,11 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Loan} from "../src/Loan.sol";
+import {ARDA} from "../src/ARDA.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 
-contract LoanProofReadingTest is Test {
-    Loan public loan;
+contract ARDAProofReadingTest is Test {
+    ARDA public arda;
     address public verifier;
     address public user1 = address(0x1);
     address public user2 = address(0x2);
@@ -16,11 +16,11 @@ contract LoanProofReadingTest is Test {
 
     function setUp() public {
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, TEST_VKEY);
+        arda = new ARDA(verifier, TEST_VKEY);
 
         // Grant authorization to test users
-        loan.setAuthorization(user1, true);
-        loan.setAuthorization(user2, true);
+        arda.setAuthorization(user1, true);
+        arda.setAuthorization(user2, true);
     }
 
     function testPostStateUpdateStoresMetadata() public {
@@ -48,10 +48,10 @@ contract LoanProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        loan.updateState(stateId, newState, proof, result);
+        arda.updateState(stateId, newState, proof, result);
 
         // Verify metadata was stored
-        Loan.ProofMetadata memory metadata = loan.getProofMetadata(
+        ARDA.ProofMetadata memory metadata = arda.getProofMetadata(
             expectedProofId
         );
         assertEq(metadata.proofId, expectedProofId);
@@ -76,17 +76,17 @@ contract LoanProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        loan.updateState(stateId, newState, proof, result);
+        arda.updateState(stateId, newState, proof, result);
 
         // Test getProofById
-        (bytes memory retrievedProof, bool exists) = loan.getProofById(
+        (bytes memory retrievedProof, bool exists) = arda.getProofById(
             proofId
         );
         assertTrue(exists);
         assertEq(retrievedProof, proof);
 
         // Test non-existent proof
-        (bytes memory noProof, bool notExists) = loan.getProofById(
+        (bytes memory noProof, bool notExists) = arda.getProofById(
             keccak256("non-existent")
         );
         assertFalse(notExists);
@@ -106,16 +106,16 @@ contract LoanProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        loan.updateState(stateId, newState, proof, result);
+        arda.updateState(stateId, newState, proof, result);
 
         // Test getProofByStateId
-        (bytes memory retrievedProof, bytes32 proofId) = loan
+        (bytes memory retrievedProof, bytes32 proofId) = arda
             .getProofByStateId(stateId);
         assertEq(retrievedProof, proof);
         assertEq(proofId, keccak256(proof));
 
         // Test non-existent state
-        (bytes memory noProof, bytes32 noProofId) = loan
+        (bytes memory noProof, bytes32 noProofId) = arda
             .getProofByStateId(keccak256("non-existent"));
         assertEq(noProof.length, 0);
         assertEq(noProofId, bytes32(0));
@@ -134,7 +134,7 @@ contract LoanProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        loan.updateState(
+        arda.updateState(
             stateId,
             keccak256("new-state-4a"),
             proof1,
@@ -150,7 +150,7 @@ contract LoanProofReadingTest is Test {
         bytes memory result2 = "test-result-4b";
 
         vm.prank(user2);
-        loan.updateState(
+        arda.updateState(
             stateId,
             keccak256("new-state-4b"),
             proof2,
@@ -163,13 +163,13 @@ contract LoanProofReadingTest is Test {
             bytes memory latestProof,
             bytes32 proofId,
             uint256 timestamp
-        ) = loan.getLatestProof(stateId);
+        ) = arda.getLatestProof(stateId);
         assertEq(latestProof, proof2);
         assertEq(proofId, keccak256(proof2));
         assertEq(timestamp, secondTimestamp);
 
         // Verify first proof is still accessible
-        (bytes memory firstProof, bool exists) = loan.getProofById(
+        (bytes memory firstProof, bool exists) = arda.getProofById(
             keccak256(proof1)
         );
         assertTrue(exists);
@@ -190,26 +190,26 @@ contract LoanProofReadingTest is Test {
         );
 
         vm.prank(user1);
-        loan.updateState(stateId, newState, proof, result);
+        arda.updateState(stateId, newState, proof, result);
 
         // Test verification status functions
-        assertTrue(loan.isProofVerified(proofId));
+        assertTrue(arda.isProofVerified(proofId));
 
-        (bool verified, bytes memory retrievedResult) = loan
+        (bool verified, bytes memory retrievedResult) = arda
             .getVerificationResult(proofId);
         assertTrue(verified);
         assertEq(retrievedResult, result);
 
-        uint256 timestamp = loan.getProofTimestamp(proofId);
+        uint256 timestamp = arda.getProofTimestamp(proofId);
         assertEq(timestamp, block.timestamp);
 
-        address submitter = loan.getProofSubmitter(proofId);
+        address submitter = arda.getProofSubmitter(proofId);
         assertEq(submitter, user1);
     }
 
     function testProofEnumeration() public {
         // Start with empty count
-        assertEq(loan.getProofCount(), 0);
+        assertEq(arda.getProofCount(), 0);
 
         // Post multiple proofs
         bytes32[] memory stateIds = new bytes32[](3);
@@ -228,7 +228,7 @@ contract LoanProofReadingTest is Test {
             proofIds[i] = keccak256(proof);
 
             vm.prank(user1);
-            loan.updateState(
+            arda.updateState(
                 stateIds[i],
                 keccak256(abi.encodePacked("new-state-", i)),
                 proof,
@@ -237,19 +237,19 @@ contract LoanProofReadingTest is Test {
         }
 
         // Test proof count
-        assertEq(loan.getProofCount(), 3);
+        assertEq(arda.getProofCount(), 3);
 
         // Test getProofByIndex
         for (uint256 i = 0; i < 3; i++) {
-            (bytes32 indexProofId, bytes memory indexProof) = loan
+            (bytes32 indexProofId, bytes memory indexProof) = arda
                 .getProofByIndex(i);
             assertEq(indexProofId, proofIds[i]);
             assertEq(indexProof, abi.encodePacked("test-proof-", i));
         }
 
         // Test invalid index
-        vm.expectRevert(Loan.InvalidIndex.selector);
-        loan.getProofByIndex(3);
+        vm.expectRevert(ARDA.InvalidIndex.selector);
+        arda.getProofByIndex(3);
     }
 
     function testGetRecentProofs() public {
@@ -266,7 +266,7 @@ contract LoanProofReadingTest is Test {
             bytes memory result = abi.encodePacked("test-result-", i);
 
             vm.prank(user1);
-            loan.updateState(
+            arda.updateState(
                 stateId,
                 keccak256(abi.encodePacked("new-state-", i)),
                 proof,
@@ -278,7 +278,7 @@ contract LoanProofReadingTest is Test {
         (
             bytes32[] memory recentProofIds,
             bytes[] memory recentProofs
-        ) = loan.getRecentProofs(3);
+        ) = arda.getRecentProofs(3);
         assertEq(recentProofIds.length, 3);
         assertEq(recentProofs.length, 3);
 
@@ -288,7 +288,7 @@ contract LoanProofReadingTest is Test {
         }
 
         // Test getting all proofs (limit 0)
-        (bytes32[] memory allProofIds, bytes[] memory allProofs) = loan
+        (bytes32[] memory allProofIds, bytes[] memory allProofs) = arda
             .getRecentProofs(0);
         assertEq(allProofIds.length, 5);
         assertEq(allProofs.length, 5);
@@ -297,7 +297,7 @@ contract LoanProofReadingTest is Test {
         (
             bytes32[] memory limitedProofIds,
             bytes[] memory limitedProofs
-        ) = loan.getRecentProofs(10);
+        ) = arda.getRecentProofs(10);
         assertEq(limitedProofIds.length, 5);
         assertEq(limitedProofs.length, 5);
     }
@@ -317,7 +317,7 @@ contract LoanProofReadingTest is Test {
             bytes memory result = abi.encodePacked("test-result-multi-", i);
 
             vm.prank(user1);
-            loan.updateState(
+            arda.updateState(
                 stateId,
                 keccak256(abi.encodePacked("new-state-multi-", i)),
                 proof,
@@ -326,7 +326,7 @@ contract LoanProofReadingTest is Test {
         }
 
         // Test getProofsByStateId
-        bytes32[] memory stateProofIds = loan.getProofsByStateId(stateId);
+        bytes32[] memory stateProofIds = arda.getProofsByStateId(stateId);
         assertEq(stateProofIds.length, 3);
 
         // Verify each proof ID corresponds to the correct proof
@@ -341,7 +341,7 @@ contract LoanProofReadingTest is Test {
 
     function testEmptyStateReturns() public {
         // Test empty state returns
-        (bytes memory noProof, bytes32 noProofId) = loan
+        (bytes memory noProof, bytes32 noProofId) = arda
             .getProofByStateId(keccak256("non-existent"));
         assertEq(noProof.length, 0);
         assertEq(noProofId, bytes32(0));
@@ -350,7 +350,7 @@ contract LoanProofReadingTest is Test {
             bytes memory noLatestProof,
             bytes32 noLatestProofId,
             uint256 noTimestamp
-        ) = loan.getLatestProof(keccak256("non-existent"));
+        ) = arda.getLatestProof(keccak256("non-existent"));
         assertEq(noLatestProof.length, 0);
         assertEq(noLatestProofId, bytes32(0));
         assertEq(noTimestamp, 0);
@@ -358,7 +358,7 @@ contract LoanProofReadingTest is Test {
         (
             bytes32[] memory emptyRecentIds,
             bytes[] memory emptyRecentProofs
-        ) = loan.getRecentProofs(5);
+        ) = arda.getRecentProofs(5);
         assertEq(emptyRecentIds.length, 0);
         assertEq(emptyRecentProofs.length, 0);
     }
@@ -366,11 +366,11 @@ contract LoanProofReadingTest is Test {
     function testProofNotFoundErrors() public {
         bytes32 nonExistentProofId = keccak256("non-existent-proof");
 
-        vm.expectRevert(Loan.ProofNotFound.selector);
-        loan.getProofMetadata(nonExistentProofId);
+        vm.expectRevert(ARDA.ProofNotFound.selector);
+        arda.getProofMetadata(nonExistentProofId);
 
-        vm.expectRevert(Loan.ProofNotFound.selector);
-        loan.getProofSubmitter(nonExistentProofId);
+        vm.expectRevert(ARDA.ProofNotFound.selector);
+        arda.getProofSubmitter(nonExistentProofId);
     }
 
     // Events to match the contract

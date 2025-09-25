@@ -2,12 +2,12 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Loan} from "../src/Loan.sol";
+import {ARDA} from "../src/ARDA.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
-contract LoanEventSystemTest is Test {
-    Loan public loan;
+contract ARDAEventSystemTest is Test {
+    ARDA public arda;
     MockUSDC public mockUSDC;
     address public verifier;
     address public user1 = address(0x1);
@@ -17,11 +17,11 @@ contract LoanEventSystemTest is Test {
     
     function setUp() public {
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, TEST_VKEY);
+        arda = new ARDA(verifier, TEST_VKEY);
         
         // Grant authorization to test users
-        loan.setAuthorization(user1, true);
-        loan.setAuthorization(user2, true);
+        arda.setAuthorization(user1, true);
+        arda.setAuthorization(user2, true);
     }
     
     function testStateUpdatedEvent() public {
@@ -42,7 +42,7 @@ contract LoanEventSystemTest is Test {
         emit StateUpdated(stateId, newState, proofId, user1, block.timestamp);
         
         vm.prank(user1);
-        loan.updateState(stateId, newState, proof, result);
+        arda.updateState(stateId, newState, proof, result);
     }
     
     function testProofStoredEvent() public {
@@ -63,7 +63,7 @@ contract LoanEventSystemTest is Test {
         emit ProofStored(proofId, stateId, user1, block.timestamp);
         
         vm.prank(user1);
-        loan.updateState(stateId, newState, proof, result);
+        arda.updateState(stateId, newState, proof, result);
     }
     
     function testProofVerifiedEvent() public {
@@ -84,7 +84,7 @@ contract LoanEventSystemTest is Test {
         emit ProofVerified(proofId, true, new bytes(0), block.timestamp);
         
         vm.prank(user1);
-        loan.updateState(stateId, newState, proof, result);
+        arda.updateState(stateId, newState, proof, result);
     }
     
     function testBatchStateUpdatedEvent() public {
@@ -113,7 +113,7 @@ contract LoanEventSystemTest is Test {
         emit BatchStateUpdated(stateIds, newStates, user1, block.timestamp);
         
         vm.prank(user1);
-        loan.batchUpdateStates(stateIds, newStates, proofs, results);
+        arda.batchUpdateStates(stateIds, newStates, proofs, results);
     }
     
     function testStateReadRequestedEvent() public {
@@ -127,14 +127,14 @@ contract LoanEventSystemTest is Test {
         );
         
         vm.prank(user1);
-        loan.updateState(stateId, keccak256("new-state"), "proof", "result");
+        arda.updateState(stateId, keccak256("new-state"), "proof", "result");
         
         // Expect the StateReadRequested event
         vm.expectEmit(true, true, true, true);
         emit StateReadRequested(stateId, user2, block.timestamp);
         
         vm.prank(user2);
-        loan.readCurrentState(stateId);
+        arda.readCurrentState(stateId);
     }
     
     function testProofReadRequestedEvent() public {
@@ -150,19 +150,19 @@ contract LoanEventSystemTest is Test {
         );
         
         vm.prank(user1);
-        loan.updateState(stateId, keccak256("new-state"), proof, "result");
+        arda.updateState(stateId, keccak256("new-state"), proof, "result");
         
         // Expect the ProofReadRequested event
         vm.expectEmit(true, true, true, true);
         emit ProofReadRequested(proofId, user2, block.timestamp);
         
         vm.prank(user2);
-        loan.getProofById(proofId);
+        arda.getProofById(proofId);
     }
     
     function testEventStatisticsTracking() public {
         // Initial stats should be zero
-        Loan.EventStats memory initialStats = loan.getEventStats();
+        ARDA.EventStats memory initialStats = arda.getEventStats();
         assertEq(initialStats.totalStateUpdates, 0);
         assertEq(initialStats.totalProofStored, 0);
         
@@ -175,10 +175,10 @@ contract LoanEventSystemTest is Test {
         
         bytes32 stateId = keccak256("stats-test-state");
         vm.prank(user1);
-        loan.updateState(stateId, keccak256("new-state"), "proof", "result");
+        arda.updateState(stateId, keccak256("new-state"), "proof", "result");
         
         // Check updated stats
-        Loan.EventStats memory updatedStats = loan.getEventStats();
+        ARDA.EventStats memory updatedStats = arda.getEventStats();
         assertEq(updatedStats.totalStateUpdates, 1);
         assertEq(updatedStats.totalProofStored, 1);
         assertEq(updatedStats.lastEventTimestamp, block.timestamp);
@@ -186,7 +186,7 @@ contract LoanEventSystemTest is Test {
     
     function testEventCountBySubmitter() public {
         // Initial count should be zero
-        assertEq(loan.getEventCountBySubmitter(user1), 0);
+        assertEq(arda.getEventCountBySubmitter(user1), 0);
         
         vm.mockCall(
             verifier,
@@ -198,7 +198,7 @@ contract LoanEventSystemTest is Test {
         for (uint i = 0; i < 3; i++) {
             bytes32 stateId = keccak256(abi.encodePacked("submitter-test-", i));
             vm.prank(user1);
-            loan.updateState(
+            arda.updateState(
                 stateId, 
                 keccak256(abi.encodePacked("new-state-", i)), 
                 abi.encodePacked("proof-", i), 
@@ -207,14 +207,14 @@ contract LoanEventSystemTest is Test {
         }
         
         // Should have count for each state update + proof stored
-        assertTrue(loan.getEventCountBySubmitter(user1) >= 3);
+        assertTrue(arda.getEventCountBySubmitter(user1) >= 3);
     }
     
     function testEventCountByStateId() public {
         bytes32 stateId = keccak256("state-count-test");
         
         // Initial count should be zero
-        assertEq(loan.getEventCountByStateId(stateId), 0);
+        assertEq(arda.getEventCountByStateId(stateId), 0);
         
         vm.mockCall(
             verifier,
@@ -224,17 +224,17 @@ contract LoanEventSystemTest is Test {
         
         // Post state update
         vm.prank(user1);
-        loan.updateState(stateId, keccak256("new-state"), "proof", "result");
+        arda.updateState(stateId, keccak256("new-state"), "proof", "result");
         
         // Should have incremented count
-        assertTrue(loan.getEventCountByStateId(stateId) >= 1);
+        assertTrue(arda.getEventCountByStateId(stateId) >= 1);
     }
     
     function testDailyEventCounts() public {
         uint256 today = block.timestamp / 86400;
         
         // Initial daily count should be zero
-        assertEq(loan.getDailyEventCount(today), 0);
+        assertEq(arda.getDailyEventCount(today), 0);
         
         vm.mockCall(
             verifier,
@@ -244,7 +244,7 @@ contract LoanEventSystemTest is Test {
         
         // Post state update
         vm.prank(user1);
-        loan.updateState(
+        arda.updateState(
             keccak256("daily-test"), 
             keccak256("new-state"), 
             "proof", 
@@ -252,14 +252,14 @@ contract LoanEventSystemTest is Test {
         );
         
         // Should have incremented daily count
-        assertTrue(loan.getDailyEventCount(today) >= 1);
+        assertTrue(arda.getDailyEventCount(today) >= 1);
     }
     
     function testTimeRangeInfo() public {
         uint256 startTime = block.timestamp >= 86400 ? block.timestamp - 86400 : 0;
         uint256 endTime = block.timestamp;
         
-        (bool isValid, uint256 dayCount) = loan.getTimeRangeInfo(startTime, endTime);
+        (bool isValid, uint256 dayCount) = arda.getTimeRangeInfo(startTime, endTime);
         assertTrue(isValid);
         
         // Calculate expected day count using same logic as contract: endDay - startDay + 1
@@ -269,7 +269,7 @@ contract LoanEventSystemTest is Test {
         assertEq(dayCount, expectedDayCount);
         
         // Test invalid range
-        (bool invalidRange,) = loan.getTimeRangeInfo(endTime, startTime);
+        (bool invalidRange,) = arda.getTimeRangeInfo(endTime, startTime);
         assertFalse(invalidRange);
     }
     
@@ -278,7 +278,7 @@ contract LoanEventSystemTest is Test {
         uint256 endTime = block.timestamp + 1;
         
         // Should start with zero events in range
-        assertEq(loan.getEventCountInRange(startTime, endTime), 0);
+        assertEq(arda.getEventCountInRange(startTime, endTime), 0);
         
         vm.mockCall(
             verifier,
@@ -288,7 +288,7 @@ contract LoanEventSystemTest is Test {
         
         // Post an event
         vm.prank(user1);
-        loan.updateState(
+        arda.updateState(
             keccak256("range-test"), 
             keccak256("new-state"), 
             "proof", 
@@ -296,21 +296,21 @@ contract LoanEventSystemTest is Test {
         );
         
         // Should now have events in the range
-        assertTrue(loan.getEventCountInRange(startTime, endTime + 86400) >= 1);
+        assertTrue(arda.getEventCountInRange(startTime, endTime + 86400) >= 1);
     }
     
     function testReadEventTrackingToggle() public {
         // Only owner can toggle
-        vm.expectRevert(Loan.UnauthorizedAccess.selector);
+        vm.expectRevert(ARDA.UnauthorizedAccess.selector);
         vm.prank(user1);
-        loan.setReadEventTracking(false);
+        arda.setReadEventTracking(false);
         
         // Owner should be able to toggle
-        loan.setReadEventTracking(false);
-        assertTrue(!loan.readEventTrackingEnabled());
+        arda.setReadEventTracking(false);
+        assertTrue(!arda.readEventTrackingEnabled());
         
-        loan.setReadEventTracking(true);
-        assertTrue(loan.readEventTrackingEnabled());
+        arda.setReadEventTracking(true);
+        assertTrue(arda.readEventTrackingEnabled());
     }
     
     // Events to match the contract

@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
 import {stdJson} from "forge-std/StdJson.sol";
-import {Loan} from "../src/Loan.sol";
+import {ARDA} from "../src/ARDA.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 
@@ -15,11 +15,11 @@ struct SP1ProofFixtureJson {
     bytes32 vkey;
 }
 
-contract LoanGroth16Test is Test {
+contract ARDAGroth16Test is Test {
     using stdJson for string;
 
     address verifier;
-    Loan public loan;
+    ARDA public arda;
     MockUSDC public mockUSDC;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
@@ -37,10 +37,10 @@ contract LoanGroth16Test is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, fixture.vkey);
+        arda = new ARDA(verifier, fixture.vkey);
     }
 
-    function test_ValidLoanProof() public {
+    function test_ValidDealProof() public {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         vm.mockCall(
@@ -49,7 +49,7 @@ contract LoanGroth16Test is Test {
             abi.encode(true)
         );
 
-        uint128 result = loan.verifyLoanProof(
+        uint128 result = arda.verifyDealProof(
             fixture.publicValues,
             fixture.proof
         );
@@ -58,7 +58,7 @@ contract LoanGroth16Test is Test {
         assert(result == 12);
     }
 
-    function testRevert_InvalidLoanProof() public {
+    function testRevert_InvalidDealProof() public {
         vm.expectRevert();
 
         SP1ProofFixtureJson memory fixture = loadFixture();
@@ -66,15 +66,15 @@ contract LoanGroth16Test is Test {
         // Create a fake proof.
         bytes memory fakeProof = new bytes(fixture.proof.length);
 
-        loan.verifyLoanProof(fixture.publicValues, fakeProof);
+        arda.verifyDealProof(fixture.publicValues, fakeProof);
     }
 }
 
-contract LoanPlonkTest is Test {
+contract ARDAPlonkTest is Test {
     using stdJson for string;
 
     address verifier;
-    Loan public loan;
+    ARDA public arda;
     MockUSDC public mockUSDC;
 
     function loadFixture() public view returns (SP1ProofFixtureJson memory) {
@@ -92,10 +92,10 @@ contract LoanPlonkTest is Test {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, fixture.vkey);
+        arda = new ARDA(verifier, fixture.vkey);
     }
 
-    function test_ValidLoanProof() public {
+    function test_ValidDealProof() public {
         SP1ProofFixtureJson memory fixture = loadFixture();
 
         vm.mockCall(
@@ -104,7 +104,7 @@ contract LoanPlonkTest is Test {
             abi.encode(true)
         );
 
-        uint128 result = loan.verifyLoanProof(
+        uint128 result = arda.verifyDealProof(
             fixture.publicValues,
             fixture.proof
         );
@@ -113,7 +113,7 @@ contract LoanPlonkTest is Test {
         assert(result == 12);
     }
 
-    function testRevert_InvalidLoanProof() public {
+    function testRevert_InvalidDealProof() public {
         vm.expectRevert();
 
         SP1ProofFixtureJson memory fixture = loadFixture();
@@ -121,12 +121,12 @@ contract LoanPlonkTest is Test {
         // Create a fake proof.
         bytes memory fakeProof = new bytes(fixture.proof.length);
 
-        loan.verifyLoanProof(fixture.publicValues, fakeProof);
+        arda.verifyDealProof(fixture.publicValues, fakeProof);
     }
 }
 
-contract LoanVerificationKeyTest is Test {
-    Loan public loan;
+contract ARDAVerificationKeyTest is Test {
+    ARDA public arda;
     MockUSDC public mockUSDC;
     bytes32 constant TEST_VKEY =
         0x035a6b230490471fe1a84470ae9bf66a6521fd76d559d50488f30d5b1ccbfc2b;
@@ -135,26 +135,26 @@ contract LoanVerificationKeyTest is Test {
 
     function setUp() public {
         address verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, TEST_VKEY);
+        arda = new ARDA(verifier, TEST_VKEY);
     }
 
     function test_GetProgramVerificationKey() public view {
-        bytes32 vkey = loan.getProgramVerificationKey();
+        bytes32 vkey = arda.getProgramVerificationKey();
         assertEq(vkey, TEST_VKEY);
     }
 
     function test_IsValidProgramVerificationKey_ValidKey() public view {
-        bool isValid = loan.isValidProgramVerificationKey(TEST_VKEY);
+        bool isValid = arda.isValidProgramVerificationKey(TEST_VKEY);
         assertTrue(isValid);
     }
 
     function test_IsValidProgramVerificationKey_InvalidKey() public view {
-        bool isValid = loan.isValidProgramVerificationKey(WRONG_VKEY);
+        bool isValid = arda.isValidProgramVerificationKey(WRONG_VKEY);
         assertFalse(isValid);
     }
 
     function test_GetVerificationInfo() public view {
-        (bytes32 vkey, address verifierAddr) = loan.getVerificationInfo();
+        (bytes32 vkey, address verifierAddr) = arda.getVerificationInfo();
         assertEq(vkey, TEST_VKEY);
         assertTrue(verifierAddr != address(0));
     }
@@ -163,7 +163,7 @@ contract LoanVerificationKeyTest is Test {
         bytes memory mockProof = "mock_proof_data";
         bytes memory mockPublicValues = "mock_public_values";
 
-        (bool isValid, string memory message) = loan
+        (bool isValid, string memory message) = arda
             .validateProofCompatibility(TEST_VKEY, mockPublicValues, mockProof);
 
         assertTrue(isValid);
@@ -174,7 +174,7 @@ contract LoanVerificationKeyTest is Test {
         bytes memory mockProof = "mock_proof_data";
         bytes memory mockPublicValues = "mock_public_values";
 
-        (bool isValid, ) = loan.validateProofCompatibility(
+        (bool isValid, ) = arda.validateProofCompatibility(
             WRONG_VKEY,
             mockPublicValues,
             mockProof
@@ -184,8 +184,8 @@ contract LoanVerificationKeyTest is Test {
     }
 }
 
-contract StateRootTest is Test {
-    Loan public loan;
+contract ARDAStateRootTest is Test {
+    ARDA public arda;
     MockUSDC public mockUSDC;
     address public verifier;
 
@@ -207,17 +207,17 @@ contract StateRootTest is Test {
 
         // Deploy SP1 verifier
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, PROGRAM_VKEY);
+        arda = new ARDA(verifier, PROGRAM_VKEY);
 
         // Authorize a user for testing
-        loan.setAuthorization(authorizedUser, true);
+        arda.setAuthorization(authorizedUser, true);
 
         vm.stopPrank();
     }
 
     function test_GetPreviousStateRoot_NoHistory() public view {
         // Should return zero when there's no history
-        bytes32 previousState = loan.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState = arda.getPreviousStateRoot(STATE_ID_1);
         assertEq(
             previousState,
             bytes32(0),
@@ -239,7 +239,7 @@ contract StateRootTest is Test {
         bytes memory mockProof = "mock_proof_1";
         bytes memory mockPublicValues = "mock_public_values_1";
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             STATE_ROOT_1,
             mockProof,
@@ -247,7 +247,7 @@ contract StateRootTest is Test {
         );
 
         // Should return zero when there's only one state in history
-        bytes32 previousState = loan.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState = arda.getPreviousStateRoot(STATE_ID_1);
         assertEq(
             previousState,
             bytes32(0),
@@ -271,7 +271,7 @@ contract StateRootTest is Test {
         bytes memory mockProof1 = "mock_proof_1";
         bytes memory mockPublicValues1 = "mock_public_values_1";
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             STATE_ROOT_1,
             mockProof1,
@@ -282,7 +282,7 @@ contract StateRootTest is Test {
         bytes memory mockProof2 = "mock_proof_2";
         bytes memory mockPublicValues2 = "mock_public_values_2";
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             STATE_ROOT_2,
             mockProof2,
@@ -290,7 +290,7 @@ contract StateRootTest is Test {
         );
 
         // Should return the first state root (previous to current)
-        bytes32 previousState = loan.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState = arda.getPreviousStateRoot(STATE_ID_1);
         assertEq(
             previousState,
             STATE_ROOT_1,
@@ -301,7 +301,7 @@ contract StateRootTest is Test {
         bytes memory mockProof3 = "mock_proof_3";
         bytes memory mockPublicValues3 = "mock_public_values_3";
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             STATE_ROOT_3,
             mockProof3,
@@ -309,7 +309,7 @@ contract StateRootTest is Test {
         );
 
         // Should return the second state root (previous to current)
-        bytes32 previousState2 = loan.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState2 = arda.getPreviousStateRoot(STATE_ID_1);
         assertEq(
             previousState2,
             STATE_ROOT_2,
@@ -317,7 +317,7 @@ contract StateRootTest is Test {
         );
 
         // Verify current state is still correct
-        bytes32 currentState = loan.getCurrentStateRoot(STATE_ID_1);
+        bytes32 currentState = arda.getCurrentStateRoot(STATE_ID_1);
         assertEq(
             currentState,
             STATE_ROOT_3,
@@ -340,7 +340,7 @@ contract StateRootTest is Test {
         // Post states for STATE_ID_1
         bytes memory mockProof1 = "mock_proof_1";
         bytes memory mockPublicValues1 = "mock_public_values_1";
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             STATE_ROOT_1,
             mockProof1,
@@ -349,7 +349,7 @@ contract StateRootTest is Test {
 
         bytes memory mockProof2 = "mock_proof_2";
         bytes memory mockPublicValues2 = "mock_public_values_2";
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             STATE_ROOT_2,
             mockProof2,
@@ -359,7 +359,7 @@ contract StateRootTest is Test {
         // Post single state for STATE_ID_2
         bytes memory mockProof3 = "mock_proof_3";
         bytes memory mockPublicValues3 = "mock_public_values_3";
-        loan.updateState(
+        arda.updateState(
             STATE_ID_2,
             STATE_ROOT_3,
             mockProof3,
@@ -367,8 +367,8 @@ contract StateRootTest is Test {
         );
 
         // Check previous states for different state IDs
-        bytes32 previousState1 = loan.getPreviousStateRoot(STATE_ID_1);
-        bytes32 previousState2 = loan.getPreviousStateRoot(STATE_ID_2);
+        bytes32 previousState1 = arda.getPreviousStateRoot(STATE_ID_1);
+        bytes32 previousState2 = arda.getPreviousStateRoot(STATE_ID_2);
 
         assertEq(
             previousState1,
@@ -385,8 +385,8 @@ contract StateRootTest is Test {
     }
 }
 
-contract LoanBatchPublicValuesTest is Test {
-    Loan public loan;
+contract ARDABatchPublicValuesTest is Test {
+    ARDA public arda;
     MockUSDC public mockUSDC;
     address public verifier;
 
@@ -410,29 +410,29 @@ contract LoanBatchPublicValuesTest is Test {
         vm.startPrank(owner);
 
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, PROGRAM_VKEY);
-        loan.setAuthorization(authorizedUser, true);
+        arda = new ARDA(verifier, PROGRAM_VKEY);
+        arda.setAuthorization(authorizedUser, true);
 
         vm.stopPrank();
     }
 
     function test_GetPreviousTotalBalance_NoProof() public view {
-        uint128 prevBalance = loan.getPreviousTotalBalance(STATE_ID_1);
+        uint128 prevBalance = arda.getPreviousTotalBalance(STATE_ID_1);
         assertEq(prevBalance, 0, "Should return 0 when no proof exists");
     }
 
     function test_GetCurrentTotalBalance_NoProof() public view {
-        uint128 currBalance = loan.getCurrentTotalBalance(STATE_ID_1);
+        uint128 currBalance = arda.getCurrentTotalBalance(STATE_ID_1);
         assertEq(currBalance, 0, "Should return 0 when no proof exists");
     }
 
     function test_GetPreviousStateRootFromBatch_NoProof() public view {
-        bytes32 prevStateRoot = loan.getPreviousStateRootFromBatch(STATE_ID_1);
+        bytes32 prevStateRoot = arda.getPreviousStateRootFromBatch(STATE_ID_1);
         assertEq(prevStateRoot, bytes32(0), "Should return zero when no proof exists");
     }
 
     function test_GetNewStateRootFromBatch_NoProof() public view {
-        bytes32 newStateRoot = loan.getNewStateRootFromBatch(STATE_ID_1);
+        bytes32 newStateRoot = arda.getNewStateRootFromBatch(STATE_ID_1);
         assertEq(newStateRoot, bytes32(0), "Should return zero when no proof exists");
     }
 
@@ -446,7 +446,7 @@ contract LoanBatchPublicValuesTest is Test {
             abi.encode(true)
         );
 
-        // Create LoanBatchPublicValues encoded data (224 bytes = 7 * 32)
+        // Create DealBatchPublicValues encoded data (224 bytes = 7 * 32)
         bytes memory publicValues = abi.encode(
             PREV_STATE_ROOT,    // previous_state_root
             NEW_STATE_ROOT,     // new_state_root
@@ -459,7 +459,7 @@ contract LoanBatchPublicValuesTest is Test {
 
         bytes memory mockProof = "mock_batch_proof";
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_ROOT,
             mockProof,
@@ -467,15 +467,15 @@ contract LoanBatchPublicValuesTest is Test {
         );
 
         // Test balance getters
-        uint128 prevBalance = loan.getPreviousTotalBalance(STATE_ID_1);
-        uint128 currBalance = loan.getCurrentTotalBalance(STATE_ID_1);
+        uint128 prevBalance = arda.getPreviousTotalBalance(STATE_ID_1);
+        uint128 currBalance = arda.getCurrentTotalBalance(STATE_ID_1);
 
         assertEq(prevBalance, PREV_BALANCE, "Previous balance should match");
         assertEq(currBalance, CURR_BALANCE, "Current balance should match");
 
         // Test state root getters
-        bytes32 prevStateRoot = loan.getPreviousStateRootFromBatch(STATE_ID_1);
-        bytes32 newStateRoot = loan.getNewStateRootFromBatch(STATE_ID_1);
+        bytes32 prevStateRoot = arda.getPreviousStateRootFromBatch(STATE_ID_1);
+        bytes32 newStateRoot = arda.getNewStateRootFromBatch(STATE_ID_1);
 
         assertEq(prevStateRoot, PREV_STATE_ROOT, "Previous state root should match");
         assertEq(newStateRoot, NEW_STATE_ROOT, "New state root should match");
@@ -501,7 +501,7 @@ contract LoanBatchPublicValuesTest is Test {
 
         bytes memory mockProof = "mock_legacy_proof";
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_ROOT,
             mockProof,
@@ -509,15 +509,15 @@ contract LoanBatchPublicValuesTest is Test {
         );
 
         // For legacy proofs, balance getters should return 0 since they can't decode the new format
-        uint128 prevBalance = loan.getPreviousTotalBalance(STATE_ID_1);
-        uint128 currBalance = loan.getCurrentTotalBalance(STATE_ID_1);
+        uint128 prevBalance = arda.getPreviousTotalBalance(STATE_ID_1);
+        uint128 currBalance = arda.getCurrentTotalBalance(STATE_ID_1);
 
         assertEq(prevBalance, 0, "Legacy proof should return 0 for previous balance");
         assertEq(currBalance, 0, "Legacy proof should return 0 for current balance");
 
         // State root getters should also return 0 for legacy format
-        bytes32 prevStateRoot = loan.getPreviousStateRootFromBatch(STATE_ID_1);
-        bytes32 newStateRoot = loan.getNewStateRootFromBatch(STATE_ID_1);
+        bytes32 prevStateRoot = arda.getPreviousStateRootFromBatch(STATE_ID_1);
+        bytes32 newStateRoot = arda.getNewStateRootFromBatch(STATE_ID_1);
 
         assertEq(prevStateRoot, bytes32(0), "Legacy proof should return zero for previous state root");
         assertEq(newStateRoot, bytes32(0), "Legacy proof should return zero for new state root");
@@ -546,7 +546,7 @@ contract LoanBatchPublicValuesTest is Test {
             uint128(15000)   // curr balance
         );
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_ROOT,
             "mock_proof_1",
@@ -565,7 +565,7 @@ contract LoanBatchPublicValuesTest is Test {
             uint128(20000)   // new curr balance
         );
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             secondStateRoot,
             "mock_proof_2",
@@ -573,8 +573,8 @@ contract LoanBatchPublicValuesTest is Test {
         );
 
         // Should return values from the latest proof
-        uint128 prevBalance = loan.getPreviousTotalBalance(STATE_ID_1);
-        uint128 currBalance = loan.getCurrentTotalBalance(STATE_ID_1);
+        uint128 prevBalance = arda.getPreviousTotalBalance(STATE_ID_1);
+        uint128 currBalance = arda.getCurrentTotalBalance(STATE_ID_1);
 
         assertEq(prevBalance, 15000, "Should return previous balance from latest proof");
         assertEq(currBalance, 20000, "Should return current balance from latest proof");
@@ -603,7 +603,7 @@ contract LoanBatchPublicValuesTest is Test {
             uint128(15000)  // New balance
         );
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_ROOT,
             "mock_proof_1",
@@ -622,7 +622,7 @@ contract LoanBatchPublicValuesTest is Test {
             uint128(30000)  // New balance
         );
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_2,
             state2Root,
             "mock_proof_2",
@@ -630,11 +630,11 @@ contract LoanBatchPublicValuesTest is Test {
         );
 
         // Check that each state ID returns its own values
-        assertEq(loan.getPreviousTotalBalance(STATE_ID_1), 0, "STATE_ID_1 prev balance");
-        assertEq(loan.getCurrentTotalBalance(STATE_ID_1), 15000, "STATE_ID_1 curr balance");
+        assertEq(arda.getPreviousTotalBalance(STATE_ID_1), 0, "STATE_ID_1 prev balance");
+        assertEq(arda.getCurrentTotalBalance(STATE_ID_1), 15000, "STATE_ID_1 curr balance");
         
-        assertEq(loan.getPreviousTotalBalance(STATE_ID_2), 15000, "STATE_ID_2 prev balance");
-        assertEq(loan.getCurrentTotalBalance(STATE_ID_2), 30000, "STATE_ID_2 curr balance");
+        assertEq(arda.getPreviousTotalBalance(STATE_ID_2), 15000, "STATE_ID_2 prev balance");
+        assertEq(arda.getCurrentTotalBalance(STATE_ID_2), 30000, "STATE_ID_2 curr balance");
 
         vm.stopPrank();
     }

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {Loan} from "../src/Loan.sol";
+import {ARDA} from "../src/ARDA.sol";
 import {IStateManager} from "../src/interfaces/IStateManager.sol";
 import {SP1VerifierGateway} from "@sp1-contracts/SP1VerifierGateway.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -10,7 +10,7 @@ import {stdJson} from "forge-std/StdJson.sol";
 contract StateManagementTest is Test {
     using stdJson for string;
 
-    Loan public loan;
+    ARDA public arda;
     address public verifier;
 
     // Test constants
@@ -76,12 +76,12 @@ contract StateManagementTest is Test {
         unauthorizedUser = makeAddr("unauthorizedUser");
         reader = makeAddr("reader");
 
-        // Deploy verifier and loan contract
+        // Deploy verifier and deal contract
         verifier = address(new SP1VerifierGateway(address(1)));
-        loan = new Loan(verifier, groth16Fixture.vkey);
+        arda = new ARDA(verifier, groth16Fixture.vkey);
 
         // Grant authorization to test poster
-        loan.setAuthorization(authorizedPoster, true);
+        arda.setAuthorization(authorizedPoster, true);
 
         // Mock the verifier to always return true for successful verification
         vm.mockCall(
@@ -145,7 +145,7 @@ contract StateManagementTest is Test {
             block.timestamp
         );
 
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -153,12 +153,12 @@ contract StateManagementTest is Test {
         );
 
         // Verify state was stored
-        bytes32 storedState = loan.getCurrentStateRoot(STATE_ID_1);
+        bytes32 storedState = arda.getCurrentStateRoot(STATE_ID_1);
         assertEq(storedState, NEW_STATE_1, "State should be updated correctly");
 
         // Verify proof was stored
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        bytes memory storedProof = loan.getStoredProof(proofId);
+        bytes memory storedProof = arda.getStoredProof(proofId);
         assertEq(
             storedProof,
             groth16Fixture.proof,
@@ -166,7 +166,7 @@ contract StateManagementTest is Test {
         );
 
         // Verify result was stored
-        bytes memory storedResult = loan.getStoredResult(proofId);
+        bytes memory storedResult = arda.getStoredResult(proofId);
         assertEq(
             storedResult,
             groth16Fixture.publicValues,
@@ -175,7 +175,7 @@ contract StateManagementTest is Test {
 
         // Verify proof is marked as verified
         assertTrue(
-            loan.isProofVerified(proofId),
+            arda.isProofVerified(proofId),
             "Proof should be marked as verified"
         );
     }
@@ -183,7 +183,7 @@ contract StateManagementTest is Test {
     function test_GetCurrentState_ExistingState_ReturnsCorrectState() public {
         // First update a state
         vm.prank(authorizedPoster);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -191,7 +191,7 @@ contract StateManagementTest is Test {
         );
 
         // Test reading the state
-        bytes32 currentState = loan.getCurrentStateRoot(STATE_ID_1);
+        bytes32 currentState = arda.getCurrentStateRoot(STATE_ID_1);
         assertEq(
             currentState,
             NEW_STATE_1,
@@ -200,7 +200,7 @@ contract StateManagementTest is Test {
     }
 
     function test_GetCurrentState_NonExistentState_ReturnsZero() public {
-        bytes32 currentState = loan.getCurrentStateRoot(STATE_ID_1);
+        bytes32 currentState = arda.getCurrentStateRoot(STATE_ID_1);
         assertEq(
             currentState,
             bytes32(0),
@@ -211,7 +211,7 @@ contract StateManagementTest is Test {
     function test_GetStoredProof_ExistingProof_ReturnsCorrectProof() public {
         // Store a proof first
         vm.prank(authorizedPoster);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -220,7 +220,7 @@ contract StateManagementTest is Test {
 
         // Test reading the proof
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        bytes memory storedProof = loan.getStoredProof(proofId);
+        bytes memory storedProof = arda.getStoredProof(proofId);
         assertEq(
             storedProof,
             groth16Fixture.proof,
@@ -231,7 +231,7 @@ contract StateManagementTest is Test {
     function test_GetStoredResult_ExistingResult_ReturnsCorrectResult() public {
         // Store a result first
         vm.prank(authorizedPoster);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -240,7 +240,7 @@ contract StateManagementTest is Test {
 
         // Test reading the result
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        bytes memory storedResult = loan.getStoredResult(proofId);
+        bytes memory storedResult = arda.getStoredResult(proofId);
         assertEq(
             storedResult,
             groth16Fixture.publicValues,
@@ -280,7 +280,7 @@ contract StateManagementTest is Test {
             block.timestamp
         );
 
-        bool[] memory successes = loan.batchUpdateStates(
+        bool[] memory successes = arda.batchUpdateStates(
             stateIds,
             newStates,
             proofs,
@@ -293,12 +293,12 @@ contract StateManagementTest is Test {
 
         // Verify states were stored
         assertEq(
-            loan.getCurrentStateRoot(STATE_ID_1),
+            arda.getCurrentStateRoot(STATE_ID_1),
             NEW_STATE_1,
             "First state should be updated"
         );
         assertEq(
-            loan.getCurrentStateRoot(STATE_ID_2),
+            arda.getCurrentStateRoot(STATE_ID_2),
             NEW_STATE_2,
             "Second state should be updated"
         );
@@ -307,13 +307,13 @@ contract StateManagementTest is Test {
     function test_BatchReadStates_ExistingStates_ReturnsCorrectStates() public {
         // Setup test states
         vm.startPrank(authorizedPoster);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
             groth16Fixture.publicValues
         );
-        loan.updateState(
+        arda.updateState(
             STATE_ID_2,
             NEW_STATE_2,
             plonkFixture.proof,
@@ -327,7 +327,7 @@ contract StateManagementTest is Test {
         stateIds[1] = STATE_ID_2;
 
         // Test batch read
-        bytes32[] memory states = loan.batchReadStates(stateIds);
+        bytes32[] memory states = arda.batchReadStates(stateIds);
 
         assertEq(states.length, 2, "Should return two states");
         assertEq(states[0], NEW_STATE_1, "First state should be correct");
@@ -341,8 +341,8 @@ contract StateManagementTest is Test {
         bytes[] memory results = new bytes[](2);
 
         vm.prank(authorizedPoster);
-        vm.expectRevert(Loan.InvalidArrayLength.selector);
-        loan.batchUpdateStates(stateIds, newStates, proofs, results);
+        vm.expectRevert(ARDA.InvalidArrayLength.selector);
+        arda.batchUpdateStates(stateIds, newStates, proofs, results);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -352,7 +352,7 @@ contract StateManagementTest is Test {
     function test_GetProofById_ExistingProof_ReturnsProofAndTrue() public {
         // Store a proof first
         vm.prank(authorizedPoster);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -360,7 +360,7 @@ contract StateManagementTest is Test {
         );
 
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        (bytes memory proof, bool exists) = loan.getProofById(proofId);
+        (bytes memory proof, bool exists) = arda.getProofById(proofId);
 
         assertTrue(exists, "Proof should exist");
         assertEq(proof, groth16Fixture.proof, "Should return correct proof");
@@ -368,7 +368,7 @@ contract StateManagementTest is Test {
 
     function test_GetProofById_NonExistentProof_ReturnsEmptyAndFalse() public {
         bytes32 fakeProofId = keccak256("fake-proof");
-        (bytes memory proof, bool exists) = loan.getProofById(
+        (bytes memory proof, bool exists) = arda.getProofById(
             fakeProofId
         );
 
@@ -379,7 +379,7 @@ contract StateManagementTest is Test {
     function test_IsProofVerified_VerifiedProof_ReturnsTrue() public {
         // Store a verified proof
         vm.prank(authorizedPoster);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -388,7 +388,7 @@ contract StateManagementTest is Test {
 
         bytes32 proofId = keccak256(groth16Fixture.proof);
         assertTrue(
-            loan.isProofVerified(proofId),
+            arda.isProofVerified(proofId),
             "Proof should be verified"
         );
     }
@@ -396,7 +396,7 @@ contract StateManagementTest is Test {
     function test_IsProofVerified_NonExistentProof_ReturnsFalse() public {
         bytes32 fakeProofId = keccak256("fake-proof");
         assertFalse(
-            loan.isProofVerified(fakeProofId),
+            arda.isProofVerified(fakeProofId),
             "Non-existent proof should not be verified"
         );
     }
@@ -406,7 +406,7 @@ contract StateManagementTest is Test {
     {
         // Store a verified proof
         vm.prank(authorizedPoster);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -414,7 +414,7 @@ contract StateManagementTest is Test {
         );
 
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        (bool verified, bytes memory result) = loan.getVerificationResult(
+        (bool verified, bytes memory result) = arda.getVerificationResult(
             proofId
         );
 
@@ -432,8 +432,8 @@ contract StateManagementTest is Test {
 
     function test_UpdateState_UnauthorizedUser_Reverts() public {
         vm.prank(unauthorizedUser);
-        vm.expectRevert(Loan.UnauthorizedAccess.selector);
-        loan.updateState(
+        vm.expectRevert(ARDA.UnauthorizedAccess.selector);
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -443,7 +443,7 @@ contract StateManagementTest is Test {
 
     function test_UpdateState_Owner_Success() public {
         vm.prank(owner);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -458,8 +458,8 @@ contract StateManagementTest is Test {
         bytes[] memory results = new bytes[](1);
 
         vm.prank(unauthorizedUser);
-        vm.expectRevert(Loan.UnauthorizedAccess.selector);
-        loan.batchUpdateStates(stateIds, newStates, proofs, results);
+        vm.expectRevert(ARDA.UnauthorizedAccess.selector);
+        arda.batchUpdateStates(stateIds, newStates, proofs, results);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -483,7 +483,7 @@ contract StateManagementTest is Test {
 
         vm.prank(authorizedPoster);
         vm.expectRevert();
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             invalidProof,
@@ -491,7 +491,7 @@ contract StateManagementTest is Test {
         );
 
         // Verify state was not updated
-        bytes32 storedState = loan.getCurrentStateRoot(STATE_ID_1);
+        bytes32 storedState = arda.getCurrentStateRoot(STATE_ID_1);
         assertEq(
             storedState,
             bytes32(0),
@@ -501,14 +501,14 @@ contract StateManagementTest is Test {
 
     function test_ReadProofDetails_NonExistentProof_Reverts() public {
         bytes32 fakeProofId = keccak256("fake-proof");
-        vm.expectRevert(Loan.ProofNotFound.selector);
-        loan.readProofDetails(fakeProofId);
+        vm.expectRevert(ARDA.ProofNotFound.selector);
+        arda.readProofDetails(fakeProofId);
     }
 
     function test_GetProofMetadata_NonExistentProof_Reverts() public {
         bytes32 fakeProofId = keccak256("fake-proof");
-        vm.expectRevert(Loan.ProofNotFound.selector);
-        loan.getProofMetadata(fakeProofId);
+        vm.expectRevert(ARDA.ProofNotFound.selector);
+        arda.getProofMetadata(fakeProofId);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -519,7 +519,7 @@ contract StateManagementTest is Test {
         vm.prank(authorizedPoster);
 
         uint256 gasBefore = gasleft();
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -550,7 +550,7 @@ contract StateManagementTest is Test {
             uniqueProof[uniqueProof.length - 1] = bytes1(uint8(i));
 
             uint256 gasBefore = gasleft();
-            loan.updateState(
+            arda.updateState(
                 stateId,
                 newState,
                 uniqueProof,
@@ -562,8 +562,8 @@ contract StateManagementTest is Test {
         vm.stopPrank();
 
         // Reset contract state for batch test
-        loan = new Loan(verifier, groth16Fixture.vkey);
-        loan.setAuthorization(authorizedPoster, true);
+        arda = new ARDA(verifier, groth16Fixture.vkey);
+        arda.setAuthorization(authorizedPoster, true);
 
         // Test batch update
         bytes32[] memory stateIds = new bytes32[](3);
@@ -584,7 +584,7 @@ contract StateManagementTest is Test {
 
         vm.prank(authorizedPoster);
         uint256 batchGasBefore = gasleft();
-        loan.batchUpdateStates(stateIds, newStates, proofs, results);
+        arda.batchUpdateStates(stateIds, newStates, proofs, results);
         uint256 batchUpdateGas = batchGasBefore - gasleft();
 
         console.log("Gas used for 3 single updates:", singleUpdateGas);
@@ -601,13 +601,13 @@ contract StateManagementTest is Test {
     function test_Gas_StateReading() public {
         // Setup some states
         vm.startPrank(authorizedPoster);
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
             groth16Fixture.publicValues
         );
-        loan.updateState(
+        arda.updateState(
             STATE_ID_2,
             NEW_STATE_2,
             plonkFixture.proof,
@@ -617,7 +617,7 @@ contract StateManagementTest is Test {
 
         // Test single state reads
         uint256 gasBefore = gasleft();
-        loan.getCurrentStateRoot(STATE_ID_1);
+        arda.getCurrentStateRoot(STATE_ID_1);
         uint256 singleReadGas = gasBefore - gasleft();
 
         // Test batch state reads
@@ -626,7 +626,7 @@ contract StateManagementTest is Test {
         stateIds[1] = STATE_ID_2;
 
         gasBefore = gasleft();
-        loan.batchReadStates(stateIds);
+        arda.batchReadStates(stateIds);
         uint256 batchReadGas = gasBefore - gasleft();
 
         console.log("Gas used for single state read:", singleReadGas);
@@ -641,7 +641,7 @@ contract StateManagementTest is Test {
         vm.prank(authorizedPoster);
 
         uint256 gasBefore = gasleft();
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -654,7 +654,7 @@ contract StateManagementTest is Test {
         // Now test reading the proof
         gasBefore = gasleft();
         bytes32 proofId = keccak256(groth16Fixture.proof);
-        loan.getStoredProof(proofId);
+        arda.getStoredProof(proofId);
         uint256 readGas = gasBefore - gasleft();
 
         console.log("Gas used for proof reading:", readGas);
@@ -685,7 +685,7 @@ contract StateManagementTest is Test {
         results[0] = groth16Fixture.publicValues;
         results[1] = plonkFixture.publicValues;
 
-        bool[] memory successes = loan.batchUpdateStates(
+        bool[] memory successes = arda.batchUpdateStates(
             stateIds,
             newStates,
             proofs,
@@ -698,7 +698,7 @@ contract StateManagementTest is Test {
 
         // 2. Reader queries states
         vm.prank(reader);
-        bytes32[] memory readStates = loan.batchReadStates(stateIds);
+        bytes32[] memory readStates = arda.batchReadStates(stateIds);
 
         assertEq(readStates[0], NEW_STATE_1, "First state should be readable");
         assertEq(readStates[1], NEW_STATE_2, "Second state should be readable");
@@ -708,16 +708,16 @@ contract StateManagementTest is Test {
         bytes32 proofId2 = keccak256(plonkFixture.proof);
 
         assertTrue(
-            loan.isProofVerified(proofId1),
+            arda.isProofVerified(proofId1),
             "First proof should be verified"
         );
         assertTrue(
-            loan.isProofVerified(proofId2),
+            arda.isProofVerified(proofId2),
             "Second proof should be verified"
         );
 
         // 4. Check metadata
-        Loan.ProofMetadata memory metadata1 = loan.getProofMetadata(
+        ARDA.ProofMetadata memory metadata1 = arda.getProofMetadata(
             proofId1
         );
         assertEq(
@@ -738,7 +738,7 @@ contract StateManagementTest is Test {
         vm.startPrank(authorizedPoster);
 
         // First update
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_1,
             groth16Fixture.proof,
@@ -746,7 +746,7 @@ contract StateManagementTest is Test {
         );
 
         // Second update with different proof
-        loan.updateState(
+        arda.updateState(
             STATE_ID_1,
             NEW_STATE_2,
             plonkFixture.proof,
@@ -757,20 +757,20 @@ contract StateManagementTest is Test {
 
         // Verify current state is latest
         assertEq(
-            loan.getCurrentStateRoot(STATE_ID_1),
+            arda.getCurrentStateRoot(STATE_ID_1),
             NEW_STATE_2,
             "Current state should be latest"
         );
 
         // Verify history length
         assertEq(
-            loan.getStateHistoryLength(STATE_ID_1),
+            arda.getStateHistoryLength(STATE_ID_1),
             2,
             "Should have 2 states in history"
         );
 
         // Verify history contents
-        bytes32[] memory history = loan.readStateHistory(STATE_ID_1, 0);
+        bytes32[] memory history = arda.readStateHistory(STATE_ID_1, 0);
         assertEq(history.length, 2, "History should contain 2 states");
         assertEq(
             history[0],
