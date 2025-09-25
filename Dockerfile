@@ -22,24 +22,30 @@ COPY . .
 WORKDIR /app/program
 RUN cargo prove build --output-directory ../build
 
-# Build server binary  
+# Build server binary and sqlx CLI
 WORKDIR /app/api
 ENV SQLX_OFFLINE=true
-RUN cargo build --release --bin server
+RUN cargo build --release --bin server && \
+    cargo install --version 0.7.4 sqlx-cli --no-default-features --features postgres,rustls
 
-# Runtime stage - simple and lightweight since verification is done locally
+# Runtime stage - includes sqlx for migrations
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libssl3 \
+    ca-certificates=20230311 \
+    libssl3=3.0.11-1~deb12u2 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1001 appuser
 
 WORKDIR /app
-COPY --from=builder /app/target/release/server ./server
-RUN chown appuser:appuser /app/server
 
+# Copy binaries and migrations
+COPY --from=builder /app/target/release/server ./server
+COPY --from=builder /usr/local/cargo/bin/sqlx ./sqlx
+COPY --from=builder /app/db/migrations ./migrations
+
+RUN chown -R appuser:appuser /app
 USER appuser
+
 EXPOSE 8080
-CMD ["./server", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["sh", "-c", "./sqlx migrate run --source ./migrations --database-url $DATABASE_URL && ./server --host 0.0.0.0 --port 8080"]
