@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE deals\n        SET investor_id = $2, loan_status = 'active', updated_at = NOW()\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f36377c2714eca7d8b1acad5527b1c1d5d53817bd60bb06b6a1cdbd90f571706"
+}

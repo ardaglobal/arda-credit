@@ -33,6 +33,25 @@
 #![allow(clippy::struct_excessive_bools)]
 #![allow(clippy::suboptimal_flops)]
 
+//! # Arda Credit Database Layer
+//!
+//! This crate provides database operations for the Arda Credit system,
+//! including deal management, marketplace operations, and ownership transfers.
+//!
+//! ## Core Operations
+//! - Deal creation, modification, and querying
+//! - Deal marketplace listings and browsing
+//! - Deal ownership transfers between investors
+//! - User management and KYC operations
+//! - Liquidity pool management
+//!
+//! ## Recent Changes
+//! Converted from loan-based terminology to deal-based terminology:
+//! - Loan → Deal
+//! - Borrower → Originator
+//! - Lender → Investor
+//! - All function names updated accordingly
+
 // Core modules for batch processing functionality
 pub mod ads_service;
 pub mod background_processor;
@@ -62,15 +81,15 @@ pub use credit_line_operations::{
 
 // Re-export marketplace operations
 pub use marketplace::{
-    create_loan_listing, get_loan_listing_by_loan_id, get_marketplace_loans_basic,
-    remove_loan_listing, update_listing_status, validate_loan_for_transfer, LoanListing,
-    MarketplaceLoan,
+    browse_marketplace_deals, create_deal_listing, get_deal_listing_by_deal_id,
+    remove_deal_listing, update_deal_listing_status, validate_deal_for_transfer, DealListing,
+    MarketplaceDeal,
 };
 
 // Re-export transfer operations
 pub use transfers::{
-    cancel_transfer, execute_loan_transfer, get_loan_transfer_history, get_user_transfer_history,
-    validate_transfer_eligibility, ExecuteTransferRequest, LoanTransferHistory,
+    cancel_transfer, execute_deal_transfer, get_deal_transfer_history, get_user_transfer_history,
+    validate_transfer_eligibility, DealTransferHistory, ExecuteTransferRequest,
     TransferValidationRequest,
 };
 
@@ -84,6 +103,8 @@ pub use db::{
     // Batch functions
     create_batch,
     create_credit_line_financial_transaction,
+    create_deal,
+    create_deal_payment,
     // CCR Domain functions
     create_identity,
     create_identity_with_password,
@@ -91,13 +112,11 @@ pub use db::{
     create_investor_profile,
     // Liquidity pool functions
     create_liquidity_pool,
-    create_loan,
     // Merchant functions
     create_merchant,
     create_merchant_document,
     create_merchant_profile,
     create_or_update_turnover,
-    create_payment,
     create_pool_financial_transaction,
     create_state_snapshot,
     // USDC Deposit functions
@@ -120,6 +139,7 @@ pub use db::{
     // State functions
     get_current_counter_value,
     get_current_state,
+    get_deal_by_id,
     get_deposit_by_tx_hash,
     get_deposits_by_user_address,
 
@@ -137,7 +157,6 @@ pub use db::{
     get_kyc_statistics,
     get_liquidity_pool_by_id,
     get_liquidity_pools_by_investor,
-    get_loan_by_id,
     get_market_overview_metrics,
     get_merchant_by_email,
     // Merchant query functions
@@ -150,7 +169,7 @@ pub use db::{
     get_merchant_turnover,
     get_merchant_turnover_analytics,
     get_merchant_with_profile_by_user_id,
-    get_payments_by_loan,
+    get_payments_by_deal,
     get_pending_transactions,
 
     get_pending_withdrawal_requests,
@@ -184,8 +203,8 @@ pub use db::{
     init_db,
     init_db_with_url,
 
+    list_deals,
     list_identities,
-    list_loans,
     list_pending_kyc_applications,
     mark_batch_posted_to_contract,
     mark_batch_posted_to_contract_with_tx_hash,
@@ -207,6 +226,7 @@ pub use db::{
     update_balance,
     update_batch_proof,
     update_borough_allocation,
+    update_deal,
     update_deposit_status,
     update_deposit_status_tx,
     // Merchant update functions
@@ -216,7 +236,6 @@ pub use db::{
     update_kyc_status,
     update_last_login,
     update_liquidity_pool_status,
-    update_loan,
     update_merchant_profile,
     update_pool_balance_after_transaction,
     update_turnover,
@@ -258,6 +277,9 @@ pub use db::{
     CreatePoolFinancialTransactionRequest,
     CreateTurnoverRequest,
     CreditLineFinancialTransaction,
+    Deal,
+    DealPayment,
+    DealTransactionDb,
     EnhancedInvestorMetrics,
     // CCR Domain types
     Identity,
@@ -270,8 +292,6 @@ pub use db::{
     KycStatistics,
     LiquidityPool,
     LiquidityPoolAudit,
-    Loan,
-    LoanTransactionDb,
     MarketOverviewMetrics,
     // Merchant types
     Merchant,
@@ -280,7 +300,6 @@ pub use db::{
     MerchantProfileCompletion,
     MerchantTurnoverAnalytics,
     MerchantTurnoverDaily,
-    Payment,
     // Pool borough limit types
     PoolBoroughLimit,
     PoolBoroughSummary,

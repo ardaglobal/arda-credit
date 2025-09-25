@@ -1,8 +1,8 @@
-//! Arda Credit Loan Processing Program with ADS Integration
+//! Arda Credit Deal Processing Program with ADS Integration
 //!
 //! This SP1 zkVM program processes batches of mixed transaction types while maintaining privacy
 //! and generating cryptographically consistent state roots via Indexed Merkle Tree ADS.
-//! It handles the complete loan lifecycle: user registration, KYC, user deposits, loan origination,
+//! It handles the complete deal lifecycle: user registration, KYC, user deposits, deal origination,
 //! payments, and closeouts. Individual transaction details remain private, while only
 //! ADS-generated state root transitions and transaction counts are made public.
 
@@ -16,13 +16,13 @@ sp1_zkvm::entrypoint!(main);
 use alloy_sol_types::private::FixedBytes;
 use alloy_sol_types::SolType;
 use arda_credit_lib::{
-    process_loan_batch, validate_transaction, LoanBatchPublicValues, ZkVMBatchInput,
+    process_deal_batch, validate_transaction, LoanBatchPublicValues, ZkVMBatchInput,
 };
 use sha2::{Digest, Sha256};
 
-/// Main SP1 zkVM program entry point for loan batch processing.
+/// Main SP1 zkVM program entry point for deal batch processing.
 ///
-/// This function processes a batch of loan transactions while maintaining privacy
+/// This function processes a batch of deal transactions while maintaining privacy
 /// and zero-knowledge properties. It validates transactions, computes state transitions,
 /// and outputs public commitments.
 ///
@@ -30,7 +30,7 @@ use sha2::{Digest, Sha256};
 ///
 /// Panics if:
 /// - Any transaction in the batch is invalid
-/// - Loan batch processing fails
+/// - Deal batch processing fails
 /// - ADS state transitions fail
 /// - State root computation fails
 pub fn main() {
@@ -42,9 +42,9 @@ pub fn main() {
         validate_transaction(transaction).expect("Invalid transaction in batch");
     }
 
-    // Process the loan batch for business logic validation and balance computation
-    let final_loan_state = process_loan_batch(input.initial_loan_state.clone(), &input.batch)
-        .expect("Failed to process loan batch");
+    // Process the deal batch for business logic validation and balance computation
+    let final_deal_state = process_deal_batch(input.initial_loan_state.clone(), &input.batch)
+        .expect("Failed to process deal batch");
 
     // CRITICAL: Process through ADS to get real state roots
     let mut ads_state = input.initial_ads_state;
@@ -57,12 +57,12 @@ pub fn main() {
     let new_state_root = state_transition.new_root;
 
     // Compute total system value (representing net external capital that has entered via deposits)
-    // This equals the sum of all user cash balances, since loans are internal transfers
+    // This equals the sum of all user cash balances, since deals are internal transfers
     // that don't change the total system value, only redistribute it between users.
     // When users deposit from external wallets → smart contract, this total increases.
-    // When users originate loans or make payments, this total stays constant (internal transfers).
+    // When users originate deals or make payments, this total stays constant (internal transfers).
     let previous_total = input.initial_loan_state.compute_total_user_balance();
-    let current_total = final_loan_state.compute_total_user_balance();
+    let current_total = final_deal_state.compute_total_user_balance();
 
     // Create hash of transaction types for transparency (without revealing details)
     let mut types_hasher = Sha256::new();
@@ -86,7 +86,7 @@ pub fn main() {
     let bytes = LoanBatchPublicValues::abi_encode(&public_values);
 
     // Commit to the public values with real ADS-generated state roots. The final proof will
-    // have a commitment to all the bytes that were committed to. Individual loan amounts,
+    // have a commitment to all the bytes that were committed to. Individual deal amounts,
     // user details, and transaction specifics remain private within the zkVM execution,
     // while the state roots are cryptographically consistent with off-chain ADS processing.
     sp1_zkvm::io::commit_slice(&bytes);

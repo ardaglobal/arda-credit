@@ -1,16 +1,96 @@
-//! HTTP API Client for batch processing operations
+//! HTTP API Client for deal processing operations
 //!
-//! This client provides a typed interface for interacting with the batch processing API server.
+//! This client provides a typed interface for interacting with the deal processing API server.
 //! The CLI uses this instead of direct database access.
+//!
+//! ## Recent Changes
+//! Converted from loan-based terminology to deal-based terminology:
+//! - Loan → Deal
+//! - Borrower → Originator
+//! - Lender → Investor
+//! - All API endpoints and types updated accordingly
 
+use chrono::{DateTime, Utc};
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::paths;
 
-/// Client for interacting with the batch processing API
+// ============================================================================
+// DEAL API TYPES (converted from loan types)
+// ============================================================================
+
+/// Import or define the request/response types
+pub use crate::deal_handlers::{
+    CreateDealRequest,    // was CreateLoanRequest
+    DealDetailsResponse,  // was LoanDetailsResponse
+    DealListingResponse,  // was LoanListingResponse
+    DealMarketplaceStats, // was MarketplaceStats
+
+    DealPaymentHistoryResponse, // was LoanPaymentHistoryResponse
+    DealStatsResponse,          // was LoanStatsResponse
+
+    DealTransferResponse,           // was LoanTransferResponse
+    DealTransferValidationResponse, // was TransferValidationResponse
+
+    // Consolidated marketplace types
+    ListDealForSaleRequest,  // was ListLoanForSaleRequest
+    ListDealsQuery,          // was ListLoansQuery
+    MarketplaceDealResponse, // was MarketplaceLoanResponse
+    // Payment types
+    RecordDealPaymentRequest, // was RecordPaymentRequest
+    // Consolidated transfer types
+    TransferDealOwnershipRequest, // was TransferLoanOwnershipRequest
+    UpdateDealRequest,            // was UpdateLoanRequest
+    ValidateDealTransferRequest,  // was ValidateTransferRequest
+};
+
+/// API client for the Arda Credit deal processing system
+///
+/// This client provides methods for interacting with all deal-related
+/// endpoints including CRUD operations, payments, marketplace listings,
+/// and ownership transfers.
+///
+/// ## Recent Changes
+/// Converted from loan-based client to deal-based client:
+/// - All loan methods → deal methods
+/// - Marketplace functionality consolidated into deal client
+/// - Transfer functionality consolidated into deal client
+/// - Updated all endpoint URLs and field names
+///
+/// ## Usage Examples
+///
+/// ```rust
+/// # use api::client::BatchApiClient;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let client = BatchApiClient::new("http://localhost:8080");
+///
+/// // Create a deal
+/// let deal = client.create_deal(
+///     "originator-id",
+///     "investor-id",
+///     "100000",
+///     800,
+///     Some(365),
+///     None
+/// ).await?;
+///
+/// // List deals for sale
+/// let deals = client.browse_deals_for_sale(Some(10), None).await?;
+///
+/// // Transfer deal ownership
+/// let transfer = client.transfer_deal_ownership(
+///     &deal.deal_id,
+///     "current-investor-id",
+///     "new-investor-id",
+///     "95000"
+/// ).await?;
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct BatchApiClient {
     client: Client,
@@ -28,6 +108,9 @@ pub enum ApiClientError {
 
     #[error("Failed to serialize/deserialize: {0}")]
     SerializationError(#[from] serde_json::Error),
+
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
 }
 
 // ============================================================================
@@ -858,6 +941,349 @@ impl BatchApiClient {
         self.handle_response(response).await
     }
 
+    // ============================================================================
+    // DEAL MANAGEMENT METHODS (converted from loan methods)
+    // ============================================================================
+
+    /// Create a new deal (was create_loan)
+    pub async fn create_deal(
+        &self,
+        originator_id: &str, // was borrower_id
+        investor_id: &str,   // was lender_id
+        principal_amount: &str,
+        interest_rate_bps: u16,
+        term_days: Option<u32>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<DealDetailsResponse, ApiClientError> {
+        // was LoanDetailsResponse
+        let url = format!("{}/api/v1/deal", self.base_url); // was /loan
+        let request = CreateDealRequest {
+            // was CreateLoanRequest
+            originator_id: originator_id.to_string(), // was borrower_id
+            investor_id: investor_id.to_string(),     // was lender_id
+            principal_amount: principal_amount.to_string(),
+            interest_rate_bps,
+            term_days,
+            metadata,
+        };
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get deal details by ID (was get_loan_by_id)
+    pub async fn get_deal_by_id(
+        &self,
+        deal_id: &str, // was loan_id
+    ) -> Result<Option<DealDetailsResponse>, ApiClientError> {
+        // was LoanDetailsResponse
+        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id); // was /loan/{}
+        let response = self.client.get(&url).send().await?;
+
+        match response.status().as_u16() {
+            200 => Ok(Some(self.handle_response(response).await?)),
+            404 => Ok(None),
+            _ => Err(self.handle_error_response(response).await),
+        }
+    }
+
+    /// List deals with optional filtering (was list_loans)
+    pub async fn list_deals(
+        &self,
+        status: Option<&str>,
+        originator_id: Option<&str>, // was borrower_id
+        investor_id: Option<&str>,   // was lender_id
+        limit: Option<i32>,
+        offset: Option<i32>,
+    ) -> Result<Vec<DealDetailsResponse>, ApiClientError> {
+        // was LoanDetailsResponse
+        let mut url = format!("{}/api/v1/deals", self.base_url); // was /loans
+        let mut params = Vec::new();
+
+        if let Some(status) = status {
+            params.push(format!("status={}", status));
+        }
+        if let Some(originator_id) = originator_id {
+            // was borrower_id
+            params.push(format!("originator_id={}", originator_id));
+        }
+        if let Some(investor_id) = investor_id {
+            // was lender_id
+            params.push(format!("investor_id={}", investor_id));
+        }
+        if let Some(limit) = limit {
+            params.push(format!("limit={}", limit));
+        }
+        if let Some(offset) = offset {
+            params.push(format!("offset={}", offset));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Update deal details (was update_loan)
+    pub async fn update_deal(
+        &self,
+        deal_id: &str, // was loan_id
+        principal_amount: Option<&str>,
+        outstanding_balance: Option<&str>,
+        interest_rate_bps: Option<u16>,
+        loan_status: Option<&str>,           // keeping same field name
+        maturity_date: Option<Option<&str>>, // Optional maturity date (ISO 8601), Option<Option<T>> to handle NULL
+    ) -> Result<DealDetailsResponse, ApiClientError> {
+        // was LoanDetailsResponse
+        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id); // was /loan/{}
+        let request = UpdateDealRequest {
+            // was UpdateLoanRequest
+            principal_amount: principal_amount.map(|s| s.to_string()),
+            outstanding_balance: outstanding_balance.map(|s| s.to_string()),
+            interest_rate_bps,
+            loan_status: loan_status.map(|s| s.to_string()), // keeping same field name
+            maturity_date: maturity_date.map(|md| md.map(|s| s.to_string())),
+        };
+
+        let response = self.client.put(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Delete deal (was delete_loan)
+    pub async fn delete_deal(
+        &self,
+        deal_id: &str, // was loan_id
+    ) -> Result<(), ApiClientError> {
+        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id); // was /loan/{}
+        let response = self.client.delete(&url).send().await?;
+
+        match response.status().as_u16() {
+            200 | 204 => Ok(()),
+            _ => Err(self.handle_error_response(response).await),
+        }
+    }
+
+    /// Get deal statistics (was get_loan_stats)
+    pub async fn get_deal_stats(&self) -> Result<DealStatsResponse, ApiClientError> {
+        // was LoanStatsResponse
+        let url = format!("{}/api/v1/deals/stats", self.base_url); // was /loans/stats
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    // ============================================================================
+    // CONSOLIDATED MARKETPLACE METHODS (moved from marketplace client)
+    // ============================================================================
+
+    /// Browse deals available for sale (consolidated from marketplace client)
+    pub async fn browse_deals_for_sale(
+        &self,
+        limit: Option<i32>,
+        status: Option<&str>,
+    ) -> Result<Vec<MarketplaceDealResponse>, ApiClientError> {
+        // was MarketplaceLoanResponse
+        let mut url = format!("{}/api/v1/deals/for-sale", self.base_url); // was /marketplace/loans
+        let mut params = Vec::new();
+
+        if let Some(limit) = limit {
+            params.push(format!("limit={}", limit));
+        }
+        if let Some(status) = status {
+            params.push(format!("status={}", status));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
+        }
+
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// List a deal for sale (consolidated from marketplace client)
+    pub async fn list_deal_for_sale(
+        &self,
+        deal_id: &str, // was loan_id
+        seller_id: &str,
+        asking_price: &str,
+        description: Option<&str>,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> Result<DealListingResponse, ApiClientError> {
+        // was LoanListingResponse
+        let url = format!("{}/api/v1/deal/{}/list-for-sale", self.base_url, deal_id); // was /marketplace/loan/{}
+        let request = ListDealForSaleRequest {
+            // was ListLoanForSaleRequest
+            seller_id: Uuid::parse_str(seller_id)
+                .map_err(|_| ApiClientError::InvalidInput("Invalid seller ID".to_string()))?,
+            asking_price: asking_price.to_string(),
+            description: description.map(|s| s.to_string()),
+            expires_at,
+        };
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Remove deal from sale (consolidated from marketplace client)
+    pub async fn remove_deal_from_sale(
+        &self,
+        deal_id: &str, // was loan_id
+    ) -> Result<(), ApiClientError> {
+        let url = format!("{}/api/v1/deal/{}/remove-from-sale", self.base_url, deal_id); // was /marketplace/loan/{}
+        let response = self.client.delete(&url).send().await?;
+
+        match response.status().as_u16() {
+            200 | 204 => Ok(()),
+            _ => Err(self.handle_error_response(response).await),
+        }
+    }
+
+    /// Get deal marketplace statistics (consolidated from marketplace client)
+    pub async fn get_deal_marketplace_stats(&self) -> Result<DealMarketplaceStats, ApiClientError> {
+        // was MarketplaceStats
+        let url = format!("{}/api/v1/deals/marketplace/stats", self.base_url); // was /marketplace/stats
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    // ============================================================================
+    // CONSOLIDATED TRANSFER METHODS (moved from transfer client)
+    // ============================================================================
+
+    /// Transfer deal ownership (consolidated from transfer client)
+    pub async fn transfer_deal_ownership(
+        &self,
+        deal_id: &str,          // was loan_id
+        from_investor_id: &str, // was from_lender_id
+        to_investor_id: &str,   // was to_lender_id
+        transfer_price: &str,
+    ) -> Result<DealTransferResponse, ApiClientError> {
+        // was LoanTransferResponse
+        let url = format!("{}/api/v1/deal/{}/transfer", self.base_url, deal_id); // was /transfer/loan/{}
+        let request = TransferDealOwnershipRequest {
+            // was TransferLoanOwnershipRequest
+            from_investor_id: Uuid::parse_str(from_investor_id) // was from_lender_id
+                .map_err(|_| {
+                    ApiClientError::InvalidInput("Invalid from investor ID".to_string())
+                })?,
+            to_investor_id:
+                Uuid::parse_str(to_investor_id) // was to_lender_id
+                    .map_err(|_| {
+                        ApiClientError::InvalidInput("Invalid to investor ID".to_string())
+                    })?,
+            transfer_price: transfer_price.to_string(),
+        };
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get deal transfer history (consolidated from transfer client)
+    pub async fn get_deal_transfer_history(
+        &self,
+        deal_id: &str, // was loan_id
+        limit: Option<i32>,
+    ) -> Result<Vec<DealTransferResponse>, ApiClientError> {
+        // was LoanTransferResponse
+        let mut url = format!("{}/api/v1/deal/{}/transfers", self.base_url, deal_id); // was /loan/{}/transfers
+
+        if let Some(limit) = limit {
+            url.push_str(&format!("?limit={}", limit));
+        }
+
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get user's deal transfer history (consolidated from transfer client)
+    pub async fn get_user_deal_transfer_history(
+        &self,
+        user_id: &str,
+        limit: Option<i32>,
+    ) -> Result<Vec<DealTransferResponse>, ApiClientError> {
+        // was LoanTransferResponse
+        let mut url = format!("{}/api/v1/user/{}/deal-transfers", self.base_url, user_id); // was /user/{}/transfers
+
+        if let Some(limit) = limit {
+            url.push_str(&format!("?limit={}", limit));
+        }
+
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Validate deal transfer (consolidated from transfer client)
+    pub async fn validate_deal_transfer(
+        &self,
+        deal_id: &str,             // was loan_id
+        current_investor_id: &str, // was current_lender_id
+    ) -> Result<DealTransferValidationResponse, ApiClientError> {
+        // was TransferValidationResponse
+        let url = format!(
+            "{}/api/v1/deal/{}/transfer/validate",
+            self.base_url, deal_id
+        ); // was /transfer/loan/{}/validate
+        let request = ValidateDealTransferRequest {
+            // was ValidateTransferRequest
+            current_investor_id: Uuid::parse_str(current_investor_id) // was current_lender_id
+                .map_err(|_| {
+                    ApiClientError::InvalidInput("Invalid current investor ID".to_string())
+                })?,
+        };
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    // ============================================================================
+    // DEAL PAYMENT METHODS (updated from loan payment methods)
+    // ============================================================================
+
+    /// Record a deal payment (was record_loan_payment)
+    pub async fn record_deal_payment(
+        &self,
+        deal_id: &str, // was loan_id
+        payer_id: &str,
+        amount: &str,
+        payment_type: &str,
+        payment_reference: Option<&str>,
+        notes: Option<&str>,
+    ) -> Result<serde_json::Value, ApiClientError> {
+        let url = format!("{}/api/v1/payments", self.base_url); // URL might stay the same
+        let request = RecordDealPaymentRequest {
+            // was RecordPaymentRequest
+            deal_id: deal_id.to_string(), // was loan_id
+            amount: amount.to_string(),
+            payment_type: payment_type.to_string(),
+            payment_reference: payment_reference.map(|s| s.to_string()),
+            notes: notes.map(|s| s.to_string()),
+        };
+
+        let response = self.client.post(&url).json(&request).send().await?;
+        self.handle_response(response).await
+    }
+
+    /// Get deal payment history (was get_loan_payment_history)
+    pub async fn get_deal_payment_history(
+        &self,
+        deal_id: &str, // was loan_id
+        limit: Option<i32>,
+    ) -> Result<DealPaymentHistoryResponse, ApiClientError> {
+        // was LoanPaymentHistoryResponse
+        let mut url = format!("{}/api/v1/deal/{}/payments", self.base_url, deal_id); // was /loan/{}/payments
+
+        if let Some(limit) = limit {
+            url.push_str(&format!("?limit={}", limit));
+        }
+
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
+    }
+
     /// Generic response handler
     async fn handle_response<T: for<'de> Deserialize<'de>>(
         &self,
@@ -879,7 +1305,21 @@ impl BatchApiClient {
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
 
-        ApiClientError::ApiError { status, message }
+        match status {
+            400 => ApiClientError::ApiError {
+                status,
+                message: format!("Bad request for deal operation: {}", message), // was loan operation
+            },
+            404 => ApiClientError::ApiError {
+                status,
+                message: format!("Deal not found: {}", message), // was Loan not found
+            },
+            500 => ApiClientError::ApiError {
+                status,
+                message: format!("Server error in deal processing: {}", message), // was loan processing
+            },
+            _ => ApiClientError::ApiError { status, message },
+        }
     }
 }
 

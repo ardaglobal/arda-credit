@@ -6,7 +6,7 @@
 //! - [`balance`] - Balance, wallet, and withdrawal operations
 //! - [`batch`] - Batch processing, proofs, and state operations  
 //! - [`cli`] - Core CLI setup and middleware configuration
-//! - [`loans`] - Credit/loan operations (investor, merchant, credit lines)
+//! - [`deals`] - Credit/deal operations (investor, merchant, credit lines)
 //! - [`pools`] - Liquidity pool operations
 //! - [`benchmarks`] - Performance benchmarks and analytics operations (feature-gated)
 //! - [`user`] - User management, KYC, and invite code operations
@@ -20,10 +20,8 @@ pub mod auth;
 pub mod balance;
 pub mod batch;
 pub mod cli;
-pub mod loans;
-pub mod marketplace;
+pub mod deals;
 pub mod pools;
-pub mod transfers;
 pub mod user;
 
 // Performance benchmarks (available for both internal and integration tests)
@@ -35,8 +33,7 @@ pub use auth::*;
 pub use balance::*;
 pub use batch::*;
 pub use cli::*;
-pub use loans::*;
-pub use marketplace::*;
+pub use deals::*;
 pub use pools::*;
 pub use user::*;
 

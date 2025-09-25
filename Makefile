@@ -418,16 +418,16 @@ server-logs:
 ## forge-build: Build smart contracts
 .PHONY: forge-build
 forge-build:
-	@echo "Building smart contracts..."
+	@echo "🔨 Building ARDA smart contracts..."
 	cd contracts && forge build
-	@echo "✅ Smart contracts built successfully"
+	@echo "✅ ARDA smart contracts built successfully"
 
 ## forge-test: Run smart contract tests
 .PHONY: forge-test
 forge-test:
-	@echo "Running smart contract tests..."
+	@echo "🧪 Running ARDA smart contract tests..."
 	cd contracts && forge test
-	@echo "✅ Smart contract tests completed"
+	@echo "✅ ARDA smart contract tests completed"
 
 ## deploy-contract: Deploy Arda Credit smart contract
 # Required environment variables:
@@ -437,7 +437,7 @@ forge-test:
 #   PROGRAM_VKEY        - Program verification key
 .PHONY: deploy-contract
 deploy-contract:
-	@echo "Deploying Arda Credit smart contract..."
+	@echo "🚀 Deploying ARDA smart contract..."
 	@echo "🔍 Checking required environment variables..."
 	@if [ -z "$$ETHEREUM_RPC_URL" ]; then \
 		echo "❌ ETHEREUM_RPC_URL is required"; \
@@ -462,7 +462,7 @@ deploy-contract:
 	@echo "🔑 Verifier: $$VERIFIER_CONTRACT_ADDRESS"
 	@echo "🗝️  Program VKey: $$PROGRAM_VKEY"
 	@echo ""
-	cd contracts && forge create src/Loan.sol:Loan \
+	cd contracts && forge create src/ARDA.sol:ARDA \
 		--broadcast \
 		--rpc-url $$ETHEREUM_RPC_URL \
 		--private-key $$ETHEREUM_WALLET_PRIVATE_KEY \
@@ -472,8 +472,8 @@ deploy-contract:
 ## deploy-contract-help: Show deployment command usage
 .PHONY: deploy-contract-help
 deploy-contract-help:
-	@echo "Smart Contract Deployment Help"
-	@echo "=============================="
+	@echo "ARDA Smart Contract Deployment Help"
+	@echo "==================================="
 	@echo ""
 	@echo "Required Environment Variables:"
 	@echo "  ETHEREUM_RPC_URL          - Ethereum RPC endpoint"

@@ -76,9 +76,9 @@ pub async fn validate_loan_ownership(
     let ownership_check = sqlx::query!(
         r#"
         SELECT EXISTS(
-            SELECT 1 FROM loans
-            WHERE id = $1 AND lender_id = $2
-        ) as owns_loan
+            SELECT 1 FROM deals
+            WHERE id = $1 AND investor_id = $2
+        ) as owns_deal
         "#,
         loan_id,
         user_id
@@ -86,5 +86,5 @@ pub async fn validate_loan_ownership(
     .fetch_one(pool)
     .await?;
 
-    Ok(ownership_check.owns_loan.unwrap_or(false))
+    Ok(ownership_check.owns_deal.unwrap_or(false))
 }

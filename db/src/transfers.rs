@@ -1,8 +1,13 @@
-//! Loan transfer database operations
+//! Deal transfer database operations
 //!
-//! This module provides all database operations for loan ownership transfers including
-//! validation, payment settlement, and ownership updates. It builds on the Phase 1
-//! marketplace foundation.
+//! This module handles deal ownership transfers between investors.
+//! Converted from loan transfer system to deal transfer system.
+//!
+//! Core functionality:
+//! - Deal ownership validation
+//! - Transfer record creation and management
+//! - Transfer history tracking
+//! - Ownership change execution
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -11,14 +16,14 @@ use uuid::Uuid;
 
 // Import Phase 1 foundation functions
 use crate::{
-    get_user_balance_by_id, update_listing_status, update_user_balance_from_deposit_tx,
+    get_user_balance_by_id, update_deal_listing_status, update_user_balance_from_deposit_tx,
     update_user_balance_from_withdrawal_tx,
 };
 
 /// Transfer validation request
 #[derive(Debug, Clone)]
 pub struct TransferValidationRequest {
-    pub loan_id: Uuid,
+    pub deal_id: Uuid, // was loan_id
     pub buyer_id: Uuid,
     pub purchase_price: Decimal,
 }
@@ -27,8 +32,8 @@ pub struct TransferValidationRequest {
 #[derive(Debug, Clone)]
 pub struct TransferValidationResult {
     pub is_valid: bool,
-    pub loan_exists: bool,
-    pub loan_for_sale: bool,
+    pub deal_exists: bool,
+    pub deal_for_sale: bool,
     pub buyer_has_funds: bool,
     pub buyer_is_not_owner: bool,
     pub buyer_kyc_approved: bool,
@@ -40,7 +45,7 @@ pub struct TransferValidationResult {
 /// Complete transfer execution request
 #[derive(Debug, Clone)]
 pub struct ExecuteTransferRequest {
-    pub loan_id: Uuid,
+    pub deal_id: Uuid, // was loan_id
     pub buyer_id: Uuid,
     pub purchase_price: Decimal,
     pub notes: Option<String>,
@@ -50,9 +55,9 @@ pub struct ExecuteTransferRequest {
 #[derive(Debug, Clone)]
 pub struct TransferExecutionResult {
     pub transfer_id: Uuid,
-    pub loan_id: Uuid,
-    pub from_lender_id: Uuid,
-    pub to_lender_id: Uuid,
+    pub deal_id: Uuid,          // was loan_id
+    pub from_investor_id: Uuid, // was from_lender_id
+    pub to_investor_id: Uuid,   // was to_lender_id
     pub purchase_price: Decimal,
     pub transfer_date: chrono::NaiveDateTime,
     pub settlement: TransferSettlementResult,
@@ -70,18 +75,18 @@ pub struct TransferSettlementResult {
 
 /// Transfer history record with user details
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct LoanTransferHistory {
+pub struct DealTransferHistory {
     pub transfer_id: Uuid,
-    pub loan_id: Uuid,
-    pub from_lender_id: Uuid,
-    pub to_lender_id: Uuid,
+    pub deal_id: Uuid,
+    pub from_investor_id: Uuid,
+    pub to_investor_id: Uuid,
     pub purchase_price: Decimal,
     pub transfer_status: String,
     pub transfer_date: chrono::NaiveDateTime,
     pub completed_at: Option<chrono::NaiveDateTime>,
     pub notes: Option<String>,
-    pub from_lender_email: String,
-    pub to_lender_email: String,
+    pub from_investor_email: String,
+    pub to_investor_email: String,
 }
 
 /// Validate transfer eligibility with comprehensive checks
@@ -93,8 +98,8 @@ pub async fn validate_transfer_eligibility(
 ) -> Result<TransferValidationResult, sqlx::Error> {
     let mut result = TransferValidationResult {
         is_valid: false,
-        loan_exists: false,
-        loan_for_sale: false,
+        deal_exists: false,
+        deal_for_sale: false,
         buyer_has_funds: false,
         buyer_is_not_owner: false,
         buyer_kyc_approved: false,
@@ -103,60 +108,60 @@ pub async fn validate_transfer_eligibility(
         validation_errors: vec![],
     };
 
-    // 1. Check if loan exists and get current details using Phase 1 schema
-    let loan_query = sqlx::query!(
+    // 1. Check if deal exists and get current details using Phase 1 schema
+    let deal_query = sqlx::query!(
         r#"
-        SELECT l.id, l.lender_id, l.loan_status, l.principal_amount,
-               ll.asking_price, ll.status as listing_status
-        FROM loans l
-        LEFT JOIN loan_listings ll ON l.id = ll.loan_id AND ll.status = 'active'
-        WHERE l.id = $1
+        SELECT d.id, d.investor_id, d.loan_status, d.principal_amount,
+               dl.asking_price, dl.status as listing_status
+        FROM deals d
+        LEFT JOIN deal_listings dl ON d.id = dl.deal_id AND dl.status = 'active'
+        WHERE d.id = $1
         "#,
-        request.loan_id
+        request.deal_id
     )
     .fetch_optional(pool)
     .await?;
 
-    let loan = if let Some(loan) = loan_query {
-        result.loan_exists = true;
-        loan
+    let deal = if let Some(deal) = deal_query {
+        result.deal_exists = true;
+        deal
     } else {
-        result.validation_errors.push("Loan not found".to_string());
+        result.validation_errors.push("Deal not found".to_string());
         return Ok(result);
     };
 
-    // 2. Check if loan is for sale (Phase 1 status values)
-    if loan.loan_status == "for_sale" && loan.listing_status == "active" {
-        result.loan_for_sale = true;
+    // 2. Check if deal is for sale (Phase 1 status values)
+    if deal.loan_status == "for_sale" && deal.listing_status == "active" {
+        result.deal_for_sale = true;
     } else {
         result
             .validation_errors
-            .push("Loan is not currently for sale".to_string());
+            .push("Deal is not currently for sale".to_string());
     }
 
     // 3. Check buyer is not current owner
-    if loan.lender_id != request.buyer_id {
+    if deal.investor_id != request.buyer_id {
         result.buyer_is_not_owner = true;
     } else {
         result
             .validation_errors
-            .push("Buyer cannot purchase their own loan".to_string());
+            .push("Buyer cannot purchase their own deal".to_string());
     }
 
     // 4. Check price matches listing (only if listing exists)
-    if loan.listing_status == "active" {
-        if loan.asking_price == request.purchase_price {
+    if deal.listing_status == "active" {
+        if deal.asking_price == request.purchase_price {
             result.price_matches = true;
         } else {
             result.validation_errors.push(format!(
                 "Purchase price {} does not match asking price {}",
-                request.purchase_price, loan.asking_price
+                request.purchase_price, deal.asking_price
             ));
         }
     } else {
         result
             .validation_errors
-            .push("No asking price found for loan".to_string());
+            .push("No asking price found for deal".to_string());
     }
 
     // 5. Check buyer's available balance (using existing balance system)
@@ -202,8 +207,8 @@ pub async fn validate_transfer_eligibility(
     }
 
     // 7. Set overall validity
-    result.is_valid = result.loan_exists
-        && result.loan_for_sale
+    result.is_valid = result.deal_exists
+        && result.deal_for_sale
         && result.buyer_has_funds
         && result.buyer_is_not_owner
         && result.buyer_kyc_approved
@@ -212,17 +217,17 @@ pub async fn validate_transfer_eligibility(
     Ok(result)
 }
 
-/// Execute loan ownership transfer atomically
+/// Execute deal ownership transfer atomically
 ///
 /// This is the core transfer function that handles:
 /// - Payment settlement (debit buyer, credit seller using existing balance system)
-/// - Ownership transfer (update loan.lender_id)
+/// - Ownership transfer (update deal.investor_id)
 /// - Listing status updates (mark as sold using Phase 1 functions)
-/// - Transfer record creation (using Phase 1 loan_transfers table)
+/// - Transfer record creation (using Phase 1 deal_transfers table)
 /// - Financial transaction recording (using existing financial transaction system)
 ///
 /// All operations are atomic - either all succeed or all rollback.
-pub async fn execute_loan_transfer(
+pub async fn execute_deal_transfer(
     pool: &PgPool,
     request: &ExecuteTransferRequest,
 ) -> Result<TransferExecutionResult, sqlx::Error> {
@@ -233,7 +238,7 @@ pub async fn execute_loan_transfer(
     let validation = validate_transfer_eligibility(
         pool,
         &TransferValidationRequest {
-            loan_id: request.loan_id,
+            deal_id: request.deal_id,
             buyer_id: request.buyer_id,
             purchase_price: request.purchase_price,
         },
@@ -247,15 +252,15 @@ pub async fn execute_loan_transfer(
         )));
     }
 
-    // 2. Get seller information from current loan ownership
+    // 2. Get seller information from current deal ownership
     let seller_info = sqlx::query!(
         r#"
-        SELECT l.lender_id as seller_id, ll.listing_id
-        FROM loans l
-        JOIN loan_listings ll ON l.id = ll.loan_id
-        WHERE l.id = $1 AND ll.status = 'active'
+        SELECT d.investor_id as seller_id, dl.listing_id
+        FROM deals d
+        JOIN deal_listings dl ON d.id = dl.deal_id
+        WHERE d.id = $1 AND dl.status = 'active'
         "#,
-        request.loan_id
+        request.deal_id
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -263,14 +268,14 @@ pub async fn execute_loan_transfer(
     let seller_id = seller_info.seller_id;
     let _listing_id = seller_info.listing_id;
 
-    // 3. Update loan status to transfer_pending (prevents concurrent transfers)
+    // 3. Update deal status to transfer_pending (prevents concurrent transfers)
     sqlx::query!(
         r#"
-        UPDATE loans
+        UPDATE deals
         SET loan_status = 'transfer_pending', updated_at = NOW()
         WHERE id = $1 AND loan_status = 'for_sale'
         "#,
-        request.loan_id
+        request.deal_id
     )
     .execute(&mut *tx)
     .await?;
@@ -281,14 +286,14 @@ pub async fn execute_loan_transfer(
 
     sqlx::query!(
         r#"
-        INSERT INTO loan_transfers (
-            transfer_id, loan_id, from_lender_id, to_lender_id,
+        INSERT INTO deal_transfers (
+            transfer_id, deal_id, from_investor_id, to_investor_id,
             purchase_price, transfer_status, transfer_date, notes
         )
         VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)
         "#,
         transfer_id,
-        request.loan_id,
+        request.deal_id,
         seller_id,
         request.buyer_id,
         request.purchase_price,
@@ -320,12 +325,12 @@ pub async fn execute_loan_transfer(
             id, user_id, transaction_type, amount, currency,
             transaction_hash, blockchain_status, processed_at
         )
-        VALUES ($1, $2, 'LOAN_PURCHASE', $3, 'USDC', $4, 'CONFIRMED', NOW())
+        VALUES ($1, $2, 'DEAL_PURCHASE', $3, 'USDC', $4, 'CONFIRMED', NOW())
         "#,
         buyer_tx_id,
         request.buyer_id,
         -request.purchase_price,                  // Negative for debit
-        format!("loan_transfer_{}", transfer_id)  // Use transfer_id as transaction hash
+        format!("deal_transfer_{}", transfer_id)  // Use transfer_id as transaction hash
     )
     .execute(&mut *tx)
     .await?;
@@ -338,12 +343,12 @@ pub async fn execute_loan_transfer(
             id, user_id, transaction_type, amount, currency,
             transaction_hash, blockchain_status, processed_at
         )
-        VALUES ($1, $2, 'LOAN_SALE', $3, 'USDC', $4, 'CONFIRMED', NOW())
+        VALUES ($1, $2, 'DEAL_SALE', $3, 'USDC', $4, 'CONFIRMED', NOW())
         "#,
         seller_tx_id,
         seller_id,
         request.purchase_price, // Positive for credit
-        format!("loan_transfer_{}", transfer_id)
+        format!("deal_transfer_{}", transfer_id)
     )
     .execute(&mut *tx)
     .await?;
@@ -351,24 +356,24 @@ pub async fn execute_loan_transfer(
     // 7. Transfer ownership
     sqlx::query!(
         r#"
-        UPDATE loans
-        SET lender_id = $2, loan_status = 'active', updated_at = NOW()
+        UPDATE deals
+        SET investor_id = $2, loan_status = 'active', updated_at = NOW()
         WHERE id = $1
         "#,
-        request.loan_id,
+        request.deal_id,
         request.buyer_id
     )
     .execute(&mut *tx)
     .await?;
 
     // 8. Mark listing as sold (using Phase 1 table)
-    update_listing_status(&mut tx, request.loan_id, "sold").await?;
+    update_deal_listing_status(&mut tx, request.deal_id, "sold").await?; // was update_listing_status, request.loan_id
 
     // 9. Mark transfer as completed
     let completion_time = chrono::Utc::now().naive_utc();
     sqlx::query!(
         r#"
-        UPDATE loan_transfers
+        UPDATE deal_transfers
         SET transfer_status = 'completed', completed_at = $2
         WHERE transfer_id = $1
         "#,
@@ -384,9 +389,9 @@ pub async fn execute_loan_transfer(
     // Return success result
     Ok(TransferExecutionResult {
         transfer_id,
-        loan_id: request.loan_id,
-        from_lender_id: seller_id,
-        to_lender_id: request.buyer_id,
+        deal_id: request.deal_id,
+        from_investor_id: seller_id,      // was from_lender_id
+        to_investor_id: request.buyer_id, // was to_lender_id
         purchase_price: request.purchase_price,
         transfer_date,
         settlement: TransferSettlementResult {
@@ -399,33 +404,33 @@ pub async fn execute_loan_transfer(
     })
 }
 
-/// Get loan transfer history (using Phase 1 table)
-pub async fn get_loan_transfer_history(
+/// Get deal transfer history (using Phase 1 table)
+pub async fn get_deal_transfer_history(
     pool: &PgPool,
-    loan_id: Uuid,
-) -> Result<Vec<LoanTransferHistory>, sqlx::Error> {
+    deal_id: Uuid,
+) -> Result<Vec<DealTransferHistory>, sqlx::Error> {
     let transfers = sqlx::query_as!(
-        LoanTransferHistory,
+        DealTransferHistory,
         r#"
         SELECT
-            lt.transfer_id,
-            lt.loan_id,
-            lt.from_lender_id,
-            lt.to_lender_id,
-            lt.purchase_price,
-            lt.transfer_status,
-            lt.transfer_date,
-            lt.completed_at,
-            lt.notes,
-            from_user.email as from_lender_email,
-            to_user.email as to_lender_email
-        FROM loan_transfers lt
-        JOIN identities from_user ON lt.from_lender_id = from_user.id
-        JOIN identities to_user ON lt.to_lender_id = to_user.id
-        WHERE lt.loan_id = $1
-        ORDER BY lt.transfer_date DESC
+            dt.transfer_id,
+            dt.deal_id,
+            dt.from_investor_id,
+            dt.to_investor_id,
+            dt.purchase_price,
+            dt.transfer_status,
+            dt.transfer_date,
+            dt.completed_at,
+            dt.notes,
+            from_user.email as from_investor_email,
+            to_user.email as to_investor_email
+        FROM deal_transfers dt
+        JOIN identities from_user ON dt.from_investor_id = from_user.id
+        JOIN identities to_user ON dt.to_investor_id = to_user.id
+        WHERE dt.deal_id = $1
+        ORDER BY dt.transfer_date DESC
         "#,
-        loan_id
+        deal_id
     )
     .fetch_all(pool)
     .await?;
@@ -433,36 +438,36 @@ pub async fn get_loan_transfer_history(
     Ok(transfers)
 }
 
-/// Get transfers by user (loans they've bought or sold)
+/// Get transfers by user (deals they've bought or sold)
 pub async fn get_user_transfer_history(
     pool: &PgPool,
     user_id: Uuid,
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Vec<LoanTransferHistory>, sqlx::Error> {
+) -> Result<Vec<DealTransferHistory>, sqlx::Error> {
     let limit = limit.unwrap_or(50).min(100);
     let offset = offset.unwrap_or(0);
 
     let transfers = sqlx::query_as!(
-        LoanTransferHistory,
+        DealTransferHistory,
         r#"
         SELECT
-            lt.transfer_id,
-            lt.loan_id,
-            lt.from_lender_id,
-            lt.to_lender_id,
-            lt.purchase_price,
-            lt.transfer_status,
-            lt.transfer_date,
-            lt.completed_at,
-            lt.notes,
-            from_user.email as from_lender_email,
-            to_user.email as to_lender_email
-        FROM loan_transfers lt
-        JOIN identities from_user ON lt.from_lender_id = from_user.id
-        JOIN identities to_user ON lt.to_lender_id = to_user.id
-        WHERE lt.from_lender_id = $1 OR lt.to_lender_id = $1
-        ORDER BY lt.transfer_date DESC
+            dt.transfer_id,
+            dt.deal_id,
+            dt.from_investor_id,
+            dt.to_investor_id,
+            dt.purchase_price,
+            dt.transfer_status,
+            dt.transfer_date,
+            dt.completed_at,
+            dt.notes,
+            from_user.email as from_investor_email,
+            to_user.email as to_investor_email
+        FROM deal_transfers dt
+        JOIN identities from_user ON dt.from_investor_id = from_user.id
+        JOIN identities to_user ON dt.to_investor_id = to_user.id
+        WHERE dt.from_investor_id = $1 OR dt.to_investor_id = $1
+        ORDER BY dt.transfer_date DESC
         LIMIT $2 OFFSET $3
         "#,
         user_id,
@@ -475,7 +480,7 @@ pub async fn get_user_transfer_history(
     Ok(transfers)
 }
 
-/// Cancel pending transfer (restore loan to marketplace)
+/// Cancel pending transfer (restore deal to marketplace)
 pub async fn cancel_transfer(
     pool: &PgPool,
     transfer_id: Uuid,
@@ -487,11 +492,11 @@ pub async fn cancel_transfer(
     // Check if user can cancel (must be buyer or seller and status must be pending)
     let transfer_info = sqlx::query!(
         r#"
-        SELECT lt.loan_id, lt.from_lender_id, lt.to_lender_id, lt.transfer_status
-        FROM loan_transfers lt
-        WHERE lt.transfer_id = $1
-          AND (lt.from_lender_id = $2 OR lt.to_lender_id = $2)
-          AND lt.transfer_status = 'pending'
+        SELECT dt.deal_id, dt.from_investor_id, dt.to_investor_id, dt.transfer_status
+        FROM deal_transfers dt
+        WHERE dt.transfer_id = $1
+          AND (dt.from_investor_id = $2 OR dt.to_investor_id = $2)
+          AND dt.transfer_status = 'pending'
         "#,
         transfer_id,
         user_id
@@ -502,24 +507,24 @@ pub async fn cancel_transfer(
     if let Some(transfer) = transfer_info {
         // 1. Mark transfer as cancelled
         sqlx::query!(
-            "UPDATE loan_transfers SET transfer_status = 'cancelled' WHERE transfer_id = $1",
+            "UPDATE deal_transfers SET transfer_status = 'cancelled' WHERE transfer_id = $1",
             transfer_id
         )
         .execute(&mut *tx)
         .await?;
 
-        // 2. Restore loan status to for_sale
+        // 2. Restore deal status to for_sale
         sqlx::query!(
-            "UPDATE loans SET loan_status = 'for_sale', updated_at = NOW() WHERE id = $1",
-            transfer.loan_id
+            "UPDATE deals SET loan_status = 'for_sale', updated_at = NOW() WHERE id = $1",
+            transfer.deal_id
         )
         .execute(&mut *tx)
         .await?;
 
         // 3. Restore listing to active (using Phase 1 table)
         sqlx::query!(
-            "UPDATE loan_listings SET status = 'active', updated_at = NOW() WHERE loan_id = $1",
-            transfer.loan_id
+            "UPDATE deal_listings SET status = 'active', updated_at = NOW() WHERE deal_id = $1",
+            transfer.deal_id
         )
         .execute(&mut *tx)
         .await?;
@@ -541,11 +546,11 @@ mod tests {
         // Test setup would use Phase 1 foundation:
         // - Use existing test pool setup
         // - Create test users with balances
-        // - Create test loan listing using Phase 1 functions
+        // - Create test deal listing using Phase 1 functions
 
         // Test validate_transfer_eligibility
-        // Test execute_loan_transfer
-        // Test get_loan_transfer_history
+        // Test execute_deal_transfer
+        // Test get_deal_transfer_history
         // Test cancel_transfer
     }
 }

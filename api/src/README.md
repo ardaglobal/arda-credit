@@ -31,7 +31,7 @@ api/src/
 │   ├── auth_tests.rs                # Authentication tests
 │   ├── credit_line_tests.rs         # Credit line tests
 │   ├── financial_tests.rs           # Financial transaction tests
-│   ├── loan_tests.rs                # Loan lifecycle tests
+│   ├── deal_tests.rs                 # Deal lifecycle tests
 │   ├── pool_tests.rs                # Liquidity pool tests
 │   └── user_tests.rs                # User management tests
 ├── bin/                             # Binary executables

@@ -27,7 +27,7 @@ async fn test_marketplace_foundation_complete() {
         SELECT COUNT(*) = 2 as tables_exist
         FROM information_schema.tables
         WHERE table_schema = 'public'
-          AND table_name IN ('loan_listings', 'loan_transfers')
+          AND table_name IN ('deal_listings', 'deal_transfers')
         "#
     )
     .fetch_one(&pool)
@@ -37,14 +37,14 @@ async fn test_marketplace_foundation_complete() {
 
     assert!(
         tables_exist,
-        "loan_listings and loan_transfers tables should exist"
+        "deal_listings and deal_transfers tables should exist"
     );
 
     // Test 3: Check new loan status values work
     println!("📋 Test 3: Loan status enum validation");
     // Try to update a loan status to for_sale (should not fail due to constraint)
     let status_update_result =
-        sqlx::query!("UPDATE loans SET loan_status = 'for_sale' WHERE false")
+        sqlx::query!("UPDATE deals SET loan_status = 'for_sale' WHERE false")
             .execute(&pool)
             .await;
 
@@ -60,7 +60,7 @@ async fn test_marketplace_foundation_complete() {
         SELECT COUNT(*) > 0 as view_exists
         FROM information_schema.views
         WHERE table_schema = 'public'
-          AND table_name = 'marketplace_loans'
+          AND table_name = 'marketplace_deals'
         "#
     )
     .fetch_one(&pool)
@@ -68,11 +68,11 @@ async fn test_marketplace_foundation_complete() {
     .expect("Should be able to query view existence")
     .expect("View existence query should return a value");
 
-    assert!(view_exists, "marketplace_loans view should exist");
+    assert!(view_exists, "marketplace_deals view should exist");
 
     // Test 5: Check marketplace view returns data (may be empty, that's ok)
     println!("📋 Test 5: Marketplace view functionality");
-    let view_count: i64 = sqlx::query_scalar!("SELECT COUNT(*) FROM marketplace_loans")
+    let view_count: i64 = sqlx::query_scalar!("SELECT COUNT(*) FROM marketplace_deals")
         .fetch_one(&pool)
         .await
         .expect("Should be able to query marketplace view")
@@ -141,7 +141,7 @@ async fn test_marketplace_crud_operations() {
     // Insert test loan that the listing can reference
     sqlx::query!(
         r#"
-        INSERT INTO loans (id, borrower_id, lender_id, principal_amount, outstanding_balance, 
+        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
                           interest_rate_bps, loan_status, originated_at)
         VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
         ON CONFLICT (id) DO NOTHING
@@ -156,22 +156,23 @@ async fn test_marketplace_crud_operations() {
 
     // Test create_loan_listing
     println!("Testing create_loan_listing...");
-    let listing = marketplace::create_loan_listing(
+    let listing = marketplace::create_deal_listing(
         &pool,
         test_loan_id,
         test_lender_id,
         rust_decimal::Decimal::new(95000, 2), // $950.00
         Some("Test listing".to_string()),
+        None, // expires_at
     )
     .await
     .expect("Should be able to create loan listing");
 
-    assert_eq!(listing.loan_id, test_loan_id);
+    assert_eq!(listing.deal_id, test_loan_id);
     assert_eq!(listing.seller_id, test_lender_id);
 
     // Test get_loan_listing_by_loan_id
     println!("Testing get_loan_listing_by_loan_id...");
-    let retrieved = marketplace::get_loan_listing_by_loan_id(&pool, test_loan_id)
+    let retrieved = marketplace::get_deal_listing_by_deal_id(&pool, test_loan_id)
         .await
         .expect("Should be able to retrieve loan listing");
 
@@ -180,7 +181,7 @@ async fn test_marketplace_crud_operations() {
 
     // Test get_marketplace_loans_basic
     println!("Testing get_marketplace_loans_basic...");
-    let loans = marketplace::get_marketplace_loans_basic(&pool, Some(10), Some(0))
+    let loans = marketplace::browse_marketplace_deals(&pool, Some(10), None)
         .await
         .expect("Should be able to get marketplace loans");
 
@@ -191,7 +192,7 @@ async fn test_marketplace_crud_operations() {
 
     // Test validate_loan_for_transfer
     println!("Testing validate_loan_for_transfer...");
-    let validation = marketplace::validate_loan_for_transfer(&pool, test_loan_id)
+    let validation = marketplace::validate_deal_for_transfer(&pool, test_loan_id)
         .await
         .expect("Should be able to validate loan for transfer");
 
@@ -203,12 +204,12 @@ async fn test_marketplace_crud_operations() {
     );
 
     // Clean up test data
-    sqlx::query!("DELETE FROM loan_listings WHERE loan_id = $1", test_loan_id)
+    sqlx::query!("DELETE FROM deal_listings WHERE deal_id = $1", test_loan_id)
         .execute(&pool)
         .await
         .expect("Should be able to clean up test listing");
 
-    sqlx::query!("DELETE FROM loans WHERE id = $1", test_loan_id)
+    sqlx::query!("DELETE FROM deals WHERE id = $1", test_loan_id)
         .execute(&pool)
         .await
         .expect("Should be able to clean up test loan");

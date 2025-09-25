@@ -1010,7 +1010,7 @@ impl NullifierDb {
                 r#"
                 SELECT
                     event_id as "event_id!",
-                    loan_id,
+                    deal_id as loan_id,
                     user_id,
                     loan_operation_type,
                     operation_amount,
@@ -1028,8 +1028,8 @@ impl NullifierDb {
                     user_email,
                     user_type,
                     kyc_status
-                FROM loan_audit_comprehensive
-                WHERE loan_id = $1
+                FROM deal_audit_comprehensive
+                WHERE deal_id = $1
                 ORDER BY "timestamp" DESC
                 LIMIT $2
                 "#,
@@ -1045,7 +1045,7 @@ impl NullifierDb {
                 r#"
                 SELECT
                     event_id as "event_id!",
-                    loan_id,
+                    deal_id as loan_id,
                     user_id,
                     loan_operation_type,
                     operation_amount,
@@ -1063,7 +1063,7 @@ impl NullifierDb {
                     user_email,
                     user_type,
                     kyc_status
-                FROM loan_audit_comprehensive
+                FROM deal_audit_comprehensive
                 ORDER BY "timestamp" DESC
                 LIMIT $1
                 "#,

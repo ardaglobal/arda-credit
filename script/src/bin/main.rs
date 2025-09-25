@@ -1,7 +1,7 @@
-//! Local SP1 Loan Processing Testing
+//! Local SP1 Deal Processing Testing
 //!
-//! This program provides a comprehensive test of the SP1 loan processing zkVM program.
-//! It demonstrates the complete loan lifecycle: user registration, KYC, loan origination,
+//! This program provides a comprehensive test of the SP1 deal processing zkVM program.
+//! It demonstrates the complete deal lifecycle: user registration, KYC, deal origination,
 //! payments, and closeouts - all while maintaining privacy of individual transaction details.
 //!
 //! Usage:
@@ -29,7 +29,7 @@ use tracing::{error, info};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
 /// This is built by build.rs from the program/ directory.
-pub const LOAN_PROGRAM_ELF: &[u8] = include_elf!("program");
+pub const DEAL_PROGRAM_ELF: &[u8] = include_elf!("program");
 
 #[derive(Debug)]
 struct Args {
@@ -76,19 +76,19 @@ async fn main() -> Result<()> {
     }
 
     if args.sindri {
-        info!("🌐 Starting SP1 loan processing test with Sindri integration");
+        info!("🌐 Starting SP1 deal processing test with Sindri integration");
         info!("🔐 Will submit circuit to Sindri for verification");
     } else {
-        info!("🏦 Starting local SP1 loan processing test");
-        info!("🔐 Testing complete loan lifecycle with privacy preservation");
+        info!("🏦 Starting local SP1 deal processing test");
+        info!("🔐 Testing complete deal lifecycle with privacy preservation");
     }
 
-    // Create test scenario: Complete loan workflow
-    let (initial_state, batch, _alice_id, _bob_id) = create_test_loan_scenario();
+    // Create test scenario: Complete deal workflow
+    let (initial_state, batch, _alice_id, _bob_id) = create_test_deal_scenario();
 
     info!("📊 Test scenario:");
     info!("  Initial users: {}", initial_state.users.len());
-    info!("  Initial loans: {}", initial_state.loans.len());
+    info!("  Initial deals: {}", initial_state.loans.len());
     info!("  Batch transactions: {}", batch.transactions.len());
     info!(
         "  Transaction types: {:?}",
@@ -128,31 +128,31 @@ fn run_locally(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
     stdin.write(&zkvm_input);
 
     // Generate a Core proof (fast for local development)
-    let (pk, vk) = client.setup(LOAN_PROGRAM_ELF);
+    let (pk, vk) = client.setup(DEAL_PROGRAM_ELF);
     let proof = client
         .prove(&pk, &stdin)
         .core() // Use Core proof mode for speed
         .run()
-        .expect("Failed to generate loan processing proof");
+        .expect("Failed to generate deal processing proof");
 
     info!("✅ Core proof generated successfully!");
 
     // Verify the proof
-    info!("🔍 Verifying loan processing proof...");
+    info!("🔍 Verifying deal processing proof...");
     client
         .verify(&proof, &vk)
-        .expect("Failed to verify loan proof");
+        .expect("Failed to verify deal proof");
     info!("✅ Proof verification passed!");
 
     analyze_proof_output(&proof)?;
 
-    info!("🎉 Local SP1 loan processing test completed successfully!");
+    info!("🎉 Local SP1 deal processing test completed successfully!");
     Ok(())
 }
 
 /// Run the test with Sindri integration (no local proving)
 async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
-    info!("🔄 Submitting loan batch directly to Sindri for proving...");
+    info!("🔄 Submitting deal batch directly to Sindri for proving...");
 
     // Submit directly to Sindri for proving (no local proof generation)
     use std::env;
@@ -181,7 +181,7 @@ async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result
         info!("📁 No sindri.json found - using default configuration");
     }
 
-    // Create SP1 inputs for loan processing and serialize for Sindri
+    // Create SP1 inputs for deal processing and serialize for Sindri
     info!("📝 Creating SP1 stdin with ZkVMBatchInput for Sindri proving");
     let mut stdin = SP1Stdin::new();
 
@@ -219,7 +219,7 @@ async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result
     info!("✅ Sindri client created");
 
     info!(
-        "🚀 Submitting loan batch to Sindri for proving: {}",
+        "🚀 Submitting deal batch to Sindri for proving: {}",
         circuit_name
     );
     info!("🔐 Sindri will generate the zero-knowledge proof (no local proving)");
@@ -310,10 +310,10 @@ async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result
     );
 
     info!("📋 Next steps: {}", verification_command);
-    info!("🔗 Loan batch successfully submitted to Sindri for zero-knowledge proof generation");
+    info!("🔗 Deal batch successfully submitted to Sindri for zero-knowledge proof generation");
     info!("⏱️  Sindri will handle the proving process - no local computation required!");
 
-    info!("🎉 SP1 loan processing test with Sindri integration completed successfully!");
+    info!("🎉 SP1 deal processing test with Sindri integration completed successfully!");
     Ok(())
 }
 
@@ -348,7 +348,7 @@ fn analyze_proof_output(proof: &sp1_sdk::SP1ProofWithPublicValues) -> Result<()>
             &new_hex[..16]
         );
         info!(
-            "🔐 Individual loan amounts, user identities, and transaction details remain private!"
+            "🔐 Individual deal amounts, user identities, and transaction details remain private!"
         );
         info!("🎉 Only state root transitions and transaction count are public");
     } else {
@@ -358,8 +358,8 @@ fn analyze_proof_output(proof: &sp1_sdk::SP1ProofWithPublicValues) -> Result<()>
     Ok(())
 }
 
-/// Create a comprehensive test scenario demonstrating the loan lifecycle
-fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
+/// Create a comprehensive test scenario demonstrating the deal lifecycle
+fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let batch_id = [1u8; 32];
     let batch_timestamp = 1_640_995_200; // January 1, 2022
 
@@ -369,19 +369,19 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let alice_id = hash_uuid(&alice_uuid);
     let bob_id = hash_uuid(&bob_uuid);
 
-    let loan_uuid = uuid::Uuid::new_v4();
-    let loan_id = hash_uuid(&loan_uuid);
+    let deal_uuid = uuid::Uuid::new_v4();
+    let deal_id = hash_uuid(&deal_uuid);
 
-    // Start with empty state and fund Alice so she can make loans
+    // Start with empty state and fund Alice so she can make deals
     let mut initial_state = LoanState::new();
 
-    // Fund Alice with $100,000 so she can lend $50,000 to Bob
+    // Fund Alice with $100,000 so she can originate $50,000 deal with Bob
     initial_state.balance_state.balances.insert(
         alice_id,
         arda_credit_lib::UserBalance::new(alice_id, 100_000_00, batch_timestamp), // $100,000.00 in cents
     );
 
-    // Create a batch demonstrating the complete loan workflow
+    // Create a batch demonstrating the complete deal workflow
     let mut transactions = Vec::new();
 
     // 1. Register Alice as an originator
@@ -391,7 +391,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     transactions.push(LoanTransaction {
         transaction_id: [1u8; 32],
         user_id: alice_id,
-        loan_id: [0u8; 32], // No loan for user registration
+        deal_id: [0u8; 32], // No deal for user registration
         transaction_type: TransactionType::UserRegistration,
         amount: 0,
         created_at: batch_timestamp,
@@ -405,7 +405,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     transactions.push(LoanTransaction {
         transaction_id: [2u8; 32],
         user_id: bob_id,
-        loan_id: [0u8; 32],
+        deal_id: [0u8; 32],
         transaction_type: TransactionType::UserRegistration,
         amount: 0,
         created_at: batch_timestamp + 100,
@@ -416,7 +416,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     transactions.push(LoanTransaction {
         transaction_id: [3u8; 32],
         user_id: alice_id,
-        loan_id: [0u8; 32],
+        deal_id: [0u8; 32],
         transaction_type: TransactionType::KycSubmission,
         amount: 0,
         created_at: batch_timestamp + 200,
@@ -427,7 +427,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     transactions.push(LoanTransaction {
         transaction_id: [4u8; 32],
         user_id: bob_id,
-        loan_id: [0u8; 32],
+        deal_id: [0u8; 32],
         transaction_type: TransactionType::KycSubmission,
         amount: 0,
         created_at: batch_timestamp + 300,
@@ -441,7 +441,7 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     transactions.push(LoanTransaction {
         transaction_id: [5u8; 32],
         user_id: alice_id,
-        loan_id: [0u8; 32],
+        deal_id: [0u8; 32],
         transaction_type: TransactionType::KycVerification,
         amount: 0,
         created_at: batch_timestamp + 400,
@@ -455,46 +455,46 @@ fn create_test_loan_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     transactions.push(LoanTransaction {
         transaction_id: [6u8; 32],
         user_id: bob_id,
-        loan_id: [0u8; 32],
+        deal_id: [0u8; 32],
         transaction_type: TransactionType::KycVerification,
         amount: 0,
         created_at: batch_timestamp + 500,
         metadata: bob_kyc_metadata,
     });
 
-    // 7. Loan origination: Bob borrows $50,000 from Alice
-    let mut loan_metadata = MetadataArray::empty();
-    // Pack borrower_id and lender_id into metadata
-    loan_metadata.as_mut_bytes()[0..32].copy_from_slice(&bob_id); // borrower
-    loan_metadata.as_mut_bytes()[32..64].copy_from_slice(&alice_id); // lender
+    // 7. Deal origination: Bob invests $50,000 with Alice
+    let mut deal_metadata = MetadataArray::empty();
+    // Pack originator_id and investor_id into metadata
+    deal_metadata.as_mut_bytes()[0..32].copy_from_slice(&bob_id); // originator
+    deal_metadata.as_mut_bytes()[32..64].copy_from_slice(&alice_id); // investor
 
     transactions.push(LoanTransaction {
         transaction_id: [7u8; 32],
-        user_id: alice_id, // Alice initiates the loan
-        loan_id,
-        transaction_type: TransactionType::LoanOrigination,
+        user_id: alice_id, // Alice initiates the deal
+        deal_id,
+        transaction_type: TransactionType::DealOrigination,
         amount: 5_000_000, // $50,000 in cents
         created_at: batch_timestamp + 600,
-        metadata: loan_metadata,
+        metadata: deal_metadata,
     });
 
-    // 8. First loan payment: $2,500
+    // 8. First deal payment: $2,500
     transactions.push(LoanTransaction {
         transaction_id: [8u8; 32],
         user_id: bob_id,
-        loan_id,
-        transaction_type: TransactionType::LoanPayment,
+        deal_id,
+        transaction_type: TransactionType::DealPayment,
         amount: 250_000, // $2,500 in cents
         created_at: batch_timestamp + 700,
         metadata: MetadataArray::empty(),
     });
 
-    // 9. Second loan payment: $2,500
+    // 9. Second deal payment: $2,500
     transactions.push(LoanTransaction {
         transaction_id: [9u8; 32],
         user_id: bob_id,
-        loan_id,
-        transaction_type: TransactionType::LoanPayment,
+        deal_id,
+        transaction_type: TransactionType::DealPayment,
         amount: 250_000, // $2,500 in cents
         created_at: batch_timestamp + 800,
         metadata: MetadataArray::empty(),
@@ -562,7 +562,7 @@ async fn run_benchmark_suite(args: &Args) -> Result<()> {
         stdin.write(&zkvm_input);
 
         let (_public_values, _execution_report) = client
-            .execute(LOAN_PROGRAM_ELF, &stdin)
+            .execute(DEAL_PROGRAM_ELF, &stdin)
             .run()
             .map_err(|e| eyre::eyre!("SP1 execution failed: {}", e))?;
         info!("✅ Local benchmark completed successfully");
@@ -683,111 +683,111 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
 
     // Pre-fund the initial state like the working test (no UserDeposit transaction needed)
     let mut initial_state = LoanState::new();
-    let borrower_id = [1u8; 32]; // Different user IDs
-    let lender_id = [2u8; 32]; // Different user IDs
-    let loan_id = [1u8; 32];
+    let originator_id = [1u8; 32]; // Different user IDs
+    let investor_id = [2u8; 32]; // Different user IDs
+    let deal_id = [1u8; 32];
 
     // Fund both users with massive balances to handle millions of transactions
     initial_state.balance_state.balances.insert(
-        borrower_id,
-        arda_credit_lib::UserBalance::new(borrower_id, 1_000_000_000_000, batch_timestamp), // $10 trillion in cents
+        originator_id,
+        arda_credit_lib::UserBalance::new(originator_id, 1_000_000_000_000, batch_timestamp), // $10 trillion in cents
     );
     initial_state.balance_state.balances.insert(
-        lender_id,
-        arda_credit_lib::UserBalance::new(lender_id, 1_000_000_000_000, batch_timestamp), // $10 trillion in cents
+        investor_id,
+        arda_credit_lib::UserBalance::new(investor_id, 1_000_000_000_000, batch_timestamp), // $10 trillion in cents
     );
 
     let mut transactions = vec![
-        // 1. Borrower registration
+        // 1. Originator registration
         {
-            let mut borrower_metadata = MetadataArray::empty();
-            borrower_metadata.as_mut_bytes()[0] = 1; // UserType::Investor (borrower)
+            let mut originator_metadata = MetadataArray::empty();
+            originator_metadata.as_mut_bytes()[0] = 1; // UserType::Originator
             LoanTransaction {
                 transaction_id: [1u8; 32],
-                user_id: borrower_id,
-                loan_id: [0u8; 32],
+                user_id: originator_id,
+                deal_id: [0u8; 32],
                 transaction_type: TransactionType::UserRegistration,
                 amount: 0,
                 created_at: batch_timestamp + 100,
-                metadata: borrower_metadata,
+                metadata: originator_metadata,
             }
         },
-        // 2. Lender registration
+        // 2. Investor registration
         {
-            let mut lender_metadata = MetadataArray::empty();
-            lender_metadata.as_mut_bytes()[0] = 2; // UserType::Originator
+            let mut investor_metadata = MetadataArray::empty();
+            investor_metadata.as_mut_bytes()[0] = 2; // UserType::Investor
             LoanTransaction {
                 transaction_id: [2u8; 32],
-                user_id: lender_id,
-                loan_id: [0u8; 32],
+                user_id: investor_id,
+                deal_id: [0u8; 32],
                 transaction_type: TransactionType::UserRegistration,
                 amount: 0,
                 created_at: batch_timestamp + 110,
-                metadata: lender_metadata,
+                metadata: investor_metadata,
             }
         },
-        // 3. Borrower KYC submission
+        // 3. Originator KYC submission
         LoanTransaction {
             transaction_id: [3u8; 32],
-            user_id: borrower_id,
-            loan_id: [0u8; 32],
+            user_id: originator_id,
+            deal_id: [0u8; 32],
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
             created_at: batch_timestamp + 120,
             metadata: MetadataArray::empty(),
         },
-        // 4. Lender KYC submission
+        // 4. Investor KYC submission
         LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: lender_id,
-            loan_id: [0u8; 32],
+            user_id: investor_id,
+            deal_id: [0u8; 32],
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
             created_at: batch_timestamp + 130,
             metadata: MetadataArray::empty(),
         },
-        // 5. Borrower KYC verification (approved)
+        // 5. Originator KYC verification (approved)
         {
             let mut kyc_metadata = MetadataArray::empty();
             kyc_metadata.as_mut_bytes()[0] = 1; // Approved
             LoanTransaction {
                 transaction_id: [5u8; 32],
-                user_id: borrower_id,
-                loan_id: [0u8; 32],
+                user_id: originator_id,
+                deal_id: [0u8; 32],
                 transaction_type: TransactionType::KycVerification,
                 amount: 0,
                 created_at: batch_timestamp + 140,
                 metadata: kyc_metadata,
             }
         },
-        // 6. Lender KYC verification (approved)
+        // 6. Investor KYC verification (approved)
         {
             let mut kyc_metadata = MetadataArray::empty();
             kyc_metadata.as_mut_bytes()[0] = 1; // Approved
             LoanTransaction {
                 transaction_id: [6u8; 32],
-                user_id: lender_id,
-                loan_id: [0u8; 32],
+                user_id: investor_id,
+                deal_id: [0u8; 32],
                 transaction_type: TransactionType::KycVerification,
                 amount: 0,
                 created_at: batch_timestamp + 150,
                 metadata: kyc_metadata,
             }
         },
-        // 7. Loan origination (with proper metadata)
+        // 7. Deal origination (with proper metadata)
         {
-            let mut loan_metadata = MetadataArray::empty();
-            // Pack borrower_id and lender_id into metadata
-            loan_metadata.as_mut_bytes()[0..32].copy_from_slice(&borrower_id); // borrower
-            loan_metadata.as_mut_bytes()[32..64].copy_from_slice(&lender_id); // lender
+            let mut deal_metadata = MetadataArray::empty();
+            // Pack originator_id and investor_id into metadata
+            deal_metadata.as_mut_bytes()[0..32].copy_from_slice(&originator_id); // originator
+            deal_metadata.as_mut_bytes()[32..64].copy_from_slice(&investor_id); // investor
             LoanTransaction {
                 transaction_id: [7u8; 32],
-                user_id: lender_id, // Lender initiates the loan
-                loan_id,
-                transaction_type: TransactionType::LoanOrigination,
+                user_id: investor_id, // Investor initiates the deal
+                deal_id,
+                transaction_type: TransactionType::DealOrigination,
                 amount: 100_000_000, // $1,000,000 in cents
                 created_at: batch_timestamp + 160,
-                metadata: loan_metadata,
+                metadata: deal_metadata,
             }
         },
     ];
@@ -830,9 +830,9 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
 
         transactions.push(LoanTransaction {
             transaction_id,
-            user_id: borrower_id, // Borrower makes payments
-            loan_id,
-            transaction_type: TransactionType::LoanPayment,
+            user_id: originator_id, // Originator makes payments
+            deal_id,
+            transaction_type: TransactionType::DealPayment,
             amount: ((i as u64 % 100) + 1) * 100, // Payments: $1.00 to $100.00 in cents
             created_at: safe_timestamp,
             metadata: MetadataArray::empty(),
@@ -1075,7 +1075,7 @@ fn scale_batch_transactions(batch: &mut LoanBatch, target_count: u32, proof_inde
     let payment_txs: Vec<LoanTransaction> = batch
         .transactions
         .iter()
-        .filter(|tx| tx.transaction_type == TransactionType::LoanPayment)
+        .filter(|tx| tx.transaction_type == TransactionType::DealPayment)
         .cloned()
         .collect();
 

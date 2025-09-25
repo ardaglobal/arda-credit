@@ -11,6 +11,24 @@
 //! - Consistent error handling: All operations use the same Result patterns
 //! - Comprehensive documentation: All commands have detailed help text
 //! - Validation: Input validation happens at the CLI level before delegation
+//!
+//! ## Recent Changes
+//!
+//! Converted from loan-based CLI to deal-based CLI:
+//! - Loan commands → Deal commands (consolidated with marketplace/transfer)
+//! - Separate Marketplace commands → integrated into Deal commands
+//! - Separate Transfer commands → integrated into Deal commands
+//! - Updated terminology: borrower → originator, lender → investor
+//!
+//! ## Command Structure
+//!
+//! - **Deal**: Core deal operations, marketplace, and transfers (consolidated)
+//! - **User**: User management and KYC operations
+//! - **Pool**: Liquidity pool creation and management
+//! - **Balance**: Balance tracking and withdrawal operations
+//! - **Batch**: Batch processing and proof generation
+//! - **Auth**: Authentication testing
+//! - **Benchmark**: Performance testing (feature-gated)
 
 use clap::{Parser, Subcommand};
 use eyre::Result;
@@ -24,10 +42,8 @@ use crate::{
     auth::{handle_auth_command, AuthCommands},
     balance::{handle_balance_command, BalanceCommands},
     batch::{handle_batch_command, BatchCommands},
-    loans::{handle_loan_command, LoanCommands},
-    marketplace::{handle_marketplace_command, MarketplaceCommands},
+    deals::{handle_deal_command, DealCommands},
     pools::{handle_pool_command, PoolCommands},
-    transfers::{handle_transfer_command, TransferCommands},
     user::{handle_user_command, UserCommands},
 };
 
@@ -37,19 +53,25 @@ use crate::benchmarks::{handle_benchmark_command, BenchmarkCommands};
 /// Main CLI application structure
 #[derive(Parser)]
 #[command(name = "cli")]
-#[command(about = "Arda Credit CLI - Privacy-preserving loan operations")]
+#[command(about = "Arda Credit CLI - Privacy-preserving deal operations")]
 #[command(version)]
-#[command(long_about = "
-Arda Credit CLI provides comprehensive loan operation capabilities including:
-- User management and KYC operations
-- Liquidity pool creation and management  
-- Loan origination, payments, and closeouts
-- Balance and withdrawal management
-- Batch processing and ZK proof generation
-- Performance testing and analytics
+#[command(
+    long_about = r#"Arda Credit CLI - Privacy-preserving deal system built on SP1 zero-knowledge proofs
 
-All operations maintain privacy through zero-knowledge proofs while enabling
-regulatory compliance and transaction verification.")]
+This command-line interface provides access to all deal operations including:
+• Deal origination, payments, and closeouts
+• Deal marketplace trading (listing, browsing, purchasing)
+• Deal ownership transfers between investors
+• User management and KYC operations
+• Liquidity pool creation and management
+• Batch processing and proof generation
+
+All deal operations maintain transaction privacy through zero-knowledge proofs
+while enabling regulatory compliance and auditability.
+
+For detailed command help, use: cli deal --help
+"#
+)]
 pub struct Cli {
     /// API server base URL
     #[arg(
@@ -78,9 +100,9 @@ pub enum Commands {
     #[command(subcommand)]
     Pool(PoolCommands),
 
-    /// Credit/loan operations (investors, merchants, credit lines)
+    /// Deal operations (CRUD, payments, marketplace, transfers) - consolidated from separate categories
     #[command(subcommand)]
-    Loan(LoanCommands),
+    Deal(DealCommands),
 
     /// Balance, wallet, and withdrawal operations
     #[command(subcommand)]
@@ -90,15 +112,7 @@ pub enum Commands {
     #[command(subcommand)]
     Batch(BatchCommands),
 
-    /// Marketplace loan trading operations (Worker A)
-    #[command(subcommand)]
-    Marketplace(MarketplaceCommands),
-
-    /// Transfer loan ownership operations (Worker B)
-    #[command(subcommand)]
-    Transfer(TransferCommands),
-
-    /// Magic link authentication testing (NEW)
+    /// Magic link authentication testing
     #[command(subcommand)]
     Auth(AuthCommands),
 
@@ -106,42 +120,6 @@ pub enum Commands {
     #[cfg(any(test, feature = "testing"))]
     #[command(subcommand)]
     Benchmark(BenchmarkCommands),
-
-    /// Legacy commands for backward compatibility (deprecated)
-    #[command(flatten)]
-    Legacy(LegacyCommands),
-}
-
-/// Legacy commands maintained for backward compatibility
-/// These will be removed in a future version
-#[derive(Subcommand)]
-pub enum LegacyCommands {
-    /// Submit a new transaction to the batch processing queue
-    #[deprecated(note = "Use 'batch submit-transaction' instead")]
-    SubmitTransaction {
-        /// Transaction amount to add to the counter
-        #[arg(short, long)]
-        amount: i32,
-    },
-
-    /// View all pending (unbatched) transactions  
-    #[deprecated(note = "Use 'batch view-pending' instead")]
-    ViewPending,
-
-    /// Check API server health
-    #[deprecated(note = "Use 'batch health-check' instead")]
-    HealthCheck,
-
-    /// Trigger batch creation and get contract submission data
-    #[deprecated(note = "Use 'batch trigger' instead")]
-    TriggerBatch {
-        /// Maximum number of transactions to include in batch
-        #[arg(long, default_value = "10")]
-        batch_size: Option<i32>,
-        /// Show detailed output including private information
-        #[arg(short, long)]
-        verbose: bool,
-    },
 }
 
 /// Initialize CLI application with logging and configuration
@@ -175,24 +153,14 @@ pub async fn run_cli() -> Result<()> {
         Commands::Pool(cmd) => {
             handle_pool_command(&client, cmd, cli.verbose).await?;
         }
-        Commands::Loan(cmd) => {
-            handle_loan_command(&client, cmd, cli.verbose).await?;
+        Commands::Deal(cmd) => {
+            handle_deal_command(&client, cmd, cli.verbose).await?;
         }
         Commands::Balance(cmd) => {
             handle_balance_command(&client, cmd, cli.verbose).await?;
         }
         Commands::Batch(cmd) => {
             handle_batch_command(&client, cmd, cli.verbose).await?;
-        }
-        Commands::Marketplace(cmd) => {
-            handle_marketplace_command(cmd)
-                .await
-                .map_err(|e| eyre::eyre!("Marketplace command failed: {}", e))?;
-        }
-        Commands::Transfer(cmd) => {
-            handle_transfer_command(cmd)
-                .await
-                .map_err(|e| eyre::eyre!("Transfer command failed: {}", e))?;
         }
         Commands::Auth(cmd) => {
             handle_auth_command(&client, cmd, cli.verbose).await?;
@@ -201,50 +169,10 @@ pub async fn run_cli() -> Result<()> {
         Commands::Benchmark(cmd) => {
             handle_benchmark_command(&client, cmd, cli.verbose).await?;
         }
-        Commands::Legacy(cmd) => {
-            handle_legacy_command(&client, cmd, cli.verbose).await?;
-        }
     }
 
     info!("✅ CLI command completed successfully");
     Ok(())
-}
-
-/// Handle legacy commands with deprecation warnings
-async fn handle_legacy_command(
-    client: &BatchApiClient,
-    command: LegacyCommands,
-    verbose: bool,
-) -> Result<()> {
-    match command {
-        #[allow(deprecated)]
-        LegacyCommands::SubmitTransaction { amount } => {
-            eprintln!("⚠️  WARNING: 'submit-transaction' is deprecated. Use 'batch submit-transaction' instead.");
-            crate::batch::submit_transaction(client, amount).await
-        }
-        #[allow(deprecated)]
-        LegacyCommands::ViewPending => {
-            eprintln!(
-                "⚠️  WARNING: 'view-pending' is deprecated. Use 'batch view-pending' instead."
-            );
-            crate::batch::view_pending_transactions(client).await
-        }
-        #[allow(deprecated)]
-        LegacyCommands::HealthCheck => {
-            eprintln!(
-                "⚠️  WARNING: 'health-check' is deprecated. Use 'batch health-check' instead."
-            );
-            crate::batch::health_check(client).await
-        }
-        #[allow(deprecated)]
-        LegacyCommands::TriggerBatch {
-            batch_size,
-            verbose: cmd_verbose,
-        } => {
-            eprintln!("⚠️  WARNING: 'trigger-batch' is deprecated. Use 'batch trigger' instead.");
-            crate::batch::trigger_batch(client, batch_size, cmd_verbose || verbose).await
-        }
-    }
 }
 
 /// CLI middleware for common operations
@@ -284,7 +212,7 @@ impl CliMiddleware {
 }
 
 // ============================================================================
-// HELPER FUNCTIONS FOR MARKETPLACE AND TRANSFER CLI
+// HELPER FUNCTIONS FOR CLI
 // ============================================================================
 
 /// Get the API base URL from environment or default

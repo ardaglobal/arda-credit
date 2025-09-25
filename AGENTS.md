@@ -4,12 +4,12 @@ This file provides guidance to AI agents when working with code in this reposito
 
 ## Overview
 
-**Arda Credit** is a privacy-preserving loan vApp (verifiable app) built on SP1 zero-knowledge proofs. The MVP enables loan origination, payments, and closeouts with KYC verification, plus **liquidity pool creation and management** for investors. All operations maintain transaction privacy through batch processing and ZK proofs.
+**Arda Credit** is a privacy-preserving deal vApp (verifiable app) built on SP1 zero-knowledge proofs. The MVP enables deal origination, payments, and closeouts with KYC verification, plus **liquidity pool creation and management** for investors. All operations maintain transaction privacy through batch processing and ZK proofs.
 
-### Core Loan Features
+### Core Deal Features
 
 **User Types & KYC:**
-- **Investors** and **Lenders** - both can be KYC'd or non-KYC'd
+- **Investors** and **Originators** - both can be KYC'd or non-KYC'd
 - **KYC Status** - used in transaction flows for compliance
 - **Account Registration** - user registration with KYC verification
 
@@ -20,10 +20,12 @@ This file provides guidance to AI agents when working with code in this reposito
 - **Withdrawal Processing** - KYC validation, balance verification, and transaction tracking
 - **Multi-table Architecture** - Separate deposit/withdrawal tracking and user balance systems
 
-**Loan Operations:**
-- **Loan Origination** - create new loans between parties
-- **Loan Payments** - make payments toward outstanding loans
-- **Loan Closeout** - final settlement and loan completion
+**Deal Operations:**
+- **Deal Origination** - create new deals between parties
+- **Deal Payments** - make payments toward outstanding deals
+- **Deal Closeout** - final settlement and deal completion
+- **Deal Marketplace** - list deals for sale, browse available deals, purchase deals
+- **Deal Transfers** - transfer deal ownership between investors with validation
 
 **Liquidity Pool Management:**
 - **Pool Creation** - investors can create yield-bearing liquidity pools with deployment rules
@@ -32,7 +34,7 @@ This file provides guidance to AI agents when working with code in this reposito
 - **Pool State Tracking** - total deposits, available/utilized liquidity, status management
 
 **Privacy & Verification:**
-- Users can **prove transaction inclusion** (loan payment, origination, closeout, KYC status)
+- Users can **prove transaction inclusion** (deal payment, origination, closeout, KYC status)
 - **Batch processing** keeps individual transaction details private
 - **Zero-knowledge proofs** verify state transitions without revealing private data
 
@@ -48,7 +50,7 @@ For detailed architecture information, see [`docs/architecture/three-component-o
 **Component Structure:**
 - **`program/`** - SP1 zkVM program for privacy-preserving computations
 - **`script/`** - Local testing with fast SP1 Core proofs
-- **`cli/`** - Command-line interface for loan operations and verification
+- **`cli/`** - Command-line interface for deal operations and verification
 - **`api/`** - REST/GraphQL API server with ZK proof generation
 - **`db/`** - PostgreSQL database with ADS (Authenticated Data Structures)
 - **`contracts/`** - Solidity contracts for on-chain proof verification
@@ -74,7 +76,7 @@ make deploy                         # Deploy circuit using SINDRI_CIRCUIT_TAG fr
 ### Development Workflow
 ```bash
 # Fast local SP1 development (no database required)
-make run                           # ~8s Core proofs: test loan operations
+make run                           # ~8s Core proofs: test deal operations
 
 # Full stack development
 make up                             # Start database + server (uses pre-built image)
@@ -109,15 +111,29 @@ make cli ARGS="create-pool --name \"My Pool\" --max-ltv-ratio 0.8 --max-interest
 make cli ARGS="list-pools --verbose"
 make cli ARGS="get-pool --pool-id <pool-id> --verbose"
 
+# Deal operations (consolidated functionality)
+make cli ARGS="deal originate --originator-id 123 --investor-id 456 --amount 10000"
+make cli ARGS="deal payment --deal-id 789 --amount 1000"
+make cli ARGS="deal closeout --deal-id 789"
+make cli ARGS="deal list --status active --limit 20"
+make cli ARGS="deal get --deal-id 789"
+
+# Deal marketplace operations (consolidated into deal commands)
+make cli ARGS="deal list-for-sale --deal-id 789 --asking-price 9500 --seller-id 456"
+make cli ARGS="deal browse-marketplace --limit 10"
+make cli ARGS="deal remove-from-sale --deal-id 789"
+make cli ARGS="deal marketplace-stats"
+
+# Deal transfer operations (consolidated into deal commands)
+make cli ARGS="deal transfer --deal-id 789 --from-investor-id 456 --to-investor-id 101 --transfer-price 9500"
+make cli ARGS="deal transfer-history --deal-id 789"
+make cli ARGS="deal validate-transfer --deal-id 789 --current-investor-id 456"
+make cli ARGS="deal user-transfer-history --user-id 456"
+
 # USDC operations
 make cli ARGS="get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
 make cli ARGS="initiate-withdrawal --user-address 0x742E... --recipient-address 0x123... --amount 100.50"
 make cli ARGS="get-withdrawal-status --request-id 1"
-
-# Loan operations
-make cli ARGS="originate-loan --borrower-id 123 --lender-id 456 --amount 10000"
-make cli ARGS="make-payment --loan-id 789 --amount 1000"
-make cli ARGS="closeout-loan --loan-id 789"
 
 # Batch management
 make cli ARGS="view-pending"
@@ -126,7 +142,7 @@ make cli ARGS="list-batches"
 make cli ARGS="download-proof --batch-id 1"
 
 # Transaction verification
-make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id abc123 --transaction-type loan_payment"
+make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id abc123 --transaction-type deal_payment"
 ```
 
 **Complete command reference:** Run `make help` to see all available commands.
@@ -180,7 +196,7 @@ MAGIC_BASE_URL=https://app.arda.xyz/auth/verify  # Base URL for magic links
 
 **Production deployment:**
 ```bash
-# Deploy Arda Credit loan contract (set env vars first)
+# Deploy Arda Credit ARDA contract (set env vars first)
 make deploy-contract
 make deploy-contract-help           # Show required environment variables
 ```
@@ -201,8 +217,8 @@ forge create lib/sp1-contracts/contracts/src/SP1MockVerifier.sol:SP1MockVerifier
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
   --broadcast
 
-# Deploy Loan contract (replace VERIFIER_ADDRESS with deployed address above)
-forge create src/Loan.sol:Loan \
+# Deploy ARDA contract (replace VERIFIER_ADDRESS with deployed address above)
+forge create src/ARDA.sol:ARDA \
   --rpc-url http://127.0.0.1:8545 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
   --broadcast \
@@ -225,21 +241,23 @@ Arda Credit implements a **three-component architecture** with clean separation 
 
 For detailed architecture information, see [`docs/architecture/three-component-overview.md`](docs/architecture/three-component-overview.md).
 
-### Loan Processing Flow
-1. **User Registration**: Users register as investors/lenders with optional KYC
+### Deal Processing Flow
+1. **User Registration**: Users register as investors/originators with optional KYC
 2. **USDC Deposits**: Users deposit USDC to smart contract, automatically updating internal balances
-3. **Loan Origination**: KYC'd users create loans (queued in `loan_transactions` table)
-4. **Payment Processing**: Loan payments batched and processed via ZK proofs
+3. **Deal Origination**: KYC'd users create deals (queued in `deal_transactions` table)
+4. **Payment Processing**: Deal payments batched and processed via ZK proofs
 5. **USDC Withdrawals**: KYC'd users withdraw USDC with balance validation and smart contract execution
-6. **State Transitions**: Loan states (active, paid, closed) updated with cryptographic verification
-7. **Contract Posting**: Background process posts proven loan state changes to Ethereum
+6. **State Transitions**: Deal states (active, paid, closed) updated with cryptographic verification
+7. **Marketplace Trading**: Deals can be listed for sale, browsed, and transferred between investors
+8. **Ownership Transfers**: Deal ownership changes with validation and cryptographic verification
+9. **Contract Posting**: Background process posts proven deal state changes to Ethereum
 
 ### Zero-Knowledge Properties
 
 For detailed privacy guarantees and ZK properties, see [`docs/architecture/three-component-overview.md#zero-knowledge-properties`](docs/architecture/three-component-overview.md#zero-knowledge-properties).
 
 **Core Privacy Guarantees:**
-- Individual loan amounts, payments, and user details remain hidden
+- Individual deal amounts, payments, and user details remain hidden
 - Only state root transitions and transaction counts are public
 - Users can prove their specific transaction was included without revealing others
 - Batch processing maintains privacy while enabling regulatory compliance
@@ -260,6 +278,8 @@ make env                            # Copies .env.example to .env
 - `SINDRI_API_KEY` - API key for proof generation (get from https://sindri.app)
 - `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
 - `ETHEREUM_RPC_URL` - Ethereum RPC endpoint for contract interactions
+- `ETHEREUM_ARDA_CONTRACT_ADDRESS` - Deployed ARDA contract address (was LOAN_CONTRACT_ADDRESS)
+- `DEAL_PROGRAM_VKEY` - Deal program verification key (was LOAN_PROGRAM_VKEY)
 - `EMAIL_DEBUG_MODE` - Set to `true` to bypass AWS SES and log magic links to console
 - `EMAIL_ENABLED` - Set to `true` to enable email functionality
 
@@ -272,41 +292,79 @@ make env                            # Copies .env.example to .env
 
 For production deployment, see [`docs/deployment/security-production.md`](docs/deployment/security-production.md).
 
-## Loan Data Structures
+## Deal Data Structures
 
 ### Core Types
 ```rust
 // User account with KYC status
 struct User {
     user_id: uuid::Uuid,
-    user_type: UserType,  // Investor | Lender
+    user_type: UserType,  // Investor | Originator
     email: String,
     kyc_status: KycStatus,  // NotSubmitted | Pending | Approved | Rejected
     kyc_verified_at: Option<DateTime<Utc>>,
 }
 
-// Loan record
-struct Loan {
-    loan_id: uuid::Uuid,
-    borrower_id: uuid::Uuid,
-    lender_id: uuid::Uuid,
+// Deal record (converted from Loan)
+struct Deal {
+    deal_id: uuid::Uuid,
+    originator_id: uuid::Uuid,  // was borrower_id
+    investor_id: uuid::Uuid,    // was lender_id
     principal_amount: Decimal,
     outstanding_balance: Decimal,
-    interest_rate: Decimal,
-    loan_status: LoanStatus,  // Originated | Active | PaidOff | Closed
+    interest_rate_bps: i32,
+    loan_status: String,  // keeping same field name: originated | active | paid_off | closed | defaulted
     originated_at: DateTime<Utc>,
+    maturity_date: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }
 
-// Loan transaction (payments, origination, closeout)
-struct LoanTransaction {
+// Deal payment (converted from Payment)
+struct DealPayment {
+    payment_id: uuid::Uuid,
+    deal_id: uuid::Uuid,      // was loan_id
+    payer_id: uuid::Uuid,
+    amount: Decimal,
+    payment_type: String, // regular | principal | interest | penalty
+    transaction_hash: Option<String>,
+    processed_at: DateTime<Utc>,
+    created_at: DateTime<Utc>,
+}
+
+// Deal transaction for ZK proof integration (converted from LoanTransaction)
+struct DealTransaction {
     transaction_id: uuid::Uuid,
-    loan_id: uuid::Uuid,
-    transaction_type: TransactionType,  // Origination | Payment | Closeout
+    deal_id_hash: Option<[u8; 32]>,  // was loan_id_hash
+    transaction_type: TransactionType,  // DealOrigination | DealPayment | DealCloseout
     amount: Decimal,
     created_at: DateTime<Utc>,
 }
 
-// USDC deposit from smart contract
+// Deal marketplace listing (converted from LoanListing)
+struct DealListing {
+    listing_id: uuid::Uuid,
+    deal_id: uuid::Uuid,      // was loan_id
+    seller_id: uuid::Uuid,
+    asking_price: Decimal,
+    description: Option<String>,
+    listed_at: DateTime<Utc>,
+    expires_at: Option<DateTime<Utc>>,
+    status: String, // active | sold | cancelled | expired
+}
+
+// Deal ownership transfer (converted from LoanTransfer)
+struct DealTransfer {
+    transfer_id: uuid::Uuid,
+    deal_id: uuid::Uuid,          // was loan_id
+    from_investor_id: uuid::Uuid, // was from_lender_id
+    to_investor_id: uuid::Uuid,   // was to_lender_id
+    transfer_price: Decimal,
+    transfer_date: DateTime<Utc>,
+    status: String, // pending | completed | cancelled
+}
+
+// USDC deposit from smart contract (unchanged)
 struct UsdcDeposit {
     id: i32,
     user_address: String,  // Ethereum wallet address
@@ -317,26 +375,16 @@ struct UsdcDeposit {
     block_number: i64,
     created_at: DateTime<Utc>,
 }
-
-// User deposit balance aggregation
-struct UserDepositBalance {
-    user_address: String,
-    total_deposited: Decimal,    // Cumulative deposits in wei
-    total_deposited_usdc: Decimal, // Human-readable USDC amount  
-    deposit_count: i32,
-    first_deposit_at: Option<DateTime<Utc>>,
-    last_deposit_at: Option<DateTime<Utc>>,
-}
 ```
 
 ## Common Development Patterns
 
-### Adding New Loan Operations
-1. Add transaction type to `TransactionType` enum in `lib/src/loan_types.rs`
-2. Implement handler in `api/src/loan_handlers.rs`
-3. Add CLI command in `cli/src/bin/cli.rs`
+### Adding New Deal Operations
+1. Add transaction type to `TransactionType` enum in `lib/src/transactions.rs`
+2. Implement handler in `api/src/deal_handlers.rs`
+3. Add CLI command in `cli/src/deals/mod.rs`
 4. Add database migration if needed
-5. Test with `make cli ARGS="your-loan-command"`
+5. Test with `make cli ARGS="deal your-new-command"`
 
 ### KYC Integration
 1. KYC status tracked in `users` table
@@ -353,15 +401,15 @@ struct UserDepositBalance {
 1. Modify contracts in `contracts/src/`
 2. Test: `make forge-test`
 3. Deploy: `make deploy-contract` (after setting env vars)
-4. Update `ETHEREUM_CONTRACT_ADDRESS` in environment
+4. Update `ETHEREUM_ARDA_CONTRACT_ADDRESS` in environment
 
 ### Circuit Changes
-1. Modify SP1 program in `program/src/main.rs` for loan transaction processing
+1. Modify SP1 program in `program/src/main.rs` for deal transaction processing
 2. Test locally: `make run`
 3. Deploy to Sindri: `make deploy`
 4. Update `SINDRI_CIRCUIT_TAG` if using specific version
 
-## Loan Workflow Examples
+## Deal Workflow Examples
 
 ### USDC Deposit Flow
 ```bash
@@ -377,28 +425,28 @@ psql $DATABASE_URL -c "SELECT * FROM usdc_deposits WHERE user_address = '0x742E.
 psql $DATABASE_URL -c "SELECT * FROM user_deposit_balances WHERE user_address = '0x742E...';"
 ```
 
-### Complete Loan Lifecycle
+### Complete Deal Lifecycle
 ```bash
 # 1. Register users
-make cli ARGS="register-user --user-type lender --email lender@example.com"
+make cli ARGS="register-user --user-type originator --email originator@example.com"
 make cli ARGS="register-user --user-type investor --email investor@example.com"
 
 # 2. Submit KYC (both users)
-make cli ARGS="submit-kyc --user-id lender-uuid"
+make cli ARGS="submit-kyc --user-id originator-uuid"
 make cli ARGS="submit-kyc --user-id investor-uuid"
 
-# 3. Originate loan (KYC required)
-make cli ARGS="originate-loan --borrower-id investor-uuid --lender-id lender-uuid --amount 50000"
+# 3. Originate deal (KYC required)
+make cli ARGS="deal originate --originator-id originator-uuid --investor-id investor-uuid --amount 50000"
 
 # 4. Make payments
-make cli ARGS="make-payment --loan-id loan-uuid --amount 5000"
-make cli ARGS="make-payment --loan-id loan-uuid --amount 5000"
+make cli ARGS="deal payment --deal-id deal-uuid --amount 5000"
+make cli ARGS="deal payment --deal-id deal-uuid --amount 5000"
 
 # 5. Create batch and generate proofs
 make cli ARGS="trigger-batch --verbose"
 
 # 6. Verify payment inclusion (trustless)
-make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id payment-uuid --transaction-type loan_payment"
+make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id payment-uuid --transaction-type deal_payment"
 ```
 
 ### Complete Liquidity Pool Lifecycle
@@ -427,6 +475,51 @@ make cli ARGS="trigger-batch --verbose"
 
 # 8. Verify pool creation was included in ZK proof (trustless verification)
 make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id <pool-creation-uuid> --transaction-type pool_creation"
+```
+
+### Complete Deal Marketplace Lifecycle
+```bash
+# 1. Create and fund a deal
+make cli ARGS="deal originate --originator-id originator-uuid --investor-id investor-uuid --amount 50000"
+
+# 2. List deal for sale (by current investor)
+make cli ARGS="deal list-for-sale --deal-id deal-uuid --asking-price 47500 --seller-id investor-uuid --description \"Great investment opportunity\""
+
+# 3. Browse marketplace
+make cli ARGS="deal browse-marketplace --limit 10 --verbose"
+
+# 4. Get marketplace statistics
+make cli ARGS="deal marketplace-stats --verbose"
+
+# 5. Remove from sale (if needed)
+make cli ARGS="deal remove-from-sale --deal-id deal-uuid"
+
+# 6. All marketplace operations are included in batch processing for ZK proofs
+make cli ARGS="trigger-batch --verbose"
+
+# 7. Verify deal listing was included in ZK proof (trustless verification)
+make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id <listing-uuid> --transaction-type deal_listing"
+```
+
+### Complete Deal Transfer Lifecycle
+```bash
+# 1. Validate transfer is possible
+make cli ARGS="deal validate-transfer --deal-id deal-uuid --current-investor-id current-investor-uuid"
+
+# 2. Execute deal ownership transfer
+make cli ARGS="deal transfer --deal-id deal-uuid --from-investor-id current-investor-uuid --to-investor-id new-investor-uuid --transfer-price 47500"
+
+# 3. Check transfer history for the deal
+make cli ARGS="deal transfer-history --deal-id deal-uuid --limit 5"
+
+# 4. Check user's transfer history
+make cli ARGS="deal user-transfer-history --user-id current-investor-uuid --limit 10"
+
+# 5. All transfer operations are included in batch processing for ZK proofs
+make cli ARGS="trigger-batch --verbose"
+
+# 6. Verify transfer inclusion in ZK proof (trustless verification)
+make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id transfer-transaction-uuid --transaction-type deal_transfer"
 ```
 
 ### Complete Withdrawal Lifecycle with ZK Proof Integration
@@ -469,7 +562,7 @@ cargo check --workspace     # Works without PostgreSQL
 - **Proof generation fails**: Check `SINDRI_API_KEY` and circuit deployment
 - **Database connection errors**: Ensure PostgreSQL running via `make up`
 - **CLI errors**: Verify `ARDA_CREDIT_API_URL` environment variable
-- **KYC validation errors**: Check user KYC status before loan operations
+- **KYC validation errors**: Check user KYC status before deal operations
 - **Contract deployment fails**: Check all Ethereum environment variables are set
 
 ### Service URLs
@@ -482,6 +575,24 @@ cargo check --workspace     # Works without PostgreSQL
 - **AI Chat Interface**: `http://localhost:8080/api/v1/ai/chat`
 - **AI Analytics Dashboard**: `http://localhost:8080/api/v1/ai/analytics/dashboard`
 
+### Key API Endpoints (Updated)
+- **Deal Management**:
+  - `POST /api/v1/deal` - Create deal
+  - `GET /api/v1/deals` - List deals
+  - `GET /api/v1/deal/{id}` - Get deal details
+  - `PUT /api/v1/deal/{id}` - Update deal
+  - `DELETE /api/v1/deal/{id}` - Delete deal
+- **Deal Marketplace** (consolidated):
+  - `GET /api/v1/deals/for-sale` - Browse marketplace
+  - `POST /api/v1/deal/{id}/list-for-sale` - List deal for sale
+  - `DELETE /api/v1/deal/{id}/remove-from-sale` - Remove from sale
+  - `GET /api/v1/deals/marketplace/stats` - Marketplace statistics
+- **Deal Transfers** (consolidated):
+  - `POST /api/v1/deal/{id}/transfer` - Transfer ownership
+  - `GET /api/v1/deal/{id}/transfers` - Get transfer history
+  - `POST /api/v1/deal/{id}/transfer/validate` - Validate transfer
+  - `GET /api/v1/user/{id}/deal-transfers` - User transfer history
+
 ## Documentation References
 
 For detailed information on specific topics, see the [`docs/`](docs/) directory:
@@ -492,7 +603,7 @@ For detailed information on specific topics, see the [`docs/`](docs/) directory:
 
 ### Architecture & Design
 - **Three-Component Architecture**: [`docs/architecture/three-component-overview.md`](docs/architecture/three-component-overview.md)
-- **Loan System Architecture**: [`docs/architecture/loan-system.md`](docs/architecture/loan-system.md)
+- **Deal System Architecture**: [`docs/architecture/deal-system.md`](docs/architecture/deal-system.md)
 - **Performance Targets**: [`docs/architecture/performance-targets.md`](docs/architecture/performance-targets.md)
 
 ### Integration & APIs
@@ -503,5 +614,57 @@ For detailed information on specific topics, see the [`docs/`](docs/) directory:
 ### Deployment & Operations
 - **Production Security**: [`docs/deployment/security-production.md`](docs/deployment/security-production.md)
 - **Monitoring Setup**: [`docs/deployment/monitoring.md`](docs/deployment/monitoring.md)
+
+## System Conversion Summary
+
+This system has been converted from loan-based terminology to deal-based terminology for improved clarity and business alignment.
+
+### Key Changes Made
+
+**Terminology Updates:**
+- Loan → Deal (throughout system)
+- Borrower → Originator (user who requests the deal)
+- Lender → Investor (user who provides capital)
+- All database tables: `loans` → `deals`, `loan_transactions` → `deal_transactions`, etc.
+- All API endpoints: `/loans` → `/deals`, `/loan/{id}` → `/deal/{id}`, etc.
+- All CLI commands: `loan originate` → `deal originate`, etc.
+
+**Functional Consolidation:**
+- **Marketplace functionality** consolidated into deal endpoints
+- **Transfer functionality** consolidated into deal endpoints
+- **Single unified CLI** for all deal operations (CRUD, marketplace, transfers)
+- **Single unified API** for all deal operations
+
+**Smart Contract Updates:**
+- Contract renamed from "Loan" to "ARDA" for generic branding
+- Internal functions use deal terminology (`verifyDealProof`, `DealBatchPublicValues`)
+- Same security and functionality, updated terminology
+
+**Maintained Compatibility:**
+- Business logic and validation rules unchanged
+- Database field `loan_status` kept for internal compatibility
+- ZK proof structure and verification unchanged
+- Same privacy guarantees and regulatory compliance
+
+### Migration Impact
+
+**What Changed:**
+- All user-facing terminology (APIs, CLI, documentation)
+- Database table and column names
+- Function and variable names throughout codebase
+- Smart contract name and internal references
+
+**What Stayed the Same:**
+- Business logic and transaction validation
+- Zero-knowledge proof generation and verification
+- Privacy guarantees and regulatory compliance features
+- Database relationships and constraints
+- Performance characteristics and scalability
+- Security model and access controls
+
+**Backward Compatibility:**
+- CLI includes legacy commands with deprecation warnings
+- Database migration handles the schema transition
+- No breaking changes to core functionality
 
 See [`docs/README.md`](docs/README.md) for the complete documentation hub.

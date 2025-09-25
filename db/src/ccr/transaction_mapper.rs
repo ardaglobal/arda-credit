@@ -10,7 +10,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::ccr::CcrOperation;
-use crate::{Identity, Loan, LoanTransactionDb};
+use crate::{Deal, DealTransactionDb, Identity};
 
 // Re-export lib transaction types for convenience
 pub use lib::transactions::{LoanTransaction, TransactionType};
@@ -33,8 +33,8 @@ pub enum MappingError {
     #[error("User not found: {user_id}")]
     UserNotFound { user_id: String },
 
-    #[error("Loan not found: {loan_id}")]
-    LoanNotFound { loan_id: String },
+    #[error("Deal not found: {deal_id}")]
+    DealNotFound { deal_id: String },
 
     #[error("Invalid transaction amount: {amount}")]
     InvalidAmount { amount: u64 },
@@ -48,7 +48,7 @@ pub enum MappingError {
 #[derive(Debug, Clone)]
 pub struct MappingContext {
     pub users: HashMap<Uuid, Identity>,
-    pub loans: HashMap<Uuid, Loan>,
+    pub deals: HashMap<Uuid, Deal>,
 }
 
 impl MappingContext {
@@ -56,7 +56,7 @@ impl MappingContext {
     pub fn new() -> Self {
         Self {
             users: HashMap::new(),
-            loans: HashMap::new(),
+            deals: HashMap::new(),
         }
     }
 
@@ -65,9 +65,9 @@ impl MappingContext {
         self.users.insert(user.id, user);
     }
 
-    /// Add a loan to the context
-    pub fn add_loan(&mut self, loan: Loan) {
-        self.loans.insert(loan.id, loan);
+    /// Add a deal to the context
+    pub fn add_deal(&mut self, deal: Deal) {
+        self.deals.insert(deal.id, deal);
     }
 
     /// Get user by ID
@@ -75,9 +75,9 @@ impl MappingContext {
         self.users.get(user_id)
     }
 
-    /// Get loan by ID
-    pub fn get_loan(&self, loan_id: &Uuid) -> Option<&Loan> {
-        self.loans.get(loan_id)
+    /// Get deal by ID
+    pub fn get_deal(&self, deal_id: &Uuid) -> Option<&Deal> {
+        self.deals.get(deal_id)
     }
 }
 
@@ -123,19 +123,19 @@ impl TransactionMapper {
         let created_at = self.timestamp_to_datetime(transaction.created_at)?;
 
         match transaction.transaction_type {
-            TransactionType::LoanOrigination => {
-                let loan_id = self.bytes_to_uuid(&transaction.loan_id)?;
+            TransactionType::DealOrigination => {
+                let loan_id = self.bytes_to_uuid(&transaction.deal_id)?;
                 let borrower_id = self.bytes_to_uuid(&transaction.user_id)?;
 
-                // For loan origination, we need to extract lender_id from metadata or context
+                // For deal origination, we need to extract lender_id from metadata or context
                 let loan =
                     self.context
-                        .get_loan(&loan_id)
-                        .ok_or_else(|| MappingError::LoanNotFound {
-                            loan_id: loan_id.to_string(),
+                        .get_deal(&loan_id)
+                        .ok_or_else(|| MappingError::DealNotFound {
+                            deal_id: loan_id.to_string(),
                         })?;
 
-                let lender_id = loan.lender_id;
+                let lender_id = loan.investor_id;
 
                 Ok(vec![CcrOperation::LoanCreation {
                     loan_id,
@@ -146,8 +146,8 @@ impl TransactionMapper {
                 }])
             }
 
-            TransactionType::LoanPayment => {
-                let loan_id = self.bytes_to_uuid(&transaction.loan_id)?;
+            TransactionType::DealPayment => {
+                let loan_id = self.bytes_to_uuid(&transaction.deal_id)?;
                 let payer_id = self.bytes_to_uuid(&transaction.user_id)?;
                 let payment_id = self.generate_payment_id(&transaction.transaction_id);
 
@@ -165,9 +165,9 @@ impl TransactionMapper {
                 // Create balance update operations for both payer and loan recipient
                 let loan =
                     self.context
-                        .get_loan(&loan_id)
-                        .ok_or_else(|| MappingError::LoanNotFound {
-                            loan_id: loan_id.to_string(),
+                        .get_deal(&loan_id)
+                        .ok_or_else(|| MappingError::DealNotFound {
+                            deal_id: loan_id.to_string(),
                         })?;
 
                 // Payer balance decreases
@@ -183,20 +183,20 @@ impl TransactionMapper {
                 // Lender balance increases (receiver of payment)
                 operations.push(CcrOperation::BalanceUpdate {
                     balance_id: self
-                        .generate_balance_id(&transaction.transaction_id, &loan.lender_id),
-                    identity_id: loan.lender_id,
+                        .generate_balance_id(&transaction.transaction_id, &loan.investor_id),
+                    identity_id: loan.investor_id,
                     amount_delta: transaction.amount as i64,
                     new_balance: self
-                        .calculate_new_balance(loan.lender_id, transaction.amount as i64)?,
+                        .calculate_new_balance(loan.investor_id, transaction.amount as i64)?,
                     created_at,
                 });
 
                 Ok(operations)
             }
 
-            TransactionType::LoanCloseout => {
-                // Loan closeout is treated as a final payment
-                let loan_id = self.bytes_to_uuid(&transaction.loan_id)?;
+            TransactionType::DealCloseout => {
+                // Deal closeout is treated as a final payment
+                let loan_id = self.bytes_to_uuid(&transaction.deal_id)?;
                 let payer_id = self.bytes_to_uuid(&transaction.user_id)?;
                 let payment_id = self.generate_payment_id(&transaction.transaction_id);
 
@@ -249,13 +249,13 @@ impl TransactionMapper {
         }
     }
 
-    /// Convert database LoanTransactionDb to CcrOperation
+    /// Convert database DealTransactionDb to CcrOperation
     ///
     /// This maps database transaction records to CCR operations, handling
     /// the conversion from string-based transaction types to enum variants.
     pub fn db_transaction_to_ccr(
         &self,
-        db_transaction: &LoanTransactionDb,
+        db_transaction: &DealTransactionDb,
     ) -> Result<Vec<CcrOperation>, MappingError> {
         let created_at = db_transaction.created_at;
 
@@ -263,7 +263,7 @@ impl TransactionMapper {
             "loan_origination" | "origination" => {
                 let loan_id =
                     db_transaction
-                        .loan_id
+                        .deal_id
                         .ok_or_else(|| MappingError::MissingRequiredData {
                             field: "loan_id".to_string(),
                         })?;
@@ -276,15 +276,15 @@ impl TransactionMapper {
 
                 let loan =
                     self.context
-                        .get_loan(&loan_id)
-                        .ok_or_else(|| MappingError::LoanNotFound {
-                            loan_id: loan_id.to_string(),
+                        .get_deal(&loan_id)
+                        .ok_or_else(|| MappingError::DealNotFound {
+                            deal_id: loan_id.to_string(),
                         })?;
 
                 Ok(vec![CcrOperation::LoanCreation {
                     loan_id,
                     borrower_id: identity_id,
-                    lender_id: loan.lender_id,
+                    lender_id: loan.investor_id,
                     principal_amount: db_transaction
                         .amount
                         .to_string()
@@ -313,7 +313,7 @@ impl TransactionMapper {
             "loan_payment" | "payment" => {
                 let loan_id =
                     db_transaction
-                        .loan_id
+                        .deal_id
                         .ok_or_else(|| MappingError::MissingRequiredData {
                             field: "loan_id".to_string(),
                         })?;
@@ -344,7 +344,7 @@ impl TransactionMapper {
                 });
 
                 // Add balance updates if we have loan context
-                if let Some(loan) = self.context.get_loan(&loan_id) {
+                if let Some(loan) = self.context.get_deal(&loan_id) {
                     // Payer balance decreases
                     operations.push(CcrOperation::BalanceUpdate {
                         balance_id: self
@@ -358,10 +358,10 @@ impl TransactionMapper {
                     // Lender balance increases
                     operations.push(CcrOperation::BalanceUpdate {
                         balance_id: self
-                            .generate_balance_id_from_uuid(&db_transaction.id, &loan.lender_id),
-                        identity_id: loan.lender_id,
+                            .generate_balance_id_from_uuid(&db_transaction.id, &loan.investor_id),
+                        identity_id: loan.investor_id,
                         amount_delta: amount,
-                        new_balance: self.calculate_new_balance(loan.lender_id, amount)?,
+                        new_balance: self.calculate_new_balance(loan.investor_id, amount)?,
                         created_at,
                     });
                 }
@@ -380,10 +380,10 @@ impl TransactionMapper {
     /// This provides the reverse mapping for compatibility with existing zkVM code
     pub fn ccr_to_transaction_type(operation: &CcrOperation) -> TransactionType {
         match operation {
-            CcrOperation::LoanCreation { .. } => TransactionType::LoanOrigination,
-            CcrOperation::LoanFunding { .. } => TransactionType::LoanOrigination, // Funding is part of origination
-            CcrOperation::Payment { .. } => TransactionType::LoanPayment,
-            CcrOperation::BalanceUpdate { .. } => TransactionType::LoanPayment, // Balance updates are side effects of payments
+            CcrOperation::LoanCreation { .. } => TransactionType::DealOrigination,
+            CcrOperation::LoanFunding { .. } => TransactionType::DealOrigination, // Funding is part of origination
+            CcrOperation::Payment { .. } => TransactionType::DealPayment,
+            CcrOperation::BalanceUpdate { .. } => TransactionType::DealPayment, // Balance updates are side effects of payments
         }
     }
 
@@ -403,7 +403,7 @@ impl TransactionMapper {
     /// Batch convert multiple database transactions to CCR operations
     pub fn batch_db_to_ccr(
         &self,
-        transactions: &[LoanTransactionDb],
+        transactions: &[DealTransactionDb],
     ) -> Result<Vec<CcrOperation>, MappingError> {
         let mut all_operations = Vec::new();
         for transaction in transactions {
@@ -492,8 +492,8 @@ impl TransactionMapper {
         let mut current_balance = 0i64;
 
         // Aggregate balance from all loans involving this user
-        for loan in self.context.loans.values() {
-            if loan.borrower_id == user_id {
+        for loan in self.context.deals.values() {
+            if loan.originator_id == user_id {
                 // For borrowers, outstanding balance is a negative balance (debt)
                 let outstanding = loan
                     .outstanding_balance
@@ -501,7 +501,7 @@ impl TransactionMapper {
                     .parse::<f64>()
                     .unwrap_or(0.0) as i64;
                 current_balance -= outstanding;
-            } else if loan.lender_id == user_id {
+            } else if loan.investor_id == user_id {
                 // For lenders, outstanding balance represents money lent out
                 let outstanding = loan
                     .outstanding_balance
@@ -620,11 +620,11 @@ mod tests {
         };
         context.add_user(user);
 
-        // Add test loan
-        let loan = Loan {
+        // Add test deal
+        let deal = Deal {
             id: Uuid::from_bytes([2u8; 16]),
-            borrower_id: Uuid::from_bytes([1u8; 16]),
-            lender_id: Uuid::from_bytes([3u8; 16]),
+            originator_id: Uuid::from_bytes([1u8; 16]), // was borrower_id
+            investor_id: Uuid::from_bytes([3u8; 16]),   // was lender_id
             principal_amount: rust_decimal::Decimal::new(10_000_000, 2), // $100,000
             outstanding_balance: rust_decimal::Decimal::new(10_000_000, 2),
             interest_rate_bps: 750,
@@ -634,13 +634,13 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
-        context.add_loan(loan);
+        context.add_deal(deal);
 
         context
     }
 
     #[test]
-    fn test_lib_loan_origination_mapping() {
+    fn test_lib_deal_origination_mapping() {
         let context = create_test_context();
         let mapper = TransactionMapper::new(context);
 
@@ -653,14 +653,14 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            loan_id: [2u8; 16]
+            deal_id: [2u8; 16]
                 .iter()
                 .chain([0u8; 16].iter())
                 .cloned()
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            transaction_type: TransactionType::LoanOrigination,
+            transaction_type: TransactionType::DealOrigination,
             amount: 100_000,
             created_at: 1_640_995_200, // 2022-01-01
             metadata: lib::transactions::MetadataArray::empty(),
@@ -685,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lib_loan_payment_mapping() {
+    fn test_lib_deal_payment_mapping() {
         let context = create_test_context();
         let mapper = TransactionMapper::new(context);
 
@@ -698,14 +698,14 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            loan_id: [2u8; 16]
+            deal_id: [2u8; 16]
                 .iter()
                 .chain([0u8; 16].iter())
                 .cloned()
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            transaction_type: TransactionType::LoanPayment,
+            transaction_type: TransactionType::DealPayment,
             amount: 5000,
             created_at: 1_640_995_200,
             metadata: lib::transactions::MetadataArray::empty(),
@@ -748,14 +748,14 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            loan_id: [2u8; 16]
+            deal_id: [2u8; 16]
                 .iter()
                 .chain([0u8; 16].iter())
                 .cloned()
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            transaction_type: TransactionType::LoanOrigination,
+            transaction_type: TransactionType::DealOrigination,
             amount: 100_000,
             created_at: 1_640_995_200,
             metadata: lib::transactions::MetadataArray::empty(),

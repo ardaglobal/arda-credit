@@ -1,10 +1,10 @@
-# SP1 Loan Contracts
+# SP1 ARDA Contracts
 
-Smart contracts for zero-knowledge arithmetic proof verification with comprehensive state management built on [SP1](https://github.com/succinctlabs/sp1) and [SP1VerifierGateway](https://github.com/succinctlabs/sp1-contracts/blob/main/contracts/src/SP1VerifierGateway.sol).
+Smart contracts for zero-knowledge deal processing with comprehensive state management built on [SP1](https://github.com/succinctlabs/sp1) and [SP1VerifierGateway](https://github.com/succinctlabs/sp1-contracts/blob/main/contracts/src/SP1VerifierGateway.sol).
 
 ## Overview
 
-- **Loan.sol**: Main contract implementing SP1 proof verification with state management
+- **ARDA.sol**: Main contract implementing SP1 proof verification with state management
 - **interfaces/IStateManager.sol**: Standardized interface for state operations and proof management
 - **examples/**: Production-ready integration contracts
   - **StateConsumer.sol**: Safe state reading with caching and batch operations
@@ -36,22 +36,22 @@ forge test --fork-url http://127.0.0.1:8545
 
 ## Usage
 
-The Loan contract provides complete state management with ZK proof verification:
+The ARDA contract provides complete state management with ZK proof verification:
 
 ```solidity
 // Update state with ZK proof verification
-loan.updateState(stateId, newState, proof, publicValues);
+arda.updateState(stateId, newState, proof, publicValues);
 
 // Read current state
-bytes32 currentState = loan.getCurrentState(stateId);
+bytes32 currentState = arda.getCurrentState(stateId);
 
 // Batch operations (gas efficient)
-loan.batchUpdateStates(stateIds, newStates, proofs, results);
-bytes32[] memory states = loan.batchReadStates(stateIds);
+arda.batchUpdateStates(stateIds, newStates, proofs, results);
+bytes32[] memory states = arda.batchReadStates(stateIds);
 
 // Proof verification
-bool verified = loan.isProofVerified(proofId);
-bytes memory storedProof = arithmetic.getStoredProof(proofId);
+bool verified = arda.isProofVerified(proofId);
+bytes memory storedProof = arda.getStoredProof(proofId);
 ```
 
 See `examples/README.md` for detailed integration patterns and best practices.
@@ -75,8 +75,8 @@ forge create lib/sp1-contracts/contracts/src/SP1MockVerifier.sol:SP1MockVerifier
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
   --broadcast
 
-# Deploy Loan contract (replace VERIFIER_ADDRESS with deployed address above)
-forge create src/Loan.sol:Loan \
+# Deploy ARDA contract (replace VERIFIER_ADDRESS with deployed address above)
+forge create src/ARDA.sol:ARDA \
   --rpc-url http://127.0.0.1:8545 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
   --broadcast \
@@ -138,13 +138,13 @@ ETHEREUM_WALLET_PRIVATE_KEY=...
 Then deploy the contract to the chain:
 
 ```sh
-forge create src/Arithmetic.sol:Arithmetic --broadcast --rpc-url $ETHEREUM_RPC_URL --private-key $ETHEREUM_WALLET_PRIVATE_KEY --constructor-args $VERIFIER_CONTRACT_ADDRESS $PROGRAM_VKEY
+forge create src/ARDA.sol:ARDA --broadcast --rpc-url $ETHEREUM_RPC_URL --private-key $ETHEREUM_WALLET_PRIVATE_KEY --constructor-args $VERIFIER_CONTRACT_ADDRESS $PROGRAM_VKEY
 ```
 
 It can also be a good idea to verify the contract when you deploy, in which case you would also need to set `ETHERSCAN_API_KEY`:
 
 ```sh
-forge create src/Arithmetic.sol:Arithmetic --broadcast --rpc-url $SEPOLIA_RPC_URL --private-key $METAMASK_PRIVATE_KEY --constructor-args $SEPOLIA_GROTH16_VERIFIER $PROGRAM_VKEY --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
+forge create src/ARDA.sol:ARDA --broadcast --rpc-url $SEPOLIA_RPC_URL --private-key $METAMASK_PRIVATE_KEY --constructor-args $SEPOLIA_GROTH16_VERIFIER $PROGRAM_VKEY --verify --verifier etherscan --etherscan-api-key $ETHERSCAN_API_KEY
 ```
 
 ## GitHub Actions Deployment
@@ -187,5 +187,5 @@ The following secrets need to be configured in your GitHub repository:
 
 The workflow will:
 - Build and test the contracts
-- Deploy the `Arithmetic` contract to Sepolia testnet
+- Deploy the `ARDA` contract to Sepolia testnet
 - Optionally verify the contract on Etherscan

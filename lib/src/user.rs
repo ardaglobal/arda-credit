@@ -254,7 +254,7 @@ mod tests {
         LoanTransaction {
             transaction_id: [1u8; 32],
             user_id,
-            loan_id: [0u8; 32], // Should be all zeros for user registration
+            deal_id: [0u8; 32], // Should be all zeros for user registration
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
             created_at: 1_234_567_890,
@@ -305,7 +305,7 @@ mod tests {
         let kyc_transaction = LoanTransaction {
             transaction_id: [2u8; 32],
             user_id,
-            loan_id: [0u8; 32],
+            deal_id: [0u8; 32], // was loan_id
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
             created_at: 1_234_567_900,
@@ -334,7 +334,7 @@ mod tests {
         let kyc_submission = LoanTransaction {
             transaction_id: [2u8; 32],
             user_id,
-            loan_id: [0u8; 32],
+            deal_id: [0u8; 32], // was loan_id
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
             created_at: 1_234_567_900,
@@ -346,7 +346,7 @@ mod tests {
         let kyc_verification = LoanTransaction {
             transaction_id: [3u8; 32],
             user_id,
-            loan_id: [0u8; 32],
+            deal_id: [0u8; 32], // was loan_id
             transaction_type: TransactionType::KycVerification,
             amount: 0,
             created_at: 1_234_567_910,

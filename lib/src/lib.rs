@@ -1,3 +1,28 @@
+//! Arda Credit Core Library
+//!
+//! This library provides the core business logic and data structures for the
+//! Arda Credit privacy-preserving deal system built on SP1 zero-knowledge proofs.
+//!
+//! ## Core Modules
+//!
+//! - [`deal`] - Deal management logic and validation (converted from loan)
+//! - [`deal_processor`] - Batch processing for deal transactions (converted from loan_processor)
+//! - [`transactions`] - Transaction type definitions (updated with deal terminology)
+//! - [`user`] - User management and KYC logic
+//! - [`balance`] - Balance tracking and management
+//!
+//! ## Recent Changes
+//!
+//! Converted from loan-based terminology to deal-based terminology:
+//! - `loan` module → `deal` module
+//! - `loan_processor` module → `deal_processor` module
+//! - `LoanOrigination` → `DealOrigination`
+//! - `LoanPayment` → `DealPayment`
+//! - `LoanCloseout` → `DealCloseout`
+//! - All processing functions updated accordingly
+//!
+//! Business logic and ZK proof compatibility maintained.
+
 use alloy_sol_types::sol;
 
 // Separated modules for better maintainability
@@ -9,10 +34,10 @@ pub mod document; // Document storage and management
 #[cfg(feature = "document_storage")]
 pub mod document_storage; // AWS S3 document storage integration
 
+pub mod deal;
+pub mod deal_processor;
 #[cfg(feature = "document_storage")]
 pub mod document_zkvm; // ZK proof integration for document operations
-pub mod loan;
-pub mod loan_processor;
 pub mod merchant;
 pub mod pool;
 pub mod transactions;
@@ -42,8 +67,8 @@ sol! {
 }
 
 // Re-export core processing functions and state
-pub use loan_processor::{
-    process_loan_batch, process_loan_operations, validate_transaction, GlobalLoanState,
+pub use deal_processor::{
+    process_deal_batch, process_loan_operations, validate_transaction, GlobalLoanState,
     LoanOperation, MerkleTree, ProcessingError,
 };
 
@@ -62,8 +87,8 @@ pub use credit_line::{
     CreditLineStatus, CreditUtilization, CreditUtilizationType, EligibilityResult,
     PoolMatchingResult,
 };
-pub use loan::{
-    LiquidityPool, Loan, LoanError, LoanStatus, LoanTerms, PoolDeploymentTerms, PoolError,
+pub use deal::{
+    Deal, DealError, LiquidityPool, LoanStatus, LoanTerms, PoolDeploymentTerms, PoolError,
     PoolState, PoolStatus,
 };
 pub use transactions::*;
@@ -100,5 +125,5 @@ pub type LoanState = GlobalLoanState;
 pub struct ZkVMBatchInput {
     pub initial_loan_state: GlobalLoanState,
     pub initial_ads_state: ZkVMAds,
-    pub batch: LoanBatch,
+    pub batch: DealBatch,
 }

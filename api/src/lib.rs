@@ -47,6 +47,7 @@ pub mod company_service;
 pub mod contract_handlers;
 pub mod cookie_utils;
 pub mod credit_line_handlers;
+pub mod deal_handlers;
 pub mod document_handlers;
 pub mod document_metrics;
 pub mod document_service;
@@ -57,12 +58,10 @@ pub mod financial_transaction_handlers;
 pub mod health_handlers;
 pub mod kyc_service;
 pub mod llm_integration;
-pub mod loan_handlers;
 pub mod magic_link_cleanup;
 pub mod magic_link_handlers;
 pub mod magic_link_service;
 pub mod magic_link_types;
-pub mod marketplace_handlers;
 pub mod merchant_handlers;
 pub mod metrics;
 pub mod middleware;
@@ -82,7 +81,6 @@ pub mod telemetry;
 pub mod test_utils;
 pub mod trading_auth;
 pub mod transaction_history_handlers;
-pub mod transfer_handlers;
 pub mod turnover_handlers;
 pub mod types;
 pub mod unified_batch_service;
@@ -203,7 +201,7 @@ pub use arda_credit_db::{
     create_batch,
     create_credit_line,
     create_credit_line_request,
-    create_loan,
+    create_deal,
     get_all_batches,
     get_all_liquidity_pools,
     get_batch_by_id,
@@ -212,10 +210,10 @@ pub use arda_credit_db::{
     get_credit_line_request_by_id,
     get_credit_line_requests_by_merchant,
     get_current_state,
+    get_deal_by_id,
     get_investor_dashboard_metrics,
     get_investor_pool_summaries as db_get_investor_pool_summaries,
     get_liquidity_pool_by_id,
-    get_loan_by_id,
     get_market_overview_metrics,
     get_merchant_credit_line_stats,
     get_pending_transactions,
@@ -226,14 +224,14 @@ pub use arda_credit_db::{
     init_db,
     list_active_credit_lines,
     list_credit_lines_by_merchant,
-    list_loans,
+    list_deals,
     store_ads_state_commit,
     submit_transaction,
     update_batch_proof,
     update_credit_line_request_evaluation,
     update_credit_line_request_status,
     update_credit_line_utilization,
-    update_loan,
+    update_deal,
 
     AdsStateCommit,
     ContractPrivateData,

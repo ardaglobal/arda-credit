@@ -1166,7 +1166,7 @@ mod tests {
         info!("🧪 Testing transaction mapper database to CCR conversion");
 
         use crate::ccr::{MappingContext, TransactionMapper};
-        use crate::{Identity, Loan, LoanTransactionDb};
+        use crate::{Identity, Deal, DealTransactionDb};
         use chrono::Utc;
         use uuid::Uuid;
 
@@ -1216,15 +1216,15 @@ mod tests {
         let mapper = TransactionMapper::new(context);
 
         // Test database payment transaction mapping
-        let db_transaction = LoanTransactionDb {
+        let db_transaction = DealTransactionDb {
             id: Uuid::new_v4(),
             transaction_id_hash: vec![1u8; 32],
             user_id_hash: borrower_id.as_bytes().to_vec(),
-            loan_id_hash: Some(loan_id.as_bytes().to_vec()),
-            transaction_type: "loan_payment".to_string(),
+            deal_id_hash: Some(loan_id.as_bytes().to_vec()),
+            transaction_type: "deal_payment".to_string(),
             amount: rust_decimal::Decimal::new(500000, 2), // $5,000
             identity_id: Some(borrower_id),
-            loan_id: Some(loan_id),
+            deal_id: Some(loan_id),
             payment_id: Some(payment_id),
             included_in_batch_id: None,
             metadata: None,
