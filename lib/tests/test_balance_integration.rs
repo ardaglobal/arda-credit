@@ -461,8 +461,10 @@ mod tests {
         fund_user_account(&mut state, investor_id, 200_000, 1_640_995_150); // Enough for both deals
 
         // Originate two deals
-        let deal1_origination = create_deal_origination(deal1_id, originator1_id, investor_id, 50000);
-        let deal2_origination = create_deal_origination(deal2_id, originator2_id, investor_id, 75000);
+        let deal1_origination =
+            create_deal_origination(deal1_id, originator1_id, investor_id, 50000);
+        let deal2_origination =
+            create_deal_origination(deal2_id, originator2_id, investor_id, 75000);
 
         state.process_transaction(&deal1_origination).unwrap();
         state.process_transaction(&deal2_origination).unwrap();

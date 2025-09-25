@@ -10,7 +10,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::ccr::CcrOperation;
-use crate::{Identity, Deal, DealTransactionDb};
+use crate::{Deal, DealTransactionDb, Identity};
 
 // Re-export lib transaction types for convenience
 pub use lib::transactions::{LoanTransaction, TransactionType};
@@ -623,8 +623,8 @@ mod tests {
         // Add test deal
         let deal = Deal {
             id: Uuid::from_bytes([2u8; 16]),
-            originator_id: Uuid::from_bytes([1u8; 16]),  // was borrower_id
-            investor_id: Uuid::from_bytes([3u8; 16]),    // was lender_id
+            originator_id: Uuid::from_bytes([1u8; 16]), // was borrower_id
+            investor_id: Uuid::from_bytes([3u8; 16]),   // was lender_id
             principal_amount: rust_decimal::Decimal::new(10_000_000, 2), // $100,000
             outstanding_balance: rust_decimal::Decimal::new(10_000_000, 2),
             interest_rate_bps: 750,

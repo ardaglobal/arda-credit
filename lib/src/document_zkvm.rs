@@ -515,7 +515,7 @@ pub fn document_operation_to_loan_transaction(
     let transaction_type = match operation {
         DocumentAction::Upload => TransactionType::UserRegistration, // Reuse existing type
         DocumentAction::Approve => TransactionType::KycVerification,
-        DocumentAction::Delete => TransactionType::DealCloseout,  // was LoanCloseout
+        DocumentAction::Delete => TransactionType::DealCloseout, // was LoanCloseout
         _ => TransactionType::UserRegistration,
     };
 

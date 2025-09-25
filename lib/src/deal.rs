@@ -550,8 +550,8 @@ impl DealState {
             return Err(DealError::InvalidTransactionType);
         }
 
-        let deal_id = transaction.deal_id;  // was loan_id
-        // Note: initiator_id not currently used in deal origination logic
+        let deal_id = transaction.deal_id; // was loan_id
+                                           // Note: initiator_id not currently used in deal origination logic
 
         // Check for duplicate deal
         if self.deals.contains_key(&deal_id) {
@@ -569,9 +569,9 @@ impl DealState {
         let originator = users.get(&originator_id).ok_or(UserError::UserNotFound {
             user_id: originator_id,
         })?;
-        let investor = users
-            .get(&investor_id)
-            .ok_or(UserError::UserNotFound { user_id: investor_id })?;
+        let investor = users.get(&investor_id).ok_or(UserError::UserNotFound {
+            user_id: investor_id,
+        })?;
 
         if !originator.is_kyc_approved() {
             return Err(DealError::UserError(UserError::KycNotApproved {
@@ -616,7 +616,7 @@ impl DealState {
             return Err(DealError::InvalidTransactionType);
         }
 
-        let deal_id = transaction.deal_id;  // was loan_id
+        let deal_id = transaction.deal_id; // was loan_id
         let payer_id = transaction.user_id;
 
         // Verify payer is KYC approved
@@ -680,7 +680,7 @@ impl DealState {
             return Err(DealError::InvalidTransactionType);
         }
 
-        let deal_id = transaction.deal_id;  // was loan_id
+        let deal_id = transaction.deal_id; // was loan_id
         let closer_id = transaction.user_id;
 
         // Verify closer is KYC approved
@@ -773,7 +773,7 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id,
-            deal_id,  // was loan_id field
+            deal_id,                                            // was loan_id field
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount,
             created_at: 1_234_567_920,
@@ -827,10 +827,10 @@ mod tests {
         // Then make payment
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id, // was borrower_id
-            deal_id,  // was loan_id field
+            user_id: originator_id,                         // was borrower_id
+            deal_id,                                        // was loan_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
-            amount: 5000, // $50.00 payment
+            amount: 5000,                                   // $50.00 payment
             created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
@@ -865,10 +865,10 @@ mod tests {
         // Full payment
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id, // was borrower_id
-            deal_id,  // was loan_id field
+            user_id: originator_id,                         // was borrower_id
+            deal_id,                                        // was loan_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
-            amount: 10000, // Full payment
+            amount: 10000,                                  // Full payment
             created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
@@ -903,10 +903,10 @@ mod tests {
 
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id, // was borrower_id
-            deal_id,  // was loan_id field
+            user_id: originator_id,                         // was borrower_id
+            deal_id,                                        // was loan_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
-            amount: 10000, // Full payment
+            amount: 10000,                                  // Full payment
             created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };
@@ -917,8 +917,8 @@ mod tests {
         // Now closeout
         let closeout_transaction = LoanTransaction {
             transaction_id: [5u8; 32],
-            user_id: originator_id, // was borrower_id
-            deal_id,  // was loan_id field
+            user_id: originator_id,                          // was borrower_id
+            deal_id,                                         // was loan_id field
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
             created_at: 1_234_567_940,
@@ -954,8 +954,8 @@ mod tests {
         // Try to closeout without paying off
         let closeout_transaction = LoanTransaction {
             transaction_id: [5u8; 32],
-            user_id: originator_id, // was borrower_id
-            deal_id,  // was loan_id field
+            user_id: originator_id,                          // was borrower_id
+            deal_id,                                         // was loan_id field
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
             created_at: 1_234_567_940,
@@ -991,10 +991,10 @@ mod tests {
         // Try to overpay
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id, // was borrower_id
-            deal_id,  // was loan_id field
+            user_id: originator_id,                         // was borrower_id
+            deal_id,                                        // was loan_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
-            amount: 15000, // More than outstanding balance
+            amount: 15000,                                  // More than outstanding balance
             created_at: 1_234_567_930,
             metadata: MetadataArray::empty(),
         };

@@ -451,7 +451,7 @@ pub fn evaluate_credit_request(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::deal::{LiquidityPool, PoolStatus};  // was loan module
+    use crate::deal::{LiquidityPool, PoolStatus}; // was loan module
     use crate::merchant::MerchantRecord;
     use crate::user::KycStatus;
 

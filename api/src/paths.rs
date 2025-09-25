@@ -532,7 +532,6 @@ pub const DOCUMENT_AUDIT: &str = api_path!("/companies/{company_id}/documents/au
 /// Document service health check
 pub const DOCUMENT_HEALTH: &str = api_path!("/documents/health");
 
-
 // ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================

@@ -16,16 +16,18 @@ use tracing::{error, info};
 /// Originate a new deal between parties
 pub async fn originate_deal(
     client: &BatchApiClient,
-    originator_id: &str,   // was borrower_id
-    investor_id: &str,     // was lender_id
+    originator_id: &str, // was borrower_id
+    investor_id: &str,   // was lender_id
     amount: f64,
     interest_rate: Option<f64>,
     term_days: i32,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
-        info!("💰 Originating deal: originator={}, investor={}, amount=${:.2}",
-              originator_id, investor_id, amount);  // updated log message
+        info!(
+            "💰 Originating deal: originator={}, investor={}, amount=${:.2}",
+            originator_id, investor_id, amount
+        ); // updated log message
     }
 
     if amount <= 0.0 {
@@ -77,12 +79,15 @@ pub async fn originate_deal(
 /// Make a payment toward a deal
 pub async fn make_deal_payment(
     client: &BatchApiClient,
-    deal_id: &str,        // was loan_id
+    deal_id: &str, // was loan_id
     amount: f64,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
-        info!("💸 Making deal payment: deal_id={}, amount=${:.2}", deal_id, amount);  // updated log
+        info!(
+            "💸 Making deal payment: deal_id={}, amount=${:.2}",
+            deal_id, amount
+        ); // updated log
     }
 
     if amount <= 0.0 {
@@ -321,14 +326,17 @@ fn calculate_monthly_payment(principal: f64, annual_rate: f64, term_days: i32) -
 /// List a deal for sale in the marketplace
 pub async fn list_deal_for_sale(
     client: &BatchApiClient,
-    deal_id: &str,            // was loan_id
+    deal_id: &str, // was loan_id
     asking_price: f64,
     description: Option<&str>,
     seller_id: &str,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
-        info!("🏷️ Listing deal for sale: deal_id={}, price=${:.2}", deal_id, asking_price);
+        info!(
+            "🏷️ Listing deal for sale: deal_id={}, price=${:.2}",
+            deal_id, asking_price
+        );
     }
 
     println!("🏷️ Listing deal {} for sale at ${}", deal_id, asking_price);
@@ -344,7 +352,10 @@ pub async fn list_deal_for_sale(
     if let Some(desc) = description {
         println!("   Description: {}", desc);
     }
-    println!("   Listed At: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Listed At: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     Ok(())
 }
@@ -395,7 +406,7 @@ pub async fn browse_deal_marketplace(
 /// Remove a deal from sale
 pub async fn remove_deal_from_sale(
     client: &BatchApiClient,
-    deal_id: &str,            // was loan_id
+    deal_id: &str, // was loan_id
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -408,17 +419,17 @@ pub async fn remove_deal_from_sale(
     println!();
     println!("✅ Deal removed from sale successfully!");
     println!("   Deal ID: {}", deal_id);
-    println!("   Removed At: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Removed At: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
     println!("   Status: Removed");
 
     Ok(())
 }
 
 /// Get marketplace statistics
-pub async fn get_deal_marketplace_stats(
-    client: &BatchApiClient,
-    verbose: bool,
-) -> Result<()> {
+pub async fn get_deal_marketplace_stats(client: &BatchApiClient, verbose: bool) -> Result<()> {
     if verbose {
         info!("📊 Getting deal marketplace statistics");
     }
@@ -456,15 +467,17 @@ pub async fn get_deal_marketplace_stats(
 /// Transfer deal ownership to another investor
 pub async fn transfer_deal_ownership(
     client: &BatchApiClient,
-    deal_id: &str,                 // was loan_id
-    from_investor_id: &str,        // was from_lender_id
-    to_investor_id: &str,          // was to_lender_id
+    deal_id: &str,          // was loan_id
+    from_investor_id: &str, // was from_lender_id
+    to_investor_id: &str,   // was to_lender_id
     transfer_price: f64,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
-        info!("🔄 Transferring deal ownership: deal_id={}, from={}, to={}, price=${:.2}",
-              deal_id, from_investor_id, to_investor_id, transfer_price);
+        info!(
+            "🔄 Transferring deal ownership: deal_id={}, from={}, to={}, price=${:.2}",
+            deal_id, from_investor_id, to_investor_id, transfer_price
+        );
     }
 
     println!("🔄 Transferring deal ownership...");
@@ -484,7 +497,10 @@ pub async fn transfer_deal_ownership(
     println!("   To Investor: {}", to_investor_id);
     println!("   Transfer Price: ${:.2}", transfer_price);
     println!("   Status: Completed");
-    println!("   Transfer Date: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Transfer Date: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     Ok(())
 }
@@ -492,7 +508,7 @@ pub async fn transfer_deal_ownership(
 /// Get transfer history for a deal
 pub async fn get_deal_transfer_history(
     client: &BatchApiClient,
-    deal_id: &str,                 // was loan_id
+    deal_id: &str, // was loan_id
     limit: Option<i32>,
     verbose: bool,
 ) -> Result<()> {
@@ -530,12 +546,15 @@ pub async fn get_deal_transfer_history(
 /// Validate if a deal transfer is possible
 pub async fn validate_deal_transfer(
     client: &BatchApiClient,
-    deal_id: &str,                   // was loan_id
-    current_investor_id: &str,       // was current_lender_id
+    deal_id: &str,             // was loan_id
+    current_investor_id: &str, // was current_lender_id
     verbose: bool,
 ) -> Result<()> {
     if verbose {
-        info!("🔍 Validating deal transfer: deal_id={}, investor={}", deal_id, current_investor_id);
+        info!(
+            "🔍 Validating deal transfer: deal_id={}, investor={}",
+            deal_id, current_investor_id
+        );
     }
 
     println!("🔍 Validating deal transfer...");
@@ -618,8 +637,10 @@ pub async fn update_deal(
     verbose: bool,
 ) -> Result<()> {
     if verbose {
-        info!("🔄 Updating deal: deal_id={}, balance={:?}, status={:?}",
-              deal_id, outstanding_balance, status);
+        info!(
+            "🔄 Updating deal: deal_id={}, balance={:?}, status={:?}",
+            deal_id, outstanding_balance, status
+        );
     }
 
     println!("🔄 Updating deal {}...", deal_id);
@@ -635,7 +656,10 @@ pub async fn update_deal(
     println!();
     println!("✅ Deal updated successfully!");
     println!("   Deal ID: {}", deal_id);
-    println!("   Updated At: {}", chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "   Updated At: {}",
+        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     if let Some(balance) = outstanding_balance {
         println!("   Outstanding Balance: ${:.2}", balance);

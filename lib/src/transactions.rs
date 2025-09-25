@@ -57,9 +57,9 @@ pub enum TransactionType {
     UserRegistration = 1,
     KycSubmission = 2,
     KycVerification = 3,
-    DealOrigination = 4,        // was LoanOrigination
-    DealPayment = 5,            // was LoanPayment
-    DealCloseout = 6,           // was LoanCloseout
+    DealOrigination = 4, // was LoanOrigination
+    DealPayment = 5,     // was LoanPayment
+    DealCloseout = 6,    // was LoanCloseout
     UserDeposit = 7,
     UserWithdrawal = 8,
     // New pool operations
@@ -154,9 +154,9 @@ impl std::fmt::Display for TransactionType {
             TransactionType::UserRegistration => write!(f, "user_registration"),
             TransactionType::KycSubmission => write!(f, "kyc_submission"),
             TransactionType::KycVerification => write!(f, "kyc_verification"),
-            TransactionType::DealOrigination => write!(f, "deal_origination"),  // was loan_origination
-            TransactionType::DealPayment => write!(f, "deal_payment"),          // was loan_payment
-            TransactionType::DealCloseout => write!(f, "deal_closeout"),        // was loan_closeout
+            TransactionType::DealOrigination => write!(f, "deal_origination"), // was loan_origination
+            TransactionType::DealPayment => write!(f, "deal_payment"),         // was loan_payment
+            TransactionType::DealCloseout => write!(f, "deal_closeout"),       // was loan_closeout
             TransactionType::UserDeposit => write!(f, "user_deposit"),
             TransactionType::UserWithdrawal => write!(f, "user_withdrawal"),
             TransactionType::InvestorRegistration => write!(f, "investor_registration"),
@@ -182,13 +182,13 @@ impl std::str::FromStr for TransactionType {
             "user_registration" => Ok(TransactionType::UserRegistration),
             "kyc_submission" => Ok(TransactionType::KycSubmission),
             "kyc_verification" => Ok(TransactionType::KycVerification),
-            "deal_origination" => Ok(TransactionType::DealOrigination),  // was loan_origination
-            "deal_payment" => Ok(TransactionType::DealPayment),          // was loan_payment
-            "deal_closeout" => Ok(TransactionType::DealCloseout),        // was loan_closeout
+            "deal_origination" => Ok(TransactionType::DealOrigination), // was loan_origination
+            "deal_payment" => Ok(TransactionType::DealPayment),         // was loan_payment
+            "deal_closeout" => Ok(TransactionType::DealCloseout),       // was loan_closeout
             // Support legacy names for backward compatibility in ZK proofs
-            "loan_origination" => Ok(TransactionType::DealOrigination),  // legacy support
-            "loan_payment" => Ok(TransactionType::DealPayment),          // legacy support
-            "loan_closeout" => Ok(TransactionType::DealCloseout),        // legacy support
+            "loan_origination" => Ok(TransactionType::DealOrigination), // legacy support
+            "loan_payment" => Ok(TransactionType::DealPayment),         // legacy support
+            "loan_closeout" => Ok(TransactionType::DealCloseout),       // legacy support
             "user_deposit" => Ok(TransactionType::UserDeposit),
             "user_withdrawal" => Ok(TransactionType::UserWithdrawal),
             "investor_registration" => Ok(TransactionType::InvestorRegistration),
@@ -211,29 +211,31 @@ impl std::str::FromStr for TransactionType {
 #[must_use]
 pub fn deal_transaction_types() -> Vec<TransactionType> {
     vec![
-        TransactionType::DealOrigination,  // was LoanOrigination
-        TransactionType::DealPayment,      // was LoanPayment
-        TransactionType::DealCloseout,     // was LoanCloseout
+        TransactionType::DealOrigination, // was LoanOrigination
+        TransactionType::DealPayment,     // was LoanPayment
+        TransactionType::DealCloseout,    // was LoanCloseout
     ]
 }
 
 /// Check if transaction affects deal state
 #[must_use]
 pub fn affects_deal_state(transaction_type: TransactionType) -> bool {
-    matches!(transaction_type,
+    matches!(
+        transaction_type,
         TransactionType::DealOrigination
-        | TransactionType::DealPayment
-        | TransactionType::DealCloseout
+            | TransactionType::DealPayment
+            | TransactionType::DealCloseout
     )
 }
 
 /// Check if transaction type is deal-related
 #[must_use]
 pub fn is_deal_transaction(transaction_type: TransactionType) -> bool {
-    matches!(transaction_type,
+    matches!(
+        transaction_type,
         TransactionType::DealOrigination        // was LoanOrigination
         | TransactionType::DealPayment          // was LoanPayment
-        | TransactionType::DealCloseout         // was LoanCloseout
+        | TransactionType::DealCloseout // was LoanCloseout
     )
 }
 

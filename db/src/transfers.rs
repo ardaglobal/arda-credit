@@ -23,7 +23,7 @@ use crate::{
 /// Transfer validation request
 #[derive(Debug, Clone)]
 pub struct TransferValidationRequest {
-    pub deal_id: Uuid,  // was loan_id
+    pub deal_id: Uuid, // was loan_id
     pub buyer_id: Uuid,
     pub purchase_price: Decimal,
 }
@@ -45,7 +45,7 @@ pub struct TransferValidationResult {
 /// Complete transfer execution request
 #[derive(Debug, Clone)]
 pub struct ExecuteTransferRequest {
-    pub deal_id: Uuid,  // was loan_id
+    pub deal_id: Uuid, // was loan_id
     pub buyer_id: Uuid,
     pub purchase_price: Decimal,
     pub notes: Option<String>,
@@ -55,9 +55,9 @@ pub struct ExecuteTransferRequest {
 #[derive(Debug, Clone)]
 pub struct TransferExecutionResult {
     pub transfer_id: Uuid,
-    pub deal_id: Uuid,  // was loan_id
-    pub from_investor_id: Uuid,  // was from_lender_id
-    pub to_investor_id: Uuid,  // was to_lender_id
+    pub deal_id: Uuid,          // was loan_id
+    pub from_investor_id: Uuid, // was from_lender_id
+    pub to_investor_id: Uuid,   // was to_lender_id
     pub purchase_price: Decimal,
     pub transfer_date: chrono::NaiveDateTime,
     pub settlement: TransferSettlementResult,
@@ -367,7 +367,7 @@ pub async fn execute_deal_transfer(
     .await?;
 
     // 8. Mark listing as sold (using Phase 1 table)
-    update_deal_listing_status(&mut tx, request.deal_id, "sold").await?;  // was update_listing_status, request.loan_id
+    update_deal_listing_status(&mut tx, request.deal_id, "sold").await?; // was update_listing_status, request.loan_id
 
     // 9. Mark transfer as completed
     let completion_time = chrono::Utc::now().naive_utc();
@@ -390,8 +390,8 @@ pub async fn execute_deal_transfer(
     Ok(TransferExecutionResult {
         transfer_id,
         deal_id: request.deal_id,
-        from_investor_id: seller_id,  // was from_lender_id
-        to_investor_id: request.buyer_id,  // was to_lender_id
+        from_investor_id: seller_id,      // was from_lender_id
+        to_investor_id: request.buyer_id, // was to_lender_id
         purchase_price: request.purchase_price,
         transfer_date,
         settlement: TransferSettlementResult {

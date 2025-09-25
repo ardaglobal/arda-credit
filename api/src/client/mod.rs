@@ -10,11 +10,11 @@
 //! - Lender → Investor
 //! - All API endpoints and types updated accordingly
 
+use chrono::{DateTime, Utc};
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::paths;
@@ -25,27 +25,27 @@ use crate::paths;
 
 /// Import or define the request/response types
 pub use crate::deal_handlers::{
-    CreateDealRequest,                    // was CreateLoanRequest
-    DealDetailsResponse,                  // was LoanDetailsResponse
-    ListDealsQuery,                       // was ListLoansQuery
-    UpdateDealRequest,                    // was UpdateLoanRequest
-    DealStatsResponse,                    // was LoanStatsResponse
+    CreateDealRequest,    // was CreateLoanRequest
+    DealDetailsResponse,  // was LoanDetailsResponse
+    DealListingResponse,  // was LoanListingResponse
+    DealMarketplaceStats, // was MarketplaceStats
+
+    DealPaymentHistoryResponse, // was LoanPaymentHistoryResponse
+    DealStatsResponse,          // was LoanStatsResponse
+
+    DealTransferResponse,           // was LoanTransferResponse
+    DealTransferValidationResponse, // was TransferValidationResponse
 
     // Consolidated marketplace types
-    ListDealForSaleRequest,               // was ListLoanForSaleRequest
-    DealListingResponse,                  // was LoanListingResponse
-    MarketplaceDealResponse,              // was MarketplaceLoanResponse
-    DealMarketplaceStats,                 // was MarketplaceStats
-
-    // Consolidated transfer types
-    TransferDealOwnershipRequest,         // was TransferLoanOwnershipRequest
-    DealTransferResponse,                 // was LoanTransferResponse
-    ValidateDealTransferRequest,          // was ValidateTransferRequest
-    DealTransferValidationResponse,       // was TransferValidationResponse
-
+    ListDealForSaleRequest,  // was ListLoanForSaleRequest
+    ListDealsQuery,          // was ListLoansQuery
+    MarketplaceDealResponse, // was MarketplaceLoanResponse
     // Payment types
-    RecordDealPaymentRequest,             // was RecordPaymentRequest
-    DealPaymentHistoryResponse,           // was LoanPaymentHistoryResponse
+    RecordDealPaymentRequest, // was RecordPaymentRequest
+    // Consolidated transfer types
+    TransferDealOwnershipRequest, // was TransferLoanOwnershipRequest
+    UpdateDealRequest,            // was UpdateLoanRequest
+    ValidateDealTransferRequest,  // was ValidateTransferRequest
 };
 
 /// API client for the Arda Credit deal processing system
@@ -944,17 +944,19 @@ impl BatchApiClient {
     /// Create a new deal (was create_loan)
     pub async fn create_deal(
         &self,
-        originator_id: &str,  // was borrower_id
-        investor_id: &str,    // was lender_id
+        originator_id: &str, // was borrower_id
+        investor_id: &str,   // was lender_id
         principal_amount: &str,
         interest_rate_bps: u16,
         term_days: Option<u32>,
         metadata: Option<serde_json::Value>,
-    ) -> Result<DealDetailsResponse, ApiClientError> {  // was LoanDetailsResponse
-        let url = format!("{}/api/v1/deal", self.base_url);  // was /loan
-        let request = CreateDealRequest {  // was CreateLoanRequest
-            originator_id: originator_id.to_string(),  // was borrower_id
-            investor_id: investor_id.to_string(),      // was lender_id
+    ) -> Result<DealDetailsResponse, ApiClientError> {
+        // was LoanDetailsResponse
+        let url = format!("{}/api/v1/deal", self.base_url); // was /loan
+        let request = CreateDealRequest {
+            // was CreateLoanRequest
+            originator_id: originator_id.to_string(), // was borrower_id
+            investor_id: investor_id.to_string(),     // was lender_id
             principal_amount: principal_amount.to_string(),
             interest_rate_bps,
             term_days,
@@ -968,9 +970,10 @@ impl BatchApiClient {
     /// Get deal details by ID (was get_loan_by_id)
     pub async fn get_deal_by_id(
         &self,
-        deal_id: &str,  // was loan_id
-    ) -> Result<Option<DealDetailsResponse>, ApiClientError> {  // was LoanDetailsResponse
-        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id);  // was /loan/{}
+        deal_id: &str, // was loan_id
+    ) -> Result<Option<DealDetailsResponse>, ApiClientError> {
+        // was LoanDetailsResponse
+        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id); // was /loan/{}
         let response = self.client.get(&url).send().await?;
 
         match response.status().as_u16() {
@@ -984,21 +987,24 @@ impl BatchApiClient {
     pub async fn list_deals(
         &self,
         status: Option<&str>,
-        originator_id: Option<&str>,  // was borrower_id
-        investor_id: Option<&str>,    // was lender_id
+        originator_id: Option<&str>, // was borrower_id
+        investor_id: Option<&str>,   // was lender_id
         limit: Option<i32>,
         offset: Option<i32>,
-    ) -> Result<Vec<DealDetailsResponse>, ApiClientError> {  // was LoanDetailsResponse
-        let mut url = format!("{}/api/v1/deals", self.base_url);  // was /loans
+    ) -> Result<Vec<DealDetailsResponse>, ApiClientError> {
+        // was LoanDetailsResponse
+        let mut url = format!("{}/api/v1/deals", self.base_url); // was /loans
         let mut params = Vec::new();
 
         if let Some(status) = status {
             params.push(format!("status={}", status));
         }
-        if let Some(originator_id) = originator_id {  // was borrower_id
+        if let Some(originator_id) = originator_id {
+            // was borrower_id
             params.push(format!("originator_id={}", originator_id));
         }
-        if let Some(investor_id) = investor_id {  // was lender_id
+        if let Some(investor_id) = investor_id {
+            // was lender_id
             params.push(format!("investor_id={}", investor_id));
         }
         if let Some(limit) = limit {
@@ -1020,18 +1026,20 @@ impl BatchApiClient {
     /// Update deal details (was update_loan)
     pub async fn update_deal(
         &self,
-        deal_id: &str,         // was loan_id
+        deal_id: &str, // was loan_id
         principal_amount: Option<&str>,
         outstanding_balance: Option<&str>,
         interest_rate_bps: Option<u16>,
-        loan_status: Option<&str>,  // keeping same field name
-    ) -> Result<DealDetailsResponse, ApiClientError> {  // was LoanDetailsResponse
-        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id);  // was /loan/{}
-        let request = UpdateDealRequest {  // was UpdateLoanRequest
+        loan_status: Option<&str>, // keeping same field name
+    ) -> Result<DealDetailsResponse, ApiClientError> {
+        // was LoanDetailsResponse
+        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id); // was /loan/{}
+        let request = UpdateDealRequest {
+            // was UpdateLoanRequest
             principal_amount: principal_amount.map(|s| s.to_string()),
             outstanding_balance: outstanding_balance.map(|s| s.to_string()),
             interest_rate_bps,
-            loan_status: loan_status.map(|s| s.to_string()),  // keeping same field name
+            loan_status: loan_status.map(|s| s.to_string()), // keeping same field name
         };
 
         let response = self.client.put(&url).json(&request).send().await?;
@@ -1041,9 +1049,9 @@ impl BatchApiClient {
     /// Delete deal (was delete_loan)
     pub async fn delete_deal(
         &self,
-        deal_id: &str,  // was loan_id
+        deal_id: &str, // was loan_id
     ) -> Result<(), ApiClientError> {
-        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id);  // was /loan/{}
+        let url = format!("{}/api/v1/deal/{}", self.base_url, deal_id); // was /loan/{}
         let response = self.client.delete(&url).send().await?;
 
         match response.status().as_u16() {
@@ -1053,8 +1061,9 @@ impl BatchApiClient {
     }
 
     /// Get deal statistics (was get_loan_stats)
-    pub async fn get_deal_stats(&self) -> Result<DealStatsResponse, ApiClientError> {  // was LoanStatsResponse
-        let url = format!("{}/api/v1/deals/stats", self.base_url);  // was /loans/stats
+    pub async fn get_deal_stats(&self) -> Result<DealStatsResponse, ApiClientError> {
+        // was LoanStatsResponse
+        let url = format!("{}/api/v1/deals/stats", self.base_url); // was /loans/stats
         let response = self.client.get(&url).send().await?;
         self.handle_response(response).await
     }
@@ -1068,8 +1077,9 @@ impl BatchApiClient {
         &self,
         limit: Option<i32>,
         status: Option<&str>,
-    ) -> Result<Vec<MarketplaceDealResponse>, ApiClientError> {  // was MarketplaceLoanResponse
-        let mut url = format!("{}/api/v1/deals/for-sale", self.base_url);  // was /marketplace/loans
+    ) -> Result<Vec<MarketplaceDealResponse>, ApiClientError> {
+        // was MarketplaceLoanResponse
+        let mut url = format!("{}/api/v1/deals/for-sale", self.base_url); // was /marketplace/loans
         let mut params = Vec::new();
 
         if let Some(limit) = limit {
@@ -1091,14 +1101,16 @@ impl BatchApiClient {
     /// List a deal for sale (consolidated from marketplace client)
     pub async fn list_deal_for_sale(
         &self,
-        deal_id: &str,          // was loan_id
+        deal_id: &str, // was loan_id
         seller_id: &str,
         asking_price: &str,
         description: Option<&str>,
         expires_at: Option<DateTime<Utc>>,
-    ) -> Result<DealListingResponse, ApiClientError> {  // was LoanListingResponse
-        let url = format!("{}/api/v1/deal/{}/list-for-sale", self.base_url, deal_id);  // was /marketplace/loan/{}
-        let request = ListDealForSaleRequest {  // was ListLoanForSaleRequest
+    ) -> Result<DealListingResponse, ApiClientError> {
+        // was LoanListingResponse
+        let url = format!("{}/api/v1/deal/{}/list-for-sale", self.base_url, deal_id); // was /marketplace/loan/{}
+        let request = ListDealForSaleRequest {
+            // was ListLoanForSaleRequest
             seller_id: Uuid::parse_str(seller_id)
                 .map_err(|_| ApiClientError::InvalidInput("Invalid seller ID".to_string()))?,
             asking_price: asking_price.to_string(),
@@ -1113,9 +1125,9 @@ impl BatchApiClient {
     /// Remove deal from sale (consolidated from marketplace client)
     pub async fn remove_deal_from_sale(
         &self,
-        deal_id: &str,  // was loan_id
+        deal_id: &str, // was loan_id
     ) -> Result<(), ApiClientError> {
-        let url = format!("{}/api/v1/deal/{}/remove-from-sale", self.base_url, deal_id);  // was /marketplace/loan/{}
+        let url = format!("{}/api/v1/deal/{}/remove-from-sale", self.base_url, deal_id); // was /marketplace/loan/{}
         let response = self.client.delete(&url).send().await?;
 
         match response.status().as_u16() {
@@ -1125,8 +1137,9 @@ impl BatchApiClient {
     }
 
     /// Get deal marketplace statistics (consolidated from marketplace client)
-    pub async fn get_deal_marketplace_stats(&self) -> Result<DealMarketplaceStats, ApiClientError> {  // was MarketplaceStats
-        let url = format!("{}/api/v1/deals/marketplace/stats", self.base_url);  // was /marketplace/stats
+    pub async fn get_deal_marketplace_stats(&self) -> Result<DealMarketplaceStats, ApiClientError> {
+        // was MarketplaceStats
+        let url = format!("{}/api/v1/deals/marketplace/stats", self.base_url); // was /marketplace/stats
         let response = self.client.get(&url).send().await?;
         self.handle_response(response).await
     }
@@ -1138,17 +1151,24 @@ impl BatchApiClient {
     /// Transfer deal ownership (consolidated from transfer client)
     pub async fn transfer_deal_ownership(
         &self,
-        deal_id: &str,              // was loan_id
-        from_investor_id: &str,     // was from_lender_id
-        to_investor_id: &str,       // was to_lender_id
+        deal_id: &str,          // was loan_id
+        from_investor_id: &str, // was from_lender_id
+        to_investor_id: &str,   // was to_lender_id
         transfer_price: &str,
-    ) -> Result<DealTransferResponse, ApiClientError> {  // was LoanTransferResponse
-        let url = format!("{}/api/v1/deal/{}/transfer", self.base_url, deal_id);  // was /transfer/loan/{}
-        let request = TransferDealOwnershipRequest {  // was TransferLoanOwnershipRequest
-            from_investor_id: Uuid::parse_str(from_investor_id)  // was from_lender_id
-                .map_err(|_| ApiClientError::InvalidInput("Invalid from investor ID".to_string()))?,
-            to_investor_id: Uuid::parse_str(to_investor_id)      // was to_lender_id
-                .map_err(|_| ApiClientError::InvalidInput("Invalid to investor ID".to_string()))?,
+    ) -> Result<DealTransferResponse, ApiClientError> {
+        // was LoanTransferResponse
+        let url = format!("{}/api/v1/deal/{}/transfer", self.base_url, deal_id); // was /transfer/loan/{}
+        let request = TransferDealOwnershipRequest {
+            // was TransferLoanOwnershipRequest
+            from_investor_id: Uuid::parse_str(from_investor_id) // was from_lender_id
+                .map_err(|_| {
+                    ApiClientError::InvalidInput("Invalid from investor ID".to_string())
+                })?,
+            to_investor_id:
+                Uuid::parse_str(to_investor_id) // was to_lender_id
+                    .map_err(|_| {
+                        ApiClientError::InvalidInput("Invalid to investor ID".to_string())
+                    })?,
             transfer_price: transfer_price.to_string(),
         };
 
@@ -1159,10 +1179,11 @@ impl BatchApiClient {
     /// Get deal transfer history (consolidated from transfer client)
     pub async fn get_deal_transfer_history(
         &self,
-        deal_id: &str,  // was loan_id
+        deal_id: &str, // was loan_id
         limit: Option<i32>,
-    ) -> Result<Vec<DealTransferResponse>, ApiClientError> {  // was LoanTransferResponse
-        let mut url = format!("{}/api/v1/deal/{}/transfers", self.base_url, deal_id);  // was /loan/{}/transfers
+    ) -> Result<Vec<DealTransferResponse>, ApiClientError> {
+        // was LoanTransferResponse
+        let mut url = format!("{}/api/v1/deal/{}/transfers", self.base_url, deal_id); // was /loan/{}/transfers
 
         if let Some(limit) = limit {
             url.push_str(&format!("?limit={}", limit));
@@ -1177,8 +1198,9 @@ impl BatchApiClient {
         &self,
         user_id: &str,
         limit: Option<i32>,
-    ) -> Result<Vec<DealTransferResponse>, ApiClientError> {  // was LoanTransferResponse
-        let mut url = format!("{}/api/v1/user/{}/deal-transfers", self.base_url, user_id);  // was /user/{}/transfers
+    ) -> Result<Vec<DealTransferResponse>, ApiClientError> {
+        // was LoanTransferResponse
+        let mut url = format!("{}/api/v1/user/{}/deal-transfers", self.base_url, user_id); // was /user/{}/transfers
 
         if let Some(limit) = limit {
             url.push_str(&format!("?limit={}", limit));
@@ -1191,13 +1213,20 @@ impl BatchApiClient {
     /// Validate deal transfer (consolidated from transfer client)
     pub async fn validate_deal_transfer(
         &self,
-        deal_id: &str,              // was loan_id
-        current_investor_id: &str,  // was current_lender_id
-    ) -> Result<DealTransferValidationResponse, ApiClientError> {  // was TransferValidationResponse
-        let url = format!("{}/api/v1/deal/{}/transfer/validate", self.base_url, deal_id);  // was /transfer/loan/{}/validate
-        let request = ValidateDealTransferRequest {  // was ValidateTransferRequest
-            current_investor_id: Uuid::parse_str(current_investor_id)  // was current_lender_id
-                .map_err(|_| ApiClientError::InvalidInput("Invalid current investor ID".to_string()))?,
+        deal_id: &str,             // was loan_id
+        current_investor_id: &str, // was current_lender_id
+    ) -> Result<DealTransferValidationResponse, ApiClientError> {
+        // was TransferValidationResponse
+        let url = format!(
+            "{}/api/v1/deal/{}/transfer/validate",
+            self.base_url, deal_id
+        ); // was /transfer/loan/{}/validate
+        let request = ValidateDealTransferRequest {
+            // was ValidateTransferRequest
+            current_investor_id: Uuid::parse_str(current_investor_id) // was current_lender_id
+                .map_err(|_| {
+                    ApiClientError::InvalidInput("Invalid current investor ID".to_string())
+                })?,
         };
 
         let response = self.client.post(&url).json(&request).send().await?;
@@ -1211,16 +1240,17 @@ impl BatchApiClient {
     /// Record a deal payment (was record_loan_payment)
     pub async fn record_deal_payment(
         &self,
-        deal_id: &str,  // was loan_id
+        deal_id: &str, // was loan_id
         payer_id: &str,
         amount: &str,
         payment_type: &str,
         payment_reference: Option<&str>,
         notes: Option<&str>,
     ) -> Result<serde_json::Value, ApiClientError> {
-        let url = format!("{}/api/v1/payments", self.base_url);  // URL might stay the same
-        let request = RecordDealPaymentRequest {  // was RecordPaymentRequest
-            deal_id: deal_id.to_string(),   // was loan_id
+        let url = format!("{}/api/v1/payments", self.base_url); // URL might stay the same
+        let request = RecordDealPaymentRequest {
+            // was RecordPaymentRequest
+            deal_id: deal_id.to_string(), // was loan_id
             amount: amount.to_string(),
             payment_type: payment_type.to_string(),
             payment_reference: payment_reference.map(|s| s.to_string()),
@@ -1234,10 +1264,11 @@ impl BatchApiClient {
     /// Get deal payment history (was get_loan_payment_history)
     pub async fn get_deal_payment_history(
         &self,
-        deal_id: &str,  // was loan_id
+        deal_id: &str, // was loan_id
         limit: Option<i32>,
-    ) -> Result<DealPaymentHistoryResponse, ApiClientError> {  // was LoanPaymentHistoryResponse
-        let mut url = format!("{}/api/v1/deal/{}/payments", self.base_url, deal_id);  // was /loan/{}/payments
+    ) -> Result<DealPaymentHistoryResponse, ApiClientError> {
+        // was LoanPaymentHistoryResponse
+        let mut url = format!("{}/api/v1/deal/{}/payments", self.base_url, deal_id); // was /loan/{}/payments
 
         if let Some(limit) = limit {
             url.push_str(&format!("?limit={}", limit));
@@ -1271,15 +1302,15 @@ impl BatchApiClient {
         match status {
             400 => ApiClientError::ApiError {
                 status,
-                message: format!("Bad request for deal operation: {}", message),  // was loan operation
+                message: format!("Bad request for deal operation: {}", message), // was loan operation
             },
             404 => ApiClientError::ApiError {
                 status,
-                message: format!("Deal not found: {}", message),  // was Loan not found
+                message: format!("Deal not found: {}", message), // was Loan not found
             },
             500 => ApiClientError::ApiError {
                 status,
-                message: format!("Server error in deal processing: {}", message),  // was loan processing
+                message: format!("Server error in deal processing: {}", message), // was loan processing
             },
             _ => ApiClientError::ApiError { status, message },
         }

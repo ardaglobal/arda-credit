@@ -34,7 +34,6 @@ pub enum DealCommands {
     // ========================================================================
     // CORE DEAL MANAGEMENT COMMANDS
     // ========================================================================
-
     /// Register a new investor
     RegisterInvestor {
         /// Investor email address
@@ -277,10 +276,10 @@ pub enum DealCommands {
     Originate {
         /// Originator user ID (the party requesting the deal)
         #[arg(long)]
-        originator_id: String,  // was borrower_id
+        originator_id: String, // was borrower_id
         /// Investor user ID (the party providing capital)
         #[arg(long)]
-        investor_id: String,    // was lender_id
+        investor_id: String, // was lender_id
         /// Deal amount in USDC
         #[arg(long)]
         amount: f64,
@@ -299,7 +298,7 @@ pub enum DealCommands {
     Payment {
         /// Deal ID to make payment to
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// Payment amount in USDC
         #[arg(long)]
         amount: f64,
@@ -312,7 +311,7 @@ pub enum DealCommands {
     Closeout {
         /// Deal ID to close out
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -338,7 +337,7 @@ pub enum DealCommands {
     Get {
         /// Deal ID to retrieve
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -348,7 +347,7 @@ pub enum DealCommands {
     Update {
         /// Deal ID to update
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// New outstanding balance
         #[arg(long)]
         outstanding_balance: Option<f64>,
@@ -363,12 +362,11 @@ pub enum DealCommands {
     // ========================================================================
     // CONSOLIDATED MARKETPLACE COMMANDS (moved from separate module)
     // ========================================================================
-
     /// List a deal for sale in the marketplace
     ListForSale {
         /// Deal ID to list for sale
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// Asking price in USDC
         #[arg(long)]
         asking_price: f64,
@@ -400,7 +398,7 @@ pub enum DealCommands {
     RemoveFromSale {
         /// Deal ID to remove from sale
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -416,18 +414,17 @@ pub enum DealCommands {
     // ========================================================================
     // CONSOLIDATED TRANSFER COMMANDS (moved from separate module)
     // ========================================================================
-
     /// Transfer deal ownership to another investor
     Transfer {
         /// Deal ID to transfer
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// Current investor user ID (must own the deal)
         #[arg(long)]
-        from_investor_id: String,  // was from_lender_id
+        from_investor_id: String, // was from_lender_id
         /// New investor user ID
         #[arg(long)]
-        to_investor_id: String,    // was to_lender_id
+        to_investor_id: String, // was to_lender_id
         /// Transfer price in USDC
         #[arg(long)]
         transfer_price: f64,
@@ -440,7 +437,7 @@ pub enum DealCommands {
     TransferHistory {
         /// Deal ID to get transfer history for
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// Maximum number of transfers to display
         #[arg(long, default_value = "10")]
         limit: Option<i32>,
@@ -453,10 +450,10 @@ pub enum DealCommands {
     ValidateTransfer {
         /// Deal ID to validate transfer for
         #[arg(long)]
-        deal_id: String,        // was loan_id
+        deal_id: String, // was loan_id
         /// Current investor user ID
         #[arg(long)]
-        current_investor_id: String,  // was current_lender_id
+        current_investor_id: String, // was current_lender_id
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -478,7 +475,6 @@ pub enum DealCommands {
     // ========================================================================
     // TESTING AND DEVELOPMENT COMMANDS
     // ========================================================================
-
     /// Test deal operations end-to-end
     Test {
         /// Number of test deals to create
@@ -509,7 +505,6 @@ pub async fn handle_deal_command(
         // ====================================================================
         // INVESTOR MANAGEMENT HANDLERS
         // ====================================================================
-
         DealCommands::RegisterInvestor {
             email,
             first_name,
@@ -560,7 +555,6 @@ pub async fn handle_deal_command(
         // ====================================================================
         // MERCHANT MANAGEMENT HANDLERS
         // ====================================================================
-
         DealCommands::RegisterMerchant {
             email,
             password,
@@ -707,19 +701,19 @@ pub async fn handle_deal_command(
         // ====================================================================
         // CORE DEAL MANAGEMENT HANDLERS
         // ====================================================================
-
         DealCommands::Originate {
-            originator_id,         // was borrower_id
-            investor_id,           // was lender_id
+            originator_id, // was borrower_id
+            investor_id,   // was lender_id
             amount,
             interest_rate,
             term_days,
             verbose: cmd_verbose,
         } => {
-            originate_deal(  // was originate_loan
+            originate_deal(
+                // was originate_loan
                 client,
-                &originator_id,      // was &borrower_id
-                &investor_id,        // was &lender_id
+                &originator_id, // was &borrower_id
+                &investor_id,   // was &lender_id
                 amount,
                 interest_rate,
                 term_days,
@@ -728,90 +722,105 @@ pub async fn handle_deal_command(
             .await
         }
 
-        DealCommands::Payment {  // was LoanCommands::MakePayment
-            deal_id,             // was loan_id
+        DealCommands::Payment {
+            // was LoanCommands::MakePayment
+            deal_id, // was loan_id
             amount,
             verbose: cmd_verbose,
         } => {
-            make_deal_payment(   // was make_loan_payment
+            make_deal_payment(
+                // was make_loan_payment
                 client,
-                &deal_id,        // was &loan_id
+                &deal_id, // was &loan_id
                 amount,
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
-        DealCommands::Closeout {  // was LoanCommands::CloseoutLoan
-            deal_id,              // was loan_id
+        DealCommands::Closeout {
+            // was LoanCommands::CloseoutLoan
+            deal_id, // was loan_id
             verbose: cmd_verbose,
         } => {
-            closeout_deal(        // was closeout_loan
+            closeout_deal(
+                // was closeout_loan
                 client,
-                &deal_id,         // was &loan_id
+                &deal_id, // was &loan_id
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
-        DealCommands::List {  // was LoanCommands::ListLoans
+        DealCommands::List {
+            // was LoanCommands::ListLoans
             user_id,
             status,
             limit,
             verbose: cmd_verbose,
         } => {
-            list_deals(           // was list_loans
+            list_deals(
+                // was list_loans
                 client,
                 user_id.as_deref(),
                 status.as_deref(),
                 limit,
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
-        DealCommands::Get {   // was LoanCommands::GetLoan
-            deal_id,          // was loan_id
+        DealCommands::Get {
+            // was LoanCommands::GetLoan
+            deal_id, // was loan_id
             verbose: cmd_verbose,
         } => {
-            get_deal(          // was get_loan
+            get_deal(
+                // was get_loan
                 client,
-                &deal_id,      // was &loan_id
+                &deal_id, // was &loan_id
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         DealCommands::Update {
-            deal_id,           // was loan_id
+            deal_id, // was loan_id
             outstanding_balance,
             status,
             verbose: cmd_verbose,
         } => {
-            update_deal(       // was update_loan
+            update_deal(
+                // was update_loan
                 client,
-                &deal_id,      // was &loan_id
+                &deal_id, // was &loan_id
                 outstanding_balance,
                 status.as_deref(),
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         // ====================================================================
         // CONSOLIDATED MARKETPLACE HANDLERS (moved from marketplace module)
         // ====================================================================
-
         DealCommands::ListForSale {
-            deal_id,           // was loan_id
+            deal_id, // was loan_id
             asking_price,
             description,
             seller_id,
             verbose: cmd_verbose,
         } => {
-            list_deal_for_sale(  // was list_loan_for_sale
+            list_deal_for_sale(
+                // was list_loan_for_sale
                 client,
-                &deal_id,        // was &loan_id
+                &deal_id, // was &loan_id
                 asking_price,
                 description.as_deref(),
                 &seller_id,
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         DealCommands::BrowseMarketplace {
@@ -819,79 +828,90 @@ pub async fn handle_deal_command(
             status,
             verbose: cmd_verbose,
         } => {
-            browse_deal_marketplace(  // was browse_loan_marketplace
+            browse_deal_marketplace(
+                // was browse_loan_marketplace
                 client,
                 limit,
                 status.as_deref(),
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         DealCommands::RemoveFromSale {
-            deal_id,               // was loan_id
+            deal_id, // was loan_id
             verbose: cmd_verbose,
         } => {
-            remove_deal_from_sale(  // was remove_loan_from_sale
+            remove_deal_from_sale(
+                // was remove_loan_from_sale
                 client,
-                &deal_id,           // was &loan_id
+                &deal_id, // was &loan_id
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         DealCommands::MarketplaceStats {
             verbose: cmd_verbose,
         } => {
-            get_deal_marketplace_stats(  // was get_loan_marketplace_stats
+            get_deal_marketplace_stats(
+                // was get_loan_marketplace_stats
                 client,
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         // ====================================================================
         // CONSOLIDATED TRANSFER HANDLERS (moved from transfer module)
         // ====================================================================
-
         DealCommands::Transfer {
-            deal_id,               // was loan_id
-            from_investor_id,      // was from_lender_id
-            to_investor_id,        // was to_lender_id
+            deal_id,          // was loan_id
+            from_investor_id, // was from_lender_id
+            to_investor_id,   // was to_lender_id
             transfer_price,
             verbose: cmd_verbose,
         } => {
-            transfer_deal_ownership(  // was transfer_loan_ownership
+            transfer_deal_ownership(
+                // was transfer_loan_ownership
                 client,
-                &deal_id,             // was &loan_id
-                &from_investor_id,    // was &from_lender_id
-                &to_investor_id,      // was &to_lender_id
+                &deal_id,          // was &loan_id
+                &from_investor_id, // was &from_lender_id
+                &to_investor_id,   // was &to_lender_id
                 transfer_price,
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         DealCommands::TransferHistory {
-            deal_id,               // was loan_id
+            deal_id, // was loan_id
             limit,
             verbose: cmd_verbose,
         } => {
-            get_deal_transfer_history(  // was get_loan_transfer_history
+            get_deal_transfer_history(
+                // was get_loan_transfer_history
                 client,
-                &deal_id,               // was &loan_id
+                &deal_id, // was &loan_id
                 limit,
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         DealCommands::ValidateTransfer {
-            deal_id,                   // was loan_id
-            current_investor_id,       // was current_lender_id
+            deal_id,             // was loan_id
+            current_investor_id, // was current_lender_id
             verbose: cmd_verbose,
         } => {
-            validate_deal_transfer(    // was validate_loan_transfer
+            validate_deal_transfer(
+                // was validate_loan_transfer
                 client,
-                &deal_id,              // was &loan_id
-                &current_investor_id,  // was &current_lender_id
+                &deal_id,             // was &loan_id
+                &current_investor_id, // was &current_lender_id
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         DealCommands::UserTransferHistory {
@@ -899,18 +919,19 @@ pub async fn handle_deal_command(
             limit,
             verbose: cmd_verbose,
         } => {
-            get_user_deal_transfer_history(  // was get_user_loan_transfer_history
+            get_user_deal_transfer_history(
+                // was get_user_loan_transfer_history
                 client,
                 &user_id,
                 limit,
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
 
         // ====================================================================
         // TESTING HANDLERS
         // ====================================================================
-
         DealCommands::Test {
             count,
             test_payments,
@@ -918,14 +939,16 @@ pub async fn handle_deal_command(
             test_transfers,
             verbose: cmd_verbose,
         } => {
-            test_deal_operations(  // was test_loan_operations
+            test_deal_operations(
+                // was test_loan_operations
                 client,
                 count,
                 test_payments,
                 test_marketplace,
                 test_transfers,
                 cmd_verbose || verbose,
-            ).await
+            )
+            .await
         }
     }
 }

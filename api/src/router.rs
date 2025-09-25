@@ -26,6 +26,14 @@ use crate::credit_line_handlers::{
     browse_available_pools, check_credit_eligibility, list_active_credit_lines_with_pool_details,
     list_credit_line_requests, submit_credit_line_request,
 };
+use crate::deal_handlers::{
+    browse_deals_for_sale_endpoint, create_deal_endpoint, deal_marketplace_stats_endpoint,
+    delete_deal_endpoint, get_deal_details_endpoint, get_deal_payment_history_endpoint,
+    get_deal_stats_endpoint, get_deal_transfer_history_endpoint, get_payment_details_endpoint,
+    get_user_deal_transfer_history_endpoint, list_deal_for_sale_endpoint, list_deals_endpoint,
+    record_deal_payment_endpoint, remove_deal_from_sale_endpoint, transfer_deal_ownership_endpoint,
+    update_deal_endpoint, validate_deal_transfer_endpoint, DeleteDealResponse,
+};
 use crate::document_handlers;
 use crate::document_service::DocumentService;
 use crate::financial_transaction_handlers::{
@@ -37,13 +45,6 @@ use crate::financial_transaction_handlers::{
     record_pool_withdrawal,
 };
 use crate::health_handlers::EndpointInfo;
-use crate::deal_handlers::{
-    browse_deals_for_sale_endpoint, create_deal_endpoint, delete_deal_endpoint, deal_marketplace_stats_endpoint,
-    get_deal_details_endpoint, get_deal_payment_history_endpoint, get_deal_stats_endpoint,
-    get_deal_transfer_history_endpoint, get_payment_details_endpoint, get_user_deal_transfer_history_endpoint,
-    list_deals_endpoint, list_deal_for_sale_endpoint, record_deal_payment_endpoint, remove_deal_from_sale_endpoint,
-    transfer_deal_ownership_endpoint, update_deal_endpoint, validate_deal_transfer_endpoint, DeleteDealResponse,
-};
 // REMOVED: Marketplace handlers consolidated into deal_handlers
 // use crate::marketplace_handlers::*;
 use crate::merchant_handlers::{
@@ -448,11 +449,11 @@ pub fn create_router(state: ApiState) -> Router {
         // ========================================================================
         .route(
             paths::DEALS_FOR_SALE,
-            get(crate::deal_handlers::browse_deals_for_sale_endpoint)
+            get(crate::deal_handlers::browse_deals_for_sale_endpoint),
         )
         .route(
             paths::DEAL_LIST_FOR_SALE,
-            post(crate::deal_handlers::list_deal_for_sale_endpoint)
+            post(crate::deal_handlers::list_deal_for_sale_endpoint),
         )
         .route(
             paths::DEAL_REMOVE_FROM_SALE,
@@ -460,14 +461,14 @@ pub fn create_router(state: ApiState) -> Router {
         )
         .route(
             paths::DEAL_MARKETPLACE_STATS,
-            get(crate::deal_handlers::deal_marketplace_stats_endpoint)
+            get(crate::deal_handlers::deal_marketplace_stats_endpoint),
         )
         // ========================================================================
         // DEAL TRANSFER ENDPOINTS (consolidated from separate transfer)
         // ========================================================================
         .route(
             paths::DEAL_TRANSFER,
-            post(crate::deal_handlers::transfer_deal_ownership_endpoint)
+            post(crate::deal_handlers::transfer_deal_ownership_endpoint),
         )
         .route(
             paths::DEAL_TRANSFER_HISTORY,
@@ -702,25 +703,23 @@ pub fn create_router(state: ApiState) -> Router {
 // ROUTER DOCUMENTATION
 // ============================================================================
 
-/*
-## API Router Configuration
-
-This module configures all HTTP routes for the Arda Credit API.
-
-## Deal Management Routes
-- Deal CRUD operations
-- Deal payment processing
-- Deal marketplace operations (consolidated)
-- Deal transfer operations (consolidated)
-
-## Recent Changes
-Converted from loan-based routing to deal-based routing:
-- All /loan/* routes → /deal/* routes
-- All /loans/* routes → /deals/* routes
-- Marketplace routes consolidated into deal routes
-- Transfer routes consolidated into deal routes
-- Removed separate marketplace and transfer handler modules
-*/
+// ## API Router Configuration
+//
+// This module configures all HTTP routes for the Arda Credit API.
+//
+// ## Deal Management Routes
+// - Deal CRUD operations
+// - Deal payment processing
+// - Deal marketplace operations (consolidated)
+// - Deal transfer operations (consolidated)
+//
+// ## Recent Changes
+// Converted from loan-based routing to deal-based routing:
+// - All /loan/* routes → /deal/* routes
+// - All /loans/* routes → /deals/* routes
+// - Marketplace routes consolidated into deal routes
+// - Transfer routes consolidated into deal routes
+// - Removed separate marketplace and transfer handler modules
 
 // ============================================================================
 // SWAGGER UI SETUP

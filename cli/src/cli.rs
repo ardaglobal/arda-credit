@@ -55,8 +55,8 @@ use crate::benchmarks::{handle_benchmark_command, BenchmarkCommands};
 #[command(name = "cli")]
 #[command(about = "Arda Credit CLI - Privacy-preserving deal operations")]
 #[command(version)]
-#[command(long_about =
-r#"Arda Credit CLI - Privacy-preserving deal system built on SP1 zero-knowledge proofs
+#[command(
+    long_about = r#"Arda Credit CLI - Privacy-preserving deal system built on SP1 zero-knowledge proofs
 
 This command-line interface provides access to all deal operations including:
 • Deal origination, payments, and closeouts
@@ -70,7 +70,8 @@ All deal operations maintain transaction privacy through zero-knowledge proofs
 while enabling regulatory compliance and auditability.
 
 For detailed command help, use: cli deal --help
-"#)]
+"#
+)]
 pub struct Cli {
     /// API server base URL
     #[arg(
@@ -120,7 +121,6 @@ pub enum Commands {
     #[command(subcommand)]
     Benchmark(BenchmarkCommands),
 }
-
 
 /// Initialize CLI application with logging and configuration
 pub fn init_cli() -> Result<()> {
@@ -174,7 +174,6 @@ pub async fn run_cli() -> Result<()> {
     info!("✅ CLI command completed successfully");
     Ok(())
 }
-
 
 /// CLI middleware for common operations
 pub struct CliMiddleware;

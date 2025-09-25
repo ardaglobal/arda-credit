@@ -34,10 +34,10 @@ pub mod document; // Document storage and management
 #[cfg(feature = "document_storage")]
 pub mod document_storage; // AWS S3 document storage integration
 
-#[cfg(feature = "document_storage")]
-pub mod document_zkvm; // ZK proof integration for document operations
 pub mod deal;
 pub mod deal_processor;
+#[cfg(feature = "document_storage")]
+pub mod document_zkvm; // ZK proof integration for document operations
 pub mod merchant;
 pub mod pool;
 pub mod transactions;
@@ -88,7 +88,7 @@ pub use credit_line::{
     PoolMatchingResult,
 };
 pub use deal::{
-    LiquidityPool, Deal, DealError, LoanStatus, LoanTerms, PoolDeploymentTerms, PoolError,
+    Deal, DealError, LiquidityPool, LoanStatus, LoanTerms, PoolDeploymentTerms, PoolError,
     PoolState, PoolStatus,
 };
 pub use transactions::*;

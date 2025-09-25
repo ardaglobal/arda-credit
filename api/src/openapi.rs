@@ -29,22 +29,35 @@ pub use crate::credit_line_handlers::{
     EligibilityCheckDetail, EligibilityCheckResponse, PoolBrowsingQuery,
     SubmitCreditLineRequestBody,
 };
+pub use crate::deal_handlers::{
+    CreateDealRequest,
+    DealDetailsResponse,
+    DealListingResponse,
+    DealPaymentHistoryResponse,
+    DealStatsResponse,
+    DealTransferResponse,
+    DealTransferValidationResponse,
+    DeleteDealResponse,
+    // Consolidated marketplace types (moved from marketplace_handlers)
+    ListDealForSaleRequest,
+    ListDealsQuery,
+    ListDealsResponse,
+    MarketplaceDealResponse,
+    PaymentDetailsResponse,
+    PaymentResponse,
+    RecordDealPaymentRequest,
+    // Consolidated transfer types (moved from transfer_handlers)
+    TransferDealOwnershipRequest,
+    UpdateDealRequest,
+    UpdateDealResponse,
+    ValidateDealTransferRequest,
+};
 pub use crate::financial_transaction_handlers::{
     AccountFinancialTransactionResponse, CreateAccountFinancialTransactionRequest,
     CreateCreditLineFinancialTransactionRequest, CreatePoolFinancialTransactionRequest,
     CreatePoolFundingRequest, CreditLineFinancialTransactionResponse, FinancialSummaryResponse,
     FinancialTransactionQuery, PaginatedFinancialTransactionsResponse,
     PoolFinancialTransactionResponse, UnifiedFinancialTransactionResponse,
-};
-pub use crate::deal_handlers::{
-    CreateDealRequest, DeleteDealResponse, ListDealsQuery, ListDealsResponse, DealDetailsResponse,
-    DealPaymentHistoryResponse, DealStatsResponse, PaymentDetailsResponse, PaymentResponse,
-    RecordDealPaymentRequest, UpdateDealRequest, UpdateDealResponse,
-    // Consolidated marketplace types (moved from marketplace_handlers)
-    ListDealForSaleRequest, DealListingResponse, MarketplaceDealResponse,
-    // Consolidated transfer types (moved from transfer_handlers)
-    TransferDealOwnershipRequest, DealTransferResponse, ValidateDealTransferRequest,
-    DealTransferValidationResponse,
 };
 use crate::magic_link_handlers::{
     get_current_user, logout_endpoint, request_magic_link, verify_magic_link,
