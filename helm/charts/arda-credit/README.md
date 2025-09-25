@@ -88,6 +88,11 @@ Key configuration options in `values.yaml`:
 | `server.replicaCount` | Number of server replicas | `2` |
 | `server.config.rustLog` | Rust logging level | `"info"` |
 | `server.config.serverPort` | Server port | `"8080"` |
+| `server.config.sesRegion` | AWS SES region | `"us-east-1"` |
+| `server.config.sesConfigurationSet` | SES configuration set (optional) | `""` |
+| `server.config.magicBaseUrl` | Magic link base URL | `"https://app.arda.xyz/auth/verify"` |
+| `server.config.emailEnabled` | Enable email service | `"true"` |
+| `server.config.emailDebugMode` | Email debug mode | `"false"` |
 | **App Configuration** |
 | `app.replicaCount` | Number of app replicas | `1` |
 | `app.image.repository` | Frontend app image name | `"arda-credit-app"` |
@@ -185,7 +190,7 @@ kubectl create secret docker-registry ghcr-secret \
 ```
 
 ### 2. Application Secrets
-For Sindri API and Ethereum configuration:
+For Sindri API, Ethereum, and AWS/SES configuration:
 
 ```bash
 kubectl create secret generic arda-credit-secrets \
@@ -194,7 +199,40 @@ kubectl create secret generic arda-credit-secrets \
   --from-literal=ethereum-contract-address=$ETHEREUM_CONTRACT_ADDRESS \
   --from-literal=ethereum-wallet-private-key=$ETHEREUM_WALLET_PRIVATE_KEY \
   --from-literal=ethereum-deployer-address=$ETHEREUM_DEPLOYER_ADDRESS \
+  --from-literal=aws-access-key-id=$AWS_ACCESS_KEY_ID \
+  --from-literal=aws-secret-access-key=$AWS_SECRET_ACCESS_KEY \
+  --from-literal=email-from=$EMAIL_FROM \
+  --from-literal=email-reply-to=$EMAIL_REPLY_TO \
   --namespace arda-credit
+```
+
+#### AWS/SES Configuration
+For Magic Link authentication, you need:
+
+**AWS Credentials:**
+- `AWS_ACCESS_KEY_ID`: AWS access key with SES permissions
+- `AWS_SECRET_ACCESS_KEY`: AWS secret access key
+
+**Email Configuration:**
+- `EMAIL_FROM`: Verified SES sender email (e.g., `noreply@arda.xyz`)
+- `EMAIL_REPLY_TO`: Reply-to email address (e.g., `support@arda.xyz`)
+
+**Required SES Permissions:**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ses:SendEmail",
+        "ses:SendRawEmail",
+        "ses:GetAccount"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
 ```
 
 ## Configuration Management

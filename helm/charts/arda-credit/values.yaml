@@ -113,6 +113,13 @@ server:
     rustLog: "debug"
     serverPort: "8080"
     sindriCircuitTag: "latest"
+    
+    # AWS/SES Configuration (non-sensitive)
+    sesRegion: "us-east-1"
+    sesConfigurationSet: ""  # Optional SES configuration set name
+    magicBaseUrl: "https://app.arda.xyz/auth/verify"
+    emailEnabled: "true"
+    emailDebugMode: "false"
   
   # Persistence configuration for server data
   persistence:
@@ -308,6 +315,15 @@ secrets:
     ethereumWalletPrivateKey: "0x..."
     ethereumDeployerAddress: "0x..."
     signozIngestionKey: "your-signoz-ingestion-key"
+    
+    # AWS/SES Configuration for Magic Link Authentication
+    # AWS credentials for SES access (sensitive)
+    awsAccessKeyId: "your-aws-access-key-id"
+    awsSecretAccessKey: "your-aws-secret-access-key"
+    
+    # SES email configuration (sensitive - contains verified email addresses)
+    emailFrom: "noreply@arda.xyz"
+    emailReplyTo: "support@arda.xyz"
 
 # Security Context
 podSecurityContext:
