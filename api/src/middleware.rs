@@ -393,7 +393,7 @@ fn validation_error(error_code: &str, message: &str, details: Option<&str>) -> R
 /// Email-specific rate limiter with stricter limits
 #[derive(Debug, Clone)]
 pub struct EmailRateLimiter {
-    inner: RateLimiter,
+    pub inner: RateLimiter,
 }
 
 impl EmailRateLimiter {
@@ -401,6 +401,12 @@ impl EmailRateLimiter {
         Self {
             // 3 emails per hour (very restrictive for magic link spam prevention)
             inner: RateLimiter::new(3), // 3 requests per minute = ~180 per hour
+        }
+    }
+
+    pub fn new_with_limit(requests_per_minute: u32) -> Self {
+        Self {
+            inner: RateLimiter::new(requests_per_minute),
         }
     }
 
