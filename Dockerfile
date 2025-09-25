@@ -32,8 +32,8 @@ RUN cargo build --release --bin server && \
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates=20230311 \
-    libssl3=3.0.11-1~deb12u2 \
+    ca-certificates \
+    libssl3 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m -u 1001 appuser
 
