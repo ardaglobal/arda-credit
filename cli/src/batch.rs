@@ -144,7 +144,7 @@ pub async fn handle_batch_command(
 }
 
 /// Submit a new transaction to the batch processing queue
-pub async fn submit_transaction(client: &BatchApiClient, amount: i32) -> Result<()> {
+pub async fn submit_transaction(_client: &BatchApiClient, amount: i32) -> Result<()> {
     match client.submit_transaction(amount).await {
         Ok(response) => {
             println!("✅ Transaction submitted successfully!");
@@ -165,7 +165,7 @@ pub async fn submit_transaction(client: &BatchApiClient, amount: i32) -> Result<
 }
 
 /// View all pending (unbatched) transactions
-pub async fn view_pending_transactions(client: &BatchApiClient) -> Result<()> {
+pub async fn view_pending_transactions(_client: &BatchApiClient) -> Result<()> {
     match client.get_pending_transactions().await {
         Ok(response) => {
             if response.transactions.is_empty() {
@@ -205,7 +205,7 @@ pub async fn view_pending_transactions(client: &BatchApiClient) -> Result<()> {
 }
 
 /// Get current counter state and associated merkle root
-pub async fn get_current_state(client: &BatchApiClient) -> Result<()> {
+pub async fn get_current_state(_client: &BatchApiClient) -> Result<()> {
     match client.get_current_state().await {
         Ok(response) => {
             println!("📊 Current Counter State:");
@@ -235,7 +235,7 @@ pub async fn get_current_state(client: &BatchApiClient) -> Result<()> {
 
 /// Trigger batch creation and get contract submission data
 pub async fn trigger_batch(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     batch_size: Option<i32>,
     verbose: bool,
 ) -> Result<()> {
@@ -319,7 +319,7 @@ pub async fn trigger_batch(
 }
 
 /// List all historical batches
-pub async fn list_batches(client: &BatchApiClient) -> Result<()> {
+pub async fn list_batches(_client: &BatchApiClient) -> Result<()> {
     match client.get_batches(None).await {
         Ok(response) => {
             if response.batches.is_empty() {
@@ -366,7 +366,7 @@ pub async fn list_batches(client: &BatchApiClient) -> Result<()> {
 }
 
 /// Get details of a specific batch
-pub async fn get_batch(client: &BatchApiClient, batch_id: i32) -> Result<()> {
+pub async fn get_batch(_client: &BatchApiClient, batch_id: i32) -> Result<()> {
     match client.get_batch(batch_id).await {
         Ok(Some(batch)) => {
             println!("📋 Batch Details:");
@@ -412,7 +412,7 @@ pub async fn get_batch(client: &BatchApiClient, batch_id: i32) -> Result<()> {
 
 /// Download raw proof data for local verification
 pub async fn download_proof(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     batch_id: i32,
     output: Option<String>,
 ) -> Result<()> {
@@ -482,7 +482,7 @@ pub async fn download_proof(
 }
 
 /// Check API server health
-pub async fn health_check(client: &BatchApiClient) -> Result<()> {
+pub async fn health_check(_client: &BatchApiClient) -> Result<()> {
     let start = Instant::now();
 
     match client.health_check().await {

@@ -212,7 +212,7 @@ pub async fn run_cli() -> Result<()> {
 
 /// Handle legacy commands with deprecation warnings
 async fn handle_legacy_command(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     command: LegacyCommands,
     verbose: bool,
 ) -> Result<()> {
