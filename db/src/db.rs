@@ -319,6 +319,7 @@ pub struct Deal {
     pub maturity_date: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
 }
 
 /// Deal payment record (converted from Payment)
@@ -1809,6 +1810,7 @@ pub async fn create_deal(
     principal_amount: rust_decimal::Decimal,
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,
+    custom_deal_id: Option<&str>,
 ) -> Result<Deal, sqlx::Error> {
     // was Loan
     let id = uuid::Uuid::new_v4();
@@ -1816,8 +1818,8 @@ pub async fn create_deal(
 
     sqlx::query!(
         r#"
-        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7)
+        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at, custom_deal_id)
+        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7, $8)
         "#,  // was loans, borrower_id, lender_id
         id,
         originator_id,  // was borrower_id
@@ -1825,7 +1827,8 @@ pub async fn create_deal(
         principal_amount,
         interest_rate_bps,
         maturity_date,
-        now
+        now,
+        custom_deal_id
     )
     .execute(pool)
     .await?;
@@ -1843,6 +1846,7 @@ pub async fn create_deal(
         maturity_date,
         created_at: now,
         updated_at: now,
+        custom_deal_id: custom_deal_id.map(|s| s.to_string()),
     };
 
     Ok(deal)
@@ -1864,7 +1868,8 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             originated_at,
             maturity_date,
             created_at,
-            updated_at
+            updated_at,
+            custom_deal_id
         FROM deals  -- was loans
         WHERE id = $1
         "#,
@@ -1887,6 +1892,7 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
+            custom_deal_id: row.custom_deal_id,
         })),
         None => Ok(None),
     }
@@ -1917,7 +1923,8 @@ pub async fn list_deals(
             originated_at,
             maturity_date,
             created_at,
-            updated_at
+            updated_at,
+            custom_deal_id
         FROM deals  -- was loans
         WHERE ($1::text IS NULL OR loan_status = $1)
           AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id
@@ -1949,6 +1956,7 @@ pub async fn list_deals(
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
+            custom_deal_id: row.custom_deal_id,
         })
         .collect();
 
@@ -1965,6 +1973,7 @@ pub async fn update_deal(
     interest_rate_bps: Option<i32>,
     loan_status: Option<&str>,
     maturity_date: Option<Option<DateTime<Utc>>>, // Option<Option<T>> to handle setting to NULL
+    custom_deal_id: Option<Option<&str>>,         // Option<Option<T>> to handle setting to NULL
 ) -> Result<Option<Deal>, sqlx::Error> {
     // was Loan
     let now = Utc::now();
@@ -1982,6 +1991,11 @@ pub async fn update_deal(
     let new_rate = interest_rate_bps.unwrap_or(existing_deal.interest_rate_bps);
     let new_status = loan_status.unwrap_or(&existing_deal.loan_status);
     let new_maturity = maturity_date.unwrap_or(existing_deal.maturity_date);
+    let new_custom_deal_id = match custom_deal_id {
+        Some(Some(value)) => Some(value.to_string()),
+        Some(None) => None,
+        None => existing_deal.custom_deal_id,
+    };
 
     sqlx::query!(
         r#"
@@ -1992,6 +2006,7 @@ pub async fn update_deal(
             interest_rate_bps = $4,
             loan_status = $5,
             maturity_date = $6,
+            custom_deal_id = $8,
             updated_at = $7
         WHERE id = $1
         "#,
@@ -2001,7 +2016,8 @@ pub async fn update_deal(
         new_rate,
         new_status,
         new_maturity,
-        now
+        now,
+        new_custom_deal_id
     )
     .execute(pool)
     .await?;

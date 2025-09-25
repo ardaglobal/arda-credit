@@ -68,6 +68,7 @@ pub struct CreateDealRequest {
     pub interest_rate_bps: u16,              // Interest rate in basis points
     pub term_days: Option<u32>,              // Optional deal term
     pub metadata: Option<serde_json::Value>, // Optional additional data
+    pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
 }
 
 /// Deal details response (converted from LoanDetailsResponse)
@@ -83,6 +84,7 @@ pub struct DealDetailsResponse {
     pub loan_status: String, // keeping same field name
     pub originated_at: DateTime<Utc>,
     pub last_updated: Option<DateTime<Utc>>,
+    pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
 }
 
 /// List deals query parameters (converted from ListLoansQuery)
@@ -125,6 +127,7 @@ pub struct UpdateDealRequest {
     pub interest_rate_bps: Option<u16>,   // Interest rate in basis points
     pub loan_status: Option<String>, // "originated", "active", "paid_off", "closed", "defaulted"
     pub maturity_date: Option<Option<String>>, // Optional maturity date (ISO 8601), Option<Option<T>> to handle NULL
+    pub custom_deal_id: Option<Option<String>>, // Optional custom deal ID, Option<Option<T>> to handle NULL
 }
 
 /// Update deal response (converted from UpdateLoanResponse)
@@ -388,6 +391,7 @@ pub async fn create_deal_endpoint(
         principal_amount,
         request.interest_rate_bps as i32,
         maturity_date,
+        request.custom_deal_id.as_deref(),
     )
     .await
     .map_err(|e| {
@@ -410,6 +414,7 @@ pub async fn create_deal_endpoint(
         loan_status: deal.loan_status, // keeping same field name
         originated_at: deal.originated_at,
         last_updated: Some(deal.updated_at),
+        custom_deal_id: deal.custom_deal_id,
     };
 
     // Record function execution time
@@ -497,6 +502,7 @@ pub async fn list_deals_endpoint(
             loan_status: deal.loan_status, // keeping same field name
             originated_at: deal.originated_at,
             last_updated: Some(deal.updated_at),
+            custom_deal_id: deal.custom_deal_id,
         })
         .collect();
 
@@ -569,6 +575,7 @@ pub async fn get_deal_details_endpoint(
                 loan_status: deal.loan_status, // keeping same field name
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
+                custom_deal_id: deal.custom_deal_id,
             };
 
             info!("✅ Deal details retrieved: {}", deal_id); // updated log message
@@ -712,6 +719,7 @@ pub async fn update_deal_endpoint(
         interest_rate_bps,
         request.loan_status.as_deref(),
         maturity_date,
+        request.custom_deal_id.as_ref().map(|opt| opt.as_deref()),
     )
     .await
     .map_err(|e| {
@@ -741,6 +749,9 @@ pub async fn update_deal_endpoint(
             if request.maturity_date.is_some() {
                 updated_fields.push("maturity_date".to_string());
             }
+            if request.custom_deal_id.is_some() {
+                updated_fields.push("custom_deal_id".to_string());
+            }
 
             // Convert to response format
             let deal_details = DealDetailsResponse {
@@ -754,6 +765,7 @@ pub async fn update_deal_endpoint(
                 loan_status: deal.loan_status, // keeping same field name
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
+                custom_deal_id: deal.custom_deal_id,
             };
 
             let response = UpdateDealResponse {
