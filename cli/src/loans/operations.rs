@@ -12,7 +12,7 @@ use eyre::Result;
 
 /// Originate a new loan between parties
 pub async fn originate_loan(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     borrower_id: &str,
     lender_id: &str,
     amount: f64,
@@ -70,7 +70,7 @@ pub async fn originate_loan(
 
 /// Make a payment toward a loan
 pub async fn make_payment(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     loan_id: &str,
     amount: f64,
     verbose: bool,
@@ -115,7 +115,7 @@ pub async fn make_payment(
 }
 
 /// Close out a loan
-pub async fn closeout_loan(client: &BatchApiClient, loan_id: &str, verbose: bool) -> Result<()> {
+pub async fn closeout_loan(_client: &BatchApiClient, loan_id: &str, verbose: bool) -> Result<()> {
     println!("🏁 Closing out loan: {}", loan_id);
 
     // Placeholder implementation - would check loan status
@@ -144,7 +144,7 @@ pub async fn closeout_loan(client: &BatchApiClient, loan_id: &str, verbose: bool
 
 /// List loans for a user
 pub async fn list_loans(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     user_id: &str,
     status: Option<&str>,
     limit: Option<i32>,
@@ -183,7 +183,7 @@ pub async fn list_loans(
 }
 
 /// Get loan details
-pub async fn get_loan(client: &BatchApiClient, loan_id: &str, verbose: bool) -> Result<()> {
+pub async fn get_loan(_client: &BatchApiClient, loan_id: &str, verbose: bool) -> Result<()> {
     println!("🔍 Loan details for: {}", loan_id);
 
     // Placeholder implementation
@@ -213,7 +213,7 @@ pub async fn get_loan(client: &BatchApiClient, loan_id: &str, verbose: bool) -> 
 
 /// Test loan operations end-to-end
 pub async fn test_loan_operations(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     count: Option<i32>,
     test_payments: bool,
     test_merchants: bool,
