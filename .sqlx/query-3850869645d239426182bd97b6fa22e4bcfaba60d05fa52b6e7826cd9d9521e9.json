@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO account_financial_transactions (\n            id, user_id, transaction_type, amount, currency,\n            transaction_hash, blockchain_status, processed_at\n        )\n        VALUES ($1, $2, 'LOAN_SALE', $3, 'USDC', $4, 'CONFIRMED', NOW())\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3850869645d239426182bd97b6fa22e4bcfaba60d05fa52b6e7826cd9d9521e9"
+}

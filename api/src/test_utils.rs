@@ -222,7 +222,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
     let email_service = Arc::new(create_mock_email_service().await);
 
     // Create email rate limiter
-    let email_rate_limiter = Arc::new(EmailRateLimiter::new()); // 3 per hour
+    let email_rate_limiter = Arc::new(EmailRateLimiter::new()); // Use default limit for tests
 
     // Create magic link service
     let magic_link_config = MagicLinkConfig {
@@ -235,7 +235,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
         pool.clone(),
         magic_link_config,
         email_service,
-        Arc::new(crate::middleware::RateLimiter::new(100)), // Allow 100 requests per minute
+        Arc::new(email_rate_limiter.inner.clone()), // Use the same rate limiter as in the state
         session_service.clone(),
     ));
 
@@ -272,6 +272,31 @@ pub async fn create_test_app_with_magic_links(state: ApiState) -> TestApp {
 
 /// Create a test user in the database
 pub async fn create_test_user(pool: &PgPool, email: &str, user_type: &str) -> TestUser {
+    // First check if user already exists
+    let existing_user = sqlx::query!(
+        r#"
+        SELECT id, email, user_type, first_name, last_name, wallet_address
+        FROM identities
+        WHERE email = $1
+        "#,
+        email
+    )
+    .fetch_optional(pool)
+    .await
+    .unwrap();
+
+    if let Some(user) = existing_user {
+        return TestUser {
+            id: user.id,
+            email: user.email,
+            user_type: user.user_type,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            wallet_address: user.wallet_address,
+        };
+    }
+
+    // User doesn't exist, create new one
     let user_id = Uuid::new_v4();
 
     sqlx::query(

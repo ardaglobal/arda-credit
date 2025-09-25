@@ -44,3 +44,4 @@ sha2            = { workspace = true }
 
 # Database access for development testing
 sqlx = { workspace = true, features = [ "chrono", "postgres", "uuid" ] }
+uuid = { workspace = true, features = [ "serde", "v4" ] }

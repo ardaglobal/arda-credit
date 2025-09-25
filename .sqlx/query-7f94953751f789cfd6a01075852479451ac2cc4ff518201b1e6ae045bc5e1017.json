@@ -1,0 +1,143 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            ll.listing_id, ll.asking_price, ll.description as listing_description,\n            ll.listed_at, ll.status as listing_status,\n            l.id as loan_id, l.borrower_id, l.lender_id, l.principal_amount, l.outstanding_balance,\n            l.interest_rate_bps, l.loan_status, l.originated_at, l.title, l.description,\n            l.risk_level, l.asset_class, l.region, l.minimum_investment,\n            i.email as seller_email, i.kyc_status as seller_kyc_status\n        FROM loan_listings ll\n        JOIN loans l ON ll.loan_id = l.id\n        JOIN identities i ON ll.seller_id = i.id\n        WHERE ll.status = 'active'\n          AND l.loan_status = 'for_sale'\n        ORDER BY ll.listed_at DESC\n        LIMIT $1 OFFSET $2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "listing_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "asking_price",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 2,
+        "name": "listing_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "listed_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 4,
+        "name": "listing_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "loan_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "borrower_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "lender_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "principal_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 9,
+        "name": "outstanding_balance",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 10,
+        "name": "interest_rate_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "loan_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "originated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "risk_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "asset_class",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 17,
+        "name": "region",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 18,
+        "name": "minimum_investment",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 19,
+        "name": "seller_email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "seller_kyc_status",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "7f94953751f789cfd6a01075852479451ac2cc4ff518201b1e6ae045bc5e1017"
+}

@@ -480,6 +480,35 @@ pub const DOCUMENT_AUDIT: &str = api_path!("/companies/{company_id}/documents/au
 pub const DOCUMENT_HEALTH: &str = api_path!("/documents/health");
 
 // ============================================================================
+// MARKETPLACE PATHS (Worker A)
+// ============================================================================
+
+/// Browse marketplace loans for sale
+pub const LOANS_FOR_SALE: &str = api_path!("/loans/for-sale");
+
+/// List loan for sale
+pub const LOAN_LIST_FOR_SALE: &str = api_path!("/loan/{loan_id}/list-for-sale");
+
+/// Marketplace statistics
+pub const MARKETPLACE_STATS: &str = api_path!("/loans/marketplace/stats");
+
+// ============================================================================
+// TRANSFER PATHS (Worker B)
+// ============================================================================
+
+/// Execute loan ownership transfer
+pub const LOAN_TRANSFER: &str = api_path!("/loan/{loan_id}/transfer");
+
+/// Get loan transfer history
+pub const LOAN_TRANSFER_HISTORY: &str = api_path!("/loan/{loan_id}/transfers");
+
+/// Get user transfer history
+pub const USER_TRANSFER_HISTORY: &str = api_path!("/user/{user_id}/transfers");
+
+/// Validate transfer eligibility
+pub const LOAN_TRANSFER_VALIDATE: &str = api_path!("/loan/{loan_id}/transfer/validate");
+
+// ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================
 
