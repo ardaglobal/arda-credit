@@ -60,7 +60,7 @@ async fn test_marketplace_foundation_complete() {
         SELECT COUNT(*) > 0 as view_exists
         FROM information_schema.views
         WHERE table_schema = 'public'
-          AND table_name = 'marketplace_loans'
+          AND table_name = 'marketplace_deals'
         "#
     )
     .fetch_one(&pool)
@@ -68,7 +68,7 @@ async fn test_marketplace_foundation_complete() {
     .expect("Should be able to query view existence")
     .expect("View existence query should return a value");
 
-    assert!(view_exists, "marketplace_loans view should exist");
+    assert!(view_exists, "marketplace_deals view should exist");
 
     // Test 5: Check marketplace view returns data (may be empty, that's ok)
     println!("📋 Test 5: Marketplace view functionality");

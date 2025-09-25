@@ -64,6 +64,8 @@ pub use crate::deal_handlers::{
 /// ## Usage Examples
 ///
 /// ```rust
+/// # use api::client::BatchApiClient;
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let client = BatchApiClient::new("http://localhost:8080");
 ///
 /// // Create a deal
@@ -86,6 +88,8 @@ pub use crate::deal_handlers::{
 ///     "new-investor-id",
 ///     "95000"
 /// ).await?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct BatchApiClient {

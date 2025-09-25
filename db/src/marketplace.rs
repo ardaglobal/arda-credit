@@ -78,6 +78,20 @@ pub async fn create_deal_listing(
     let listing_id = Uuid::new_v4();
     let now = Utc::now();
 
+    // First update the deal status to 'for_sale'
+    sqlx::query!(
+        r#"
+        UPDATE deals
+        SET loan_status = 'for_sale', updated_at = NOW()
+        WHERE id = $1 AND investor_id = $2
+        "#,
+        deal_id,
+        seller_id
+    )
+    .execute(pool)
+    .await?;
+
+    // Then create the listing
     sqlx::query!(
         r#"
         INSERT INTO deal_listings (listing_id, deal_id, seller_id, asking_price, description, listed_at, expires_at, created_at, updated_at)
