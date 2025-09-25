@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at\n        FROM deals  -- was loans\n        WHERE ($1::text IS NULL OR loan_status = $1)\n          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id\n          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id\n        ORDER BY created_at DESC\n        LIMIT $4 OFFSET $5\n        ",
+  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id\n        FROM deals  -- was loans\n        WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -57,15 +57,16 @@
         "ordinal": 10,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "custom_deal_id",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Uuid",
-        "Uuid",
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -79,8 +80,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "3b11c82818c862f1c51bc28156faf23ab78b0fa282d59918f656edff01a145a2"
+  "hash": "2cfda9516088209e43c2a475ab504612f85845304794f48e630a8557defaab91"
 }
