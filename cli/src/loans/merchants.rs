@@ -8,6 +8,7 @@
 //! - Merchant profile completion tracking
 
 use arda_credit_api::BatchApiClient;
+use chrono;
 use eyre::Result;
 
 /// Register a new merchant with business information

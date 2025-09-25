@@ -11,7 +11,9 @@
 //! compliance through proper KYC verification and audit trails.
 
 use clap::Subcommand;
+use chrono;
 use eyre::Result;
+use std::collections::HashMap;
 use std::io::{self, Write};
 
 use arda_credit_api::BatchApiClient;
@@ -554,7 +556,7 @@ pub async fn list_users(
                     let user_types: std::collections::HashMap<&str, usize> = users
                         .iter()
                         .filter_map(|u| u["user_type"].as_str())
-                        .fold(std::collections::HashMap::new(), |mut acc, ut| {
+                        .fold(HashMap::new(), |mut acc, ut| {
                             *acc.entry(ut).or_insert(0) += 1;
                             acc
                         });

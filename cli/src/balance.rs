@@ -10,6 +10,7 @@
 //! All balance operations maintain transaction privacy through ZK proofs while enabling
 //! regulatory compliance through proper KYC verification and audit trails.
 
+use chrono;
 use clap::Subcommand;
 use eyre::Result;
 use reqwest::Client;

@@ -8,6 +8,7 @@
 //! - Credit terms negotiation and approval
 
 use arda_credit_api::BatchApiClient;
+use chrono;
 use eyre::Result;
 
 /// Get merchant profile completion status
