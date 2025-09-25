@@ -1030,7 +1030,7 @@ impl BatchApiClient {
         principal_amount: Option<&str>,
         outstanding_balance: Option<&str>,
         interest_rate_bps: Option<u16>,
-        loan_status: Option<&str>, // keeping same field name
+        loan_status: Option<&str>,           // keeping same field name
         maturity_date: Option<Option<&str>>, // Optional maturity date (ISO 8601), Option<Option<T>> to handle NULL
     ) -> Result<DealDetailsResponse, ApiClientError> {
         // was LoanDetailsResponse
