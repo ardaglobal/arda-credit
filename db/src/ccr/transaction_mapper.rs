@@ -653,7 +653,7 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            loan_id: [2u8; 16]
+            deal_id: [2u8; 16]
                 .iter()
                 .chain([0u8; 16].iter())
                 .cloned()
@@ -698,7 +698,7 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            loan_id: [2u8; 16]
+            deal_id: [2u8; 16]
                 .iter()
                 .chain([0u8; 16].iter())
                 .cloned()
@@ -748,7 +748,7 @@ mod tests {
                 .collect::<Vec<u8>>()
                 .try_into()
                 .unwrap(),
-            loan_id: [2u8; 16]
+            deal_id: [2u8; 16]
                 .iter()
                 .chain([0u8; 16].iter())
                 .cloned()

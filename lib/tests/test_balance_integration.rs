@@ -32,7 +32,7 @@ mod tests {
         LoanTransaction {
             transaction_id: [1u8; 32],
             user_id,
-            loan_id: [0u8; 32],
+            deal_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
             created_at: 1_640_995_200,
@@ -44,7 +44,7 @@ mod tests {
         LoanTransaction {
             transaction_id: [2u8; 32],
             user_id,
-            loan_id: [0u8; 32],
+            deal_id: [0u8; 32],
             transaction_type: TransactionType::KycVerification,
             amount: 0,
             created_at: 1640995300,
@@ -65,7 +65,7 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id: originator_id,
-            loan_id: deal_id, // Keep loan_id field for transaction compatibility
+            deal_id, // Keep deal_id field name
             transaction_type: TransactionType::DealOrigination,
             amount,
             created_at: 1640995400,
@@ -83,7 +83,7 @@ mod tests {
         LoanTransaction {
             transaction_id: payment_id,
             user_id: payer_id,
-            loan_id: deal_id, // Keep loan_id field for transaction compatibility
+            deal_id, // Keep deal_id field name
             transaction_type: TransactionType::DealPayment,
             amount,
             created_at: timestamp,
@@ -125,8 +125,8 @@ mod tests {
         // Verify deal was created
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
         assert_eq!(deal.principal_amount, 50000);
-        assert_eq!(deal.borrower_id, originator_id); // Keep borrower_id field for compatibility
-        assert_eq!(deal.lender_id, investor_id); // Keep lender_id field for compatibility
+        assert_eq!(deal.originator_id, originator_id); // Keep originator_id field for compatibility
+        assert_eq!(deal.investor_id, investor_id); // Keep investor_id field for compatibility
 
         // Verify balance updates were created (funding + 2 origination updates)
         assert_eq!(state.balance_state.updates.len(), 3);

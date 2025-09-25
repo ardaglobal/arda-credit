@@ -1031,7 +1031,7 @@ const fn apply_operation_to_balance(balance: u128, operation: &LoanOperation) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loan::LoanStatus;
+    use crate::deal::LoanStatus;
     use crate::transactions::MetadataArray;
     use crate::user::{KycStatus, UserType};
 
@@ -1072,7 +1072,7 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id: originator_id, // was borrower_id
-            loan_id: deal_id,       // Keep loan_id field for transaction compatibility
+            deal_id,                // Keep deal_id field name
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount,
             created_at: 1_640_995_400, // January 1, 2022 - valid timestamp
@@ -1135,10 +1135,10 @@ mod tests {
         let payment = LoanTransaction {
             transaction_id: [4u8; 32],
             user_id: originator_id,                         // was borrower_id
-            loan_id: deal_id, // Keep loan_id field for transaction compatibility
+            deal_id,                                        // Keep deal_id field name
             transaction_type: TransactionType::DealPayment, // was LoanPayment
-            amount: 25000,    // Partial payment
-            created_at: 1_640_995_500, // January 1, 2022 - valid timestamp
+            amount: 25000,                                  // Partial payment
+            created_at: 1_640_995_500,                      // January 1, 2022 - valid timestamp
             metadata: MetadataArray::empty(),
         };
         state.process_transaction(&payment).unwrap();
@@ -1151,10 +1151,10 @@ mod tests {
         let final_payment = LoanTransaction {
             transaction_id: [5u8; 32],
             user_id: originator_id,                         // was borrower_id
-            loan_id: deal_id, // Keep loan_id field for transaction compatibility
+            deal_id,                                        // Keep deal_id field name
             transaction_type: TransactionType::DealPayment, // was LoanPayment
-            amount: 25000,    // Final payment
-            created_at: 1_640_995_600, // January 1, 2022 - valid timestamp
+            amount: 25000,                                  // Final payment
+            created_at: 1_640_995_600,                      // January 1, 2022 - valid timestamp
             metadata: MetadataArray::empty(),
         };
         state.process_transaction(&final_payment).unwrap();
@@ -1167,7 +1167,7 @@ mod tests {
         let closeout = LoanTransaction {
             transaction_id: [6u8; 32],
             user_id: investor_id,                            // was lender_id
-            loan_id: deal_id, // Keep loan_id field for transaction compatibility
+            deal_id,                                         // Keep deal_id field name
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
             created_at: 1_640_995_700, // January 1, 2022 - valid timestamp
@@ -1204,7 +1204,7 @@ mod tests {
         assert!(matches!(
             result,
             Err(ProcessingError::UserError(UserError::KycNotApproved { .. }))
-                | Err(ProcessingError::LoanError(LoanError::UserError(
+                | Err(ProcessingError::LoanError(DealError::UserError(
                     UserError::KycNotApproved { .. }
                 ))) // Keep LoanError for compatibility
         ));
@@ -1262,9 +1262,9 @@ mod tests {
         let deal_tx = LoanTransaction {
             transaction_id: [10u8; 32],
             user_id: investor_id,                               // was lender_id
-            loan_id: deal_id, // Keep loan_id field for transaction compatibility
+            deal_id,                                            // Keep deal_id field name
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
-            amount: 1_000_000, // $10,000 in cents
+            amount: 1_000_000,                                  // $10,000 in cents
             created_at: base_timestamp + 5000,
             metadata: deal_metadata,
         };
@@ -1541,7 +1541,7 @@ mod tests {
 
         let operations = vec![
             LoanOperation::LoanCreation {
-                loan_id: [1u8; 32],
+                deal_id: [1u8; 32],
                 borrower_id: [2u8; 32],
                 lender_id: [3u8; 32],
                 principal: 50_000,
@@ -1549,7 +1549,7 @@ mod tests {
                 term_months: 36,
             },
             LoanOperation::Payment {
-                loan_id: [1u8; 32],
+                deal_id: [1u8; 32],
                 payer_id: [2u8; 32],
                 amount: 10_000,
             },
@@ -1582,7 +1582,7 @@ mod tests {
     #[test]
     fn test_loan_operation_nullifiers() {
         let operation1 = LoanOperation::LoanCreation {
-            loan_id: [1u8; 32],
+            deal_id: [1u8; 32],
             borrower_id: [2u8; 32],
             lender_id: [3u8; 32],
             principal: 50_000,
@@ -1591,7 +1591,7 @@ mod tests {
         };
 
         let operation2 = LoanOperation::Payment {
-            loan_id: [1u8; 32],
+            deal_id: [1u8; 32],
             payer_id: [2u8; 32],
             amount: 10_000,
         };
@@ -1693,7 +1693,7 @@ mod tests {
         let deposit_with_loan_id = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
-            loan_id: [1u8; 32], // Should be zero for deposits
+            deal_id: [1u8; 32], // Should be zero for deposits
             transaction_type: TransactionType::UserDeposit,
             amount: 50000,
             created_at: 1_640_995_200,
@@ -1723,7 +1723,7 @@ mod tests {
         let depositor_id = [1u8; 32];
         let borrower_id = [2u8; 32];
         let lender_id = [3u8; 32];
-        let loan_id = [10u8; 32];
+        let deal_id = [10u8; 32];
 
         // Create a batch with mixed transaction types including deposits
         let base_timestamp = 1_640_995_200;
@@ -1885,7 +1885,7 @@ mod tests {
         assert_eq!(state.get_user_balance(&borrower_id), 50000); // $500
 
         // Verify loan exists
-        let loan = state.get_loan(&loan_id).unwrap();
+        let loan = state.get_loan(&deal_id).unwrap();
         assert_eq!(loan.principal_amount, 50000);
 
         // Verify correct number of balance updates
@@ -1948,10 +1948,10 @@ mod tests {
         let loan3_id = [12u8; 32];
 
         // Loan 1: Active with $100 outstanding balance
-        let loan1 = crate::loan::Loan {
-            loan_id: loan1_id,
-            borrower_id,
-            lender_id,
+        let loan1 = crate::deal::Deal {
+            deal_id: loan1_id,
+            originator_id: borrower_id,
+            investor_id: lender_id,
             principal_amount: 10000, // $100
             outstanding_balance: 10000,
             interest_rate: 750,
@@ -1963,10 +1963,10 @@ mod tests {
         };
 
         // Loan 2: Originated with $200 outstanding balance
-        let loan2 = crate::loan::Loan {
-            loan_id: loan2_id,
-            borrower_id,
-            lender_id,
+        let loan2 = crate::deal::Deal {
+            deal_id: loan2_id,
+            originator_id: borrower_id,
+            investor_id: lender_id,
             principal_amount: 20000, // $200
             outstanding_balance: 20000,
             interest_rate: 750,
@@ -1978,10 +1978,10 @@ mod tests {
         };
 
         // Loan 3: PaidOff (should not count toward balance)
-        let loan3 = crate::loan::Loan {
-            loan_id: loan3_id,
-            borrower_id,
-            lender_id,
+        let loan3 = crate::deal::Deal {
+            deal_id: loan3_id,
+            originator_id: borrower_id,
+            investor_id: lender_id,
             principal_amount: 30000, // $300
             outstanding_balance: 0,
             interest_rate: 750,
@@ -2333,7 +2333,7 @@ mod tests {
         let pool_creation = LoanTransaction {
             transaction_id: [30u8; 32],
             user_id: investor_id,
-            loan_id: pool_id, // Using loan_id field as pool_id
+            deal_id: pool_id, // Using deal_id field as pool_id
             transaction_type: TransactionType::PoolCreation,
             amount: 0,
             created_at: 1_640_995_400,
