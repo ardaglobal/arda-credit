@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id\n        FROM deals  -- was loans\n        WHERE ($1::text IS NULL OR loan_status = $1)\n          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id\n          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id\n        ORDER BY created_at DESC\n        LIMIT $4 OFFSET $5\n        ",
+  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids\n        FROM deals  -- was loans\n        WHERE ($1::text IS NULL OR loan_status = $1)\n          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id\n          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id\n          AND ($4::text IS NULL OR industry = $4)\n        ORDER BY created_at DESC\n        LIMIT $5 OFFSET $6\n        ",
   "describe": {
     "columns": [
       {
@@ -62,6 +62,21 @@
         "ordinal": 11,
         "name": "custom_deal_id",
         "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "industry",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "document_ids",
+        "type_info": "Jsonb"
       }
     ],
     "parameters": {
@@ -69,6 +84,7 @@
         "Text",
         "Uuid",
         "Uuid",
+        "Text",
         "Int8",
         "Int8"
       ]
@@ -85,8 +101,11 @@
       true,
       true,
       true,
+      true,
+      false,
+      true,
       true
     ]
   },
-  "hash": "320ab818e6c5d5c211da4dc7cd740ac1f37a494898e736d4d35d8260e11a6008"
+  "hash": "af76a759c422fb737ffea3326d06797a2327a8c2760eb153e58fad6e5ae92f02"
 }

@@ -320,6 +320,9 @@ pub struct Deal {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
+    pub status: String,                 // draft, active, closed, cancelled
+    pub industry: Option<String>,       // Industry sector for the deal
+    pub document_ids: Option<serde_json::Value>, // JSON array of document UUIDs
 }
 
 /// Deal payment record (converted from Payment)
@@ -1811,15 +1814,20 @@ pub async fn create_deal(
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,
     custom_deal_id: Option<&str>,
+    status: Option<&str>,
+    industry: Option<&str>,
+    document_ids: Option<&serde_json::Value>,
 ) -> Result<Deal, sqlx::Error> {
     // was Loan
     let id = uuid::Uuid::new_v4();
     let now = Utc::now();
+    let default_json = serde_json::Value::Array(vec![]);
+    let doc_ids = document_ids.unwrap_or(&default_json);
 
     sqlx::query!(
         r#"
-        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at, custom_deal_id)
-        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7, $8)
+        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at, custom_deal_id, status, industry, document_ids)
+        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7, $8, $9, $10, $11)
         "#,  // was loans, borrower_id, lender_id
         id,
         originator_id,  // was borrower_id
@@ -1828,7 +1836,10 @@ pub async fn create_deal(
         interest_rate_bps,
         maturity_date,
         now,
-        custom_deal_id
+        custom_deal_id,
+        status.unwrap_or("draft"),
+        industry,
+        doc_ids,
     )
     .execute(pool)
     .await?;
@@ -1847,6 +1858,9 @@ pub async fn create_deal(
         created_at: now,
         updated_at: now,
         custom_deal_id: custom_deal_id.map(|s| s.to_string()),
+        status: status.unwrap_or("draft").to_string(),
+        industry: industry.map(|s| s.to_string()),
+        document_ids: Some(doc_ids.clone()),
     };
 
     Ok(deal)
@@ -1869,7 +1883,10 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             maturity_date,
             created_at,
             updated_at,
-            custom_deal_id
+            custom_deal_id,
+            status,
+            industry,
+            document_ids
         FROM deals  -- was loans
         WHERE id = $1
         "#,
@@ -1887,12 +1904,15 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status,
+            loan_status: row.loan_status.clone(),
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             custom_deal_id: row.custom_deal_id,
+            status: row.status,
+            industry: row.industry,
+            document_ids: row.document_ids,
         })),
         None => Ok(None),
     }
@@ -1907,6 +1927,7 @@ pub async fn list_deals(
     status: Option<&str>,
     originator_id: Option<uuid::Uuid>, // was borrower_id
     investor_id: Option<uuid::Uuid>,   // was lender_id
+    industry: Option<&str>,
 ) -> Result<Vec<Deal>, sqlx::Error> {
     // was Loan
     // Use a unified query with optional filtering
@@ -1924,17 +1945,22 @@ pub async fn list_deals(
             maturity_date,
             created_at,
             updated_at,
-            custom_deal_id
+            custom_deal_id,
+            status,
+            industry,
+            document_ids
         FROM deals  -- was loans
         WHERE ($1::text IS NULL OR loan_status = $1)
           AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id
           AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id
+          AND ($4::text IS NULL OR industry = $4)
         ORDER BY created_at DESC
-        LIMIT $4 OFFSET $5
+        LIMIT $5 OFFSET $6
         "#,
         status,
         originator_id, // was borrower_id
         investor_id,   // was lender_id
+        industry,
         limit.unwrap_or(100),
         offset.unwrap_or(0)
     )
@@ -1951,12 +1977,15 @@ pub async fn list_deals(
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status,
+            loan_status: row.loan_status.clone(),
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             custom_deal_id: row.custom_deal_id,
+            status: row.status,
+            industry: row.industry,
+            document_ids: row.document_ids,
         })
         .collect();
 

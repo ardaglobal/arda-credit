@@ -968,6 +968,9 @@ impl BatchApiClient {
             term_days,
             metadata,
             custom_deal_id: custom_deal_id.map(|s| s.to_string()),
+            status: None,
+            industry: None,
+            document_ids: None,
         };
 
         let response = self.client.post(&url).json(&request).send().await?;

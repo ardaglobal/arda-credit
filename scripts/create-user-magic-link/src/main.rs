@@ -1,8 +1,8 @@
 #!/usr/bin/env cargo run --bin create_user_and_magic_link
-//! Script to create a user with email matt@arda.xyz and generate a magic link for testing
+//! Script to create a user with email chad@arda.xyz and generate a magic link for testing
 //!
 //! This script performs the following steps:
-//! 1. Registers a new user with email matt@arda.xyz using INVESTOR2025 invite code
+//! 1. Registers a new user with email chad@arda.xyz using INVESTOR2025 invite code
 //! 2. Requests a magic link for login
 //!
 //! Usage:
@@ -61,10 +61,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Client::new();
 
     // Step 1: Register the user
-    info!("👤 Step 1: Registering user matt@arda.xyz");
+    info!("👤 Step 1: Registering user chad@arda.xyz");
 
     let register_request = RegisterUserRequest {
-        email: "matt@arda.xyz".to_string(),
+        email: "chad@arda.xyz".to_string(),
         jurisdiction: Some("US".to_string()),
         invite_code: "INVESTOR2025".to_string(),
     };
@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("   Created At: {}", response_body.created_at);
         }
         reqwest::StatusCode::CONFLICT => {
-            info!("⚠️  User already exists with email matt@arda.xyz");
+            info!("⚠️  User already exists with email chad@arda.xyz");
             info!("   Continuing to magic link generation...");
         }
         reqwest::StatusCode::OK => {
@@ -112,10 +112,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Step 2: Request magic link
-    info!("🔗 Step 2: Requesting magic link for matt@arda.xyz");
+    info!("🔗 Step 2: Requesting magic link for chad@arda.xyz");
 
     let magic_link_request = MagicLinkRequest {
-        email: "matt@arda.xyz".to_string(),
+        email: "chad@arda.xyz".to_string(),
         redirect_uri: Some("/dashboard".to_string()),
     };
 
@@ -146,9 +146,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             info!("   Timestamp: {}", response_body.timestamp);
 
-            info!("📧 Check your email (matt@arda.xyz) for the magic link!");
+            info!("📧 Check your email (chad@arda.xyz) for the magic link!");
             info!("🔍 You can also check the database directly for the magic link token:");
-            info!("   psql $DATABASE_URL -c \"SELECT token, state, expires_at FROM magic_links WHERE email = 'matt@arda.xyz' ORDER BY created_at DESC LIMIT 1;\"");
+            info!("   psql $DATABASE_URL -c \"SELECT token, state, expires_at FROM magic_links WHERE email = 'chad@arda.xyz' ORDER BY created_at DESC LIMIT 1;\"");
 
             info!("🎯 Next steps:");
             info!("1. Copy the magic link from your email or database");

@@ -360,21 +360,35 @@ pub async fn get_current_user(
     State(state): State<ApiState>,
     headers: HeaderMap,
 ) -> Result<Json<UserInfo>, (StatusCode, Json<MagicLinkErrorResponse>)> {
-    // Extract current user from session middleware headers
-    match extract_current_user(&headers) {
-        Some(current_user) => {
-            info!("✅ Current user retrieved: {}", current_user.email);
+    // Extract session token from cookie header
+    let session_token = extract_session_token_from_headers(&headers).ok_or_else(|| {
+        warn!("❌ No session cookie found");
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(MagicLinkErrorResponse {
+                error: "NOT_AUTHENTICATED".to_string(),
+                message: "Authentication required".to_string(),
+                details: None,
+                timestamp: Utc::now(),
+            }),
+        )
+    })?;
+
+    // Validate session and get user identity
+    match state.session_service.validate_session(&session_token).await {
+        Ok(identity) => {
+            info!("✅ Current user retrieved: {}", identity.email);
 
             Ok(Json(UserInfo {
-                user_id: current_user.id.to_string(),
-                email: current_user.email,
-                user_type: current_user.user_type,
+                user_id: identity.id.to_string(),
+                email: identity.email,
+                user_type: identity.user_type,
                 kyc_status: "unknown".to_string(), // Would need to fetch from DB for full info
                 email_verified: true,              // Assume verified since they used magic link
             }))
         }
-        None => {
-            warn!("❌ No authenticated user found");
+        Err(e) => {
+            warn!("❌ Session validation failed: {}", e);
             Err((
                 StatusCode::UNAUTHORIZED,
                 Json(MagicLinkErrorResponse {
@@ -480,4 +494,22 @@ fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
         .get("user-agent")
         .and_then(|header| header.to_str().ok())
         .map(|s| s.to_string())
+}
+
+/// Extract session token from cookie header
+fn extract_session_token_from_headers(headers: &HeaderMap) -> Option<String> {
+    let cookie_header = headers.get("cookie")?.to_str().ok()?;
+
+    // Parse cookies to find session_token
+    for cookie in cookie_header.split(';') {
+        let cookie = cookie.trim();
+        if let Some(eq_pos) = cookie.find('=') {
+            let (name, value) = cookie.split_at(eq_pos);
+            if name.trim() == "session_token" {
+                return Some(value[1..].to_string()); // Skip the '=' character
+            }
+        }
+    }
+
+    None
 }

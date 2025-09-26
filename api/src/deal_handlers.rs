@@ -69,6 +69,9 @@ pub struct CreateDealRequest {
     pub term_days: Option<u32>,              // Optional deal term
     pub metadata: Option<serde_json::Value>, // Optional additional data
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
+    pub status: Option<String>,         // Deal status: draft, active, closed, cancelled
+    pub industry: Option<String>,       // Industry sector for the deal
+    pub document_ids: Option<Vec<String>>, // Array of document UUIDs associated with this deal
 }
 
 /// Deal details response (converted from LoanDetailsResponse)
@@ -85,6 +88,9 @@ pub struct DealDetailsResponse {
     pub originated_at: DateTime<Utc>,
     pub last_updated: Option<DateTime<Utc>>,
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
+    pub status: String,                 // Deal status: draft, active, closed, cancelled
+    pub industry: Option<String>,       // Industry sector for the deal
+    pub document_ids: Option<Vec<String>>, // Array of document UUIDs associated with this deal
 }
 
 /// List deals query parameters (converted from ListLoansQuery)
@@ -94,6 +100,7 @@ pub struct ListDealsQuery {
     pub status: Option<String>,
     pub originator_id: Option<String>, // was borrower_id
     pub investor_id: Option<String>,   // was lender_id
+    pub industry: Option<String>,      // Filter by industry sector
     pub limit: Option<i32>,
     pub offset: Option<i32>,
 }
@@ -382,6 +389,28 @@ pub async fn create_deal_endpoint(
         None
     };
 
+    // Parse document IDs if provided
+    let document_ids_json = if let Some(doc_ids) = &request.document_ids {
+        let uuids: Result<Vec<uuid::Uuid>, _> =
+            doc_ids.iter().map(|id| uuid::Uuid::parse_str(id)).collect();
+
+        let uuids = uuids.map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid document ID format".to_string(),
+            )
+        })?;
+
+        Some(serde_json::to_value(uuids).map_err(|_| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to serialize document IDs".to_string(),
+            )
+        })?)
+    } else {
+        None
+    };
+
     // Create deal in database
     let deal = create_deal(
         // was create_loan
@@ -392,6 +421,9 @@ pub async fn create_deal_endpoint(
         request.interest_rate_bps as i32,
         maturity_date,
         request.custom_deal_id.as_deref(),
+        request.status.as_deref(),
+        request.industry.as_deref(),
+        document_ids_json.as_ref(),
     )
     .await
     .map_err(|e| {
@@ -402,6 +434,15 @@ pub async fn create_deal_endpoint(
             "Failed to create deal".to_string(), // updated error message
         )
     })?;
+
+    // Convert document IDs from JSON to Vec<String> for response
+    let document_ids_response = deal.document_ids.as_ref().and_then(|json| {
+        if let Ok(uuids) = serde_json::from_value::<Vec<uuid::Uuid>>(json.clone()) {
+            Some(uuids.into_iter().map(|uuid| uuid.to_string()).collect())
+        } else {
+            None
+        }
+    });
 
     let response = DealDetailsResponse {
         // was LoanDetailsResponse
@@ -415,6 +456,9 @@ pub async fn create_deal_endpoint(
         originated_at: deal.originated_at,
         last_updated: Some(deal.updated_at),
         custom_deal_id: deal.custom_deal_id,
+        status: deal.status,
+        industry: deal.industry,
+        document_ids: document_ids_response,
     };
 
     // Record function execution time
@@ -478,6 +522,7 @@ pub async fn list_deals_endpoint(
         query.status.as_deref(),
         originator_id, // was borrower_id
         investor_id,   // was lender_id
+        query.industry.as_deref(),
     )
     .await
     .map_err(|e| {
@@ -491,18 +536,32 @@ pub async fn list_deals_endpoint(
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = deals // was LoanDetailsResponse
         .into_iter()
-        .map(|deal| DealDetailsResponse {
-            // was loan, LoanDetailsResponse
-            deal_id: deal.id.to_string(),                  // was loan_id
-            originator_id: deal.originator_id.to_string(), // was borrower_id
-            investor_id: deal.investor_id.to_string(),     // was lender_id
-            principal_amount: deal.principal_amount.to_string(),
-            outstanding_balance: deal.outstanding_balance.to_string(),
-            interest_rate_bps: deal.interest_rate_bps as u16,
-            loan_status: deal.loan_status, // keeping same field name
-            originated_at: deal.originated_at,
-            last_updated: Some(deal.updated_at),
-            custom_deal_id: deal.custom_deal_id,
+        .map(|deal| {
+            // Convert document IDs from JSON to Vec<String> for response
+            let document_ids_response = deal.document_ids.as_ref().and_then(|json| {
+                if let Ok(uuids) = serde_json::from_value::<Vec<uuid::Uuid>>(json.clone()) {
+                    Some(uuids.into_iter().map(|uuid| uuid.to_string()).collect())
+                } else {
+                    None
+                }
+            });
+
+            DealDetailsResponse {
+                // was loan, LoanDetailsResponse
+                deal_id: deal.id.to_string(), // was loan_id
+                originator_id: deal.originator_id.to_string(), // was borrower_id
+                investor_id: deal.investor_id.to_string(), // was lender_id
+                principal_amount: deal.principal_amount.to_string(),
+                outstanding_balance: deal.outstanding_balance.to_string(),
+                interest_rate_bps: deal.interest_rate_bps as u16,
+                loan_status: deal.loan_status, // keeping same field name
+                originated_at: deal.originated_at,
+                last_updated: Some(deal.updated_at),
+                custom_deal_id: deal.custom_deal_id,
+                status: deal.status,
+                industry: deal.industry,
+                document_ids: document_ids_response,
+            }
         })
         .collect();
 
@@ -564,6 +623,15 @@ pub async fn get_deal_details_endpoint(
 
     match deal {
         Some(deal) => {
+            // Convert document IDs from JSON to Vec<String> for response
+            let document_ids_response = deal.document_ids.as_ref().and_then(|json| {
+                if let Ok(uuids) = serde_json::from_value::<Vec<uuid::Uuid>>(json.clone()) {
+                    Some(uuids.into_iter().map(|uuid| uuid.to_string()).collect())
+                } else {
+                    None
+                }
+            });
+
             let response = DealDetailsResponse {
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id
@@ -576,6 +644,9 @@ pub async fn get_deal_details_endpoint(
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
                 custom_deal_id: deal.custom_deal_id,
+                status: deal.status,
+                industry: deal.industry,
+                document_ids: document_ids_response,
             };
 
             info!("✅ Deal details retrieved: {}", deal_id); // updated log message
@@ -753,6 +824,15 @@ pub async fn update_deal_endpoint(
                 updated_fields.push("custom_deal_id".to_string());
             }
 
+            // Convert document IDs from JSON to Vec<String> for response
+            let document_ids_response = deal.document_ids.as_ref().and_then(|json| {
+                if let Ok(uuids) = serde_json::from_value::<Vec<uuid::Uuid>>(json.clone()) {
+                    Some(uuids.into_iter().map(|uuid| uuid.to_string()).collect())
+                } else {
+                    None
+                }
+            });
+
             // Convert to response format
             let deal_details = DealDetailsResponse {
                 // was LoanDetailsResponse
@@ -766,6 +846,9 @@ pub async fn update_deal_endpoint(
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
                 custom_deal_id: deal.custom_deal_id,
+                status: deal.status,
+                industry: deal.industry,
+                document_ids: document_ids_response,
             };
 
             let response = UpdateDealResponse {
