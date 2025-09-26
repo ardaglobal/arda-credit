@@ -89,9 +89,14 @@ server:
   
   # Development-friendly configuration
   config:
-    rustLog: "debug"  # Verbose logging for debugging
+    rustLog: "debug"
     serverPort: "8080"
     sindriCircuitTag: "latest"
+    sesRegion: "us-east-1"
+    sesConfigurationSet: ""
+    magicBaseUrl: "http://localhost:3000/auth/verify"
+    emailEnabled: "true"
+    emailDebugMode: "true"
   
   # Expose via NodePort for direct access
   service:
@@ -192,7 +197,7 @@ ingress:
 secrets:
   # Reference the external secret created by setup script
   existingSecret: "arda-credit-secrets-external"
-  # Keys match the secret created in setup-cluster.sh
+
   secretKeys:
     sindriApiKey: "sindri-api-key"
     ethereumRpcUrl: "ethereum-rpc-url"
@@ -200,6 +205,10 @@ secrets:
     ethereumWalletPrivateKey: "ethereum-wallet-private-key"
     ethereumDeployerAddress: "ethereum-deployer-address"
     signozIngestionKey: "signoz-ingestion-key"
+    awsAccessKeyId: "aws-access-key-id"
+    awsSecretAccessKey: "aws-secret-access-key"
+    emailFrom: "email-from"
+    emailReplyTo: "email-reply-to"
 
 # Security context - permissive for local development
 podSecurityContext: {}

@@ -1,6 +1,10 @@
 {
   "db_name": "PostgreSQL",
+<<<<<<<< HEAD:.sqlx/query-90a15f6fc4033420febf095c27cf8b70b1418242eac00c66d6eefa062865424a.json
   "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids\n        FROM deals  -- was loans\n        WHERE id = $1\n        ",
+========
+  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals  -- was loans\n        WHERE id = $1\n        ",
+>>>>>>>> main:.sqlx/query-22c38c2921bc9515a89701b40a9ae4bb5ef59d507db898e42d8adf407e902546.json
   "describe": {
     "columns": [
       {
@@ -65,11 +69,16 @@
       },
       {
         "ordinal": 12,
+<<<<<<<< HEAD:.sqlx/query-90a15f6fc4033420febf095c27cf8b70b1418242eac00c66d6eefa062865424a.json
         "name": "status",
+========
+        "name": "title",
+>>>>>>>> main:.sqlx/query-22c38c2921bc9515a89701b40a9ae4bb5ef59d507db898e42d8adf407e902546.json
         "type_info": "Varchar"
       },
       {
         "ordinal": 13,
+<<<<<<<< HEAD:.sqlx/query-90a15f6fc4033420febf095c27cf8b70b1418242eac00c66d6eefa062865424a.json
         "name": "industry",
         "type_info": "Varchar"
       },
@@ -77,6 +86,30 @@
         "ordinal": 14,
         "name": "document_ids",
         "type_info": "Jsonb"
+========
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "risk_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "asset_class",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "region",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 17,
+        "name": "minimum_investment",
+        "type_info": "Numeric"
+>>>>>>>> main:.sqlx/query-22c38c2921bc9515a89701b40a9ae4bb5ef59d507db898e42d8adf407e902546.json
       }
     ],
     "parameters": {
@@ -97,10 +130,21 @@
       true,
       true,
       true,
+<<<<<<<< HEAD:.sqlx/query-90a15f6fc4033420febf095c27cf8b70b1418242eac00c66d6eefa062865424a.json
       false,
+========
+      true,
+      true,
+      true,
+      true,
+>>>>>>>> main:.sqlx/query-22c38c2921bc9515a89701b40a9ae4bb5ef59d507db898e42d8adf407e902546.json
       true,
       true
     ]
   },
+<<<<<<<< HEAD:.sqlx/query-90a15f6fc4033420febf095c27cf8b70b1418242eac00c66d6eefa062865424a.json
   "hash": "90a15f6fc4033420febf095c27cf8b70b1418242eac00c66d6eefa062865424a"
+========
+  "hash": "22c38c2921bc9515a89701b40a9ae4bb5ef59d507db898e42d8adf407e902546"
+>>>>>>>> main:.sqlx/query-22c38c2921bc9515a89701b40a9ae4bb5ef59d507db898e42d8adf407e902546.json
 }

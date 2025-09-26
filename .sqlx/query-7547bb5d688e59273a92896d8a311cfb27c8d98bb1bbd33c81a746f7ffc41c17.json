@@ -1,0 +1,155 @@
+{
+  "db_name": "PostgreSQL",
+<<<<<<<< HEAD:.sqlx/query-af76a759c422fb737ffea3326d06797a2327a8c2760eb153e58fad6e5ae92f02.json
+  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids\n        FROM deals  -- was loans\n        WHERE ($1::text IS NULL OR loan_status = $1)\n          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id\n          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id\n          AND ($4::text IS NULL OR industry = $4)\n        ORDER BY created_at DESC\n        LIMIT $5 OFFSET $6\n        ",
+========
+  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals  -- was loans\n        WHERE ($1::text IS NULL OR loan_status = $1)\n          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id\n          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id\n        ORDER BY created_at DESC\n        LIMIT $4 OFFSET $5\n        ",
+>>>>>>>> main:.sqlx/query-7547bb5d688e59273a92896d8a311cfb27c8d98bb1bbd33c81a746f7ffc41c17.json
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "originator_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "principal_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "outstanding_balance",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "interest_rate_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 6,
+        "name": "loan_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "originated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "maturity_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "custom_deal_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+<<<<<<<< HEAD:.sqlx/query-af76a759c422fb737ffea3326d06797a2327a8c2760eb153e58fad6e5ae92f02.json
+        "name": "status",
+========
+        "name": "title",
+>>>>>>>> main:.sqlx/query-7547bb5d688e59273a92896d8a311cfb27c8d98bb1bbd33c81a746f7ffc41c17.json
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+<<<<<<<< HEAD:.sqlx/query-af76a759c422fb737ffea3326d06797a2327a8c2760eb153e58fad6e5ae92f02.json
+        "name": "industry",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "document_ids",
+        "type_info": "Jsonb"
+========
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "risk_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "asset_class",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "region",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 17,
+        "name": "minimum_investment",
+        "type_info": "Numeric"
+>>>>>>>> main:.sqlx/query-7547bb5d688e59273a92896d8a311cfb27c8d98bb1bbd33c81a746f7ffc41c17.json
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+<<<<<<<< HEAD:.sqlx/query-af76a759c422fb737ffea3326d06797a2327a8c2760eb153e58fad6e5ae92f02.json
+      false,
+========
+      true,
+      true,
+      true,
+      true,
+>>>>>>>> main:.sqlx/query-7547bb5d688e59273a92896d8a311cfb27c8d98bb1bbd33c81a746f7ffc41c17.json
+      true,
+      true
+    ]
+  },
+<<<<<<<< HEAD:.sqlx/query-af76a759c422fb737ffea3326d06797a2327a8c2760eb153e58fad6e5ae92f02.json
+  "hash": "af76a759c422fb737ffea3326d06797a2327a8c2760eb153e58fad6e5ae92f02"
+========
+  "hash": "7547bb5d688e59273a92896d8a311cfb27c8d98bb1bbd33c81a746f7ffc41c17"
+>>>>>>>> main:.sqlx/query-7547bb5d688e59273a92896d8a311cfb27c8d98bb1bbd33c81a746f7ffc41c17.json
+}

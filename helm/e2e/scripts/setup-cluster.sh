@@ -304,6 +304,10 @@ EOF
             --from-literal=ethereum-wallet-private-key="${ETHEREUM_WALLET_PRIVATE_KEY:-0x0}" \
             --from-literal=ethereum-deployer-address="${ETHEREUM_DEPLOYER_ADDRESS:-0x0}" \
             --from-literal=signoz-ingestion-key="${signoz_key}" \
+            --from-literal=aws-access-key-id="${AWS_ACCESS_KEY_ID:-test-aws-access-key-id}" \
+            --from-literal=aws-secret-access-key="${AWS_SECRET_ACCESS_KEY:-test-aws-secret-access-key}" \
+            --from-literal=email-from="${EMAIL_FROM:-no-reply@example.local}" \
+            --from-literal=email-reply-to="${EMAIL_REPLY_TO:-support@example.local}" \
             --namespace=arda-credit \
             --dry-run=client -o yaml | kubectl apply -f -
         log_success "arda-credit-secrets-external created for Helm lookup"
@@ -316,6 +320,10 @@ EOF
             --from-literal=ethereum-wallet-private-key="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" \
             --from-literal=ethereum-deployer-address="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" \
             --from-literal=signoz-ingestion-key="test-signoz-key" \
+            --from-literal=aws-access-key-id="test-aws-access-key-id" \
+            --from-literal=aws-secret-access-key="test-aws-secret-access-key" \
+            --from-literal=email-from="no-reply@example.local" \
+            --from-literal=email-reply-to="support@example.local" \
             --namespace=arda-credit \
             --dry-run=client -o yaml | kubectl apply -f -
         log_success "Test arda-credit-secrets-external created for Helm lookup"

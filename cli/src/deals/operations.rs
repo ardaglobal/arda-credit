@@ -21,6 +21,7 @@ pub async fn originate_deal(
     amount: f64,
     interest_rate: Option<f64>,
     term_days: i32,
+    description: Option<String>,
     verbose: bool,
 ) -> Result<()> {
     if verbose {

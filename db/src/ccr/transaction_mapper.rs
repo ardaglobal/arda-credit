@@ -637,6 +637,13 @@ mod tests {
             status: "active".to_string(),
             industry: Some("technology".to_string()),
             document_ids: None,
+            // Marketplace-friendly fields
+            title: None,
+            description: None,
+            risk_level: None,
+            asset_class: None,
+            region: None,
+            minimum_investment: None,
         };
         context.add_deal(deal);
 

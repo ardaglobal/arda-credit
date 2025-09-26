@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+<<<<<<<< HEAD:.sqlx/query-a5d18ae5c29af103c46c9d1284e41abc63eb8312e8eae55c2d87f39801cf2626.json
+  "query": "\n        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at, custom_deal_id, status, industry, document_ids)\n        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7, $8, $9, $10, $11)\n        ",
+========
+  "query": "\n        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at, custom_deal_id, title, description, risk_level, asset_class, region, minimum_investment)\n        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7, $8, $9, $10, $11, $12, $13, $14)\n        ",
+>>>>>>>> main:.sqlx/query-e51ebf1d22784d5e4bd0ab1ac38c3f9d83e459344dad2fe5ef1f49a39de67068.json
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Int4",
+        "Timestamptz",
+        "Timestamptz",
+        "Varchar",
+        "Varchar",
+<<<<<<<< HEAD:.sqlx/query-a5d18ae5c29af103c46c9d1284e41abc63eb8312e8eae55c2d87f39801cf2626.json
+        "Varchar",
+        "Jsonb"
+========
+        "Text",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Numeric"
+>>>>>>>> main:.sqlx/query-e51ebf1d22784d5e4bd0ab1ac38c3f9d83e459344dad2fe5ef1f49a39de67068.json
+      ]
+    },
+    "nullable": []
+  },
+<<<<<<<< HEAD:.sqlx/query-a5d18ae5c29af103c46c9d1284e41abc63eb8312e8eae55c2d87f39801cf2626.json
+  "hash": "a5d18ae5c29af103c46c9d1284e41abc63eb8312e8eae55c2d87f39801cf2626"
+========
+  "hash": "e51ebf1d22784d5e4bd0ab1ac38c3f9d83e459344dad2fe5ef1f49a39de67068"
+>>>>>>>> main:.sqlx/query-e51ebf1d22784d5e4bd0ab1ac38c3f9d83e459344dad2fe5ef1f49a39de67068.json
+}

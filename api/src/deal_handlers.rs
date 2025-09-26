@@ -41,6 +41,7 @@ use arda_credit_db::{
     execute_deal_transfer,         // was execute_loan_transfer
     get_deal_by_id,                // was get_loan_by_id
     get_deal_transfer_history,     // was get_loan_transfer_history
+    get_deals_by_user_id,          // new function to get deals by user ID
     list_deals,                    // was list_loans
     remove_deal_listing,           // was remove_loan_listing
     update_deal,                   // was update_loan
@@ -72,6 +73,14 @@ pub struct CreateDealRequest {
     pub status: Option<String>,         // Deal status: draft, active, closed, cancelled
     pub industry: Option<String>,       // Industry sector for the deal
     pub document_ids: Option<Vec<String>>, // Array of document UUIDs associated with this deal
+
+    // Marketplace-friendly fields
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub risk_level: Option<String>,
+    pub asset_class: Option<String>,
+    pub region: Option<String>,
+    pub minimum_investment: Option<String>,
 }
 
 /// Deal details response (converted from LoanDetailsResponse)
@@ -91,6 +100,14 @@ pub struct DealDetailsResponse {
     pub status: String,                 // Deal status: draft, active, closed, cancelled
     pub industry: Option<String>,       // Industry sector for the deal
     pub document_ids: Option<Vec<String>>, // Array of document UUIDs associated with this deal
+
+    // Marketplace-friendly fields
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub risk_level: Option<String>,
+    pub asset_class: Option<String>,
+    pub region: Option<String>,
+    pub minimum_investment: Option<String>,
 }
 
 /// List deals query parameters (converted from ListLoansQuery)
@@ -135,6 +152,14 @@ pub struct UpdateDealRequest {
     pub loan_status: Option<String>, // "originated", "active", "paid_off", "closed", "defaulted"
     pub maturity_date: Option<Option<String>>, // Optional maturity date (ISO 8601), Option<Option<T>> to handle NULL
     pub custom_deal_id: Option<Option<String>>, // Optional custom deal ID, Option<Option<T>> to handle NULL
+
+    // Marketplace-friendly fields
+    pub title: Option<Option<String>>,
+    pub description: Option<Option<String>>,
+    pub risk_level: Option<Option<String>>,
+    pub asset_class: Option<Option<String>>,
+    pub region: Option<Option<String>>,
+    pub minimum_investment: Option<Option<String>>,
 }
 
 /// Update deal response (converted from UpdateLoanResponse)
@@ -411,6 +436,18 @@ pub async fn create_deal_endpoint(
         None
     };
 
+    // Parse optional minimum investment
+    let minimum_investment = if let Some(min_inv_str) = &request.minimum_investment {
+        Some(min_inv_str.parse::<rust_decimal::Decimal>().map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid minimum investment amount".to_string(),
+            )
+        })?)
+    } else {
+        None
+    };
+
     // Create deal in database
     let deal = create_deal(
         // was create_loan
@@ -424,6 +461,12 @@ pub async fn create_deal_endpoint(
         request.status.as_deref(),
         request.industry.as_deref(),
         document_ids_json.as_ref(),
+        request.title.as_deref(),
+        request.description.as_deref(),
+        request.risk_level.as_deref(),
+        request.asset_class.as_deref(),
+        request.region.as_deref(),
+        minimum_investment,
     )
     .await
     .map_err(|e| {
@@ -459,6 +502,12 @@ pub async fn create_deal_endpoint(
         status: deal.status,
         industry: deal.industry,
         document_ids: document_ids_response,
+        title: deal.title,
+        description: deal.description,
+        risk_level: deal.risk_level,
+        asset_class: deal.asset_class,
+        region: deal.region,
+        minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
     };
 
     // Record function execution time
@@ -561,6 +610,12 @@ pub async fn list_deals_endpoint(
                 status: deal.status,
                 industry: deal.industry,
                 document_ids: document_ids_response,
+                title: deal.title,
+                description: deal.description,
+                risk_level: deal.risk_level,
+                asset_class: deal.asset_class,
+                region: deal.region,
+                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
             }
         })
         .collect();
@@ -577,6 +632,93 @@ pub async fn list_deals_endpoint(
     };
 
     info!("✅ API: Listed {} deals", response.total_count); // updated log message
+    Ok(Json(response))
+}
+
+/// Get deals by user ID (user can be either originator or investor)
+#[utoipa::path(
+    get,
+    path = "/api/v1/deals/{user_id}",
+    params(
+        ("user_id" = String, Path, description = "User ID to get deals for"),
+        ListDealsQuery
+    ),
+    responses(
+        (status = 200, description = "List of deals for the user", body = ListDealsResponse),
+        (status = 400, description = "Invalid user ID format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_deals_by_user_id_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+    Query(query): Query<ListDealsQuery>,
+) -> Result<Json<ListDealsResponse>, (StatusCode, String)> {
+    info!("📋 API: Getting deals for user: {}", user_id);
+
+    // Parse user ID
+    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid user ID format".to_string(),
+        )
+    })?;
+
+    let deals = get_deals_by_user_id(
+        &state.pool,
+        user_uuid,
+        query.limit.map(|l| l as i64),
+        query.offset.map(|o| o as i64),
+        query.status.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        error!("❌ Failed to get deals for user: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to get deals for user".to_string(),
+        )
+    })?;
+
+    // Convert to response format
+    let deal_responses: Vec<DealDetailsResponse> = deals
+        .into_iter()
+        .map(|deal| DealDetailsResponse {
+            deal_id: deal.id.to_string(),
+            originator_id: deal.originator_id.to_string(),
+            investor_id: deal.investor_id.to_string(),
+            principal_amount: deal.principal_amount.to_string(),
+            outstanding_balance: deal.outstanding_balance.to_string(),
+            interest_rate_bps: deal.interest_rate_bps as u16,
+            loan_status: deal.loan_status,
+            originated_at: deal.originated_at,
+            last_updated: Some(deal.updated_at),
+            custom_deal_id: deal.custom_deal_id,
+            title: deal.title,
+            description: deal.description,
+            risk_level: deal.risk_level,
+            asset_class: deal.asset_class,
+            region: deal.region,
+            minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+        })
+        .collect();
+
+    let total_count = deal_responses.len();
+    let limit = query.limit.unwrap_or(100) as usize;
+    let has_more = total_count >= limit;
+
+    let response = ListDealsResponse {
+        deals: deal_responses,
+        total_count,
+        has_more,
+    };
+
+    info!(
+        "✅ API: Found {} deals for user {}",
+        response.total_count, user_id
+    );
     Ok(Json(response))
 }
 
@@ -647,6 +789,12 @@ pub async fn get_deal_details_endpoint(
                 status: deal.status,
                 industry: deal.industry,
                 document_ids: document_ids_response,
+                title: deal.title,
+                description: deal.description,
+                risk_level: deal.risk_level,
+                asset_class: deal.asset_class,
+                region: deal.region,
+                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
             };
 
             info!("✅ Deal details retrieved: {}", deal_id); // updated log message
@@ -780,6 +928,23 @@ pub async fn update_deal_endpoint(
         None
     };
 
+    // Parse minimum investment
+    let minimum_investment = if let Some(min_inv_opt) = &request.minimum_investment {
+        Some(match min_inv_opt {
+            Some(min_inv_str) => {
+                Some(min_inv_str.parse::<rust_decimal::Decimal>().map_err(|_| {
+                    (
+                        StatusCode::BAD_REQUEST,
+                        "Invalid minimum investment amount".to_string(),
+                    )
+                })?)
+            }
+            None => None,
+        })
+    } else {
+        None
+    };
+
     // Update the deal in the database
     let updated_deal = update_deal(
         // was update_loan
@@ -791,6 +956,12 @@ pub async fn update_deal_endpoint(
         request.loan_status.as_deref(),
         maturity_date,
         request.custom_deal_id.as_ref().map(|opt| opt.as_deref()),
+        request.title.as_ref().map(|opt| opt.as_deref()),
+        request.description.as_ref().map(|opt| opt.as_deref()),
+        request.risk_level.as_ref().map(|opt| opt.as_deref()),
+        request.asset_class.as_ref().map(|opt| opt.as_deref()),
+        request.region.as_ref().map(|opt| opt.as_deref()),
+        minimum_investment,
     )
     .await
     .map_err(|e| {
@@ -849,6 +1020,12 @@ pub async fn update_deal_endpoint(
                 status: deal.status,
                 industry: deal.industry,
                 document_ids: document_ids_response,
+                title: deal.title,
+                description: deal.description,
+                risk_level: deal.risk_level,
+                asset_class: deal.asset_class,
+                region: deal.region,
+                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
             };
 
             let response = UpdateDealResponse {
