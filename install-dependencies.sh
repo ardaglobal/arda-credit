@@ -591,13 +591,23 @@ EOF
 
 # helm (Kubernetes package manager)
 function ensure_helm() {
-  check_cmd helm && return
+  local desired="v3.14.0"
 
-  say "Installing Helm..."
+  if check_cmd helm; then
+    if helm version --short 2>/dev/null | grep -q "$desired"; then
+      return
+    else
+      say "Helm found but version mismatch. Installing $desired..."
+    fi
+  else
+    say "Installing Helm $desired..."
+  fi
+
   case $OS in
   Linux)
     local cmd=$(
       cat <<-EOF
+    export DESIRED_VERSION="$desired";
     curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 &&
     chmod 700 get_helm.sh &&
     ./get_helm.sh &&
@@ -608,7 +618,7 @@ EOF
     ;;
   Darwin)
     ensure_brew
-    brew install helm
+    brew install helm@3 || brew install helm
     ;;
   *)
     ;;

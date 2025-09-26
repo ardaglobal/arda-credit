@@ -47,7 +47,7 @@ fmt: yamllint-fix actionlint-fix docker-lint-fix
 
 ## lint: Lint code
 .PHONY: lint
-lint: yamllint actionlint docker-lint deny lint-rust
+lint: yamllint actionlint docker-lint deny lint-rust helm-lint
 
 ## lint-rust: Lint only Rust code (excluding tests)
 .PHONY: lint-rust
@@ -151,6 +151,42 @@ actionlint-fix:
 	@echo "💡 Fix GitHub Actions issues based on the output above"
 
 ## test: Run all tests
+
+## helm-lint: Lint Helm charts
+.PHONY: helm-lint
+helm-lint:
+	@echo "🔍 Linting Helm charts..."
+	@command -v helm >/dev/null 2>&1 || { echo "❌ helm not found. Run 'make install' to install dependencies."; exit 1; }
+	@# Add repositories and update index
+	helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true
+	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+	helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null 2>&1 || true
+	helm repo update >/dev/null 2>&1
+	@# Update dependencies for the main chart
+	@if [ -d "helm/charts/arda-credit" ]; then \
+		echo "📦 Updating Helm dependencies..."; \
+		helm dependency update helm/charts/arda-credit >/dev/null; \
+	fi
+	@# Lint all charts under helm/charts
+	@if [ -d "helm/charts" ]; then \
+		echo "🧪 Running helm lint..."; \
+		cd helm/charts && \
+		for chart in */; do \
+			if [ -f "$$chart/Chart.yaml" ]; then \
+				echo "  • $$chart"; \
+				helm lint "$$chart" --strict; \
+			fi; \
+		done; \
+	else \
+		echo "ℹ️  No helm/charts directory found, skipping"; \
+	fi
+	@# Render templates for arda-credit (sanity check)
+	@if [ -d "helm/charts/arda-credit" ]; then \
+		echo "🧩 Rendering templates (dry-run)..."; \
+		cd helm/charts/arda-credit && helm template . --dry-run >/dev/null; \
+	fi
+	@echo "✅ Helm charts linting completed"
+
 .PHONY: test
 test:
 	docker compose up postgres -d
