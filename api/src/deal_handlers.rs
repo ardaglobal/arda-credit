@@ -696,6 +696,11 @@ pub async fn get_deals_by_user_id_endpoint(
             originated_at: deal.originated_at,
             last_updated: Some(deal.updated_at),
             custom_deal_id: deal.custom_deal_id,
+            status: deal.status,
+            industry: deal.industry,
+            document_ids: deal
+                .document_ids
+                .and_then(|ids| serde_json::from_value::<Vec<String>>(ids).ok()),
             title: deal.title,
             description: deal.description,
             risk_level: deal.risk_level,
