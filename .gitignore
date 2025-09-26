@@ -44,3 +44,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.log
+
+#Ignore cursor AI rules
+.cursor/rules/codacy.mdc

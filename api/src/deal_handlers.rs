@@ -17,7 +17,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
 };
 use chrono::{DateTime, Utc};
@@ -28,6 +28,7 @@ use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::paths;
+use crate::session_middleware::extract_current_user;
 use crate::types::ApiState;
 use arda_credit_db::{
     // Marketplace functions (consolidated)
@@ -68,6 +69,7 @@ pub struct CreateDealRequest {
     pub principal_amount: String,            // Amount in cents as string
     pub interest_rate_bps: u16,              // Interest rate in basis points
     pub term_days: Option<u32>,              // Optional deal term
+    pub loan_status: Option<String>, // Deal status: "originated", "active", "paid_off", "closed", "defaulted"
     pub metadata: Option<serde_json::Value>, // Optional additional data
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
 
@@ -253,6 +255,7 @@ pub struct DealListingResponse {
     pub description: Option<String>,
     pub listed_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub delisted_at: Option<DateTime<Utc>>,
     pub status: String,
 }
 
@@ -428,6 +431,7 @@ pub async fn create_deal_endpoint(
         principal_amount,
         request.interest_rate_bps as i32,
         maturity_date,
+        request.loan_status.as_deref(),
         request.custom_deal_id.as_deref(),
         request.title.as_deref(),
         request.description.as_deref(),
@@ -1323,6 +1327,7 @@ pub async fn list_deal_for_sale_endpoint(
         description: listing.description,
         listed_at: listing.listed_at,
         expires_at: listing.expires_at,
+        delisted_at: listing.delisted_at,
         status: listing.status,
     };
 
@@ -1339,6 +1344,7 @@ pub async fn list_deal_for_sale_endpoint(
     ),
     responses(
         (status = 200, description = "Deal removed from sale successfully"),
+        (status = 403, description = "Not authorized to remove this listing"),
         (status = 404, description = "Deal listing not found"),
         (status = 500, description = "Internal server error")
     ),
@@ -1348,9 +1354,21 @@ pub async fn list_deal_for_sale_endpoint(
 pub async fn remove_deal_from_sale_endpoint(
     // was remove_loan_from_sale_endpoint
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Path(deal_id): Path<String>, // was loan_id
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     info!("🗑️ API: Removing deal from sale: {}", deal_id);
+
+    // Extract current user from session
+    let current_user = extract_current_user(&headers).ok_or_else(|| {
+        warn!("❌ No authenticated user found for remove-from-sale request");
+        (
+            StatusCode::UNAUTHORIZED,
+            "Authentication required".to_string(),
+        )
+    })?;
+
+    let seller_id = current_user.id;
 
     let deal_uuid = uuid::Uuid::parse_str(&deal_id).map_err(|_| {
         (
@@ -1359,7 +1377,8 @@ pub async fn remove_deal_from_sale_endpoint(
         )
     })?;
 
-    remove_deal_listing(&state.pool, deal_uuid, uuid::Uuid::nil()) // TODO: Add authentication to get current user
+    // Attempt to remove the listing
+    let removal_success = remove_deal_listing(&state.pool, deal_uuid, seller_id)
         .await
         .map_err(|e| {
             error!("❌ Failed to remove deal from sale: {}", e);
@@ -1369,7 +1388,21 @@ pub async fn remove_deal_from_sale_endpoint(
             )
         })?;
 
-    info!("✅ Deal removed from sale: {}", deal_id);
+    if !removal_success {
+        warn!(
+            "⚠️ Deal listing not found or user not authorized: deal_id={}, seller_id={}",
+            deal_id, seller_id
+        );
+        return Err((
+            StatusCode::NOT_FOUND,
+            "Deal listing not found or you are not authorized to remove it".to_string(),
+        ));
+    }
+
+    info!(
+        "✅ Deal removed from sale: {} by user: {}",
+        deal_id, current_user.email
+    );
     Ok(Json(serde_json::json!({
         "message": "Deal removed from sale successfully",
         "deal_id": deal_id
