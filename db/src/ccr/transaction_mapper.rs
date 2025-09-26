@@ -634,6 +634,13 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             custom_deal_id: None,
+            // Marketplace-friendly fields
+            title: None,
+            description: None,
+            risk_level: None,
+            asset_class: None,
+            region: None,
+            minimum_investment: None,
         };
         context.add_deal(deal);
 

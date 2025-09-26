@@ -320,6 +320,14 @@ pub struct Deal {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
+
+    // Marketplace-friendly fields
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub risk_level: Option<String>,
+    pub asset_class: Option<String>,
+    pub region: Option<String>,
+    pub minimum_investment: Option<rust_decimal::Decimal>,
 }
 
 /// Deal payment record (converted from Payment)
@@ -1811,6 +1819,12 @@ pub async fn create_deal(
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,
     custom_deal_id: Option<&str>,
+    title: Option<&str>,
+    description: Option<&str>,
+    risk_level: Option<&str>,
+    asset_class: Option<&str>,
+    region: Option<&str>,
+    minimum_investment: Option<rust_decimal::Decimal>,
 ) -> Result<Deal, sqlx::Error> {
     // was Loan
     let id = uuid::Uuid::new_v4();
@@ -1818,8 +1832,8 @@ pub async fn create_deal(
 
     sqlx::query!(
         r#"
-        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at, custom_deal_id)
-        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7, $8)
+        INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at, custom_deal_id, title, description, risk_level, asset_class, region, minimum_investment)
+        VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $7, $7, $8, $9, $10, $11, $12, $13, $14)
         "#,  // was loans, borrower_id, lender_id
         id,
         originator_id,  // was borrower_id
@@ -1828,7 +1842,13 @@ pub async fn create_deal(
         interest_rate_bps,
         maturity_date,
         now,
-        custom_deal_id
+        custom_deal_id,
+        title,
+        description,
+        risk_level,
+        asset_class,
+        region,
+        minimum_investment
     )
     .execute(pool)
     .await?;
@@ -1847,6 +1867,12 @@ pub async fn create_deal(
         created_at: now,
         updated_at: now,
         custom_deal_id: custom_deal_id.map(|s| s.to_string()),
+        title: title.map(|s| s.to_string()),
+        description: description.map(|s| s.to_string()),
+        risk_level: risk_level.map(|s| s.to_string()),
+        asset_class: asset_class.map(|s| s.to_string()),
+        region: region.map(|s| s.to_string()),
+        minimum_investment,
     };
 
     Ok(deal)
@@ -1869,7 +1895,13 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             maturity_date,
             created_at,
             updated_at,
-            custom_deal_id
+            custom_deal_id,
+            title,
+            description,
+            risk_level,
+            asset_class,
+            region,
+            minimum_investment
         FROM deals  -- was loans
         WHERE id = $1
         "#,
@@ -1893,6 +1925,12 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             custom_deal_id: row.custom_deal_id,
+            title: row.title,
+            description: row.description,
+            risk_level: row.risk_level,
+            asset_class: row.asset_class,
+            region: row.region,
+            minimum_investment: row.minimum_investment,
         })),
         None => Ok(None),
     }
@@ -1924,7 +1962,13 @@ pub async fn list_deals(
             maturity_date,
             created_at,
             updated_at,
-            custom_deal_id
+            custom_deal_id,
+            title,
+            description,
+            risk_level,
+            asset_class,
+            region,
+            minimum_investment
         FROM deals  -- was loans
         WHERE ($1::text IS NULL OR loan_status = $1)
           AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id
@@ -1957,6 +2001,12 @@ pub async fn list_deals(
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             custom_deal_id: row.custom_deal_id,
+            title: row.title,
+            description: row.description,
+            risk_level: row.risk_level,
+            asset_class: row.asset_class,
+            region: row.region,
+            minimum_investment: row.minimum_investment,
         })
         .collect();
 
@@ -1974,6 +2024,12 @@ pub async fn update_deal(
     loan_status: Option<&str>,
     maturity_date: Option<Option<DateTime<Utc>>>, // Option<Option<T>> to handle setting to NULL
     custom_deal_id: Option<Option<&str>>,         // Option<Option<T>> to handle setting to NULL
+    title: Option<Option<&str>>,                  // Option<Option<T>> to handle setting to NULL
+    description: Option<Option<&str>>,            // Option<Option<T>> to handle setting to NULL
+    risk_level: Option<Option<&str>>,             // Option<Option<T>> to handle setting to NULL
+    asset_class: Option<Option<&str>>,            // Option<Option<T>> to handle setting to NULL
+    region: Option<Option<&str>>,                 // Option<Option<T>> to handle setting to NULL
+    minimum_investment: Option<Option<rust_decimal::Decimal>>, // Option<Option<T>> to handle setting to NULL
 ) -> Result<Option<Deal>, sqlx::Error> {
     // was Loan
     let now = Utc::now();
@@ -1996,6 +2052,36 @@ pub async fn update_deal(
         Some(None) => None,
         None => existing_deal.custom_deal_id,
     };
+    let new_title = match title {
+        Some(Some(value)) => Some(value.to_string()),
+        Some(None) => None,
+        None => existing_deal.title,
+    };
+    let new_description = match description {
+        Some(Some(value)) => Some(value.to_string()),
+        Some(None) => None,
+        None => existing_deal.description,
+    };
+    let new_risk_level = match risk_level {
+        Some(Some(value)) => Some(value.to_string()),
+        Some(None) => None,
+        None => existing_deal.risk_level,
+    };
+    let new_asset_class = match asset_class {
+        Some(Some(value)) => Some(value.to_string()),
+        Some(None) => None,
+        None => existing_deal.asset_class,
+    };
+    let new_region = match region {
+        Some(Some(value)) => Some(value.to_string()),
+        Some(None) => None,
+        None => existing_deal.region,
+    };
+    let new_minimum_investment = match minimum_investment {
+        Some(Some(value)) => Some(value),
+        Some(None) => None,
+        None => existing_deal.minimum_investment,
+    };
 
     sqlx::query!(
         r#"
@@ -2007,6 +2093,12 @@ pub async fn update_deal(
             loan_status = $5,
             maturity_date = $6,
             custom_deal_id = $8,
+            title = $9,
+            description = $10,
+            risk_level = $11,
+            asset_class = $12,
+            region = $13,
+            minimum_investment = $14,
             updated_at = $7
         WHERE id = $1
         "#,
@@ -2017,7 +2109,13 @@ pub async fn update_deal(
         new_status,
         new_maturity,
         now,
-        new_custom_deal_id
+        new_custom_deal_id,
+        new_title,
+        new_description,
+        new_risk_level,
+        new_asset_class,
+        new_region,
+        new_minimum_investment
     )
     .execute(pool)
     .await?;

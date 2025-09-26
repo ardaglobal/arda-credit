@@ -968,6 +968,12 @@ impl BatchApiClient {
             term_days,
             metadata,
             custom_deal_id: custom_deal_id.map(|s| s.to_string()),
+            title: None,
+            description: None,
+            risk_level: None,
+            asset_class: None,
+            region: None,
+            minimum_investment: None,
         };
 
         let response = self.client.post(&url).json(&request).send().await?;
@@ -1051,6 +1057,12 @@ impl BatchApiClient {
             loan_status: loan_status.map(|s| s.to_string()), // keeping same field name
             maturity_date: maturity_date.map(|md| md.map(|s| s.to_string())),
             custom_deal_id: custom_deal_id.map(|opt| opt.map(|s| s.to_string())),
+            title: None,
+            description: None,
+            risk_level: None,
+            asset_class: None,
+            region: None,
+            minimum_investment: None,
         };
 
         let response = self.client.put(&url).json(&request).send().await?;
