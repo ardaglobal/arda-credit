@@ -969,6 +969,9 @@ impl BatchApiClient {
             loan_status: None, // Optional status, defaults to "originated" if not provided
             metadata,
             custom_deal_id: custom_deal_id.map(|s| s.to_string()),
+            status: None,
+            industry: None,
+            document_ids: None,
             title: None,
             description: None,
             risk_level: None,

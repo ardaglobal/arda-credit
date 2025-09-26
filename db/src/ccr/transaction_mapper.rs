@@ -634,6 +634,9 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             custom_deal_id: None,
+            status: "active".to_string(),
+            industry: Some("technology".to_string()),
+            document_ids: None,
             // Marketplace-friendly fields
             title: None,
             description: None,
