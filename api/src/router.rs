@@ -34,6 +34,7 @@ use crate::deal_handlers::{
     get_deal_payment_history_endpoint,
     get_deal_stats_endpoint,
     get_deal_transfer_history_endpoint,
+    get_deals_by_user_id_endpoint,
     get_payment_details_endpoint,
     // get_user_deal_transfer_history_endpoint, // TODO: implement list_deal_for_sale_endpoint, list_deals_endpoint,
     record_deal_payment_endpoint,
@@ -437,6 +438,10 @@ pub fn create_router(state: ApiState) -> Router {
             post(crate::deal_handlers::create_deal_endpoint),
         )
         .route(paths::DEALS, get(crate::deal_handlers::list_deals_endpoint))
+        .route(
+            paths::DEALS_BY_USER_ID,
+            get(crate::deal_handlers::get_deals_by_user_id_endpoint),
+        )
         .route(
             paths::DEAL_BY_ID,
             get(crate::deal_handlers::get_deal_details_endpoint),

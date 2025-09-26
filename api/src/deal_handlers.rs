@@ -41,6 +41,7 @@ use arda_credit_db::{
     execute_deal_transfer,         // was execute_loan_transfer
     get_deal_by_id,                // was get_loan_by_id
     get_deal_transfer_history,     // was get_loan_transfer_history
+    get_deals_by_user_id,          // new function to get deals by user ID
     list_deals,                    // was list_loans
     remove_deal_listing,           // was remove_loan_listing
     update_deal,                   // was update_loan
@@ -572,6 +573,93 @@ pub async fn list_deals_endpoint(
     };
 
     info!("✅ API: Listed {} deals", response.total_count); // updated log message
+    Ok(Json(response))
+}
+
+/// Get deals by user ID (user can be either originator or investor)
+#[utoipa::path(
+    get,
+    path = "/api/v1/deals/{user_id}",
+    params(
+        ("user_id" = String, Path, description = "User ID to get deals for"),
+        ListDealsQuery
+    ),
+    responses(
+        (status = 200, description = "List of deals for the user", body = ListDealsResponse),
+        (status = 400, description = "Invalid user ID format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_deals_by_user_id_endpoint(
+    State(state): State<ApiState>,
+    Path(user_id): Path<String>,
+    Query(query): Query<ListDealsQuery>,
+) -> Result<Json<ListDealsResponse>, (StatusCode, String)> {
+    info!("📋 API: Getting deals for user: {}", user_id);
+
+    // Parse user ID
+    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid user ID format".to_string(),
+        )
+    })?;
+
+    let deals = get_deals_by_user_id(
+        &state.pool,
+        user_uuid,
+        query.limit.map(|l| l as i64),
+        query.offset.map(|o| o as i64),
+        query.status.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        error!("❌ Failed to get deals for user: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to get deals for user".to_string(),
+        )
+    })?;
+
+    // Convert to response format
+    let deal_responses: Vec<DealDetailsResponse> = deals
+        .into_iter()
+        .map(|deal| DealDetailsResponse {
+            deal_id: deal.id.to_string(),
+            originator_id: deal.originator_id.to_string(),
+            investor_id: deal.investor_id.to_string(),
+            principal_amount: deal.principal_amount.to_string(),
+            outstanding_balance: deal.outstanding_balance.to_string(),
+            interest_rate_bps: deal.interest_rate_bps as u16,
+            loan_status: deal.loan_status,
+            originated_at: deal.originated_at,
+            last_updated: Some(deal.updated_at),
+            custom_deal_id: deal.custom_deal_id,
+            title: deal.title,
+            description: deal.description,
+            risk_level: deal.risk_level,
+            asset_class: deal.asset_class,
+            region: deal.region,
+            minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+        })
+        .collect();
+
+    let total_count = deal_responses.len();
+    let limit = query.limit.unwrap_or(100) as usize;
+    let has_more = total_count >= limit;
+
+    let response = ListDealsResponse {
+        deals: deal_responses,
+        total_count,
+        has_more,
+    };
+
+    info!(
+        "✅ API: Found {} deals for user {}",
+        response.total_count, user_id
+    );
     Ok(Json(response))
 }
 

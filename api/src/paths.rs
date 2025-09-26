@@ -201,6 +201,9 @@ pub const DEAL_PAYMENTS: &str = api_path!("/deal/{deal_id}/payments");
 /// Deal statistics - was LOANS_STATS
 pub const DEALS_STATS: &str = api_path!("/deals/stats");
 
+/// Deals by user ID - get all deals for a user (as originator or investor)
+pub const DEALS_BY_USER_ID: &str = api_path!("/deals/{user_id}");
+
 /// Deal audit trail - was LOAN_AUDIT_TRAIL
 pub const DEAL_AUDIT_TRAIL: &str = api_path!("/deal/{deal_id}/audit-trail");
 
@@ -599,6 +602,11 @@ pub fn deal_payments_path(deal_id: &str) -> String {
     replace_param(DEAL_PAYMENTS, "deal_id", deal_id)
 }
 
+/// Build deals by user ID path with user_id parameter
+pub fn deals_by_user_id_path(user_id: &str) -> String {
+    replace_param(DEALS_BY_USER_ID, "user_id", user_id)
+}
+
 /// Build deal audit trail path with deal_id parameter
 pub fn deal_audit_trail_path(deal_id: &str) -> String {
     replace_param(DEAL_AUDIT_TRAIL, "deal_id", deal_id)
@@ -940,6 +948,11 @@ pub fn get_all_endpoints() -> Vec<crate::health_handlers::EndpointInfo> {
             method: "GET".to_string(),
             path: DEALS.to_string(),
             description: "List loans with filters".to_string(),
+        },
+        crate::health_handlers::EndpointInfo {
+            method: "GET".to_string(),
+            path: DEALS_BY_USER_ID.to_string(),
+            description: "Get all deals for a user (as originator or investor)".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "POST".to_string(),

@@ -2013,6 +2013,76 @@ pub async fn list_deals(
     Ok(result)
 }
 
+/// Get deals by user ID (user can be either originator or investor)
+pub async fn get_deals_by_user_id(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    status: Option<&str>,
+) -> Result<Vec<Deal>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT
+            id,
+            originator_id,
+            investor_id,
+            principal_amount,
+            outstanding_balance,
+            interest_rate_bps,
+            loan_status,
+            originated_at,
+            maturity_date,
+            created_at,
+            updated_at,
+            custom_deal_id,
+            title,
+            description,
+            risk_level,
+            asset_class,
+            region,
+            minimum_investment
+        FROM deals
+        WHERE (originator_id = $1 OR investor_id = $1)
+          AND ($2::text IS NULL OR loan_status = $2)
+        ORDER BY created_at DESC
+        LIMIT $3 OFFSET $4
+        "#,
+        user_id,
+        status,
+        limit.unwrap_or(100),
+        offset.unwrap_or(0)
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let result: Vec<Deal> = rows
+        .into_iter()
+        .map(|row| Deal {
+            id: row.id,
+            originator_id: row.originator_id,
+            investor_id: row.investor_id,
+            principal_amount: row.principal_amount,
+            outstanding_balance: row.outstanding_balance,
+            interest_rate_bps: row.interest_rate_bps,
+            loan_status: row.loan_status,
+            originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
+            maturity_date: row.maturity_date,
+            created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
+            updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
+            custom_deal_id: row.custom_deal_id,
+            title: row.title,
+            description: row.description,
+            risk_level: row.risk_level,
+            asset_class: row.asset_class,
+            region: row.region,
+            minimum_investment: row.minimum_investment,
+        })
+        .collect();
+
+    Ok(result)
+}
+
 /// Update deal details (was update_loan)
 pub async fn update_deal(
     // was update_loan

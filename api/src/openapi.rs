@@ -256,6 +256,7 @@ API requests are subject to rate limiting for system stability.
         // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
         crate::deal_handlers::create_deal_endpoint,
         crate::deal_handlers::list_deals_endpoint,
+        crate::deal_handlers::get_deals_by_user_id_endpoint,
         crate::deal_handlers::get_deal_details_endpoint,
         crate::deal_handlers::get_deal_stats_endpoint,
         crate::deal_handlers::update_deal_endpoint,
