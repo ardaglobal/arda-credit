@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT listing_id, deal_id, seller_id, asking_price, description,\n               listed_at, expires_at, status, created_at, updated_at\n        FROM deal_listings  -- was loan_listings\n        WHERE deal_id = $1 AND status = 'active'  -- was loan_id\n        ",
+  "query": "\n        SELECT listing_id, deal_id, seller_id, asking_price, description,\n               listed_at, expires_at, status, delisted_at, created_at, updated_at\n        FROM deal_listings  -- was loan_listings\n        WHERE deal_id = $1 AND status = 'active'  -- was loan_id\n        ",
   "describe": {
     "columns": [
       {
@@ -45,11 +45,16 @@
       },
       {
         "ordinal": 8,
-        "name": "created_at",
+        "name": "delisted_at",
         "type_info": "Timestamp"
       },
       {
         "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 10,
         "name": "updated_at",
         "type_info": "Timestamp"
       }
@@ -68,9 +73,10 @@
       false,
       true,
       false,
+      true,
       false,
       false
     ]
   },
-  "hash": "79577f1d78ecda93278cd8bc3f3630130b35bf01fbbe044dcfb5b4c74e6ccca2"
+  "hash": "8771188f1163474147c5b0ec460c5d42017082e11d7815c0492e3631684d6eb7"
 }

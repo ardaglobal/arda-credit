@@ -966,6 +966,7 @@ impl BatchApiClient {
             principal_amount: principal_amount.to_string(),
             interest_rate_bps,
             term_days,
+            loan_status: None, // Optional status, defaults to "originated" if not provided
             metadata,
             custom_deal_id: custom_deal_id.map(|s| s.to_string()),
             title: None,
