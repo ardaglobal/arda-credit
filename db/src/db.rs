@@ -1821,6 +1821,7 @@ pub async fn create_deal(
     principal_amount: rust_decimal::Decimal,
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,
+    loan_status: Option<&str>, // Deal status: "originated", "active", "paid_off", "closed", "defaulted"
     custom_deal_id: Option<&str>,
     status: Option<&str>,
     industry: Option<&str>,
@@ -1841,14 +1842,14 @@ pub async fn create_deal(
     sqlx::query!(
         r#"
         INSERT INTO deals (
-            id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, maturity_date, originated_at, created_at, updated_at,
+            id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, loan_status, maturity_date, originated_at, created_at, updated_at,
             custom_deal_id, status, industry, document_ids,
             title, description, risk_level, asset_class, region, minimum_investment
         )
         VALUES (
-            $1, $2, $3, $4, $4, $5, $6, $7, $7, $7,
-            $8, $9, $10, $11,
-            $12, $13, $14, $15, $16, $17
+            $1, $2, $3, $4, $4, $5, $6, $7, $8, $8, $8,
+            $9, $10, $11, $12,
+            $13, $14, $15, $16, $17, $18
         )
         "#,  // was loans, borrower_id, lender_id
         id,
@@ -1856,6 +1857,7 @@ pub async fn create_deal(
         investor_id,    // was lender_id
         principal_amount,
         interest_rate_bps,
+        loan_status.unwrap_or("originated"),
         maturity_date,
         now,
         custom_deal_id,
@@ -1880,7 +1882,7 @@ pub async fn create_deal(
         principal_amount,
         outstanding_balance: principal_amount,
         interest_rate_bps,
-        loan_status: "originated".to_string(),
+        loan_status: loan_status.unwrap_or("originated").to_string(),
         originated_at: now,
         maturity_date,
         created_at: now,

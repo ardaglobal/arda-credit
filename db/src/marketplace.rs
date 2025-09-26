@@ -29,6 +29,7 @@ pub struct DealListing {
     pub listed_at: DateTime<Utc>,
     pub expires_at: Option<DateTime<Utc>>,
     pub status: String,
+    pub delisted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -117,6 +118,7 @@ pub async fn create_deal_listing(
         listed_at: now,
         expires_at,
         status: "active".to_string(),
+        delisted_at: None,
         created_at: now,
         updated_at: now,
     })
@@ -133,7 +135,7 @@ pub async fn get_deal_listing_by_deal_id(
     let row = sqlx::query!(
         r#"
         SELECT listing_id, deal_id, seller_id, asking_price, description,
-               listed_at, expires_at, status, created_at, updated_at
+               listed_at, expires_at, status, delisted_at, created_at, updated_at
         FROM deal_listings  -- was loan_listings
         WHERE deal_id = $1 AND status = 'active'  -- was loan_id
         "#,
@@ -152,6 +154,7 @@ pub async fn get_deal_listing_by_deal_id(
             listed_at: row.listed_at.and_utc(),
             expires_at: row.expires_at.map(|dt| dt.and_utc()),
             status: row.status,
+            delisted_at: row.delisted_at.map(|dt| dt.and_utc()),
             created_at: row.created_at.and_utc(),
             updated_at: row.updated_at.and_utc(),
         })),
@@ -185,7 +188,8 @@ pub async fn update_deal_listing_status(
 
 /// Remove deal listing (converted from remove_loan_listing)
 ///
-/// Worker A uses this when user cancels a listing.
+/// Worker A uses this when user manually removes (delists) a listing.
+/// This sets the status to 'delisted' and records the delisted_at timestamp.
 pub async fn remove_deal_listing(
     // was remove_loan_listing
     pool: &PgPool,
@@ -195,23 +199,24 @@ pub async fn remove_deal_listing(
     // Begin transaction
     let mut tx = pool.begin().await?;
 
-    // 1. Verify seller owns the listing
-    let listing = sqlx::query!(
-        "SELECT listing_id FROM deal_listings WHERE deal_id = $1 AND seller_id = $2 AND status = 'active'",  // was loan_listings, loan_id
+    // 1. Verify seller owns the listing and it's currently active
+    let listing_exists = sqlx::query!(
+        "SELECT 1 as exists_flag FROM deal_listings WHERE deal_id = $1 AND seller_id = $2 AND status = 'active'",  // was loan_listings, loan_id
         deal_id,
         seller_id
     )
     .fetch_optional(&mut *tx)
     .await?;
 
-    if listing.is_none() {
+    if listing_exists.is_none() {
+        // No active listing found for this seller and deal
         return Ok(false);
     }
 
-    // 2. Update listing status to cancelled
-    update_deal_listing_status(&mut tx, deal_id, "cancelled").await?; // was update_listing_status, loan_id
+    // 2. Update listing status to 'delisted' (this will also set delisted_at via trigger)
+    update_deal_listing_status(&mut tx, deal_id, "delisted").await?; // was update_listing_status, loan_id
 
-    // 3. Update deal status back to active
+    // 3. Update deal status back to 'active' (remove 'for_sale' status)
     sqlx::query!(
         "UPDATE deals SET loan_status = 'active', updated_at = NOW() WHERE id = $1", // was loans
         deal_id
@@ -229,6 +234,7 @@ pub async fn remove_deal_listing(
 ///
 /// Worker A will extend this with more sophisticated filtering.
 /// Worker B uses this to validate deals are actually in marketplace.
+/// Note: This excludes 'delisted' listings to only show active marketplace deals.
 pub async fn browse_marketplace_deals(
     // was get_marketplace_loans_basic
     pool: &PgPool,
@@ -256,7 +262,8 @@ pub async fn browse_marketplace_deals(
             d.maturity_date
         FROM deal_listings dl       -- was loan_listings
         JOIN deals d ON dl.deal_id = d.id  -- was loans, loan_id
-        WHERE ($1::text IS NULL OR dl.status = $1)
+        WHERE dl.status != 'delisted'  -- Exclude manually delisted listings
+          AND ($1::text IS NULL OR dl.status = $1)
         ORDER BY dl.listed_at DESC
         LIMIT $2
         "#,
@@ -294,6 +301,7 @@ pub async fn browse_marketplace_deals(
 /// Validate deal can be transferred (converted from validate_loan_for_transfer)
 ///
 /// Worker B extends this but needs the basic structure from the foundation.
+/// Note: Excludes 'delisted' listings since they are not available for transfer.
 pub async fn validate_deal_for_transfer(
     // was validate_loan_for_transfer
     pool: &PgPool,
@@ -307,7 +315,7 @@ pub async fn validate_deal_for_transfer(
         JOIN deal_listings dl ON d.id = dl.deal_id  -- was loan_listings, loan_id
         WHERE d.id = $1
           AND d.loan_status = 'for_sale'
-          AND dl.status = 'active'
+          AND dl.status = 'active'  -- Only active listings can be transferred
         "#,
         deal_id
     )
