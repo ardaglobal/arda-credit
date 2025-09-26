@@ -289,6 +289,9 @@ pub enum DealCommands {
         /// Deal term in days (optional, defaults to 365)
         #[arg(long, default_value = "365")]
         term_days: i32,
+        /// Deal description (optional)
+        #[arg(long)]
+        description: Option<String>,
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -707,6 +710,7 @@ pub async fn handle_deal_command(
             amount,
             interest_rate,
             term_days,
+            description,
             verbose: cmd_verbose,
         } => {
             originate_deal(
@@ -717,6 +721,7 @@ pub async fn handle_deal_command(
                 amount,
                 interest_rate,
                 term_days,
+                description,
                 cmd_verbose || verbose,
             )
             .await

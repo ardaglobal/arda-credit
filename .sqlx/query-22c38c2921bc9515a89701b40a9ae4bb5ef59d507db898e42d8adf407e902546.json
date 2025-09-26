@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id\n        FROM deals  -- was loans\n        WHERE id = $1\n        ",
+  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals  -- was loans\n        WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -62,6 +62,36 @@
         "ordinal": 11,
         "name": "custom_deal_id",
         "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "risk_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "asset_class",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "region",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 17,
+        "name": "minimum_investment",
+        "type_info": "Numeric"
       }
     ],
     "parameters": {
@@ -81,8 +111,14 @@
       true,
       true,
       true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
       true
     ]
   },
-  "hash": "2cfda9516088209e43c2a475ab504612f85845304794f48e630a8557defaab91"
+  "hash": "22c38c2921bc9515a89701b40a9ae4bb5ef59d507db898e42d8adf407e902546"
 }
