@@ -1,0 +1,191 @@
+# Database Optimization Analysis
+
+## 🗄️ Analysis Focus: PostgreSQL Connection Pooling & Query Performance  
+**Token Count**: {{token_count}}  
+**Files Analyzed**: {{file_count}}  
+**Domain**: Database Performance & Connection Management
+
+---
+
+## 🔗 Connection Pool Configuration
+
+{{#each files}}
+{{#if (contains path "db/src")}}
+### 🏊 **{{path}}** - Database Connection Management
+```{{language}}
+{{content}}
+```
+
+**Connection Pool Optimization Opportunities:**
+```rust
+// Recommended PgPoolOptions configuration for arda-credit
+let pool = PgPoolOptions::new()
+    .max_connections(20)          // Tune based on concurrent API load
+    .min_connections(5)           // Always-ready connections
+    .acquire_timeout(Duration::from_secs(10))  // Prevent hanging requests
+    .idle_timeout(Duration::from_secs(300))    // Clean up idle connections
+    .max_lifetime(Duration::from_secs(1800))   // Rotate connections
+    .connect(&database_url)
+    .await?;
+```
+
+**Performance Monitoring Points:**
+- [ ] Connection pool utilization (active/idle/max)
+- [ ] Query execution time distribution
+- [ ] Connection acquire/release latency
+- [ ] Database lock contention detection
+
+---
+{{/if}}
+{{/each}}
+
+## 📊 Query Performance Analysis
+
+{{#each files}}
+{{#if (contains path "loan")}}
+### 💰 **{{path}}** - Loan Query Optimization
+```{{language}}
+{{content}}
+```
+
+**Query Optimization Strategies:**
+```sql
+-- Add indexes for common loan queries
+CREATE INDEX CONCURRENTLY idx_loans_status_borrower ON loans(loan_status, borrower_id);
+CREATE INDEX CONCURRENTLY idx_loan_transactions_loan_type ON loan_transactions(loan_id, transaction_type);
+CREATE INDEX CONCURRENTLY idx_loans_created_at_desc ON loans(created_at DESC);
+```
+
+**Critical Query Patterns:**
+- **Loan Lookup**: By borrower/lender with status filtering
+- **Transaction History**: Paginated with date range filtering
+- **Batch Processing**: Pending transaction aggregation
+- **Balance Calculation**: User balance with transaction joins
+
+---
+{{/if}}
+{{/each}}
+
+## 🔍 Database Monitoring Implementation
+
+### Performance Instrumentation
+```rust
+#[instrument(skip(pool), fields(
+    query_type = %query_type,
+    execution_time_ms = tracing::field::Empty,
+    rows_affected = tracing::field::Empty,
+    connection_pool_active = tracing::field::Empty,
+    connection_pool_idle = tracing::field::Empty
+))]
+async fn execute_query(pool: &PgPool, query: &str, query_type: &str) -> Result<PgQueryResult, sqlx::Error> {
+    let start_time = Instant::now();
+    let span = tracing::Span::current();
+    
+    // Record pool stats before execution
+    span.record("connection_pool_active", &pool.num_active());
+    span.record("connection_pool_idle", &pool.num_idle());
+    
+    let result = sqlx::query(query).execute(pool).await?;
+    
+    span.record("execution_time_ms", &start_time.elapsed().as_millis());
+    span.record("rows_affected", &result.rows_affected());
+    
+    Ok(result)
+}
+```
+
+## 🎯 Database Performance Roadmap
+
+### Phase 1: Connection Pool Tuning (Week 1)
+```rust
+// 1. Add connection pool monitoring
+use metrics::{gauge, histogram, counter};
+
+impl DatabasePool {
+    pub fn record_metrics(&self) {
+        gauge!("arda_credit.db.pool.connections.active", self.pool.size() as f64);
+        gauge!("arda_credit.db.pool.connections.idle", self.pool.num_idle() as f64);
+        gauge!("arda_credit.db.pool.connections.max", self.pool.options().max_connections as f64);
+    }
+    
+    #[instrument(skip(self))]
+    pub async fn get_connection(&self) -> Result<PoolConnection<Postgres>, sqlx::Error> {
+        let start = Instant::now();
+        let conn = self.pool.acquire().await?;
+        histogram!("arda_credit.db.pool.acquire_duration_ms", start.elapsed().as_millis() as f64);
+        Ok(conn)
+    }
+}
+```
+
+### Phase 2: Query Optimization (Week 2)
+```sql
+-- Critical indexes for arda-credit performance
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_kyc_status ON users(kyc_status) WHERE kyc_status = 'Approved';
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_batches_status_created ON batches(status, created_at) WHERE status IN ('pending', 'processing');
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_loan_transactions_pending ON loan_transactions(created_at) WHERE batch_id IS NULL;
+
+-- Compound indexes for complex queries
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_loans_comprehensive ON loans(loan_status, borrower_id, created_at DESC);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usdc_deposits_user_status ON usdc_deposits(user_address, status, created_at DESC);
+```
+
+### Phase 3: Advanced Monitoring (Week 3)
+```rust
+// Query performance tracking
+#[instrument(skip(query_result), fields(
+    table = %table_name,
+    operation = %operation_type,  // "SELECT", "INSERT", "UPDATE", "DELETE"
+    execution_time_ms = tracing::field::Empty,
+    rows_processed = tracing::field::Empty,
+    query_plan_cost = tracing::field::Empty
+))]
+async fn track_query_performance(
+    query_result: PgQueryResult, 
+    table_name: &str, 
+    operation_type: &str,
+    start_time: Instant
+) {
+    let span = tracing::Span::current();
+    
+    span.record("execution_time_ms", &start_time.elapsed().as_millis());
+    span.record("rows_processed", &query_result.rows_affected());
+    
+    // Track slow queries
+    let duration_ms = start_time.elapsed().as_millis();
+    if duration_ms > 1000 { // Queries slower than 1s
+        warn!(
+            table = table_name,
+            operation = operation_type,
+            duration_ms = duration_ms,
+            "Slow query detected"
+        );
+        counter!("arda_credit.db.slow_queries.total", 1, "table" => table_name, "operation" => operation_type);
+    }
+}
+```
+
+## 📈 Database Performance KPIs
+
+### 🎯 Connection Pool Health
+- **Pool Utilization**: Target <80% peak usage
+- **Acquire Latency**: <10ms average connection acquisition  
+- **Idle Connection Ratio**: 20-40% idle connections during normal load
+- **Connection Lifetime**: Average 15-30 minutes before rotation
+
+### ⚡ Query Performance Targets
+- **Loan Lookup Queries**: <50ms average execution time
+- **Transaction Batch Queries**: <200ms for 1000+ pending transactions
+- **Balance Calculation**: <100ms with user transaction history
+- **KYC Status Checks**: <10ms cached or indexed lookups
+
+### 🔒 Database Reliability
+- **Connection Pool Exhaustion**: 0 occurrences per day
+- **Query Timeout Rate**: <1% of total queries  
+- **Lock Contention**: <5% of queries waiting on locks
+- **Database Downtime**: <99.9% uptime excluding planned maintenance
+
+---
+
+**Generated by Arda Credit Database Optimization Analysis**  
+**Optimized for PostgreSQL Connection Pooling & Loan Operation Queries**
