@@ -83,6 +83,27 @@ spec:
                 secretKeyRef:
                   name: {{ include "arda-credit.fullname" . }}-secrets
                   key: ethereum-deployer-address
+            # AWS/SES Configuration (sensitive)
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: aws-secret-access-key
+            - name: EMAIL_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: email-from
+            - name: EMAIL_REPLY_TO
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: email-reply-to
             {{- if .Values.server.opentelemetry.enabled }}
             # OpenTelemetry configuration with dynamic service discovery
             - name: ENABLE_OPENTELEMETRY

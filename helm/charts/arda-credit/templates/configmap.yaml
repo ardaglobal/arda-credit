@@ -10,6 +10,15 @@ data:
   SERVER_PORT: {{ .Values.server.config.serverPort | quote }}
   SINDRI_CIRCUIT_TAG: {{ .Values.server.config.sindriCircuitTag | quote }}
   
+  # AWS/SES Configuration (non-sensitive)
+  SES_REGION: {{ .Values.server.config.sesRegion | quote }}
+  {{- if .Values.server.config.sesConfigurationSet }}
+  SES_CONFIGURATION_SET: {{ .Values.server.config.sesConfigurationSet | quote }}
+  {{- end }}
+  MAGIC_BASE_URL: {{ .Values.server.config.magicBaseUrl | quote }}
+  EMAIL_ENABLED: {{ .Values.server.config.emailEnabled | quote }}
+  EMAIL_DEBUG_MODE: {{ .Values.server.config.emailDebugMode | quote }}
+  
   # App configuration
   NODE_ENV: "production"
 
