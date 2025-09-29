@@ -1,11 +1,11 @@
-use crate::ai_analysis_service::{
+use crate::services::ai_analysis_service::{
     AiAnalysisService, AiChatRequest, AiChatResponse, DocumentDiffRequest, DocumentDiffResponse,
     NegotiationInsight,
 };
 // Authentication will be added later
-use crate::auth::Claims;
-use crate::types::ApiState;
-use crate::types::ErrorResponse;
+use crate::config::types::ApiState;
+use crate::config::types::ErrorResponse;
+use crate::services::auth::Claims;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -93,7 +93,7 @@ fn handle_service_error(err: anyhow::Error) -> (StatusCode, Json<ApiError>) {
     ),
     params(AnalyzeDocumentQuery),
     responses(
-        (status = 200, description = "Analysis completed successfully", body = crate::ai_analysis_service::DocumentDiffResponse),
+        (status = 200, description = "Analysis completed successfully", body = crate::services::ai_analysis_service::DocumentDiffResponse),
         (status = 400, description = "Invalid request parameters", body = ApiError),
         (status = 404, description = "Document not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
@@ -115,10 +115,16 @@ pub async fn analyze_document_diff(
         areas
             .split(',')
             .filter_map(|area| match area.trim().to_lowercase().as_str() {
-                "financial" => Some(crate::ai_analysis_service::ChangeCategory::Financial),
-                "legal" => Some(crate::ai_analysis_service::ChangeCategory::Legal),
-                "operational" => Some(crate::ai_analysis_service::ChangeCategory::Operational),
-                "compliance" => Some(crate::ai_analysis_service::ChangeCategory::Compliance),
+                "financial" => {
+                    Some(crate::services::ai_analysis_service::ChangeCategory::Financial)
+                }
+                "legal" => Some(crate::services::ai_analysis_service::ChangeCategory::Legal),
+                "operational" => {
+                    Some(crate::services::ai_analysis_service::ChangeCategory::Operational)
+                }
+                "compliance" => {
+                    Some(crate::services::ai_analysis_service::ChangeCategory::Compliance)
+                }
                 _ => None,
             })
             .collect()
@@ -149,9 +155,9 @@ pub async fn analyze_document_diff(
 #[utoipa::path(
     post,
     path = "/api/v1/ai/chat",
-    request_body = crate::ai_analysis_service::AiChatRequest,
+    request_body = crate::services::ai_analysis_service::AiChatRequest,
     responses(
-        (status = 200, description = "Chat message processed successfully", body = crate::ai_analysis_service::AiChatResponse),
+        (status = 200, description = "Chat message processed successfully", body = crate::services::ai_analysis_service::AiChatResponse),
         (status = 400, description = "Invalid request", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
@@ -192,7 +198,7 @@ pub async fn process_chat_message(
         ("document_id" = Uuid, Path, description = "Document ID to get insights for")
     ),
     responses(
-        (status = 200, description = "Insights retrieved successfully", body = Vec<crate::ai_analysis_service::NegotiationInsight>),
+        (status = 200, description = "Insights retrieved successfully", body = Vec<crate::services::ai_analysis_service::NegotiationInsight>),
         (status = 404, description = "Document not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
@@ -223,7 +229,7 @@ pub async fn get_negotiation_insights(
         ("session_id" = Uuid, Path, description = "Chat session ID")
     ),
     responses(
-        (status = 200, description = "Chat history retrieved successfully", body = Vec<crate::ai_analysis_service::AiChatMessage>),
+        (status = 200, description = "Chat history retrieved successfully", body = Vec<crate::services::ai_analysis_service::AiChatMessage>),
         (status = 404, description = "Session not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
@@ -234,7 +240,10 @@ pub async fn get_negotiation_insights(
 pub async fn get_chat_history(
     State(state): State<ApiState>,
     Path(session_id): Path<Uuid>,
-) -> Result<Json<Vec<crate::ai_analysis_service::AiChatMessage>>, (StatusCode, Json<ApiError>)> {
+) -> Result<
+    Json<Vec<crate::services::ai_analysis_service::AiChatMessage>>,
+    (StatusCode, Json<ApiError>),
+> {
     let _claims = get_dummy_claims(); // TODO: Replace with real auth
     let ai_service = AiAnalysisService::new(state.pool.clone());
 
@@ -687,7 +696,7 @@ pub fn create_ai_analysis_router() -> Router<ApiState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai_analysis_service::{ChangeCategory, ChangeType, ImpactLevel};
+    use crate::services::ai_analysis_service::{ChangeCategory, ChangeType, ImpactLevel};
 
     #[test]
     fn test_focus_areas_parsing() {

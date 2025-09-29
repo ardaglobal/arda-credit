@@ -156,16 +156,7 @@ pub use crate::handlers::{
 };
 
 // Other service types
-pub use crate::ai_analysis_service::{
-    AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
-    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
-};
-pub use crate::balance_service::AvailableBalance;
-pub use crate::magic_link_types::{
-    MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
-    VerifyMagicLinkResponse,
-};
-pub use crate::pool_api::{
+pub use crate::api::pool_api::{
     BenchmarkData, CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
     InvestorMetrics, InvestorPoolMetricsOverviewResponse, InvestorPoolSummariesResponse,
     InvestorPoolSummary, MarketOverviewResponse, PageInfo, PlatformMetrics, PoolDetailsResponse,
@@ -175,8 +166,17 @@ pub use crate::pool_api::{
     StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
     UtilizationHistoryQuery,
 };
-pub use crate::types::UserType;
-pub use crate::withdrawal_service::{
+pub use crate::config::magic_link_types::{
+    MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
+    VerifyMagicLinkResponse,
+};
+pub use crate::config::types::UserType;
+pub use crate::services::ai_analysis_service::{
+    AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
+    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
+};
+pub use crate::services::balance_service::AvailableBalance;
+pub use crate::services::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
 };
 
@@ -481,8 +481,8 @@ API requests are subject to rate limiting for system stability.
         crate::handlers::merchants::documents::DocumentVerificationResponse,
         crate::handlers::merchants::documents::DocumentListResponse,
         crate::handlers::merchants::documents::AuditLogsResponse,
-        crate::document_service::DocumentResponseDto,
-        crate::document_service::DocumentAuditLogDto,
+        crate::services::document_service::DocumentResponseDto,
+        crate::services::document_service::DocumentAuditLogDto,
 
         // Admin types
         AdminUserIdentity,

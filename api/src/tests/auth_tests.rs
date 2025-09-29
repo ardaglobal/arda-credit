@@ -16,7 +16,7 @@ use crate::test_utils::*;
 use crate::handlers::auth::authentication::{
     login_endpoint, logout_endpoint, register_user_endpoint,
 };
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test user registration endpoint with invite code
 #[tokio::test]

@@ -4,12 +4,13 @@
 //! download, approval, and audit trail access with comprehensive security controls.
 
 use crate::{
-    auth::Claims,
-    document_service::{
+    api::router::ApiState,
+    config::types::ErrorResponse,
+    services::auth::Claims,
+    services::document_service::{
         DocumentAuditLogDto, DocumentListRequest, DocumentResponseDto, DocumentService,
         DocumentServiceError, DocumentUploadRequestDto,
     },
-    router::ApiState,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -76,14 +77,6 @@ pub struct AuditLogsResponse {
     pub total_count: Option<i64>,
     /// Whether there are more log entries available
     pub has_more: bool,
-}
-
-/// Error response structure
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub message: String,
-    pub details: Option<serde_json::Value>,
 }
 
 impl IntoResponse for DocumentServiceError {

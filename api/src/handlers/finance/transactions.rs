@@ -11,7 +11,7 @@ use tracing::{error, info, instrument};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{types::ApiState, ErrorResponse};
+use crate::{api::router::ApiState, config::types::ErrorResponse};
 use arda_credit_db::{
     create_account_financial_transaction, update_user_balance_from_deposit,
     update_user_balance_from_withdrawal,

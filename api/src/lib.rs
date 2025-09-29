@@ -33,52 +33,66 @@
 #![allow(clippy::struct_excessive_bools)]
 #![allow(clippy::suboptimal_flops)]
 
-// Organized handlers module
-pub mod handlers;
-
-// Service modules
-pub mod ai_analysis_service;
-pub mod ai_notification_service;
-pub mod auth;
-pub mod balance_service;
-pub mod batch_processor;
+// Organized module structure
+pub mod api;
 pub mod client;
-pub mod company_service;
-pub mod cookie_utils;
-pub mod document_metrics;
-pub mod document_service;
-pub mod email_config;
-pub mod email_service;
-pub mod email_templates;
-pub mod kyc_service;
-pub mod llm_integration;
-pub mod magic_link_cleanup;
-pub mod magic_link_service;
-pub mod magic_link_types;
-pub mod metrics;
+pub mod config;
+pub mod handlers;
 pub mod middleware;
-pub mod openapi;
-pub mod paths;
-pub mod pool_api;
-pub mod router;
-pub mod server;
-pub mod session_cleanup;
-pub mod session_middleware;
-pub mod session_service;
-pub mod simple_withdrawal_executor;
-pub mod telemetry;
-pub mod test_utils;
-pub mod trading_auth;
-pub mod types;
-pub mod unified_batch_service;
-pub mod withdrawal_service;
+pub mod services;
+pub mod utils;
 
-#[cfg(test)]
-pub mod openapi_test;
+// Re-export commonly used items from organized modules
+// Note: Be careful with glob imports to avoid name conflicts
+pub use middleware::*;
 
-// Temporarily disabled for minimal PoC:
-// pub mod graphql;       // 883 lines - GraphQL API for old nullifier system (depends on disabled modules)
-// pub mod integration;   // 480 lines - Complex deployment/scaling configs (depends on disabled modules)
+// Re-export config items (types::ErrorResponse is not re-exported to avoid conflicts with handlers)
+pub use config::{
+    email_config::*, email_templates::*, magic_link_types::*, paths::*, telemetry::*,
+};
+
+// Re-export specific types from config::types (excluding ErrorResponse to avoid ambiguity)
+pub use config::types::{ApiConfig, ApiState, UserType};
+
+// Selectively re-export API items (ApiConfig and ApiState already exported above)
+pub use api::{create_router, ApiServer, ApiServerBuilder, ApiServerConfig};
+pub use services::{
+    AuthError, AuthService, AvailableBalance, BalanceVerificationResult,
+    BalanceVerificationService, BatchCreationResult, BatchProcessorHandle, Claims, CompanyService,
+    DocumentService, EmailService, KycValidationResult, KycValidationService, MagicLinkService,
+    SessionService, UnifiedBatchService, WithdrawalTransactionService,
+};
+
+// Re-export pool API types
+pub use api::{
+    CreatePoolRequest, CreatePoolResponse, InvestorDashboardResponse, InvestorMetrics,
+    InvestorPoolSummariesResponse, InvestorPoolSummary, MarketOverviewResponse, PageInfo,
+    PlatformMetrics, PoolDetailsResponse, PoolListQuery, PoolListResponse, PoolMatchRequest,
+    PoolPerformanceResponse, PoolSummaryInfo, PoolTransactionsResponse, PoolUtilizationResponse,
+    StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
+    UtilizationHistoryQuery,
+};
+
+// Re-export withdrawal types
+pub use services::{
+    InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
+    WithdrawalStatusResponse,
+};
+
+// Re-export company types
+pub use services::{
+    BeneficialOwnerInfo, CompanyRegistrationRequest, CompanyResponseDto, CompanyServiceError,
+    KybSubmissionRequest, TeamInvitationRequest, TeamMemberPermissions, TeamMemberResponseDto,
+};
+
+// Re-export AI types
+pub use services::{
+    AiAnalysisService, AiChatMessage, AiChatRequest, AiChatResponse, AiNotificationService,
+    ChangeAnalysis, ChangeCategory, ChangeType, ChatPrompt, DeliveryMethod, DocumentAnalysisPrompt,
+    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, LlmProvider, LlmRequest, LlmResponse,
+    LlmService, NegotiationInsight, NotificationPriority, NotificationRecord, RiskFactor,
+    UserNotificationPreferences, WebhookConfig,
+};
 
 // Re-export main API types for convenience
 pub use client::{
@@ -102,58 +116,10 @@ pub use client::{
     UserTransactionsResponse,
 };
 
-pub use router::{create_router, ApiConfig, ApiState};
-
 // Re-export handler modules for backward compatibility
 pub use handlers::*;
 
-pub use server::{ApiServer, ApiServerBuilder, ApiServerConfig};
-
-pub use unified_batch_service::{BatchCreationResult, UnifiedBatchService};
-
-pub use auth::{AuthError, AuthService, Claims};
-
-pub use kyc_service::{KycValidationResult, KycValidationService};
-
-pub use balance_service::{
-    AvailableBalance, BalanceVerificationResult, BalanceVerificationService,
-};
-
-pub use company_service::{
-    BeneficialOwnerInfo, CompanyRegistrationRequest, CompanyResponseDto, CompanyService,
-    CompanyServiceError, KybSubmissionRequest, TeamInvitationRequest, TeamMemberPermissions,
-    TeamMemberResponseDto,
-};
-
-pub use withdrawal_service::{
-    InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
-    WithdrawalStatusResponse, WithdrawalTransactionService,
-};
-
-pub use ai_analysis_service::{
-    AiAnalysisService, AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis,
-    ChangeCategory, ChangeType, DocumentDiffRequest, DocumentDiffResponse, ImpactLevel,
-    NegotiationInsight, RiskFactor,
-};
-
-pub use ai_notification_service::{
-    AiNotificationService, DeliveryMethod, NotificationPriority, NotificationRecord,
-    UserNotificationPreferences, WebhookConfig,
-};
-
-pub use llm_integration::{
-    ChatPrompt, DocumentAnalysisPrompt, LlmProvider, LlmRequest, LlmResponse, LlmService,
-};
-
-pub use pool_api::{
-    CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
-    InvestorMetrics, InvestorPoolSummariesResponse, InvestorPoolSummary, MarketOverviewResponse,
-    PageInfo, PlatformMetrics, PoolDetailsResponse, PoolListQuery, PoolListResponse,
-    PoolMatchRequest, PoolPerformanceResponse, PoolSummaryInfo, PoolTransactionsResponse,
-    PoolUtilizationResponse, StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest,
-    UtilizationDataPoint, UtilizationHistoryQuery,
-};
-
+// Re-export specific pool and credit line handlers for backward compatibility
 pub use handlers::pools::pools::{
     get_investor_dashboard, get_investor_pool_summaries as handler_get_investor_pool_summaries,
     get_market_overview, get_pool_details, get_pool_performance,
@@ -166,8 +132,6 @@ pub use handlers::credit::credit_lines::{
     CreditLineRequestListResponse, CreditLineRequestQuery, CreditLineRequestResponse,
     EligibilityCheckResponse, PoolBrowsingQuery, SubmitCreditLineRequestBody,
 };
-
-pub use telemetry::{init_tracer, init_tracing, shutdown_telemetry};
 
 // Note: New handler modules are available but not yet replacing rest.rs functionality
 

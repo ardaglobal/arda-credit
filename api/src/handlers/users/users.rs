@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::paths;
-use crate::types::{ApiState, UserType};
+use crate::config::paths;
+use crate::config::types::{ApiState, UserType};
 use arda_credit_db::{
     get_deposits_by_user_address, get_identity_by_id, get_invite_code_info,
     get_user_balance_by_address, get_user_balance_by_id, register_or_reregister_user,

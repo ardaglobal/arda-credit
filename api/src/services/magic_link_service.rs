@@ -8,9 +8,9 @@ use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::email_service::{EmailError, EmailService};
-use crate::middleware::RateLimiter;
-use crate::session_service::{SessionError, SessionService};
+use crate::middleware::middleware::RateLimiter;
+use crate::services::email_service::{EmailError, EmailService};
+use crate::services::session_service::{SessionError, SessionService};
 
 /// Errors that can occur during magic link operations
 #[derive(Debug, thiserror::Error)]

@@ -21,10 +21,10 @@ use std::collections::HashMap;
 use tracing::{error, info, instrument, warn};
 use utoipa::ToSchema;
 
-use crate::balance_service::AvailableBalance;
-use crate::paths;
-use crate::types::{ApiState, ErrorResponse};
-use crate::withdrawal_service::{
+use crate::config::paths;
+use crate::config::types::{ApiState, ErrorResponse};
+use crate::services::balance_service::AvailableBalance;
+use crate::services::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
     WithdrawalStatusResponse, WithdrawalTransactionService,
 };

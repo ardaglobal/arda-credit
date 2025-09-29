@@ -51,7 +51,7 @@ use crate::handlers::deals::deals::{
     transfer_deal_ownership_endpoint, get_deal_transfer_history_endpoint,
     get_user_deal_transfer_history_endpoint, validate_deal_transfer_endpoint,
 };
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test creating a new deal
 #[tokio::test]

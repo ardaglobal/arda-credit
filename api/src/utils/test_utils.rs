@@ -23,7 +23,7 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 use arda_credit_db::{AdsConfig, IndexedMerkleTreeADS};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use uuid::Uuid;
@@ -328,8 +328,8 @@ pub async fn create_test_user(pool: &PgPool, email: &str, user_type: &str) -> Te
 pub async fn create_mock_email_service() -> crate::email_service::EmailService {
     // This is a simplified mock - in a real implementation you'd use a proper mock
     // For now, we'll create a service that doesn't actually send emails
-    use crate::email_config::EmailConfig;
-    use crate::email_service::EmailService;
+    use crate::config::email_config::EmailConfig;
+    use crate::services::email_service::EmailService;
 
     // Create a disabled email service for testing
     let config = EmailConfig {

@@ -1,5 +1,5 @@
 // Test file to validate OpenAPI implementation compiles correctly
-use crate::openapi::ApiDoc;
+use crate::api::openapi::ApiDoc;
 use utoipa::OpenApi;
 
 #[cfg(test)]

@@ -8,8 +8,8 @@ use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
 
-use crate::email_config::{EmailConfig, EmailConfigError};
-use crate::email_templates::{EmailContent as TemplateContent, MagicLinkEmailData};
+use crate::config::email_config::{EmailConfig, EmailConfigError};
+use crate::config::email_templates::{EmailContent as TemplateContent, MagicLinkEmailData};
 
 /// Errors that can occur during email operations
 #[derive(Debug, thiserror::Error)]

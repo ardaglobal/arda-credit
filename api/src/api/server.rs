@@ -17,16 +17,16 @@ use tower_http::{
 };
 use tracing::{info, instrument, warn};
 
-use crate::auth::AuthService;
-use crate::batch_processor::{create_batch_processor_config, start_batch_processor};
-use crate::email_service::EmailService;
-use crate::magic_link_service::{MagicLinkConfig, MagicLinkService};
-use crate::middleware::{EmailRateLimiter, RateLimiter};
-use crate::openapi::ApiDoc;
-use crate::session_cleanup::SessionCleanupService;
-use crate::session_middleware::session_auth_middleware;
-use crate::session_service::SessionService;
-use crate::types::{ApiConfig, ApiState};
+use crate::api::openapi::ApiDoc;
+use crate::config::types::{ApiConfig, ApiState};
+use crate::middleware::middleware::{EmailRateLimiter, RateLimiter};
+use crate::middleware::session_middleware::session_auth_middleware;
+use crate::services::auth::AuthService;
+use crate::services::batch_processor::{create_batch_processor_config, start_batch_processor};
+use crate::services::email_service::EmailService;
+use crate::services::magic_link_service::{MagicLinkConfig, MagicLinkService};
+use crate::services::session_service::SessionService;
+use crate::utils::session_cleanup::SessionCleanupService;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
@@ -134,7 +134,7 @@ impl ApiServer {
 
         // Initialize Prometheus metrics
         info!("📊 Initializing Prometheus metrics");
-        let metrics_handle = crate::metrics::MetricsHandle::new().map_err(|e| {
+        let metrics_handle = crate::utils::metrics::MetricsHandle::new().map_err(|e| {
             warn!("Failed to initialize metrics: {}", e);
             e
         })?;
@@ -190,7 +190,7 @@ impl ApiServer {
 
         // Initialize simple withdrawal executor service if Ethereum config is available
         let withdrawal_executor = if let Some(executor_config) =
-            crate::simple_withdrawal_executor::create_simple_withdrawal_executor_config()
+            crate::services::simple_withdrawal_executor::create_simple_withdrawal_executor_config()
         {
             info!("🔧 Initializing simple withdrawal executor service");
             info!(
@@ -246,13 +246,13 @@ impl ApiServer {
             match ethereum_client::client::EthereumClient::new_without_validation(config).await {
                 Ok(ethereum_client) => {
                     let service =
-                        crate::simple_withdrawal_executor::SimpleWithdrawalExecutorService::new(
+                        crate::services::simple_withdrawal_executor::SimpleWithdrawalExecutorService::new(
                             pool.clone(),
                             ethereum_client,
                             executor_config,
                         );
                     let handle =
-                        crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle::new(
+                        crate::services::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle::new(
                             service,
                         );
                     info!("✅ Simple withdrawal executor service initialized");
@@ -276,7 +276,7 @@ impl ApiServer {
         };
         // Initialize Prometheus metrics
         info!("📊 Initializing Prometheus metrics");
-        let metrics_handle = crate::metrics::MetricsHandle::new().map_err(|e| {
+        let metrics_handle = crate::utils::metrics::MetricsHandle::new().map_err(|e| {
             warn!("Failed to initialize metrics: {}", e);
             e
         })?;
@@ -341,17 +341,18 @@ impl ApiServer {
         let email_rate_limiter = Arc::new(EmailRateLimiter::new());
 
         // Initialize email service for magic links
-        let email_config = crate::email_config::EmailConfig::from_env().unwrap_or_else(|_| {
-            crate::email_config::EmailConfig {
-                enabled: false,
-                ses_region: "us-east-1".to_string(),
-                email_from: "test@example.com".to_string(),
-                email_reply_to: "noreply@example.com".to_string(),
-                configuration_set: None,
-                magic_base_url: "https://app.arda.xyz/auth/verify".to_string(),
-                debug_mode: false,
-            }
-        });
+        let email_config =
+            crate::config::email_config::EmailConfig::from_env().unwrap_or_else(|_| {
+                crate::config::email_config::EmailConfig {
+                    enabled: false,
+                    ses_region: "us-east-1".to_string(),
+                    email_from: "test@example.com".to_string(),
+                    email_reply_to: "noreply@example.com".to_string(),
+                    configuration_set: None,
+                    magic_base_url: "https://app.arda.xyz/auth/verify".to_string(),
+                    debug_mode: false,
+                }
+            });
 
         let email_service = Arc::new(EmailService::new(email_config).await.unwrap_or_else(|e| {
             warn!("Failed to initialize email service ({}), using mock", e);
@@ -387,7 +388,7 @@ impl ApiServer {
         // Use REST API routes (includes health endpoints and state)
         let router = if self.config.enable_rest {
             info!("📡 Adding batch processing REST API routes");
-            crate::router::create_router(api_state.clone())
+            crate::api::router::create_router(api_state.clone())
         } else {
             Router::new()
                 .route("/health", get(health_check))
@@ -424,7 +425,7 @@ impl ApiServer {
     fn add_middleware_with_state(&self, router: Router) -> Router {
         let mut router = router
             .layer(axum::middleware::from_fn(
-                crate::metrics::metrics_middleware,
+                crate::utils::metrics::metrics_middleware,
             ))
             .layer(TraceLayer::new_for_http())
             .layer(RequestBodyLimitLayer::new(
@@ -686,33 +687,33 @@ pub fn create_new_router(state: ApiState) -> Router<ApiState> {
         .merge(swagger_ui)
         // User management endpoints from user_handlers.rs
         .route(
-            crate::paths::USER,
+            crate::config::paths::USER,
             post(crate::handlers::users::users::register_user_endpoint),
         )
         .route(
-            crate::paths::USERS,
+            crate::config::paths::USERS,
             get(crate::handlers::users::users::list_identities_endpoint),
         )
         .route(
-            crate::paths::USER_BY_ID,
+            crate::config::paths::USER_BY_ID,
             get(crate::handlers::users::users::get_user_details_endpoint),
         )
         // State management endpoints from state_handlers.rs
         .route(
-            crate::paths::STATE_TRANSACTIONS,
+            crate::config::paths::STATE_TRANSACTIONS,
             post(crate::handlers::core::state::submit_transaction_endpoint),
         )
         .route(
-            crate::paths::STATE_TRANSACTIONS_PENDING,
+            crate::config::paths::STATE_TRANSACTIONS_PENDING,
             get(crate::handlers::core::state::get_pending_transactions_endpoint),
         )
         .route(
-            crate::paths::STATE_BATCHES,
+            crate::config::paths::STATE_BATCHES,
             post(crate::handlers::core::state::create_batch_endpoint),
         )
         // Admin endpoints from admin_handlers.rs
         .route(
-            crate::paths::ADMIN_KYC_PENDING,
+            crate::config::paths::ADMIN_KYC_PENDING,
             get(crate::handlers::users::admin::list_pending_kyc_endpoint),
         )
         // TODO: Continue migrating remaining endpoints from rest.rs

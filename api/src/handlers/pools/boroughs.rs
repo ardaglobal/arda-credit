@@ -20,7 +20,7 @@ use tracing::{error, info, instrument};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 use arda_credit_db::{
     delete_pool_borough_limit, get_pool_borough_limits, get_pool_borough_summary,
     set_pool_borough_limit, validate_borough_borrowing_limit, BoroughValidationResult,

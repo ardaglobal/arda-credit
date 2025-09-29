@@ -23,9 +23,9 @@ use utoipa::ToSchema;
 
 extern crate hex;
 
-use crate::openapi::PaginationParams;
-use crate::paths;
-use crate::types::ApiState;
+use crate::api::openapi::PaginationParams;
+use crate::config::paths;
+use crate::config::types::ApiState;
 
 // Use Axum's built-in response types for Axum 0.8 compatibility
 use arda_credit_db::{
@@ -295,7 +295,7 @@ pub async fn create_batch_endpoint(
     );
 
     // Use unified batch service for consistent ADS integration
-    let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+    let unified_service = crate::services::unified_batch_service::UnifiedBatchService::new(
         state.pool.clone(),
         state.ads_service.clone(),
         state.config.max_batch_size,
@@ -333,7 +333,7 @@ pub async fn create_batch_endpoint(
                     let pool = state.pool.clone();
                     let batch_id = result.batch_id;
                     async move {
-                        if let Err(e) = crate::batch_processor::BackgroundBatchProcessor::generate_proof_for_batch(&pool, batch_id).await {
+                        if let Err(e) = crate::services::batch_processor::BackgroundBatchProcessor::generate_proof_for_batch(&pool, batch_id).await {
                             error!("Failed to generate proof for unified batch {}: {}", batch_id, e);
                         }
                     }

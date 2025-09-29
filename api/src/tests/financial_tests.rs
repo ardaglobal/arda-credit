@@ -17,7 +17,7 @@ use crate::handlers::finance::transactions::{
     record_credit_line_draw, record_credit_line_payment, get_credit_line_financial_transactions,
     get_user_financial_transactions, get_user_financial_summary,
 };
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test recording account deposit
 #[tokio::test]

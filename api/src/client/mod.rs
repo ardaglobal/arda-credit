@@ -17,7 +17,7 @@ use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::paths;
+use crate::config::paths;
 
 // ============================================================================
 // DEAL API TYPES (converted from loan types)

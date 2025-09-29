@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::ToSchema;
 
-use crate::paths;
-use crate::types::{ApiState, UserType};
+use crate::config::paths;
+use crate::config::types::{ApiState, UserType};
 
 // Use Axum's built-in response types for Axum 0.8 compatibility
 use arda_credit_db::{

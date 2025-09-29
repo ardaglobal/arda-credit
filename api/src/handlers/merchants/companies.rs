@@ -4,12 +4,12 @@
 //! KYB verification, and team management functionality.
 
 use crate::{
-    auth::Claims,
-    company_service::{
+    api::router::ApiState,
+    services::auth::Claims,
+    services::company_service::{
         CompanyRegistrationRequest, CompanyService, KybSubmissionRequest, TeamInvitationRequest,
         TeamMemberPermissions,
     },
-    router::ApiState,
 };
 use axum::{
     extract::{Path, State},
@@ -60,12 +60,14 @@ pub async fn register_company_endpoint(
         Err(err) => {
             error!(error = %err, "Failed to register company");
             match err {
-                crate::company_service::CompanyServiceError::ValidationError(_) => (
+                crate::services::company_service::CompanyServiceError::ValidationError(_) => (
                     StatusCode::BAD_REQUEST,
                     Json(format!("Validation error: {}", err)),
                 )
                     .into_response(),
-                crate::company_service::CompanyServiceError::CompanyAlreadyExists { .. } => (
+                crate::services::company_service::CompanyServiceError::CompanyAlreadyExists {
+                    ..
+                } => (
                     StatusCode::CONFLICT,
                     Json(format!("Company already exists: {}", err)),
                 )
@@ -95,12 +97,12 @@ pub async fn get_company_endpoint(
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to get company");
             match err {
-                crate::company_service::CompanyServiceError::CompanyNotFound { .. } => {
-                    (StatusCode::NOT_FOUND, Json("Company not found")).into_response()
-                }
-                crate::company_service::CompanyServiceError::TeamMemberNotFound { .. } => {
-                    (StatusCode::FORBIDDEN, Json("Access denied")).into_response()
-                }
+                crate::services::company_service::CompanyServiceError::CompanyNotFound {
+                    ..
+                } => (StatusCode::NOT_FOUND, Json("Company not found")).into_response(),
+                crate::services::company_service::CompanyServiceError::TeamMemberNotFound {
+                    ..
+                } => (StatusCode::FORBIDDEN, Json("Access denied")).into_response(),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json("Internal server error"),
@@ -134,15 +136,15 @@ pub async fn submit_kyb_endpoint(
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to submit KYB");
             match err {
-                crate::company_service::CompanyServiceError::ValidationError(_) => (
+                crate::services::company_service::CompanyServiceError::ValidationError(_) => (
                     StatusCode::BAD_REQUEST,
                     Json(format!("Validation error: {}", err)),
                 )
                     .into_response(),
-                crate::company_service::CompanyServiceError::CompanyNotFound { .. } => {
-                    (StatusCode::NOT_FOUND, Json("Company not found")).into_response()
-                }
-                crate::company_service::CompanyServiceError::AccessDenied { .. } => {
+                crate::services::company_service::CompanyServiceError::CompanyNotFound {
+                    ..
+                } => (StatusCode::NOT_FOUND, Json("Company not found")).into_response(),
+                crate::services::company_service::CompanyServiceError::AccessDenied { .. } => {
                     (StatusCode::FORBIDDEN, Json("Access denied")).into_response()
                 }
                 _ => (
@@ -184,12 +186,12 @@ pub async fn get_kyb_status_endpoint(
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to get KYB status");
             match err {
-                crate::company_service::CompanyServiceError::CompanyNotFound { .. } => {
-                    (StatusCode::NOT_FOUND, Json("Company not found")).into_response()
-                }
-                crate::company_service::CompanyServiceError::TeamMemberNotFound { .. } => {
-                    (StatusCode::FORBIDDEN, Json("Access denied")).into_response()
-                }
+                crate::services::company_service::CompanyServiceError::CompanyNotFound {
+                    ..
+                } => (StatusCode::NOT_FOUND, Json("Company not found")).into_response(),
+                crate::services::company_service::CompanyServiceError::TeamMemberNotFound {
+                    ..
+                } => (StatusCode::FORBIDDEN, Json("Access denied")).into_response(),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json("Internal server error"),
@@ -225,15 +227,15 @@ pub async fn invite_team_member_endpoint(
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to invite team member");
             match err {
-                crate::company_service::CompanyServiceError::ValidationError(_) => (
+                crate::services::company_service::CompanyServiceError::ValidationError(_) => (
                     StatusCode::BAD_REQUEST,
                     Json(format!("Validation error: {}", err)),
                 )
                     .into_response(),
-                crate::company_service::CompanyServiceError::TeamMemberAlreadyExists { .. } => {
+                crate::services::company_service::CompanyServiceError::TeamMemberAlreadyExists { .. } => {
                     (StatusCode::CONFLICT, Json("Team member already exists")).into_response()
                 }
-                crate::company_service::CompanyServiceError::AccessDenied { .. } => {
+                crate::services::company_service::CompanyServiceError::AccessDenied { .. } => {
                     (StatusCode::FORBIDDEN, Json("Access denied")).into_response()
                 }
                 _ => (
@@ -262,9 +264,9 @@ pub async fn list_team_members_endpoint(
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to list team members");
             match err {
-                crate::company_service::CompanyServiceError::TeamMemberNotFound { .. } => {
-                    (StatusCode::FORBIDDEN, Json("Access denied")).into_response()
-                }
+                crate::services::company_service::CompanyServiceError::TeamMemberNotFound {
+                    ..
+                } => (StatusCode::FORBIDDEN, Json("Access denied")).into_response(),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json("Internal server error"),
@@ -319,22 +321,24 @@ pub async fn update_team_member_role_endpoint(
                 "Failed to update team member role"
             );
             match err {
-                crate::company_service::CompanyServiceError::ValidationError(_) => (
+                crate::services::company_service::CompanyServiceError::ValidationError(_) => (
                     StatusCode::BAD_REQUEST,
                     Json(format!("Validation error: {}", err)),
                 )
                     .into_response(),
-                crate::company_service::CompanyServiceError::CannotRemoveLastAdmin { .. } => (
+                crate::services::company_service::CompanyServiceError::CannotRemoveLastAdmin {
+                    ..
+                } => (
                     StatusCode::BAD_REQUEST,
                     Json("Cannot remove the last admin"),
                 )
                     .into_response(),
-                crate::company_service::CompanyServiceError::AccessDenied { .. } => {
+                crate::services::company_service::CompanyServiceError::AccessDenied { .. } => {
                     (StatusCode::FORBIDDEN, Json("Access denied")).into_response()
                 }
-                crate::company_service::CompanyServiceError::TeamMemberNotFound { .. } => {
-                    (StatusCode::NOT_FOUND, Json("Team member not found")).into_response()
-                }
+                crate::services::company_service::CompanyServiceError::TeamMemberNotFound {
+                    ..
+                } => (StatusCode::NOT_FOUND, Json("Team member not found")).into_response(),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json("Internal server error"),
@@ -414,7 +418,7 @@ pub async fn remove_team_member_endpoint(
 /// Company dashboard stats
 #[derive(Debug, Serialize)]
 pub struct CompanyDashboardResponse {
-    pub company: crate::company_service::CompanyResponseDto,
+    pub company: crate::services::company_service::CompanyResponseDto,
     pub team_stats: TeamStats,
     pub document_stats: DocumentStats,
     pub recent_activity: Vec<ActivityItem>,
@@ -459,12 +463,12 @@ pub async fn get_company_dashboard_endpoint(
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to get company for dashboard");
             return match err {
-                crate::company_service::CompanyServiceError::CompanyNotFound { .. } => {
-                    (StatusCode::NOT_FOUND, Json("Company not found")).into_response()
-                }
-                crate::company_service::CompanyServiceError::TeamMemberNotFound { .. } => {
-                    (StatusCode::FORBIDDEN, Json("Access denied")).into_response()
-                }
+                crate::services::company_service::CompanyServiceError::CompanyNotFound {
+                    ..
+                } => (StatusCode::NOT_FOUND, Json("Company not found")).into_response(),
+                crate::services::company_service::CompanyServiceError::TeamMemberNotFound {
+                    ..
+                } => (StatusCode::FORBIDDEN, Json("Access denied")).into_response(),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json("Internal server error"),

@@ -19,8 +19,8 @@ use opentelemetry::{
     Context, KeyValue,
 };
 
-use crate::paths;
-use crate::types::ApiState;
+use crate::config::paths;
+use crate::config::types::ApiState;
 
 // ============================================================================
 // HEALTH CHECK TYPES

@@ -3,7 +3,7 @@
 //! This module provides comprehensive company registration, KYB verification,
 //! and team management functionality for originators and investors.
 
-use crate::auth::Claims;
+use crate::services::auth::Claims;
 use arda_credit_lib::{CompanyType, KybStatus, TeamRole};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

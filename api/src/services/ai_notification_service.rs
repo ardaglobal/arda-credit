@@ -1,4 +1,4 @@
-use crate::ai_analysis_service::{ChangeAnalysis, DocumentDiffResponse, ImpactLevel};
+use crate::services::ai_analysis_service::{ChangeAnalysis, DocumentDiffResponse, ImpactLevel};
 use crate::ApiState;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -368,14 +368,14 @@ impl AiNotificationService {
         let financial_changes = analysis.changes.iter().any(|c| {
             matches!(
                 c.category,
-                crate::ai_analysis_service::ChangeCategory::Financial
+                crate::services::ai_analysis_service::ChangeCategory::Financial
             )
         });
 
         let legal_changes = analysis.changes.iter().any(|c| {
             matches!(
                 c.category,
-                crate::ai_analysis_service::ChangeCategory::Legal
+                crate::services::ai_analysis_service::ChangeCategory::Legal
             )
         });
 
@@ -860,7 +860,9 @@ impl WebhookService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai_analysis_service::{ChangeAnalysis, ChangeCategory, ChangeType, ImpactLevel};
+    use crate::services::ai_analysis_service::{
+        ChangeAnalysis, ChangeCategory, ChangeType, ImpactLevel,
+    };
     use std::collections::HashMap;
 
     #[tokio::test]

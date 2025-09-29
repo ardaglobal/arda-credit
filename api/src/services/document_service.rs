@@ -3,7 +3,7 @@
 //! This module provides the business logic layer for document operations,
 //! integrating database operations, S3 storage, and access control.
 
-use crate::auth::Claims;
+use crate::services::auth::Claims;
 use arda_credit_lib::{
     AccessLevel, ApprovalStatus, Company, CompanyType, Document, DocumentAction, DocumentError,
     DocumentStatus, DocumentStorageClient, DocumentType, DocumentUploadRequest, KybStatus,

@@ -10,9 +10,9 @@ use std::sync::Arc;
 use tokio::time::timeout;
 use tower::ServiceExt;
 
-use crate::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
+use crate::config::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
 use crate::test_utils::{TestContext, TestApp, create_test_app, create_test_user, TestMagicLink};
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test context for magic link integration tests
 struct MagicLinkTestContext {

@@ -10,8 +10,8 @@ use tracing::{error, info, instrument};
 use utoipa;
 use uuid::Uuid;
 
-use crate::pool_api::*;
-use crate::types::ApiState;
+use crate::api::pool_api::*;
+use crate::config::types::ApiState;
 use crate::BalanceVerificationService;
 use arda_credit_db::{
     get_all_liquidity_pools,

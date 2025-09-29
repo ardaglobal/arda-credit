@@ -18,7 +18,7 @@ use crate::handlers::pools::pools::{
     get_pool_utilization, get_pool_transactions, get_investor_dashboard,
     get_investor_pool_summaries, get_market_overview, get_pool_performance,
 };
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test creating a liquidity pool
 #[tokio::test]

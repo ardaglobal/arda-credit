@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, Instant};
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::types::ApiConfig;
+use crate::config::types::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
 use arda_credit_db::{
     get_batch_by_id, get_contract_submission_data, get_pending_transactions,
@@ -331,7 +331,7 @@ impl BackgroundBatchProcessor {
         );
 
         // Use unified batch service for consistent ADS integration
-        let unified_service = crate::unified_batch_service::UnifiedBatchService::new(
+        let unified_service = crate::services::unified_batch_service::UnifiedBatchService::new(
             self.pool.clone(),
             self.ads_service.clone(),
             self.config.max_batch_size,
@@ -354,7 +354,7 @@ impl BackgroundBatchProcessor {
                 );
 
                 // Record batch processing metrics
-                crate::metrics::BatchMetrics::record_batch_processing(
+                crate::utils::metrics::BatchMetrics::record_batch_processing(
                     &result.batch_id.to_string(),
                     result.transaction_count,
                     processing_duration,
@@ -384,7 +384,7 @@ impl BackgroundBatchProcessor {
                 );
 
                 // Record failed batch processing metrics
-                crate::metrics::BatchMetrics::record_batch_processing(
+                crate::utils::metrics::BatchMetrics::record_batch_processing(
                     "failed_batch",
                     0,
                     processing_duration,
@@ -392,7 +392,10 @@ impl BackgroundBatchProcessor {
                     false,
                 );
 
-                crate::metrics::CodeMetrics::record_error("batch_processing_error", trigger_type);
+                crate::utils::metrics::CodeMetrics::record_error(
+                    "batch_processing_error",
+                    trigger_type,
+                );
 
                 Err(e)
             }

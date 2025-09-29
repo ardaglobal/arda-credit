@@ -11,7 +11,7 @@ use serde_json::json;
 use std::sync::Arc;
 use tracing::{debug, instrument, warn};
 
-use crate::session_service::{SessionError, SessionService};
+use crate::services::session_service::{SessionError, SessionService};
 
 /// Configuration for session-based authentication
 #[derive(Debug, Clone)]
@@ -43,7 +43,7 @@ impl Default for SessionConfig {
 /// Session-based authentication middleware (replaces JWT middleware)
 #[instrument(skip(api_state, cookies, request, next), level = "debug")]
 pub async fn session_auth_middleware(
-    api_state: crate::types::ApiState,
+    api_state: crate::api::router::ApiState,
     cookies: CookieJar,
     mut request: Request,
     next: Next,

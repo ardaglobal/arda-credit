@@ -5,8 +5,8 @@ use tokio::sync::RwLock;
 
 use tracing::{info, instrument, warn};
 
-use crate::types::{ApiConfig, ApiState};
-use crate::server::{ApiServer, ApiServerConfig};
+use crate::config::types::{ApiConfig, ApiState};
+use crate::api::server::{ApiServer, ApiServerConfig};
 use arda_credit_db::ads_service::IndexedMerkleTreeADS;
 use arda_credit_db::vapp_integration::VAppAdsIntegration;
 

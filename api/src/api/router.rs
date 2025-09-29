@@ -11,9 +11,9 @@ use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
 
-use crate::auth::AuthService;
-use crate::batch_processor::BatchProcessorHandle;
-use crate::document_service::DocumentService;
+use crate::api::openapi::ApiDoc;
+use crate::config::paths;
+use crate::config::types::UserType;
 use crate::handlers::{
     // Credit lines
     browse_available_pools,
@@ -138,11 +138,11 @@ use crate::handlers::{
     UserDetailsResponse,
     ValidateInviteCodeResponse,
 };
-use crate::openapi::ApiDoc;
-use crate::paths;
-use crate::session_service::SessionService;
-use crate::types::UserType;
-use crate::{BalanceVerificationService, WithdrawalTransactionService};
+use crate::services::auth::AuthService;
+use crate::services::batch_processor::BatchProcessorHandle;
+use crate::services::document_service::DocumentService;
+use crate::services::session_service::SessionService;
+use crate::services::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{Identity, IndexedMerkleTreeADS};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -194,13 +194,13 @@ pub struct ApiState {
     pub batch_processor: Option<BatchProcessorHandle>,
     pub ads_service: Arc<RwLock<IndexedMerkleTreeADS>>,
     pub session_service: Arc<SessionService>,
-    pub magic_link_service: Option<Arc<crate::magic_link_service::MagicLinkService>>,
+    pub magic_link_service: Option<Arc<crate::services::magic_link_service::MagicLinkService>>,
     pub withdrawal_service: WithdrawalTransactionService,
     pub balance_service: BalanceVerificationService,
     pub withdrawal_executor:
-        Option<crate::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
-    pub metrics_handle: Option<Arc<crate::metrics::MetricsHandle>>,
-    pub email_rate_limiter: Option<Arc<crate::middleware::EmailRateLimiter>>,
+        Option<crate::services::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
+    pub metrics_handle: Option<Arc<crate::utils::metrics::MetricsHandle>>,
+    pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
     pub document_service: Option<Arc<DocumentService>>,
 }
 

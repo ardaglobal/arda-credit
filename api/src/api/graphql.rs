@@ -6,7 +6,7 @@ use std::collections::HashMap;
 
 use tracing::{info, instrument};
 
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 use arda_credit_db::ads_service::{AdsError, AuthenticatedDataStructure};
 use arda_credit_db::vapp_integration::VAppError;
 

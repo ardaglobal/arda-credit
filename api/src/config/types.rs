@@ -4,8 +4,9 @@
 //! the API, extracted from the original rest.rs file.
 
 use crate::{
-    auth::AuthService, batch_processor::BatchProcessorHandle, BalanceVerificationService,
-    WithdrawalTransactionService,
+    services::auth::AuthService, services::balance_service::BalanceVerificationService,
+    services::batch_processor::BatchProcessorHandle,
+    services::withdrawal_service::WithdrawalTransactionService,
 };
 use arda_credit_db::IndexedMerkleTreeADS;
 use chrono::{DateTime, Utc};
@@ -16,7 +17,7 @@ use tokio::sync::RwLock;
 use utoipa::{IntoParams, ToSchema};
 
 // Re-export the core types from router.rs
-pub use crate::router::{ApiConfig, ApiState};
+pub use crate::api::router::{ApiConfig, ApiState};
 
 // ============================================================================
 // CORE TYPES MOVED FROM REST.RS

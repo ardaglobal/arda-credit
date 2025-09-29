@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use tracing::{error, info, instrument};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::router::ApiState;
+use crate::api::router::ApiState;
 
 // ============================================================================
 // CONTRACT CONFIGURATION TYPES
@@ -147,7 +147,7 @@ pub async fn get_contract_config(
         rpc_url,
         block_explorer_url,
         deployment_block,
-        api_version: crate::paths::API_VERSION.to_string(),
+        api_version: crate::config::paths::API_VERSION.to_string(),
     };
 
     info!(

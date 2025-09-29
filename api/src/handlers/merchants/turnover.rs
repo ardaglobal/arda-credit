@@ -16,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::paths;
-use crate::types::ApiState;
+use crate::config::paths;
+use crate::config::types::ApiState;
 use arda_credit_db::{
     create_or_update_turnover, get_merchant_by_user_id, get_merchant_profile_completion,
     get_merchant_turnover, get_merchant_turnover_analytics, update_turnover, CreateTurnoverRequest,

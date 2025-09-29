@@ -18,15 +18,15 @@ use std::collections::HashMap;
 use tracing::{error, info, instrument, warn};
 use utoipa::ToSchema;
 
-use crate::cookie_utils::{create_expired_session_cookie, create_session_cookie};
-use crate::magic_link_service::{MagicLinkError, MagicLinkService};
-use crate::magic_link_types::{
+use crate::config::magic_link_types::{
     MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
     VerifyMagicLinkResponse,
 };
-use crate::session_middleware::extract_current_user;
-use crate::session_service::{SessionError, SessionService};
-use crate::types::ApiState;
+use crate::config::types::ApiState;
+use crate::middleware::cookie_utils::{create_expired_session_cookie, create_session_cookie};
+use crate::middleware::session_middleware::extract_current_user;
+use crate::services::magic_link_service::{MagicLinkError, MagicLinkService};
+use crate::services::session_service::{SessionError, SessionService};
 
 /// Custom response that includes JSON body and cookie headers
 pub struct JsonWithCookie<T: Serialize> {

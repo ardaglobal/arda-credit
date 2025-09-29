@@ -1,4 +1,4 @@
-use crate::ai_analysis_service::{
+use crate::services::ai_analysis_service::{
     ChangeAnalysis, ChangeCategory, ChangeType, ImpactLevel, RiskFactor,
 };
 use reqwest::Client;

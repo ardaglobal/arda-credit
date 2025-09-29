@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::email_config::EmailConfig;
-    use crate::email_service::EmailService;
+    use crate::config::email_config::EmailConfig;
+    use crate::services::email_service::EmailService;
 
     #[tokio::test]
     async fn test_email_service_disabled() {
@@ -30,7 +30,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_email_template_rendering() {
-        use crate::email_templates::{EmailContent, MagicLinkEmailData};
+        use crate::config::email_templates::{EmailContent, MagicLinkEmailData};
 
         let data = MagicLinkEmailData::new(
             "test@example.com".to_string(),

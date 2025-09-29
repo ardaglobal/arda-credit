@@ -14,7 +14,7 @@ use crate::test_utils::*;
 use crate::handlers::users::admin::{
     list_pending_kyc_endpoint, get_kyc_statistics_endpoint, bulk_kyc_approval_endpoint,
 };
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test listing pending KYC applications
 #[tokio::test]

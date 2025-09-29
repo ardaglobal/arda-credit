@@ -17,7 +17,7 @@ use crate::handlers::users::users::{
     get_user_details_endpoint, get_user_balance_endpoint, submit_kyc_endpoint,
     update_user_endpoint, get_user_transactions_endpoint,
 };
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test getting user details
 #[tokio::test]

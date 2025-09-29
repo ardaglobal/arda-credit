@@ -27,9 +27,9 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::paths;
-use crate::session_middleware::extract_current_user;
-use crate::types::ApiState;
+use crate::config::paths;
+use crate::config::types::ApiState;
+use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
     // Marketplace functions (consolidated)
     browse_marketplace_deals, // was browse_marketplace_loans

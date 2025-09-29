@@ -21,14 +21,14 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
+use crate::api::openapi::PaginationParams;
+use crate::config::paths;
+use crate::config::types::UserType;
 use crate::handlers::users::users::UserDetailsResponse;
-use crate::openapi::PaginationParams;
-use crate::paths;
-use crate::types::UserType;
 
 // Re-export types for OpenAPI documentation
-pub use crate::openapi::*;
-use crate::types::ApiState;
+pub use crate::api::openapi::*;
+use crate::config::types::ApiState;
 use arda_credit_db::{
     get_kyc_statistics, list_pending_kyc_applications, update_kyc_status, Identity,
 };
