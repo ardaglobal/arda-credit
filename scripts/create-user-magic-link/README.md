@@ -1,16 +1,24 @@
 # Create User and Magic Link Script
 
-This script creates a test user with email `matt@arda.xyz` and generates a magic link for login testing.
+This script creates a test user and generates a magic link for login testing. The email address can be specified as an argument or defaults to `test@test.com`.
 
 ## Usage
 
-### Option 1: Run the shell script (recommended)
+### Option 1: Run the shell script with custom email (recommended)
 ```bash
-./create_user_and_magic_link.sh
+./create_user_and_magic_link.sh user@example.com
 ```
 
-### Option 2: Run directly with Cargo
+### Option 2: Run the shell script with default email
 ```bash
+./create_user_and_magic_link.sh
+# Uses test@test.com as the default email
+```
+
+### Option 3: Run directly with Cargo
+```bash
+cargo run -p create_user_and_magic_link -- user@example.com
+# Or with default:
 cargo run -p create_user_and_magic_link
 ```
 
@@ -20,7 +28,7 @@ cargo run -p create_user_and_magic_link
 
 ## What it does
 
-1. **Creates a user**: Registers `matt@arda.xyz` as an investor using the `INVESTOR2025` invite code
+1. **Creates a user**: Registers the specified email (or `test@test.com` by default) as an investor using the `INVESTOR2025` invite code
 2. **Requests magic link**: Sends a magic link request to the API for email authentication
 3. **Provides instructions**: Shows how to access the magic link from email or database
 
@@ -43,10 +51,12 @@ The script will output:
 After running the script:
 
 1. Check your email for the magic link, OR
-2. Query the database: `psql $DATABASE_URL -c "SELECT token, state, expires_at FROM magic_links WHERE email = 'matt@arda.xyz' ORDER BY created_at DESC LIMIT 1;"`
+2. Query the database: `psql $DATABASE_URL -c "SELECT token, state, expires_at FROM magic_links WHERE email = '\$EMAIL' ORDER BY created_at DESC LIMIT 1;"` (replace `\$EMAIL` with the email you used)
 
 3. Visit the magic link URL in your browser
 4. You should be authenticated and redirected with a session cookie
+
+**Note**: The default email `test@test.com` will realistically fail since it's not a real email address. Use a valid email address for actual testing.
 
 ## Troubleshooting
 

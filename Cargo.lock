@@ -2737,6 +2737,7 @@ dependencies = [
 name = "create_user_and_magic_link"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "reqwest",
  "serde",
  "tokio",

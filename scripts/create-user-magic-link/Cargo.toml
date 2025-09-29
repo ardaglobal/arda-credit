@@ -5,6 +5,7 @@ name    = "create_user_and_magic_link"
 version = "0.1.0"
 
 [dependencies]
+clap               = { version = "4.0", features = [ "derive" ] }
 reqwest            = { version = "0.12", features = [ "json" ] }
 serde              = { version = "1.0", features = [ "derive" ] }
 tokio              = { version = "1.0", features = [ "full" ] }
