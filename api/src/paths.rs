@@ -23,7 +23,7 @@ macro_rules! api_path {
 }
 
 // Import for EndpointInfo type
-use crate::health_handlers::EndpointInfo;
+use crate::handlers::core::health::EndpointInfo;
 
 // ============================================================================
 // CORE API PATHS
@@ -877,427 +877,427 @@ pub fn document_audit_path(company_id: &str) -> String {
 // ============================================================================
 
 /// All endpoint information for API documentation
-pub fn get_all_endpoints() -> Vec<crate::health_handlers::EndpointInfo> {
+pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
     vec![
         // Core API Endpoints
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: API_HEALTH.to_string(),
             description: "Health check".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: API_INFO.to_string(),
             description: "API information".to_string(),
         },
         // User Management
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: USERS.to_string(),
             description: "List user identities with filters".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: USERS.to_string(),
             description: "Register new user identity".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: USER_BY_ID.to_string(),
             description: "Get user details by ID".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: USER_KYC.to_string(),
             description: "Submit KYC information".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: USER_KYC_STATUS.to_string(),
             description: "Update KYC status (admin only)".to_string(),
         },
         // Admin KYC Management
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: ADMIN_KYC_PENDING.to_string(),
             description: "List pending KYC applications (admin only)".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: ADMIN_KYC_STATS.to_string(),
             description: "Get KYC statistics (admin only)".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: ADMIN_KYC_BULK_APPROVE.to_string(),
             description: "Bulk approve KYC applications (admin only)".to_string(),
         },
         // Invite Code Management
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: INVITE_CODE_GENERATE.to_string(),
             description: "Generate new invite code".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: INVITE_CODE_VALIDATE.to_string(),
             description: "Validate invite code (doesn't mark as used)".to_string(),
         },
         // Loan Management
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DEALS.to_string(),
             description: "List loans with filters".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DEALS_BY_USER_ID.to_string(),
             description: "Get all deals for a user (as originator or investor)".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: DEAL.to_string(),
             description: "Create new loan".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DEAL_BY_ID.to_string(),
             description: "Get loan details by ID".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "DELETE".to_string(),
             path: DEAL_BY_ID.to_string(),
             description: "Close loan by ID".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DEAL_PAYMENTS.to_string(),
             description: "Get loan payment history".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DEALS_STATS.to_string(),
             description: "Get loan statistics".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DEAL_AUDIT_TRAIL.to_string(),
             description: "Get loan audit trail".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DEAL_LIFECYCLE_SUMMARY.to_string(),
             description: "Get loan lifecycle summary".to_string(),
         },
         // State Management - Core State
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_CURRENT.to_string(),
             description: "Get current system state".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_SUMMARY.to_string(),
             description: "Get comprehensive state summary with loan and user stats".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_HISTORY.to_string(),
             description: "Get state transition history".to_string(),
         },
         // State Management - Transactions
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_TRANSACTIONS.to_string(),
             description: "Submit a new transaction".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_TRANSACTIONS_PENDING.to_string(),
             description: "Get pending transactions".to_string(),
         },
         // State Management - Batches
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_BATCHES.to_string(),
             description: "List batches".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_BATCHES.to_string(),
             description: "Create new batch from pending transactions".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_BATCH_BY_ID.to_string(),
             description: "Get batch details by ID".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_BATCH_PROOF.to_string(),
             description: "Update batch with ZK proof".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_BATCHES_TRIGGER.to_string(),
             description: "Manually trigger batch processing".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_BATCHES_STATS.to_string(),
             description: "Get batch processor statistics".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_BATCH_CREATE.to_string(),
             description: "Create batch from loan transactions".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_LOAN_BATCH_BY_ID.to_string(),
             description: "Get loan batch details by ID".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_BATCH_PENDING.to_string(),
             description: "Get pending loan transactions ready for batching".to_string(),
         },
         // State Management - Payments
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_PAYMENTS.to_string(),
             description: "Record loan payment".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_PAYMENT_BY_ID.to_string(),
             description: "Get payment details".to_string(),
         },
         // State Management - Proofs
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_PROOF.to_string(),
             description: "Generate transaction inclusion proof".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_VERIFY.to_string(),
             description: "Verify transaction inclusion".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_PROOFS_LOAN_OPERATION.to_string(),
             description: "Generate loan operation proof".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_PROOFS_LOAN_PAYMENT.to_string(),
             description: "Generate loan payment proof".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_PROOFS_VERIFY.to_string(),
             description: "Verify loan proof".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_PROOFS_REPORT.to_string(),
             description: "Generate proof report".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_PROOFS_BATCH_VERIFY.to_string(),
             description: "Batch verify proofs".to_string(),
         },
         // Financial Transaction Endpoints
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: USER_ACCOUNT_FINANCIAL_DEPOSIT.to_string(),
             description: "Record account deposit from smart contract".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: USER_ACCOUNT_FINANCIAL_WITHDRAWAL.to_string(),
             description: "Record account withdrawal from smart contract".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: USER_ACCOUNT_FINANCIAL.to_string(),
             description: "Get user's account financial transactions".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: POOL_FINANCIAL_FUND.to_string(),
             description: "Record pool funding transaction".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: POOL_FINANCIAL_WITHDRAW.to_string(),
             description: "Record pool withdrawal transaction".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: POOL_FINANCIAL_TRANSACTIONS.to_string(),
             description: "Get pool financial transactions".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: USER_POOL_FINANCIAL.to_string(),
             description: "Get user's pool financial transactions".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: CREDIT_LINE_FINANCIAL_DRAW.to_string(),
             description: "Record credit line draw transaction".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: CREDIT_LINE_FINANCIAL_PAYMENT.to_string(),
             description: "Record credit line payment transaction".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: CREDIT_LINE_FINANCIAL_TRANSACTIONS.to_string(),
             description: "Get credit line financial transactions".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: MERCHANT_CREDIT_LINE_FINANCIAL.to_string(),
             description: "Get merchant's credit line financial transactions".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: USER_FINANCIAL_TRANSACTIONS.to_string(),
             description: "Get user's unified financial transactions".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: USER_FINANCIAL_SUMMARY.to_string(),
             description: "Get user's financial summary".to_string(),
         },
         // Pool Borough Limit Endpoints
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: POOL_BOROUGH_LIMITS.to_string(),
             description: "Get borough limits for a pool".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "PUT".to_string(),
             path: POOL_BOROUGH_LIMITS.to_string(),
             description: "Set borough limit for a pool".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "DELETE".to_string(),
             path: POOL_BOROUGH_LIMIT_BY_BOROUGH.to_string(),
             description: "Delete borough limit for a pool".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: POOL_BOROUGH_SUMMARY.to_string(),
             description: "Get borough summary for a pool".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: POOL_BOROUGH_VALIDATION.to_string(),
             description: "Validate borough limits for a pool".to_string(),
         },
         // Investor Query Endpoints
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: INVESTOR_DASHBOARD.to_string(),
             description: "Get investor dashboard data".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: INVESTOR_POOL_SUMMARIES.to_string(),
             description: "Get investor pool summaries".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: INVESTOR_POOL_METRICS.to_string(),
             description: "Get investor pool metrics".to_string(),
         },
         // Analytics Endpoints
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: ANALYTICS_MARKET_OVERVIEW.to_string(),
             description: "Get market overview analytics".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: ANALYTICS_POOL_PERFORMANCE.to_string(),
             description: "Get pool performance analytics".to_string(),
         },
         // Authentication Endpoints
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: AUTH_LOGIN.to_string(),
             description: "User login authentication".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: AUTH_LOGOUT.to_string(),
             description: "User logout authentication".to_string(),
         },
         // Contract Configuration Endpoints
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: CONTRACT_CONFIG.to_string(),
             description: "Get Arda contract configuration (address, network details)".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: TRANSACTION_UPDATES_SSE.to_string(),
             description: "Get real-time transaction updates via Server-Sent Events (SSE)"
                 .to_string(),
         },
         // Document Management Endpoints
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: DOCUMENT_UPLOAD.to_string(),
             description: "Upload document to company".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DOCUMENT_DOWNLOAD.to_string(),
             description: "Download document from company".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DOCUMENT_BY_ID.to_string(),
             description: "Get document metadata".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "DELETE".to_string(),
             path: DOCUMENT_BY_ID.to_string(),
             description: "Delete document from company".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DOCUMENTS.to_string(),
             description: "List company documents".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: DOCUMENT_APPROVE.to_string(),
             description: "Approve document".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: DOCUMENT_REJECT.to_string(),
             description: "Reject document".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),
             path: DOCUMENT_VERIFY.to_string(),
             description: "Verify document integrity".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DOCUMENT_AUDIT.to_string(),
             description: "Get document audit logs".to_string(),
         },
-        crate::health_handlers::EndpointInfo {
+        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: DOCUMENT_HEALTH.to_string(),
             description: "Document service health check".to_string(),

@@ -24,7 +24,7 @@ use crate::paths;
 // ============================================================================
 
 /// Import or define the request/response types
-pub use crate::deal_handlers::{
+pub use crate::handlers::deals::deals::{
     CreateDealRequest,    // was CreateLoanRequest
     DealDetailsResponse,  // was LoanDetailsResponse
     DealListingResponse,  // was LoanListingResponse

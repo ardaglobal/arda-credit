@@ -33,59 +33,44 @@
 #![allow(clippy::struct_excessive_bools)]
 #![allow(clippy::suboptimal_flops)]
 
-pub mod admin_handlers;
-pub mod ai_analysis_handlers;
+// Organized handlers module
+pub mod handlers;
+
+// Service modules
 pub mod ai_analysis_service;
 pub mod ai_notification_service;
 pub mod auth;
-pub mod authentication_handlers;
 pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
-pub mod company_handlers;
 pub mod company_service;
-pub mod contract_handlers;
 pub mod cookie_utils;
-pub mod credit_line_handlers;
-pub mod deal_handlers;
-pub mod document_handlers;
 pub mod document_metrics;
 pub mod document_service;
 pub mod email_config;
 pub mod email_service;
 pub mod email_templates;
-pub mod financial_transaction_handlers;
-pub mod health_handlers;
 pub mod kyc_service;
 pub mod llm_integration;
 pub mod magic_link_cleanup;
-pub mod magic_link_handlers;
 pub mod magic_link_service;
 pub mod magic_link_types;
-pub mod merchant_handlers;
 pub mod metrics;
 pub mod middleware;
 pub mod openapi;
 pub mod paths;
 pub mod pool_api;
-pub mod pool_borough_handlers;
-pub mod pool_handlers;
 pub mod router;
 pub mod server;
 pub mod session_cleanup;
 pub mod session_middleware;
 pub mod session_service;
 pub mod simple_withdrawal_executor;
-pub mod state_handlers;
 pub mod telemetry;
 pub mod test_utils;
 pub mod trading_auth;
-pub mod transaction_history_handlers;
-pub mod turnover_handlers;
 pub mod types;
 pub mod unified_batch_service;
-pub mod user_handlers;
-pub mod withdrawal_handlers;
 pub mod withdrawal_service;
 
 #[cfg(test)]
@@ -117,17 +102,10 @@ pub use client::{
     UserTransactionsResponse,
 };
 
-pub use health_handlers::EndpointInfo;
 pub use router::{create_router, ApiConfig, ApiState};
 
-// Re-export new handler modules
-pub use admin_handlers::*;
-pub use ai_analysis_handlers::*;
-pub use contract_handlers::*;
-pub use merchant_handlers::*;
-pub use state_handlers::*;
-pub use user_handlers::*;
-pub use withdrawal_handlers::*;
+// Re-export handler modules for backward compatibility
+pub use handlers::*;
 
 pub use server::{ApiServer, ApiServerBuilder, ApiServerConfig};
 
@@ -176,13 +154,13 @@ pub use pool_api::{
     UtilizationDataPoint, UtilizationHistoryQuery,
 };
 
-pub use pool_handlers::{
+pub use handlers::pools::pools::{
     get_investor_dashboard, get_investor_pool_summaries as handler_get_investor_pool_summaries,
     get_market_overview, get_pool_details, get_pool_performance,
     get_pool_transactions as handler_get_pool_transactions, get_pool_utilization, list_pools,
 };
 
-pub use credit_line_handlers::{
+pub use handlers::credit::credit_lines::{
     browse_available_pools, check_credit_eligibility, list_credit_line_requests,
     submit_credit_line_request, AvailablePoolResponse, CreditLineErrorResponse,
     CreditLineRequestListResponse, CreditLineRequestQuery, CreditLineRequestResponse,

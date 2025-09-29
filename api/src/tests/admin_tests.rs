@@ -11,7 +11,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use crate::test_utils::*;
-use crate::admin_handlers::{
+use crate::handlers::users::admin::{
     list_pending_kyc_endpoint, get_kyc_statistics_endpoint, bulk_kyc_approval_endpoint,
 };
 use crate::types::ApiState;

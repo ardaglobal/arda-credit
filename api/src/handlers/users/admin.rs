@@ -21,10 +21,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
+use crate::handlers::users::users::UserDetailsResponse;
 use crate::openapi::PaginationParams;
 use crate::paths;
 use crate::types::UserType;
-use crate::user_handlers::UserDetailsResponse;
 
 // Re-export types for OpenAPI documentation
 pub use crate::openapi::*;

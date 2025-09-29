@@ -18,10 +18,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
+use crate::handlers::users::users::UpdateUserRequest;
 use crate::paths;
 use crate::types::ApiState;
 use crate::types::UserType;
-use crate::user_handlers::UpdateUserRequest;
 use arda_credit_db::update_identity_profile;
 use arda_credit_db::{
     create_investor_profile, create_merchant, get_identity_by_email, get_identity_by_id,

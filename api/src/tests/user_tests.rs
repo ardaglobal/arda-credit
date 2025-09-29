@@ -13,7 +13,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use crate::test_utils::*;
-use crate::user_handlers::{
+use crate::handlers::users::users::{
     get_user_details_endpoint, get_user_balance_endpoint, submit_kyc_endpoint,
     update_user_endpoint, get_user_transactions_endpoint,
 };

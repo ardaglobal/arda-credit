@@ -13,7 +13,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use crate::test_utils::*;
-use crate::authentication_handlers::{
+use crate::handlers::auth::authentication::{
     login_endpoint, logout_endpoint, register_user_endpoint,
 };
 use crate::types::ApiState;

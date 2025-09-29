@@ -8,29 +8,62 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
-// Re-export types from their new locations
-pub use crate::admin_handlers::{
-    AdminUserIdentity, AdminUserListResponse, BulkKycApprovalRequest, BulkKycApprovalResponse,
-    BulkOperationResponse, KycStatisticsResponse, ListPendingKycQuery, ListPendingKycResponse,
-    PlatformMetricsResponse,
-};
-pub use crate::authentication_handlers::{
-    GenerateInviteCodeRequest, GenerateInviteCodeResponse, LogoutResponse,
-    ValidateInviteCodeResponse,
-};
-pub use crate::balance_service::AvailableBalance;
-pub use crate::contract_handlers::{
-    ContractConfigQuery, ContractConfigResponse, TransactionUpdateEvent, TransactionUpdatesQuery,
-};
-pub use crate::credit_line_handlers::{
-    ActiveCreditLineResponse, ActiveCreditLinesListResponse, ActiveCreditLinesQuery,
-    ActivePoolDetails, AvailablePoolResponse, CreditLineErrorResponse,
-    CreditLineRequestListResponse, CreditLineRequestQuery, CreditLineRequestResponse,
-    EligibilityCheckDetail, EligibilityCheckResponse, PoolBrowsingQuery,
-    SubmitCreditLineRequestBody,
-};
-pub use crate::deal_handlers::{
+// Re-export types from handlers module
+pub use crate::handlers::{
+    get_current_user,
+    logout_endpoint,
+    request_magic_link,
+    verify_magic_link,
+
+    // Finance types
+    AccountFinancialTransactionResponse,
+    // Credit types
+    ActiveCreditLineResponse,
+    ActiveCreditLinesListResponse,
+    ActiveCreditLinesQuery,
+    ActivePoolDetails,
+    // Admin & User types
+    AdminUserIdentity,
+    AdminUserListResponse,
+    AdminWithdrawalDashboard,
+    // AI types
+    AnalysisHistoryResponse,
+    AnalysisSummary,
+    AnalyticsDashboardResponse,
+    AnalyzeDocumentQuery,
+    ApiError as AiApiError,
+    ApproveWithdrawalRequest,
+    AvailablePoolResponse,
+    BatchInfo,
+    BatchListResponse,
+    BatchProcessorStatsResponse,
+    // Pool types
+    BoroughErrorResponse,
+    BoroughLimitResponse,
+    BoroughSummaryResponse,
+    BoroughValidationResponse,
+    BulkKycApprovalRequest,
+    BulkKycApprovalResponse,
+    BulkOperationResponse,
+    // Core types
+    ContractConfigQuery,
+    ContractConfigResponse,
+    ContractSubmissionData,
+    CreateAccountFinancialTransactionRequest,
+    CreateBatchRequest,
+    CreateBatchResponse,
+    CreateCreditLineFinancialTransactionRequest,
+    // Deal types
     CreateDealRequest,
+    CreatePoolFinancialTransactionRequest,
+    CreatePoolFundingRequest,
+    CreditLineErrorResponse,
+    CreditLineFinancialTransactionResponse,
+    CreditLineRequestListResponse,
+    CreditLineRequestQuery,
+    CreditLineRequestResponse,
+    CurrentStateResponse,
+    DateRange,
     DealDetailsResponse,
     DealListingResponse,
     DealPaymentHistoryResponse,
@@ -38,38 +71,99 @@ pub use crate::deal_handlers::{
     DealTransferResponse,
     DealTransferValidationResponse,
     DeleteDealResponse,
-    // Consolidated marketplace types (moved from marketplace_handlers)
+    DocumentActivity,
+    EligibilityCheckDetail,
+    EligibilityCheckResponse,
+    FinancialSummaryResponse,
+    FinancialTransactionQuery,
+    // Auth types
+    GenerateInviteCodeRequest,
+    GenerateInviteCodeResponse,
+    // Merchant types
+    InvestorProfileQuery,
+    InvestorProfileResponse,
+    KycStatisticsResponse,
     ListDealForSaleRequest,
     ListDealsQuery,
     ListDealsResponse,
+    ListIdentitiesQuery,
+    ListIdentitiesResponse,
+    ListPendingKycQuery,
+    ListPendingKycResponse,
+    LogoutResponse,
     MarketplaceDealResponse,
+    MerchantProfileQuery,
+    MerchantProfileResponse,
+    PaginatedFinancialTransactionsResponse,
+    PaginationInfo,
     PaymentDetailsResponse,
     PaymentResponse,
+    PendingTransactionsResponse,
+    PlatformMetricsResponse,
+    PoolBrowsingQuery,
+    PoolFinancialTransactionResponse,
+    ProfileCompletionResponse,
     RecordDealPaymentRequest,
-    // Consolidated transfer types (moved from transfer_handlers)
+    RegisterInvestorRequest,
+    RegisterInvestorResponse,
+    RegisterMerchantRequest,
+    RegisterMerchantResponse,
+    RegisterUserRequest,
+    RegisterUserResponse,
+    RejectWithdrawalRequest,
+
+    RiskTrendPoint,
+    SetBoroughLimitRequest,
+    SubmitCreditLineRequestBody,
+
+    SubmitKycRequest,
+    SubmitKycResponse,
+    SubmitTransactionRequest,
+    SubmitTransactionResponse,
+    TransactionHistoryItem,
+    TransactionHistoryResponse,
+    TransactionInfo,
+    TransactionSummary,
+    TransactionUpdateEvent,
+    TransactionUpdatesQuery,
     TransferDealOwnershipRequest,
+    TriggerAnalysisRequest,
+    TriggerAnalysisResponse,
+    TriggerBatchResponse,
+    TurnoverAnalyticsResponse,
+    TurnoverCreateRequest,
+    TurnoverResponse,
+    TurnoverUpdateRequest,
+
+    UnifiedFinancialTransactionResponse,
+    UpdateBatchProofRequest,
+
     UpdateDealRequest,
     UpdateDealResponse,
+    UpdateInvestorProfileRequest,
+    UpdateKycStatusRequest,
+    UpdateMerchantProfileRequest,
+    UpdateUserRequest,
+    UserBalanceResponse,
+    UserDetailsResponse,
+    UserTransactionsResponse,
+
+    ValidateBoroughQuery,
+
     ValidateDealTransferRequest,
+
+    ValidateInviteCodeResponse,
 };
-pub use crate::financial_transaction_handlers::{
-    AccountFinancialTransactionResponse, CreateAccountFinancialTransactionRequest,
-    CreateCreditLineFinancialTransactionRequest, CreatePoolFinancialTransactionRequest,
-    CreatePoolFundingRequest, CreditLineFinancialTransactionResponse, FinancialSummaryResponse,
-    FinancialTransactionQuery, PaginatedFinancialTransactionsResponse,
-    PoolFinancialTransactionResponse, UnifiedFinancialTransactionResponse,
+
+// Other service types
+pub use crate::ai_analysis_service::{
+    AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
+    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
 };
-use crate::magic_link_handlers::{
-    get_current_user, logout_endpoint, request_magic_link, verify_magic_link,
-};
-use crate::magic_link_types::{
+pub use crate::balance_service::AvailableBalance;
+pub use crate::magic_link_types::{
     MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
     VerifyMagicLinkResponse,
-};
-pub use crate::merchant_handlers::{
-    InvestorProfileQuery, InvestorProfileResponse, MerchantProfileQuery, MerchantProfileResponse,
-    RegisterInvestorRequest, RegisterInvestorResponse, RegisterMerchantRequest,
-    RegisterMerchantResponse, UpdateInvestorProfileRequest, UpdateMerchantProfileRequest,
 };
 pub use crate::pool_api::{
     BenchmarkData, CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
@@ -81,46 +175,9 @@ pub use crate::pool_api::{
     StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
     UtilizationHistoryQuery,
 };
-pub use crate::pool_borough_handlers::{
-    BoroughErrorResponse, BoroughLimitResponse, BoroughSummaryResponse, BoroughValidationResponse,
-    SetBoroughLimitRequest, ValidateBoroughQuery,
-};
-pub use crate::state_handlers::{
-    BatchInfo, BatchListResponse, BatchProcessorStatsResponse, ContractSubmissionData,
-    CreateBatchRequest, CreateBatchResponse, CurrentStateResponse, PendingTransactionsResponse,
-    SubmitTransactionRequest, SubmitTransactionResponse, TransactionInfo, TriggerBatchResponse,
-    UpdateBatchProofRequest,
-};
-pub use crate::transaction_history_handlers::{
-    DateRange, PaginationInfo, TransactionHistoryItem, TransactionHistoryResponse,
-    TransactionSummary,
-};
-pub use crate::turnover_handlers::{
-    ProfileCompletionResponse, TurnoverAnalyticsResponse, TurnoverCreateRequest, TurnoverResponse,
-    TurnoverUpdateRequest,
-};
 pub use crate::types::UserType;
-pub use crate::user_handlers::{
-    ListIdentitiesQuery, ListIdentitiesResponse, RegisterUserRequest, RegisterUserResponse,
-    SubmitKycRequest, SubmitKycResponse, UpdateKycStatusRequest, UpdateUserRequest,
-    UserBalanceResponse, UserDetailsResponse, UserTransactionsResponse,
-};
-pub use crate::withdrawal_handlers::{
-    AdminWithdrawalDashboard, ApproveWithdrawalRequest, RejectWithdrawalRequest,
-};
 pub use crate::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
-};
-
-// AI Analysis types
-pub use crate::ai_analysis_handlers::{
-    AnalysisHistoryResponse, AnalysisSummary, AnalyticsDashboardResponse, AnalyzeDocumentQuery,
-    ApiError as AiApiError, DocumentActivity, RiskTrendPoint, TriggerAnalysisRequest,
-    TriggerAnalysisResponse,
-};
-pub use crate::ai_analysis_service::{
-    AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
-    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
 };
 
 /// Pagination parameters for list endpoints
@@ -202,166 +259,166 @@ API requests are subject to rate limiting for system stability.
     ),
     paths(
         // Health and Info endpoints
-        crate::health_handlers::health_check,
-        crate::health_handlers::api_info,
+        crate::handlers::core::health::health_check,
+        crate::handlers::core::health::api_info,
 
         // Magic Link Authentication endpoints (NEW)
-        crate::magic_link_handlers::request_magic_link,
-        crate::magic_link_handlers::verify_magic_link,
-        crate::magic_link_handlers::get_current_user,
-        crate::magic_link_handlers::logout_endpoint,
+        crate::handlers::auth::magic_link::request_magic_link,
+        crate::handlers::auth::magic_link::verify_magic_link,
+        crate::handlers::auth::magic_link::get_current_user,
+        crate::handlers::auth::magic_link::logout_endpoint,
 
         // Authentication utilities (keep these)
-        crate::authentication_handlers::validate_invite_code_endpoint,
-        crate::authentication_handlers::generate_invite_code_endpoint,
+        crate::handlers::auth::authentication::validate_invite_code_endpoint,
+        crate::handlers::auth::authentication::generate_invite_code_endpoint,
 
         // User Management endpoints
-        crate::user_handlers::register_user_endpoint,
-        crate::user_handlers::get_user_details_endpoint,
-        crate::user_handlers::list_identities_endpoint,
-        crate::user_handlers::update_user_endpoint,
-        crate::user_handlers::delete_user_endpoint,
-        crate::user_handlers::get_user_balance_by_address_endpoint,
-        crate::user_handlers::get_user_balance_by_id_endpoint,
-        crate::user_handlers::get_user_transactions_endpoint,
-        crate::user_handlers::submit_kyc_endpoint,
-        crate::user_handlers::update_kyc_status_endpoint,
+        crate::handlers::users::users::register_user_endpoint,
+        crate::handlers::users::users::get_user_details_endpoint,
+        crate::handlers::users::users::list_identities_endpoint,
+        crate::handlers::users::users::update_user_endpoint,
+        crate::handlers::users::users::delete_user_endpoint,
+        crate::handlers::users::users::get_user_balance_by_address_endpoint,
+        crate::handlers::users::users::get_user_balance_by_id_endpoint,
+        crate::handlers::users::users::get_user_transactions_endpoint,
+        crate::handlers::users::users::submit_kyc_endpoint,
+        crate::handlers::users::users::update_kyc_status_endpoint,
 
         // Admin endpoints
-        crate::admin_handlers::list_pending_kyc_endpoint,
-        crate::admin_handlers::get_kyc_statistics_endpoint,
-        crate::admin_handlers::bulk_kyc_approval_endpoint,
-        crate::admin_handlers::get_platform_metrics_endpoint,
+        crate::handlers::users::admin::list_pending_kyc_endpoint,
+        crate::handlers::users::admin::get_kyc_statistics_endpoint,
+        crate::handlers::users::admin::bulk_kyc_approval_endpoint,
+        crate::handlers::users::admin::get_platform_metrics_endpoint,
 
         // State Management endpoints
-        crate::state_handlers::submit_transaction_endpoint,
-        crate::state_handlers::get_pending_transactions_endpoint,
-        crate::state_handlers::create_batch_endpoint,
-        crate::state_handlers::get_batches_endpoint,
-        crate::state_handlers::get_current_state_endpoint,
-        crate::state_handlers::get_batch_endpoint,
-        crate::state_handlers::get_batch_details_endpoint,
-        crate::state_handlers::get_contract_submission_data_endpoint,
-        crate::state_handlers::update_batch_proof_endpoint,
-        crate::state_handlers::trigger_batch_endpoint,
+        crate::handlers::core::state::submit_transaction_endpoint,
+        crate::handlers::core::state::get_pending_transactions_endpoint,
+        crate::handlers::core::state::create_batch_endpoint,
+        crate::handlers::core::state::get_batches_endpoint,
+        crate::handlers::core::state::get_current_state_endpoint,
+        crate::handlers::core::state::get_batch_endpoint,
+        crate::handlers::core::state::get_batch_details_endpoint,
+        crate::handlers::core::state::get_contract_submission_data_endpoint,
+        crate::handlers::core::state::update_batch_proof_endpoint,
+        crate::handlers::core::state::trigger_batch_endpoint,
 
         // Merchant endpoints
-        crate::merchant_handlers::register_merchant_endpoint,
-        crate::merchant_handlers::get_merchant_profile_endpoint,
-        crate::merchant_handlers::update_merchant_profile_endpoint,
-        crate::merchant_handlers::get_investor_profile_endpoint,
-        crate::merchant_handlers::update_investor_profile_endpoint,
-        crate::merchant_handlers::register_investor_endpoint,
+        crate::handlers::merchants::merchants::register_merchant_endpoint,
+        crate::handlers::merchants::merchants::get_merchant_profile_endpoint,
+        crate::handlers::merchants::merchants::update_merchant_profile_endpoint,
+        crate::handlers::merchants::merchants::get_investor_profile_endpoint,
+        crate::handlers::merchants::merchants::update_investor_profile_endpoint,
+        crate::handlers::merchants::merchants::register_investor_endpoint,
 
         // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
-        crate::deal_handlers::create_deal_endpoint,
-        crate::deal_handlers::list_deals_endpoint,
-        crate::deal_handlers::get_deals_by_user_id_endpoint,
-        crate::deal_handlers::get_deal_details_endpoint,
-        crate::deal_handlers::get_deal_stats_endpoint,
-        crate::deal_handlers::update_deal_endpoint,
-        crate::deal_handlers::delete_deal_endpoint,
-        crate::deal_handlers::record_deal_payment_endpoint,
-        crate::deal_handlers::get_payment_details_endpoint,
-        crate::deal_handlers::get_deal_payment_history_endpoint,
+        crate::handlers::deals::deals::create_deal_endpoint,
+        crate::handlers::deals::deals::list_deals_endpoint,
+        crate::handlers::deals::deals::get_deals_by_user_id_endpoint,
+        crate::handlers::deals::deals::get_deal_details_endpoint,
+        crate::handlers::deals::deals::get_deal_stats_endpoint,
+        crate::handlers::deals::deals::update_deal_endpoint,
+        crate::handlers::deals::deals::delete_deal_endpoint,
+        crate::handlers::deals::deals::record_deal_payment_endpoint,
+        crate::handlers::deals::deals::get_payment_details_endpoint,
+        crate::handlers::deals::deals::get_deal_payment_history_endpoint,
 
         // Consolidated Deal Marketplace endpoints (moved from marketplace_handlers)
-        crate::deal_handlers::browse_deals_for_sale_endpoint,
-        crate::deal_handlers::list_deal_for_sale_endpoint,
-        crate::deal_handlers::remove_deal_from_sale_endpoint,
-        crate::deal_handlers::deal_marketplace_stats_endpoint,
+        crate::handlers::deals::deals::browse_deals_for_sale_endpoint,
+        crate::handlers::deals::deals::list_deal_for_sale_endpoint,
+        crate::handlers::deals::deals::remove_deal_from_sale_endpoint,
+        crate::handlers::deals::deals::deal_marketplace_stats_endpoint,
 
         // Consolidated Deal Transfer endpoints (moved from transfer_handlers)
-        crate::deal_handlers::transfer_deal_ownership_endpoint,
-        crate::deal_handlers::get_deal_transfer_history_endpoint,
-        crate::deal_handlers::get_user_deal_transfer_history_endpoint,
-        crate::deal_handlers::validate_deal_transfer_endpoint,
+        crate::handlers::deals::deals::transfer_deal_ownership_endpoint,
+        crate::handlers::deals::deals::get_deal_transfer_history_endpoint,
+        crate::handlers::deals::deals::get_user_deal_transfer_history_endpoint,
+        crate::handlers::deals::deals::validate_deal_transfer_endpoint,
 
         // Pool endpoints
-        crate::pool_handlers::list_pools,
-        crate::pool_handlers::get_pool_details,
-        crate::pool_handlers::create_pool,
-        crate::pool_handlers::update_pool_status,
-        crate::pool_handlers::get_pool_metrics_overview,
-        crate::pool_handlers::get_investor_pool_metrics_overview,
+        crate::handlers::pools::pools::list_pools,
+        crate::handlers::pools::pools::get_pool_details,
+        crate::handlers::pools::pools::create_pool,
+        crate::handlers::pools::pools::update_pool_status,
+        crate::handlers::pools::pools::get_pool_metrics_overview,
+        crate::handlers::pools::pools::get_investor_pool_metrics_overview,
 
         // Pool Borough Limit endpoints
-        crate::pool_borough_handlers::set_borough_limit,
-        crate::pool_borough_handlers::get_borough_limits,
-        crate::pool_borough_handlers::get_borough_summary,
-        crate::pool_borough_handlers::validate_borough_limit,
-        crate::pool_borough_handlers::delete_borough_limit,
+        crate::handlers::pools::boroughs::set_borough_limit,
+        crate::handlers::pools::boroughs::get_borough_limits,
+        crate::handlers::pools::boroughs::get_borough_summary,
+        crate::handlers::pools::boroughs::validate_borough_limit,
+        crate::handlers::pools::boroughs::delete_borough_limit,
 
         // Withdrawal endpoints
-        crate::withdrawal_handlers::initiate_withdrawal_endpoint,
-        crate::withdrawal_handlers::get_withdrawal_status_endpoint,
-        crate::withdrawal_handlers::get_user_available_balance_endpoint,
-        crate::withdrawal_handlers::get_user_withdrawal_history_endpoint,
-        crate::withdrawal_handlers::cancel_withdrawal_endpoint,
-        crate::withdrawal_handlers::get_pending_withdrawals_endpoint,
+        crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
+        crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint,
+        crate::handlers::finance::withdrawals::get_user_available_balance_endpoint,
+        crate::handlers::finance::withdrawals::get_user_withdrawal_history_endpoint,
+        crate::handlers::finance::withdrawals::cancel_withdrawal_endpoint,
+        crate::handlers::finance::withdrawals::get_pending_withdrawals_endpoint,
 
         // Admin withdrawal endpoints
-        crate::withdrawal_handlers::approve_withdrawal_request,
-        crate::withdrawal_handlers::reject_withdrawal_request,
-        crate::withdrawal_handlers::get_admin_withdrawal_dashboard,
-        crate::withdrawal_handlers::manual_execute_withdrawal,
+        crate::handlers::finance::withdrawals::approve_withdrawal_request,
+        crate::handlers::finance::withdrawals::reject_withdrawal_request,
+        crate::handlers::finance::withdrawals::get_admin_withdrawal_dashboard,
+        crate::handlers::finance::withdrawals::manual_execute_withdrawal,
 
         // Financial Transaction endpoints
-        crate::financial_transaction_handlers::record_account_deposit,
-        crate::financial_transaction_handlers::record_account_withdrawal,
-        crate::financial_transaction_handlers::get_account_financial_transactions,
-        crate::financial_transaction_handlers::record_pool_funding,
-        crate::financial_transaction_handlers::record_pool_withdrawal,
-        crate::financial_transaction_handlers::get_pool_financial_transactions,
-        crate::financial_transaction_handlers::record_credit_line_draw,
-        crate::financial_transaction_handlers::record_credit_line_payment,
-        crate::financial_transaction_handlers::get_credit_line_financial_transactions,
-        crate::financial_transaction_handlers::get_user_financial_transactions,
-        crate::financial_transaction_handlers::get_user_financial_summary,
-        crate::financial_transaction_handlers::get_user_pool_financial_transactions,
-        crate::financial_transaction_handlers::get_merchant_credit_line_financial_transactions,
+        crate::handlers::finance::transactions::record_account_deposit,
+        crate::handlers::finance::transactions::record_account_withdrawal,
+        crate::handlers::finance::transactions::get_account_financial_transactions,
+        crate::handlers::finance::transactions::record_pool_funding,
+        crate::handlers::finance::transactions::record_pool_withdrawal,
+        crate::handlers::finance::transactions::get_pool_financial_transactions,
+        crate::handlers::finance::transactions::record_credit_line_draw,
+        crate::handlers::finance::transactions::record_credit_line_payment,
+        crate::handlers::finance::transactions::get_credit_line_financial_transactions,
+        crate::handlers::finance::transactions::get_user_financial_transactions,
+        crate::handlers::finance::transactions::get_user_financial_summary,
+        crate::handlers::finance::transactions::get_user_pool_financial_transactions,
+        crate::handlers::finance::transactions::get_merchant_credit_line_financial_transactions,
 
         // Transaction History endpoints
-        crate::transaction_history_handlers::get_transaction_history,
-        crate::transaction_history_handlers::get_pool_transaction_history,
+        crate::handlers::finance::transaction_history::get_transaction_history,
+        crate::handlers::finance::transaction_history::get_pool_transaction_history,
 
         // Credit Line endpoints
-        crate::credit_line_handlers::check_credit_eligibility,
-        crate::credit_line_handlers::submit_credit_line_request,
-        crate::credit_line_handlers::list_credit_line_requests,
-        crate::credit_line_handlers::browse_available_pools,
-        crate::credit_line_handlers::list_active_credit_lines_with_pool_details,
+        crate::handlers::credit::credit_lines::check_credit_eligibility,
+        crate::handlers::credit::credit_lines::submit_credit_line_request,
+        crate::handlers::credit::credit_lines::list_credit_line_requests,
+        crate::handlers::credit::credit_lines::browse_available_pools,
+        crate::handlers::credit::credit_lines::list_active_credit_lines_with_pool_details,
 
         // Turnover endpoints
-        crate::turnover_handlers::create_turnover_endpoint,
-        crate::turnover_handlers::get_turnover_endpoint,
-        crate::turnover_handlers::update_turnover_endpoint,
-        crate::turnover_handlers::get_turnover_analytics_endpoint,
-        crate::turnover_handlers::get_profile_completion_endpoint,
+        crate::handlers::merchants::turnover::create_turnover_endpoint,
+        crate::handlers::merchants::turnover::get_turnover_endpoint,
+        crate::handlers::merchants::turnover::update_turnover_endpoint,
+        crate::handlers::merchants::turnover::get_turnover_analytics_endpoint,
+        crate::handlers::merchants::turnover::get_profile_completion_endpoint,
 
         // Contract configuration endpoints
-        crate::contract_handlers::get_contract_config,
-        crate::contract_handlers::get_transaction_updates,
+        crate::handlers::core::contract::get_contract_config,
+        crate::handlers::core::contract::get_transaction_updates,
 
         // Document Management endpoints
-        crate::document_handlers::upload_document,
-        crate::document_handlers::download_document,
-        crate::document_handlers::get_document,
-        crate::document_handlers::list_documents,
-        crate::document_handlers::approve_document,
-        crate::document_handlers::reject_document,
-        crate::document_handlers::delete_document,
-        crate::document_handlers::verify_document,
-        crate::document_handlers::get_audit_logs,
+        crate::handlers::merchants::documents::upload_document,
+        crate::handlers::merchants::documents::download_document,
+        crate::handlers::merchants::documents::get_document,
+        crate::handlers::merchants::documents::list_documents,
+        crate::handlers::merchants::documents::approve_document,
+        crate::handlers::merchants::documents::reject_document,
+        crate::handlers::merchants::documents::delete_document,
+        crate::handlers::merchants::documents::verify_document,
+        crate::handlers::merchants::documents::get_audit_logs,
 
         // AI Analysis endpoints
-        crate::ai_analysis_handlers::analyze_document_diff,
-        crate::ai_analysis_handlers::trigger_analysis,
-        crate::ai_analysis_handlers::get_negotiation_insights,
-        crate::ai_analysis_handlers::get_analysis_history,
-        crate::ai_analysis_handlers::process_chat_message,
-        crate::ai_analysis_handlers::get_chat_history,
-        crate::ai_analysis_handlers::get_analytics_dashboard,
+        crate::handlers::ai::analysis::analyze_document_diff,
+        crate::handlers::ai::analysis::trigger_analysis,
+        crate::handlers::ai::analysis::get_negotiation_insights,
+        crate::handlers::ai::analysis::get_analysis_history,
+        crate::handlers::ai::analysis::process_chat_message,
+        crate::handlers::ai::analysis::get_chat_history,
+        crate::handlers::ai::analysis::get_analytics_dashboard,
     ),
     tags(
         (name = "Authentication", description = "User authentication endpoints"),
@@ -419,11 +476,11 @@ API requests are subject to rate limiting for system stability.
         UserType,
 
         // Document types
-        crate::document_handlers::DocumentUploadResponse,
-        crate::document_handlers::DocumentDownloadHeaders,
-        crate::document_handlers::DocumentVerificationResponse,
-        crate::document_handlers::DocumentListResponse,
-        crate::document_handlers::AuditLogsResponse,
+        crate::handlers::merchants::documents::DocumentUploadResponse,
+        crate::handlers::merchants::documents::DocumentDownloadHeaders,
+        crate::handlers::merchants::documents::DocumentVerificationResponse,
+        crate::handlers::merchants::documents::DocumentListResponse,
+        crate::handlers::merchants::documents::AuditLogsResponse,
         crate::document_service::DocumentResponseDto,
         crate::document_service::DocumentAuditLogDto,
 

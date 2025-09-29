@@ -11,7 +11,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use crate::test_utils::*;
-use crate::financial_transaction_handlers::{
+use crate::handlers::finance::transactions::{
     record_account_deposit, record_account_withdrawal, get_account_financial_transactions,
     record_pool_funding, record_pool_withdrawal, get_pool_financial_transactions,
     record_credit_line_draw, record_credit_line_payment, get_credit_line_financial_transactions,

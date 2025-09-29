@@ -40,7 +40,7 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use crate::test_utils::*;
-use crate::deal_handlers::{
+use crate::handlers::deals::deals::{
     create_deal_endpoint, get_deal_details_endpoint, list_deals_endpoint,
     update_deal_endpoint, delete_deal_endpoint, record_deal_payment_endpoint,
     get_deal_payment_history_endpoint,
