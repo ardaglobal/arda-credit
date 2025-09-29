@@ -5,7 +5,7 @@
 //! - Credit line evaluation and approval processing
 //! - Active credit line management
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -45,36 +45,37 @@ pub struct CreditLineRequest {
     pub requested_amount: Decimal,
     pub requested_rate_apr: Option<Decimal>,
     pub requested_tenor_days: Option<i32>,
-    pub collateral_basis: Option<Decimal>,
+    pub collateral_basis: Option<String>,
     pub ltv_ratio: Option<Decimal>, // In basis points
     pub status: Option<String>,
     pub matched_pool_id: Option<Uuid>,
     pub approved_amount: Option<Decimal>,
     pub approved_rate_apr: Option<Decimal>,
-    pub evaluation_notes: Option<serde_json::Value>,
+    pub evaluation_notes: Option<String>,
     pub rejection_reason: Option<String>,
-    pub created_at: Option<NaiveDateTime>,
-    pub updated_at: Option<NaiveDateTime>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub evaluation_json: Option<serde_json::Value>,
 }
 
 /// Active credit line data structure
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CreditLine {
     pub id: Uuid,
-    pub request_id: Uuid,
+    pub request_id: Option<Uuid>,
     pub merchant_id: Uuid,
-    pub pool_id: Uuid,
+    pub pool_id: Option<Uuid>,
     pub credit_limit: Option<Decimal>,
     pub available_credit: Option<Decimal>,
     pub utilized_amount: Option<Decimal>,
     pub rate_apr: Option<Decimal>, // In basis points
     pub repayment_window_days: Option<i32>,
     pub status: Option<String>,
-    pub opened_at: Option<NaiveDateTime>,
-    pub expires_at: Option<NaiveDateTime>,
-    pub closed_at: Option<NaiveDateTime>,
-    pub created_at: Option<NaiveDateTime>,
-    pub updated_at: Option<NaiveDateTime>,
+    pub opened_at: Option<DateTime<Utc>>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub closed_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
 }
 
 /// Credit line request creation data
@@ -125,10 +126,10 @@ pub async fn create_credit_line_request(
             status
         )
         VALUES ($1, $2, $3, $4, 'SUBMITTED')
-        RETURNING 
+        RETURNING
             id, merchant_id, requested_amount, requested_rate_apr, requested_tenor_days,
             collateral_basis, ltv_ratio, status, matched_pool_id, approved_amount,
-            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at
+            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at, evaluation_json
         "#,
         data.merchant_id,
         data.requested_amount,
@@ -149,10 +150,10 @@ pub async fn get_credit_line_request_by_id(
     let request = sqlx::query_as!(
         CreditLineRequest,
         r#"
-        SELECT 
+        SELECT
             id, merchant_id, requested_amount, requested_rate_apr, requested_tenor_days,
             collateral_basis, ltv_ratio, status, matched_pool_id, approved_amount,
-            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at
+            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at, evaluation_json
         FROM credit_line_requests 
         WHERE id = $1
         "#,
@@ -176,10 +177,10 @@ pub async fn get_credit_line_requests_by_merchant(
         sqlx::query_as!(
             CreditLineRequest,
             r#"
-            SELECT 
+            SELECT
                 id, merchant_id, requested_amount, requested_rate_apr, requested_tenor_days,
                 collateral_basis, ltv_ratio, status, matched_pool_id, approved_amount,
-                approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at
+                approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at, evaluation_json
             FROM credit_line_requests 
             WHERE merchant_id = $1 AND status = $2
             ORDER BY created_at DESC
@@ -196,10 +197,10 @@ pub async fn get_credit_line_requests_by_merchant(
         sqlx::query_as!(
             CreditLineRequest,
             r#"
-            SELECT 
+            SELECT
                 id, merchant_id, requested_amount, requested_rate_apr, requested_tenor_days,
                 collateral_basis, ltv_ratio, status, matched_pool_id, approved_amount,
-                approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at
+                approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at, evaluation_json
             FROM credit_line_requests 
             WHERE merchant_id = $1
             ORDER BY created_at DESC
@@ -232,10 +233,10 @@ pub async fn update_credit_line_request_status(
             rejection_reason = $3,
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, merchant_id, requested_amount, requested_rate_apr, requested_tenor_days,
             collateral_basis, ltv_ratio, status, matched_pool_id, approved_amount,
-            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at
+            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at, evaluation_json
         "#,
         request_id,
         status.as_str(),
@@ -251,29 +252,28 @@ pub async fn update_credit_line_request_status(
 pub async fn update_credit_line_request_evaluation(
     pool: &PgPool,
     request_id: Uuid,
-    collateral_basis: Decimal,
+    collateral_basis: &str,
     ltv_ratio: Decimal,
     matched_pool_id: Option<Uuid>,
-    evaluation_notes: Option<serde_json::Value>,
+    evaluation_json: Option<serde_json::Value>,
 ) -> DbResult<CreditLineRequest> {
-    let evaluation_json = evaluation_notes;
-
     let request = sqlx::query_as!(
         CreditLineRequest,
         r#"
         UPDATE credit_line_requests
-        SET 
+        SET
             collateral_basis = $2,
             ltv_ratio = $3,
             matched_pool_id = $4,
-            evaluation_notes = $5,
+            evaluation_json = $5,
             status = 'EVALUATING',
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, merchant_id, requested_amount, requested_rate_apr, requested_tenor_days,
             collateral_basis, ltv_ratio, status, matched_pool_id, approved_amount,
-            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at
+            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at,
+            evaluation_json
         "#,
         request_id,
         collateral_basis,
@@ -306,10 +306,10 @@ pub async fn approve_credit_line_request(
             matched_pool_id = $4,
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, merchant_id, requested_amount, requested_rate_apr, requested_tenor_days,
             collateral_basis, ltv_ratio, status, matched_pool_id, approved_amount,
-            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at
+            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at, evaluation_json
         "#,
         request_id,
         approved_amount,
@@ -349,7 +349,7 @@ pub async fn create_credit_line(
             expires_at
         )
         VALUES ($1, $2, $3, $4, $4, 0, $5, $6, 'ACTIVE', NOW(), NOW() + ($7::TEXT || ' days')::INTERVAL)
-        RETURNING 
+        RETURNING
             id, request_id, merchant_id, pool_id, credit_limit, available_credit,
             utilized_amount, rate_apr, repayment_window_days, status, opened_at,
             expires_at, closed_at, created_at, updated_at
@@ -376,7 +376,7 @@ pub async fn get_credit_line_by_id(
     let credit_line = sqlx::query_as!(
         CreditLine,
         r#"
-        SELECT 
+        SELECT
             id, request_id, merchant_id, pool_id, credit_limit, available_credit,
             utilized_amount, rate_apr, repayment_window_days, status, opened_at,
             expires_at, closed_at, created_at, updated_at
@@ -507,7 +507,7 @@ pub async fn update_credit_line_utilization(
             available_credit = $3,
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, request_id, merchant_id, pool_id, credit_limit, available_credit,
             utilized_amount, rate_apr, repayment_window_days, status, opened_at,
             expires_at, closed_at, created_at, updated_at
@@ -537,7 +537,7 @@ pub async fn close_credit_line(
             closed_at = NOW(),
             updated_at = NOW()
         WHERE id = $1
-        RETURNING 
+        RETURNING
             id, request_id, merchant_id, pool_id, credit_limit, available_credit,
             utilized_amount, rate_apr, repayment_window_days, status, opened_at,
             expires_at, closed_at, created_at, updated_at
@@ -617,8 +617,8 @@ pub async fn list_active_credit_lines_with_pools(
             cl.rate_apr,
             cl.repayment_window_days,
             cl.status as credit_line_status,
-            cl.opened_at,
-            cl.expires_at,
+            cl.opened_at::timestamp as opened_at,
+            cl.expires_at::timestamp as expires_at,
             lp.total_deposits as pool_total_deposits,
             lp.available_liquidity as pool_available_liquidity,
             lp.status as pool_status,
@@ -662,8 +662,8 @@ pub async fn list_merchant_active_credit_lines_with_pools(
             cl.rate_apr,
             cl.repayment_window_days,
             cl.status as credit_line_status,
-            cl.opened_at,
-            cl.expires_at,
+            cl.opened_at::timestamp as opened_at,
+            cl.expires_at::timestamp as expires_at,
             lp.total_deposits as pool_total_deposits,
             lp.available_liquidity as pool_available_liquidity,
             lp.status as pool_status,
@@ -709,8 +709,8 @@ pub async fn list_pool_active_credit_lines_with_details(
             cl.rate_apr,
             cl.repayment_window_days,
             cl.status as credit_line_status,
-            cl.opened_at,
-            cl.expires_at,
+            cl.opened_at::timestamp as opened_at,
+            cl.expires_at::timestamp as expires_at,
             lp.total_deposits as pool_total_deposits,
             lp.available_liquidity as pool_available_liquidity,
             lp.status as pool_status,

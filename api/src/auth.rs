@@ -11,12 +11,13 @@ use validator::Validate;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,       // Subject (user_id)
-    pub email: String,     // User email
-    pub user_type: String, // User type (investor, lender)
-    pub exp: i64,          // Expiration time
-    pub iat: i64,          // Issued at
-    pub jti: String,       // JWT ID (for token revocation if needed)
+    pub sub: String,                // Subject (user_id)
+    pub email: String,              // User email
+    pub company_id: Option<String>, // Company ID if user belongs to a company
+    pub system_admin: bool,         // System-wide admin privileges
+    pub exp: i64,                   // Expiration time
+    pub iat: i64,                   // Issued at
+    pub jti: String,                // JWT ID (for token revocation if needed)
 }
 
 // ============================================================================
@@ -51,12 +52,13 @@ impl AuthService {
     // JWT TOKEN OPERATIONS
     // ============================================================================
 
-    /// Generate a JWT token for a user
+    /// Generate a JWT token for a user with company context
     pub fn generate_token(
         &self,
         user_id: Uuid,
         email: &str,
-        user_type: &str,
+        company_id: Option<Uuid>,
+        system_admin: bool,
     ) -> Result<String, AuthError> {
         let now = Utc::now();
         let exp = now + Duration::hours(self.token_expiry_hours);
@@ -64,7 +66,8 @@ impl AuthService {
         let claims = Claims {
             sub: user_id.to_string(),
             email: email.to_string(),
-            user_type: user_type.to_string(),
+            company_id: company_id.map(|id| id.to_string()),
+            system_admin,
             exp: exp.timestamp(),
             iat: now.timestamp(),
             jti: Uuid::new_v4().to_string(), // Unique token ID
@@ -219,6 +222,121 @@ impl AuthError {
 }
 
 // ============================================================================
+// COMPANY-BASED AUTHORIZATION HELPERS
+// ============================================================================
+
+/// Check if user has company access
+pub fn has_company_access(claims: &Claims, required_company_id: Uuid) -> bool {
+    // System admins have access to all companies
+    if claims.system_admin {
+        return true;
+    }
+
+    // Check if user belongs to the required company
+    if let Some(user_company_id) = &claims.company_id {
+        if let Ok(parsed_company_id) = Uuid::parse_str(user_company_id) {
+            return parsed_company_id == required_company_id;
+        }
+    }
+
+    false
+}
+
+/// Check if user is system admin
+pub fn is_system_admin(claims: &Claims) -> bool {
+    claims.system_admin
+}
+
+/// Get user's company ID from claims
+pub fn get_user_company_id(claims: &Claims) -> Option<Uuid> {
+    claims
+        .company_id
+        .as_ref()
+        .and_then(|id| Uuid::parse_str(id).ok())
+}
+
+/// Authorization context for requests
+#[derive(Debug, Clone)]
+pub struct AuthContext {
+    pub user_id: Uuid,
+    pub email: String,
+    pub company_id: Option<Uuid>,
+    pub system_admin: bool,
+}
+
+impl AuthContext {
+    pub fn from_claims(claims: Claims) -> Result<Self, AuthError> {
+        let user_id = Uuid::parse_str(&claims.sub).map_err(|_| AuthError::InvalidToken)?;
+
+        let company_id = if let Some(company_str) = &claims.company_id {
+            Some(Uuid::parse_str(company_str).map_err(|_| AuthError::InvalidToken)?)
+        } else {
+            None
+        };
+
+        Ok(AuthContext {
+            user_id,
+            email: claims.email,
+            company_id,
+            system_admin: claims.system_admin,
+        })
+    }
+
+    /// Check if this user has access to the specified company
+    pub fn has_company_access(&self, company_id: Uuid) -> bool {
+        self.system_admin || self.company_id == Some(company_id)
+    }
+
+    /// Check if this user is system admin
+    pub fn is_system_admin(&self) -> bool {
+        self.system_admin
+    }
+
+    /// Get user's company ID if they belong to one
+    pub fn get_company_id(&self) -> Option<Uuid> {
+        self.company_id
+    }
+}
+
+/// Extract AuthContext from request headers (set by session middleware)
+pub fn auth_context_from_headers(
+    headers: &axum::http::HeaderMap,
+) -> Result<AuthContext, AuthError> {
+    let user_id_str = headers
+        .get("x-user-id")
+        .ok_or(AuthError::InvalidToken)?
+        .to_str()
+        .map_err(|_| AuthError::InvalidToken)?;
+
+    let user_id = uuid::Uuid::parse_str(user_id_str).map_err(|_| AuthError::InvalidToken)?;
+
+    let email = headers
+        .get("x-user-email")
+        .ok_or(AuthError::InvalidToken)?
+        .to_str()
+        .map_err(|_| AuthError::InvalidToken)?
+        .to_string();
+
+    let company_id = headers
+        .get("x-company-id")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| uuid::Uuid::parse_str(s).ok());
+
+    let system_admin = headers
+        .get("x-system-admin")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|s| s.parse::<bool>().ok())
+        .unwrap_or(false);
+
+    Ok(AuthContext {
+        user_id,
+        email,
+        company_id,
+        system_admin,
+    })
+}
+
+// ============================================================================
 // TESTS
 // ============================================================================
 
@@ -234,11 +352,11 @@ mod tests {
     fn test_jwt_token_generation() {
         let auth = create_test_auth_service();
         let user_id = Uuid::new_v4();
+        let company_id = Some(Uuid::new_v4());
         let email = "test@example.com";
-        let user_type = "investor";
 
         let token = auth
-            .generate_token(user_id, email, user_type)
+            .generate_token(user_id, email, company_id, false)
             .expect("Failed to generate token");
         assert!(!token.is_empty());
 

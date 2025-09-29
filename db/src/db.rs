@@ -80,32 +80,169 @@ pub struct ContractPrivateData {
 }
 
 // ============================================================================
-// CCR DOMAIN TYPES (Credit and Compliance Requirements)
+// COMPANY AND USER DOMAIN TYPES (Refactored Architecture)
 // ============================================================================
 
-/// Identity/User record with KYC status and authentication
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct Identity {
+/// Company type enumeration
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "varchar", rename_all = "lowercase")]
+pub enum CompanyType {
+    #[sqlx(rename = "originator")]
+    Originator,
+    #[sqlx(rename = "investor")]
+    Investor,
+}
+
+impl std::fmt::Display for CompanyType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Originator => write!(f, "originator"),
+            Self::Investor => write!(f, "investor"),
+        }
+    }
+}
+
+impl std::str::FromStr for CompanyType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "originator" => Ok(Self::Originator),
+            "investor" => Ok(Self::Investor),
+            _ => Err(format!("Invalid company type: {}", s)),
+        }
+    }
+}
+
+/// Company record with type field and KYB status
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Company {
     pub id: uuid::Uuid,
-    pub user_type: String, // investor, lender
+    pub name: String,
+    pub r#type: CompanyType, // Using raw identifier to avoid keyword conflict
+    pub kyb_status: String,  // not_submitted, pending, approved, rejected
+    pub kyb_submitted_at: Option<DateTime<Utc>>,
+    pub kyb_verified_at: Option<DateTime<Utc>>,
+
+    // Company contact and legal information
+    pub legal_name: Option<String>,
+    pub tax_id: Option<String>,
+    pub registration_number: Option<String>,
+    pub jurisdiction: Option<String>,
+    pub address_line1: Option<String>,
+    pub address_line2: Option<String>,
+    pub city: Option<String>,
+    pub state_province: Option<String>,
+    pub postal_code: Option<String>,
+    pub country: Option<String>,
+
+    // Document storage configuration
+    pub s3_bucket_prefix: Option<String>,
+    pub encryption_key_id: Option<String>,
+    pub document_retention_days: i32,
+
+    // Audit timestamps
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// User record with company relationship and system admin flag (replaces Identity)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct User {
+    pub id: uuid::Uuid,
+    pub company_id: Option<uuid::Uuid>, // Foreign key to companies table
+    pub system_admin: bool,             // System-wide administrative privileges
+    pub user_type: String,              // investor, originator, admin
     pub email: String,
+
+    // User profile information
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub jurisdiction: Option<String>,
+
+    // KYC status and verification
     pub kyc_status: String, // not_submitted, pending, approved, rejected
     pub kyc_submitted_at: Option<DateTime<Utc>>,
     pub kyc_verified_at: Option<DateTime<Utc>>,
     pub kyc_investor_type: Option<KycInvestorType>, // QIB, QP, AI - only for investors
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+
     // Authentication fields (magic link system)
     pub last_login_at: Option<DateTime<Utc>>,
-    pub email_verified: Option<bool>,
+    pub email_verified: bool,
     pub email_verification_token: Option<String>,
-    // User profile fields
-    pub first_name: Option<String>,
-    pub last_name: Option<String>,
-    pub jurisdiction: Option<String>,
+
     // Wallet integration
     pub wallet_address: Option<String>,
+
+    // Status and lifecycle
+    pub deleted_at: Option<DateTime<Utc>>, // Soft delete
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
+
+/// Team member role enumeration
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "varchar", rename_all = "lowercase")]
+pub enum TeamRole {
+    #[sqlx(rename = "admin")]
+    Admin,
+    #[sqlx(rename = "write")]
+    Write,
+    #[sqlx(rename = "read")]
+    Read,
+}
+
+impl std::fmt::Display for TeamRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Admin => write!(f, "admin"),
+            Self::Write => write!(f, "write"),
+            Self::Read => write!(f, "read"),
+        }
+    }
+}
+
+impl std::str::FromStr for TeamRole {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "admin" => Ok(Self::Admin),
+            "write" => Ok(Self::Write),
+            "read" => Ok(Self::Read),
+            _ => Err(format!("Invalid team role: {}", s)),
+        }
+    }
+}
+
+/// Team member join table (replaces team_members table)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct CompanyMember {
+    pub id: uuid::Uuid,
+    pub company_id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub role: TeamRole,
+
+    // Role-specific permissions
+    pub can_upload_documents: bool,
+    pub can_download_documents: bool,
+    pub can_delete_documents: bool,
+    pub can_approve_documents: bool,
+    pub can_manage_team: bool,
+    pub can_view_audit_logs: bool,
+
+    // Status and lifecycle
+    pub status: String, // active, inactive, suspended
+    pub invited_at: DateTime<Utc>,
+    pub joined_at: Option<DateTime<Utc>>,
+    pub last_active_at: Option<DateTime<Utc>>,
+
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// Legacy alias for backward compatibility during migration
+pub type Identity = User;
 
 /// Magic link for email-based authentication
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
@@ -141,8 +278,8 @@ pub struct InvestorProfile {
     pub id: uuid::Uuid,
     pub user_id: uuid::Uuid,
     pub accredited_investor: bool,
-    pub investment_capacity: Option<rust_decimal::Decimal>, // maximum investment amount in USDC
-    pub regulatory_jurisdiction: String,                    // e.g., 'US', 'EU', 'UK'
+    pub investment_capacity: Option<rust_decimal::Decimal>,
+    pub regulatory_jurisdiction: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -307,30 +444,27 @@ pub struct UpdateMerchantProfileRequest {
 /// Deal record with originator/investor relationship (converted from Loan)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Deal {
-    // was Loan
     pub id: uuid::Uuid,
-    pub originator_id: uuid::Uuid, // was borrower_id
-    pub investor_id: uuid::Uuid,   // was lender_id
+    pub originator_id: uuid::Uuid,
+    pub investor_id: uuid::Uuid,
     pub principal_amount: rust_decimal::Decimal,
     pub outstanding_balance: rust_decimal::Decimal,
     pub interest_rate_bps: i32, // Basis points
-    pub loan_status: String,    // originated, active, paid_off, closed, defaulted
+    pub status: String, // draft, active, paid_off, closed, defaulted, for_sale, transfer_pending
+    pub loan_status: String, // Backward compatibility field (same as status)
     pub originated_at: DateTime<Utc>,
     pub maturity_date: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
-    pub status: String,                 // draft, active, closed, cancelled
+    pub title: Option<String>,          // Deal title
+    pub description: Option<String>,    // Deal description
     pub industry: Option<String>,       // Industry sector for the deal
     pub document_ids: Option<serde_json::Value>, // JSON array of document UUIDs
-
-    // Marketplace-friendly fields
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub risk_level: Option<String>,
-    pub asset_class: Option<String>,
-    pub region: Option<String>,
-    pub minimum_investment: Option<rust_decimal::Decimal>,
+    pub risk_level: Option<String>,     // Risk level classification
+    pub asset_class: Option<String>,    // Asset class type
+    pub region: Option<String>,         // Geographic region
+    pub minimum_investment: Option<rust_decimal::Decimal>, // Minimum investment amount
 }
 
 /// Deal payment record (converted from Payment)
@@ -711,9 +845,9 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
         id: row.id,
         previous_counter_value: row.previous_counter_value,
         final_counter_value: row.final_counter_value,
-        transaction_ids: row.transaction_ids,
+        transaction_ids: row.transaction_ids.unwrap_or_default(),
         sindri_proof_id: row.sindri_proof_id,
-        proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
+        proof_status: row.proof_status,
         created_at: row.created_at.unwrap_or_else(|| Utc::now()),
         proven_at: row.proven_at,
     };
@@ -761,9 +895,9 @@ pub async fn get_all_batches(
             id: row.id,
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
-            transaction_ids: row.transaction_ids,
+            transaction_ids: row.transaction_ids.unwrap_or_default(),
             sindri_proof_id: row.sindri_proof_id,
-            proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
+            proof_status: row.proof_status,
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
         })
@@ -1047,9 +1181,9 @@ pub async fn get_proven_unposted_batches(
             id: row.id,
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
-            transaction_ids: row.transaction_ids,
+            transaction_ids: row.transaction_ids.unwrap_or_default(),
             sindri_proof_id: row.sindri_proof_id,
-            proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
+            proof_status: row.proof_status,
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
         })
@@ -1159,9 +1293,9 @@ pub async fn get_potential_stuck_batches(
             id: row.id,
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
-            transaction_ids: row.transaction_ids,
+            transaction_ids: row.transaction_ids.unwrap_or_default(),
             sindri_proof_id: row.sindri_proof_id,
-            proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
+            proof_status: row.proof_status,
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
         })
@@ -1208,8 +1342,10 @@ pub async fn create_identity(
     .execute(pool)
     .await?;
 
-    let identity = Identity {
+    let identity = User {
         id,
+        company_id: None,
+        system_admin: false,
         user_type: user_type.to_string(),
         email: email.to_string(),
         kyc_status: "not_submitted".to_string(),
@@ -1219,12 +1355,13 @@ pub async fn create_identity(
         created_at: now,
         updated_at: now,
         last_login_at: None,
-        email_verified: Some(false),
+        email_verified: false,
         email_verification_token: None,
         first_name: None,
         last_name: None,
         jurisdiction: None,
         wallet_address: None,
+        deleted_at: None,
     };
 
     Ok(identity)
@@ -1298,8 +1435,10 @@ pub async fn register_or_reregister_user(
             .fetch_one(pool)
             .await?;
 
-            let identity_struct = Identity {
+            let identity_struct = User {
                 id: identity.id,
+                company_id: identity.company_id,
+                system_admin: identity.system_admin,
                 user_type: identity.user_type,
                 email: identity.email,
                 kyc_status: identity.kyc_status,
@@ -1315,6 +1454,7 @@ pub async fn register_or_reregister_user(
                 last_name: identity.last_name,
                 jurisdiction: identity.jurisdiction,
                 wallet_address: identity.wallet_address,
+                deleted_at: identity.deleted_at,
             };
 
             Ok(RegisterResult::Reregistered(identity_struct))
@@ -1342,8 +1482,10 @@ pub async fn register_or_reregister_user(
             .execute(pool)
             .await?;
 
-            let identity = Identity {
+            let identity = User {
                 id,
+                company_id: None,
+                system_admin: false,
                 user_type: user_type.to_string(),
                 email: email.to_string(),
                 kyc_status: "not_submitted".to_string(),
@@ -1353,12 +1495,13 @@ pub async fn register_or_reregister_user(
                 created_at: now,
                 updated_at: now,
                 last_login_at: None,
-                email_verified: Some(false),
+                email_verified: false,
                 email_verification_token: None,
                 first_name: None,
                 last_name: None,
                 jurisdiction: None,
                 wallet_address: None,
+                deleted_at: None,
             };
 
             Ok(RegisterResult::Created(identity))
@@ -1399,8 +1542,10 @@ pub async fn get_identity_by_id(
     .fetch_optional(pool)
     .await?;
 
-    let identity = row.map(|row| Identity {
+    let identity = row.map(|row| User {
         id: row.id,
+        company_id: row.company_id,
+        system_admin: row.system_admin,
         user_type: row.user_type,
         email: row.email,
         kyc_status: row.kyc_status,
@@ -1416,6 +1561,7 @@ pub async fn get_identity_by_id(
         last_name: row.last_name,
         jurisdiction: row.jurisdiction,
         wallet_address: row.wallet_address,
+        deleted_at: row.deleted_at,
     });
 
     Ok(identity)
@@ -1441,8 +1587,10 @@ pub async fn get_identity_by_email(
     .fetch_optional(pool)
     .await?;
 
-    let identity = row.map(|row| Identity {
+    let identity = row.map(|row| User {
         id: row.id,
+        company_id: row.company_id,
+        system_admin: row.system_admin,
         user_type: row.user_type,
         email: row.email,
         kyc_status: row.kyc_status,
@@ -1458,6 +1606,7 @@ pub async fn get_identity_by_email(
         last_name: row.last_name,
         jurisdiction: row.jurisdiction,
         wallet_address: row.wallet_address,
+        deleted_at: row.deleted_at,
     });
 
     Ok(identity)
@@ -1490,16 +1639,18 @@ pub async fn list_identities(
 
     let identities = rows
         .into_iter()
-        .map(|row| Identity {
+        .map(|row| User {
             id: row.id,
+            company_id: row.company_id,
+            system_admin: row.system_admin,
             user_type: row.user_type,
             email: row.email,
             kyc_status: row.kyc_status,
             kyc_submitted_at: row.kyc_submitted_at,
             kyc_verified_at: row.kyc_verified_at,
             kyc_investor_type: row.kyc_investor_type,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
+            created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
+            updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             last_login_at: row.last_login_at,
             email_verified: row.email_verified,
             email_verification_token: row.email_verification_token,
@@ -1507,6 +1658,7 @@ pub async fn list_identities(
             last_name: row.last_name,
             jurisdiction: row.jurisdiction,
             wallet_address: row.wallet_address,
+            deleted_at: row.deleted_at,
         })
         .collect();
 
@@ -1581,16 +1733,18 @@ pub async fn list_pending_kyc_applications(
 
     let identities = rows
         .into_iter()
-        .map(|row| Identity {
+        .map(|row| User {
             id: row.id,
+            company_id: row.company_id,
+            system_admin: row.system_admin,
             user_type: row.user_type,
             email: row.email,
             kyc_status: row.kyc_status,
             kyc_submitted_at: row.kyc_submitted_at,
             kyc_verified_at: row.kyc_verified_at,
             kyc_investor_type: row.kyc_investor_type,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
+            created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
+            updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             last_login_at: row.last_login_at,
             email_verified: row.email_verified,
             email_verification_token: row.email_verification_token,
@@ -1598,6 +1752,7 @@ pub async fn list_pending_kyc_applications(
             last_name: row.last_name,
             jurisdiction: row.jurisdiction,
             wallet_address: row.wallet_address,
+            deleted_at: row.deleted_at,
         })
         .collect();
 
@@ -1946,13 +2101,13 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status.clone(),
+            loan_status: row.loan_status,
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             custom_deal_id: row.custom_deal_id,
-            status: row.status.unwrap_or_else(|| "draft".to_string()),
+            status: row.status,
             industry: row.industry,
             document_ids: row.document_ids,
             title: row.title,
@@ -2031,13 +2186,13 @@ pub async fn list_deals(
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status.clone(),
+            loan_status: row.loan_status,
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             custom_deal_id: row.custom_deal_id,
-            status: row.status.unwrap_or_else(|| "draft".to_string()),
+            status: row.status,
             industry: row.industry,
             document_ids: row.document_ids,
             title: row.title,
@@ -2113,7 +2268,7 @@ pub async fn get_deals_by_user_id(
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
             updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
             custom_deal_id: row.custom_deal_id,
-            status: row.status.unwrap_or_else(|| "draft".to_string()),
+            status: row.status,
             industry: row.industry,
             document_ids: row.document_ids,
             title: row.title,
@@ -4190,8 +4345,10 @@ pub async fn get_investor_profile_with_identity(
             updated_at: row.profile_updated_at,
         };
 
-        let identity = Identity {
+        let identity = User {
             id: row.identity_id,
+            company_id: row.company_id,
+            system_admin: row.system_admin,
             user_type: row.user_type,
             email: row.email,
             kyc_status: row.kyc_status,
@@ -4207,6 +4364,7 @@ pub async fn get_investor_profile_with_identity(
             last_name: row.last_name,
             jurisdiction: row.jurisdiction,
             wallet_address: row.wallet_address,
+            deleted_at: row.deleted_at,
         };
 
         Ok(Some((profile, identity)))
@@ -5738,8 +5896,10 @@ pub async fn get_investor_profile_by_user_id_or_email(
                 updated_at: row.profile_updated_at,
             };
 
-            let identity = Identity {
+            let identity = User {
                 id: row.user_id,
+                company_id: row.company_id,
+                system_admin: row.system_admin,
                 user_type: row.user_type,
                 email: row.user_email,
                 kyc_status: row.kyc_status,
@@ -5749,12 +5909,13 @@ pub async fn get_investor_profile_by_user_id_or_email(
                 created_at: row.profile_created_at, // Using profile timestamps since this is joined data
                 updated_at: row.profile_updated_at,
                 last_login_at: None,
-                email_verified: None,
+                email_verified: false,
                 email_verification_token: None,
                 first_name: row.first_name,
                 last_name: row.last_name,
                 jurisdiction: row.jurisdiction,
                 wallet_address: row.wallet_address,
+                deleted_at: None,
             };
 
             Ok(Some((profile, identity)))
@@ -6579,4 +6740,99 @@ pub async fn delete_pool_borough_limit(
     .await?;
 
     Ok(result.rows_affected() > 0)
+}
+
+// ============================================================================
+// COMPANY AND USER DATABASE FUNCTIONS
+// ============================================================================
+
+/// Get user by email with company information
+pub async fn get_user_by_email_with_company(
+    pool: &PgPool,
+    email: &str,
+) -> Result<Option<(User, Option<Company>)>, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        SELECT u.id, u.company_id, u.system_admin, u.user_type, u.email, u.first_name, u.last_name, u.jurisdiction,
+               u.kyc_status, u.kyc_submitted_at, u.kyc_verified_at, u.kyc_investor_type::text,
+               u.last_login_at, u.email_verified, u.email_verification_token, u.wallet_address,
+               u.deleted_at, u.created_at, u.updated_at,
+               c.id as company_id_full, c.name as company_name, c.type as company_type
+        FROM users u
+        LEFT JOIN companies c ON u.company_id = c.id
+        WHERE u.email = $1 AND u.deleted_at IS NULL
+        "#,
+        email
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some(row) = result {
+        let kyc_investor_type = match row.kyc_investor_type.as_deref() {
+            Some("QIB") => Some(KycInvestorType::QIB),
+            Some("QP") => Some(KycInvestorType::QP),
+            Some("AI") => Some(KycInvestorType::AI),
+            _ => None,
+        };
+
+        let user = User {
+            id: row.id,
+            company_id: row.company_id,
+            system_admin: row.system_admin,
+            user_type: row.user_type,
+            email: row.email,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            jurisdiction: row.jurisdiction,
+            kyc_status: row.kyc_status,
+            kyc_submitted_at: row.kyc_submitted_at,
+            kyc_verified_at: row.kyc_verified_at,
+            kyc_investor_type,
+            last_login_at: row.last_login_at,
+            email_verified: row.email_verified,
+            email_verification_token: row.email_verification_token,
+            wallet_address: row.wallet_address,
+            deleted_at: row.deleted_at,
+            created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
+            updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
+        };
+
+        let company = {
+            let (id, name, company_type) =
+                (row.company_id_full, row.company_name, row.company_type);
+            let parsed_type = match company_type.as_str() {
+                "originator" => CompanyType::Originator,
+                "investor" => CompanyType::Investor,
+                _ => CompanyType::Investor, // Default fallback
+            };
+
+            Some(Company {
+                id,
+                name,
+                r#type: parsed_type,
+                kyb_status: "not_submitted".to_string(), // Simplified for now
+                kyb_submitted_at: None,
+                kyb_verified_at: None,
+                legal_name: None,
+                tax_id: None,
+                registration_number: None,
+                jurisdiction: None,
+                address_line1: None,
+                address_line2: None,
+                city: None,
+                state_province: None,
+                postal_code: None,
+                country: None,
+                s3_bucket_prefix: None,
+                encryption_key_id: None,
+                document_retention_days: 2555,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            })
+        };
+
+        Ok(Some((user, company)))
+    } else {
+        Ok(None)
+    }
 }

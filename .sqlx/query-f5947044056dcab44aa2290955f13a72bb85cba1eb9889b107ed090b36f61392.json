@@ -6,7 +6,7 @@
       {
         "ordinal": 0,
         "name": "fix_tree_state_consistency",
-        "type_info": "Void"
+        "type_info": "Int4"
       }
     ],
     "parameters": {

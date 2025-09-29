@@ -43,6 +43,8 @@ pub mod balance_service;
 pub mod batch_processor;
 pub mod client;
 pub mod company_handlers;
+pub mod company_invitation_handlers;
+pub mod company_invitation_service;
 pub mod company_service;
 pub mod contract_handlers;
 pub mod cookie_utils;

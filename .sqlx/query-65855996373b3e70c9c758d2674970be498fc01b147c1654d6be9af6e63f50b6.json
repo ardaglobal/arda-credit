@@ -6,8 +6,8 @@
     "parameters": {
       "Left": [
         "Varchar",
-        "Int8",
-        "Varchar",
+        "Bytea",
+        "Text",
         "Timestamptz",
         "Bytea",
         "Bytea",

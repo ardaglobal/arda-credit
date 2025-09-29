@@ -103,8 +103,8 @@ pub async fn create_deal_listing(
         seller_id,
         asking_price,
         description,
-        now.naive_utc(),
-        expires_at.map(|dt| dt.naive_utc())
+        now,
+        expires_at
     )
     .execute(pool)
     .await?;
@@ -151,8 +151,8 @@ pub async fn get_deal_listing_by_deal_id(
             seller_id: row.seller_id,
             asking_price: row.asking_price,
             description: row.description,
-            listed_at: row.listed_at.and_utc(),
-            expires_at: row.expires_at.map(|dt| dt.and_utc()),
+            listed_at: row.listed_at.unwrap_or_else(|| chrono::Utc::now()),
+            expires_at: row.expires_at,
             status: row.status,
             delisted_at: row.delisted_at.map(|dt| dt.and_utc()),
             created_at: row.created_at.and_utc(),
@@ -281,8 +281,8 @@ pub async fn browse_marketplace_deals(
             seller_id: row.seller_id,
             asking_price: row.asking_price,
             description: row.description,
-            listed_at: row.listed_at.and_utc(),
-            expires_at: row.expires_at.map(|dt| dt.and_utc()),
+            listed_at: row.listed_at.unwrap_or_else(|| chrono::Utc::now()),
+            expires_at: row.expires_at,
             status: row.listing_status,
             originator_id: row.originator_id, // was borrower_id
             investor_id: row.investor_id,     // was lender_id

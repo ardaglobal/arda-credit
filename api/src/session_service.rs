@@ -1,4 +1,4 @@
-use arda_credit_db::db::{Identity, Session};
+use arda_credit_db::db::{Identity, Session, User}; // Keep Identity alias for compatibility
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Duration, Utc};
 use rand::Rng;
@@ -68,9 +68,9 @@ impl SessionService {
         Ok((session_token, session))
     }
 
-    /// Validate session token and return user identity
+    /// Validate session token and return user
     #[instrument(skip(self, session_token), level = "debug")]
-    pub async fn validate_session(&self, session_token: &str) -> Result<Identity, SessionError> {
+    pub async fn validate_session(&self, session_token: &str) -> Result<User, SessionError> {
         // First update the session access time
         sqlx::query(
             r#"
@@ -83,23 +83,54 @@ impl SessionService {
         .execute(&self.pool)
         .await?;
 
-        // Then get the user identity
-        let identity = sqlx::query_as::<_, Identity>(
+        // Then get the user
+        let user_row = sqlx::query!(
             r#"
-            SELECT i.*
-            FROM identities i
-            JOIN sessions s ON s.user_id = i.id
-            WHERE s.session_token = $1 AND s.expires_at > NOW()
+            SELECT u.id, u.company_id, u.system_admin, u.email, u.first_name, u.last_name, u.jurisdiction,
+                   u.kyc_status, u.kyc_submitted_at, u.kyc_verified_at, u.kyc_investor_type,
+                   u.last_login_at, u.email_verified, u.email_verification_token, u.wallet_address,
+                   u.deleted_at, u.created_at, u.updated_at
+            FROM users u
+            JOIN sessions s ON s.user_id = u.id
+            WHERE s.session_token = $1 AND s.expires_at > NOW() AND u.deleted_at IS NULL
             "#,
         )
         .bind(session_token)
         .fetch_optional(&self.pool)
         .await?;
 
-        match identity {
-            Some(identity) => {
-                debug!("Valid session for user: {}", identity.email);
-                Ok(identity)
+        match user_row {
+            Some(row) => {
+                let kyc_investor_type = match row.kyc_investor_type.as_deref() {
+                    Some("QIB") => Some(arda_credit_db::db::KycInvestorType::QIB),
+                    Some("QP") => Some(arda_credit_db::db::KycInvestorType::QP),
+                    Some("AI") => Some(arda_credit_db::db::KycInvestorType::AI),
+                    _ => None,
+                };
+
+                let user = User {
+                    id: row.id,
+                    company_id: row.company_id,
+                    system_admin: row.system_admin,
+                    email: row.email.clone(),
+                    first_name: row.first_name,
+                    last_name: row.last_name,
+                    jurisdiction: row.jurisdiction,
+                    kyc_status: row.kyc_status,
+                    kyc_submitted_at: row.kyc_submitted_at,
+                    kyc_verified_at: row.kyc_verified_at,
+                    kyc_investor_type,
+                    last_login_at: row.last_login_at,
+                    email_verified: row.email_verified,
+                    email_verification_token: row.email_verification_token,
+                    wallet_address: row.wallet_address,
+                    deleted_at: row.deleted_at,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                };
+
+                debug!("Valid session for user: {}", user.email);
+                Ok(user)
             }
             None => {
                 warn!("Invalid or expired session token");

@@ -231,64 +231,178 @@ pub async fn register_user_endpoint(
         request.email, request.invite_code
     );
 
-    // Validate invite code (required)
+    // Validate email format (basic validation)
+    if !request.email.contains('@') || !request.email.contains('.') {
+        warn!("❌ API: Invalid email format: {}", request.email);
+        return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
+    }
+
+    // Try company invitation first, then fall back to old invite system
     let invite_code = &request.invite_code;
     info!(
         "🎫 API: Validating invite code during registration: {}",
         invite_code
     );
 
-    let invite_info = match get_invite_code_info(&state.pool, invite_code).await {
-        Ok(invite_info) => {
-            if !invite_info.is_valid {
-                warn!(
-                    "❌ API: Invalid invite code provided during registration: {}",
-                    invite_code
+    // Check if it's a company invitation code (8 character alphanumeric)
+    let is_company_invitation = invite_code.len() == 8
+        && invite_code
+            .chars()
+            .all(|c| c.is_alphanumeric() && c.is_uppercase());
+
+    let user_type;
+    let company_invitation_id;
+
+    if is_company_invitation {
+        // Handle company invitation
+        info!(
+            "🏢 API: Attempting to validate as company invitation: {}",
+            invite_code
+        );
+
+        // Import company invitation service
+        use crate::company_invitation_service::CompanyInvitationService;
+        let invitation_service = CompanyInvitationService::new(state.db_pool.clone());
+
+        match invitation_service.get_invitation_by_code(invite_code).await {
+            Ok(invitation_details) => {
+                // Validate invitation status and expiration
+                match invitation_details.invitation.status.as_str() {
+                    "pending" => {
+                        if invitation_details.invitation.expires_at < chrono::Utc::now() {
+                            warn!("❌ API: Company invitation has expired: {}", invite_code);
+                            return Err((
+                                StatusCode::BAD_REQUEST,
+                                "Invitation has expired".to_string(),
+                            ));
+                        }
+                    }
+                    "accepted" => {
+                        warn!(
+                            "❌ API: Company invitation already accepted: {}",
+                            invite_code
+                        );
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            "Invitation has already been accepted".to_string(),
+                        ));
+                    }
+                    "expired" => {
+                        warn!("❌ API: Company invitation expired: {}", invite_code);
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            "Invitation has expired".to_string(),
+                        ));
+                    }
+                    "revoked" => {
+                        warn!("❌ API: Company invitation revoked: {}", invite_code);
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            "Invitation has been revoked".to_string(),
+                        ));
+                    }
+                    _ => {
+                        warn!(
+                            "❌ API: Company invitation in invalid state: {}",
+                            invite_code
+                        );
+                        return Err((
+                            StatusCode::BAD_REQUEST,
+                            "Invitation is in an invalid state".to_string(),
+                        ));
+                    }
+                }
+
+                // Check if email matches invitation
+                if invitation_details.invitation.email != request.email {
+                    warn!(
+                        "❌ API: Email {} does not match company invitation {}",
+                        request.email, invite_code
+                    );
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "Email does not match invitation".to_string(),
+                    ));
+                }
+
+                // For company invitations, user type is based on company type
+                // Company team members are typically "investor" or "originator" type users
+                user_type = match invitation_details.company_type.as_str() {
+                    "investor" => "investor".to_string(),
+                    "originator" => "originator".to_string(),
+                    _ => "investor".to_string(), // Default fallback
+                };
+
+                company_invitation_id = Some(invitation_details.invitation.id);
+
+                info!(
+                    "✅ API: Company invitation validated successfully: {} (company: {}, role: {})",
+                    invite_code,
+                    invitation_details.company_name,
+                    invitation_details.invitation.role
                 );
+            }
+            Err(_) => {
+                warn!("❌ API: Invalid company invitation code: {}", invite_code);
                 return Err((
                     StatusCode::BAD_REQUEST,
-                    "Invalid or expired invite code".to_string(),
+                    "Invalid or expired invitation code".to_string(),
                 ));
             }
+        }
+    } else {
+        // Handle legacy invite codes
+        info!(
+            "📋 API: Attempting to validate as legacy invite code: {}",
+            invite_code
+        );
 
-            if invite_info.user_type.is_none() {
-                warn!(
-                    "❌ API: Invite code does not specify a user type: {}",
-                    invite_code
+        let invite_info = match get_invite_code_info(&state.pool, invite_code).await {
+            Ok(invite_info) => {
+                if !invite_info.is_valid {
+                    warn!(
+                        "❌ API: Invalid invite code provided during registration: {}",
+                        invite_code
+                    );
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "Invalid or expired invite code".to_string(),
+                    ));
+                }
+
+                if invite_info.user_type.is_none() {
+                    warn!(
+                        "❌ API: Invite code does not specify a user type: {}",
+                        invite_code
+                    );
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "Invalid invite code - no user type specified".to_string(),
+                    ));
+                }
+
+                info!(
+                    "✅ API: Legacy invite code validated successfully: {} (user_type={})",
+                    invite_code,
+                    invite_info.user_type.as_ref().unwrap()
+                );
+
+                invite_info
+            }
+            Err(e) => {
+                error!(
+                    "❌ API: Failed to validate invite code during registration: {}",
+                    e
                 );
                 return Err((
-                    StatusCode::BAD_REQUEST,
-                    "Invalid invite code - no user type specified".to_string(),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to validate invite code".to_string(),
                 ));
             }
+        };
 
-            info!(
-                "✅ API: Invite code validated successfully: {} (user_type={})",
-                invite_code,
-                invite_info.user_type.as_ref().unwrap()
-            );
-
-            invite_info
-        }
-        Err(e) => {
-            error!(
-                "❌ API: Failed to validate invite code during registration: {}",
-                e
-            );
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to validate invite code".to_string(),
-            ));
-        }
-    };
-
-    // Extract user type from invite code
-    let user_type = invite_info.user_type.as_ref().unwrap().clone();
-
-    // Validate email format (basic validation)
-    if !request.email.contains('@') || !request.email.contains('.') {
-        warn!("❌ API: Invalid email format: {}", request.email);
-        return Err((StatusCode::BAD_REQUEST, "Invalid email format".to_string()));
+        user_type = invite_info.user_type.as_ref().unwrap().clone();
+        company_invitation_id = None;
     }
 
     // Create or re-register user with soft delete handling
@@ -299,22 +413,48 @@ pub async fn register_user_endpoint(
                 identity.id
             );
 
-            // Mark invite code as used now that user is created
-            match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
-                Ok(was_used) => {
-                    if was_used {
+            // Handle invitation acceptance based on type
+            if let Some(_invitation_id) = company_invitation_id {
+                // Accept the company invitation
+                use crate::company_invitation_service::CompanyInvitationService;
+                let invitation_service = CompanyInvitationService::new(state.db_pool.clone());
+
+                match invitation_service
+                    .accept_invitation(invite_code, identity.id)
+                    .await
+                {
+                    Ok(team_member_id) => {
                         info!(
-                            "✅ API: Invite code marked as used: code={}, user_id={}",
-                            invite_code, identity.id
+                            "✅ API: Company invitation accepted successfully: code={}, user_id={}, team_member_id={}",
+                            invite_code, identity.id, team_member_id
                         );
-                    } else {
-                        warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
+                    }
+                    Err(e) => {
+                        error!(
+                            "❌ API: Failed to accept company invitation during registration: {}",
+                            e
+                        );
+                        // Don't fail registration, but log the error
                     }
                 }
-                Err(e) => {
-                    error!("❌ API: Failed to mark invite code as used: {}", e);
-                    // Note: We don't fail the registration here since the user was already created
-                    // This is logged for monitoring but shouldn't block the successful registration
+            } else {
+                // Handle legacy invite codes
+                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
+                    Ok(was_used) => {
+                        if was_used {
+                            info!(
+                                "✅ API: Legacy invite code marked as used: code={}, user_id={}",
+                                invite_code, identity.id
+                            );
+                        } else {
+                            warn!("⚠️ API: Legacy invite code could not be marked as used (may be exhausted): {}", invite_code);
+                        }
+                    }
+                    Err(e) => {
+                        error!("❌ API: Failed to mark legacy invite code as used: {}", e);
+                        // Note: We don't fail the registration here since the user was already created
+                        // This is logged for monitoring but shouldn't block the successful registration
+                    }
                 }
             }
 
@@ -331,25 +471,48 @@ pub async fn register_user_endpoint(
                 identity.id
             );
 
-            // Mark invite code as used for the re-registered user
-            match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
-                Ok(was_used) => {
-                    if was_used {
+            // Handle invitation acceptance based on type (for re-registered users)
+            if let Some(_invitation_id) = company_invitation_id {
+                // Accept the company invitation
+                use crate::company_invitation_service::CompanyInvitationService;
+                let invitation_service = CompanyInvitationService::new(state.db_pool.clone());
+
+                match invitation_service
+                    .accept_invitation(invite_code, identity.id)
+                    .await
+                {
+                    Ok(team_member_id) => {
                         info!(
-                            "✅ API: Invite code marked as used for re-registered user: code={}, user_id={}",
-                            invite_code, identity.id
+                            "✅ API: Company invitation accepted for re-registered user: code={}, user_id={}, team_member_id={}",
+                            invite_code, identity.id, team_member_id
                         );
-                    } else {
-                        warn!("⚠️ API: Invite code could not be marked as used (may be exhausted): {}", invite_code);
+                    }
+                    Err(e) => {
+                        error!("❌ API: Failed to accept company invitation for re-registered user: {}", e);
+                        // Don't fail registration, but log the error
                     }
                 }
-                Err(e) => {
-                    error!(
-                        "❌ API: Failed to mark invite code as used for re-registered user: {}",
-                        e
-                    );
-                    // Note: We don't fail the registration here since the user was already re-registered
-                    // This is logged for monitoring but shouldn't block the successful re-registration
+            } else {
+                // Handle legacy invite codes
+                match use_invite_code(&state.pool, invite_code, Some(identity.id)).await {
+                    Ok(was_used) => {
+                        if was_used {
+                            info!(
+                                "✅ API: Legacy invite code marked as used for re-registered user: code={}, user_id={}",
+                                invite_code, identity.id
+                            );
+                        } else {
+                            warn!("⚠️ API: Legacy invite code could not be marked as used (may be exhausted): {}", invite_code);
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "❌ API: Failed to mark legacy invite code as used for re-registered user: {}",
+                            e
+                        );
+                        // Note: We don't fail the registration here since the user was already re-registered
+                        // This is logged for monitoring but shouldn't block the successful re-registration
+                    }
                 }
             }
 

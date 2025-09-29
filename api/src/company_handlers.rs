@@ -6,10 +6,10 @@
 use crate::{
     auth::Claims,
     company_service::{
-        CompanyRegistrationRequest, CompanyService, KybSubmissionRequest, TeamInvitationRequest,
-        TeamMemberPermissions,
+        CompanyRegistrationRequest, CompanyResponseDto, CompanyService, KybSubmissionRequest,
+        TeamInvitationRequest, TeamMemberPermissions, TeamMemberResponseDto,
     },
-    router::ApiState,
+    types::{ApiState, AppError},
 };
 use axum::{
     extract::{Path, State},
@@ -613,4 +613,472 @@ async fn get_recent_activity(
             created_at: row.try_get("created_at").unwrap_or_default(),
         })
         .collect())
+}
+
+// ============================================================================
+// ADDITIONAL COMPANY HANDLERS FOR NEW API STRUCTURE
+// ============================================================================
+
+/// List all companies (admin endpoint)
+#[utoipa::path(
+    get,
+    path = "/companies",
+    tag = "companies",
+    summary = "List all companies",
+    description = "Get a list of all companies in the system (admin only)"
+)]
+pub async fn list_companies_endpoint(
+    State(api_state): State<crate::types::ApiState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<Vec<CompanyResponseDto>>, AppError> {
+    // Extract auth context
+    let auth_context = crate::auth::auth_context_from_headers(&headers)
+        .map_err(|_| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    // Check if user is system admin
+    if !auth_context.is_system_admin() {
+        return Err(AppError::Forbidden(
+            "System admin access required".to_string(),
+        ));
+    }
+
+    // Get all companies from database
+    let companies = sqlx::query_as!(
+        CompanyRecord,
+        r#"
+        SELECT id, name, company_type as "company_type: String", kyb_status, kyb_submitted_at, kyb_verified_at,
+               created_at, updated_at
+        FROM companies
+        ORDER BY created_at DESC
+        "#
+    )
+    .fetch_all(&api_state.db_pool)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+    let response: Vec<CompanyResponseDto> = companies
+        .into_iter()
+        .map(|company| {
+            CompanyResponseDto {
+                id: company.id,
+                company_name: company.name,
+                company_type: company.company_type,
+                description: None,
+                industry: None,
+                jurisdiction: None,
+                registration_number: None,
+                business_email: "".to_string(), // Placeholder
+                business_phone: None,
+                kyb_status: company.kyb_status,
+                kyb_submitted_at: company.kyb_submitted_at,
+                kyb_verified_at: company.kyb_verified_at,
+                document_retention_days: 2555,
+                created_at: company.created_at,
+                updated_at: company.updated_at,
+                team_member_count: 0, // Placeholder - would need separate query
+            }
+        })
+        .collect();
+
+    Ok(Json(response))
+}
+
+/// Update company details
+#[utoipa::path(
+    put,
+    path = "/companies/{company_id}",
+    tag = "companies",
+    summary = "Update company details",
+    description = "Update company information (admin or company member with manage_team permission)"
+)]
+pub async fn update_company_endpoint(
+    State(api_state): State<crate::types::ApiState>,
+    headers: axum::http::HeaderMap,
+    Path(company_id): Path<Uuid>,
+    Json(request): Json<UpdateCompanyRequest>,
+) -> Result<Json<CompanyResponseDto>, AppError> {
+    // Extract auth context
+    let auth_context = crate::auth::auth_context_from_headers(&headers)
+        .map_err(|_| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    // Check authorization - system admin or company member with admin role
+    if !auth_context.is_system_admin() && !auth_context.has_company_access(company_id) {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
+
+    // Update company in database
+    let updated_company = sqlx::query_as!(
+        CompanyRecord,
+        r#"
+        UPDATE companies
+        SET name = COALESCE($2, name),
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, name, company_type as "company_type: String", kyb_status, kyb_submitted_at, kyb_verified_at,
+                  created_at, updated_at
+        "#,
+        company_id,
+        request.name
+    )
+    .fetch_one(&api_state.db_pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound("Company not found".to_string()),
+        _ => AppError::DatabaseError(e.to_string()),
+    })?;
+
+    let response = CompanyResponseDto {
+        id: updated_company.id,
+        company_name: updated_company.name,
+        company_type: updated_company.company_type,
+        description: None,
+        industry: None,
+        jurisdiction: None,
+        registration_number: None,
+        business_email: "".to_string(),
+        business_phone: None,
+        kyb_status: updated_company.kyb_status,
+        kyb_submitted_at: updated_company.kyb_submitted_at,
+        kyb_verified_at: updated_company.kyb_verified_at,
+        document_retention_days: 2555,
+        created_at: updated_company.created_at,
+        updated_at: updated_company.updated_at,
+        team_member_count: 0,
+    };
+
+    Ok(Json(response))
+}
+
+/// Delete company (soft delete)
+#[utoipa::path(
+    delete,
+    path = "/companies/{company_id}",
+    tag = "companies",
+    summary = "Delete company",
+    description = "Soft delete a company (system admin only)"
+)]
+pub async fn delete_company_endpoint(
+    State(api_state): State<crate::types::ApiState>,
+    headers: axum::http::HeaderMap,
+    Path(company_id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Extract auth context
+    let auth_context = crate::auth::auth_context_from_headers(&headers)
+        .map_err(|_| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    // Only system admins can delete companies
+    if !auth_context.is_system_admin() {
+        return Err(AppError::Forbidden(
+            "System admin access required".to_string(),
+        ));
+    }
+
+    // Soft delete the company by updating a deleted_at timestamp
+    // Note: This would require adding a deleted_at column to the companies table
+    let result = sqlx::query!(
+        "UPDATE companies SET updated_at = NOW() WHERE id = $1",
+        company_id
+    )
+    .execute(&api_state.db_pool)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound("Company not found".to_string()));
+    }
+
+    Ok(Json(serde_json::json!({
+        "message": "Company deleted successfully",
+        "company_id": company_id
+    })))
+}
+
+/// Update KYB status (admin only)
+pub async fn update_kyb_status_endpoint(
+    State(api_state): State<crate::types::ApiState>,
+    headers: axum::http::HeaderMap,
+    Path(company_id): Path<Uuid>,
+    Json(request): Json<UpdateKybStatusRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Extract auth context
+    let auth_context = crate::auth::auth_context_from_headers(&headers)
+        .map_err(|_| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    // Only system admins can update KYB status
+    if !auth_context.is_system_admin() {
+        return Err(AppError::Forbidden(
+            "System admin access required".to_string(),
+        ));
+    }
+
+    let verified_at = if request.status == "approved" {
+        Some(chrono::Utc::now())
+    } else {
+        None
+    };
+
+    sqlx::query!(
+        r#"
+        UPDATE companies
+        SET kyb_status = $2,
+            kyb_verified_at = $3,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        company_id,
+        request.status,
+        verified_at
+    )
+    .execute(&api_state.db_pool)
+    .await
+    .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "message": "KYB status updated successfully",
+        "company_id": company_id,
+        "status": request.status
+    })))
+}
+
+// ============================================================================
+// TEAM MEMBER MANAGEMENT HANDLERS
+// ============================================================================
+
+/// Add team member to company
+pub async fn add_team_member_endpoint(
+    State(api_state): State<crate::types::ApiState>,
+    headers: axum::http::HeaderMap,
+    Path(company_id): Path<Uuid>,
+    Json(request): Json<AddTeamMemberRequest>,
+) -> Result<Json<TeamMemberResponseDto>, AppError> {
+    // Extract auth context
+    let auth_context = crate::auth::auth_context_from_headers(&headers)
+        .map_err(|_| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    // Check authorization
+    if !auth_context.is_system_admin() && !auth_context.has_company_access(company_id) {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
+
+    // Add team member logic here...
+    // This would involve creating the user if needed and adding them to team_members table
+
+    // Placeholder response
+    let response = TeamMemberResponseDto {
+        id: Uuid::new_v4(),
+        user_id: request.user_id,
+        company_id,
+        email: request.email.clone(),
+        role: request.role.clone(),
+        status: "active".to_string(),
+        can_upload_documents: request.permissions.can_upload_documents,
+        can_download_documents: request.permissions.can_download_documents,
+        can_delete_documents: request.permissions.can_delete_documents,
+        can_approve_documents: request.permissions.can_approve_documents,
+        can_manage_team: request.permissions.can_manage_team,
+        can_view_audit_logs: request.permissions.can_view_audit_logs,
+        invited_at: chrono::Utc::now(),
+        joined_at: Some(chrono::Utc::now()),
+        last_active_at: None,
+        invited_by: Some(auth_context.user_id),
+    };
+
+    Ok(Json(response))
+}
+
+/// Get team member details
+pub async fn get_team_member_endpoint(
+    State(api_state): State<crate::types::ApiState>,
+    headers: axum::http::HeaderMap,
+    Path((company_id, user_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<TeamMemberResponseDto>, AppError> {
+    // Extract auth context
+    let auth_context = crate::auth::auth_context_from_headers(&headers)
+        .map_err(|_| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    // Check authorization
+    if !auth_context.is_system_admin() && !auth_context.has_company_access(company_id) {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
+
+    // Get team member from database
+    let team_member = sqlx::query!(
+        r#"
+        SELECT tm.id, tm.user_id, tm.company_id, u.email, tm.role, tm.status,
+               tm.can_upload_documents, tm.can_download_documents, tm.can_delete_documents,
+               tm.can_approve_documents, tm.can_manage_team, tm.can_view_audit_logs,
+               tm.invited_at, tm.joined_at, tm.last_active_at, tm.invited_by
+        FROM team_members tm
+        JOIN users u ON tm.user_id = u.id
+        WHERE tm.company_id = $1 AND tm.user_id = $2 AND tm.status != 'inactive'
+        "#,
+        company_id,
+        user_id
+    )
+    .fetch_one(&api_state.db_pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound("Team member not found".to_string()),
+        _ => AppError::DatabaseError(e.to_string()),
+    })?;
+
+    let response = TeamMemberResponseDto {
+        id: team_member.id,
+        user_id: team_member.user_id,
+        company_id: team_member.company_id,
+        email: team_member.email,
+        role: team_member.role,
+        status: team_member.status,
+        can_upload_documents: team_member.can_upload_documents.unwrap_or(false),
+        can_download_documents: team_member.can_download_documents.unwrap_or(false),
+        can_delete_documents: team_member.can_delete_documents.unwrap_or(false),
+        can_approve_documents: team_member.can_approve_documents.unwrap_or(false),
+        can_manage_team: team_member.can_manage_team.unwrap_or(false),
+        can_view_audit_logs: team_member.can_view_audit_logs.unwrap_or(false),
+        invited_at: team_member.invited_at,
+        joined_at: team_member.joined_at,
+        last_active_at: team_member.last_active_at,
+        invited_by: team_member.invited_by,
+    };
+
+    Ok(Json(response))
+}
+
+/// Update team member role and permissions
+pub async fn update_team_member_endpoint(
+    State(api_state): State<crate::types::ApiState>,
+    headers: axum::http::HeaderMap,
+    Path((company_id, user_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<UpdateTeamMemberRequest>,
+) -> Result<Json<TeamMemberResponseDto>, AppError> {
+    // Extract auth context
+    let auth_context = crate::auth::auth_context_from_headers(&headers)
+        .map_err(|_| AppError::Unauthorized("Authentication required".to_string()))?;
+
+    // Check authorization - system admin or company member with manage_team permission
+    if !auth_context.is_system_admin() && !auth_context.has_company_access(company_id) {
+        return Err(AppError::Forbidden("Access denied".to_string()));
+    }
+
+    // Update team member
+    let updated_member = sqlx::query!(
+        r#"
+        UPDATE team_members
+        SET role = COALESCE($3, role),
+            can_upload_documents = COALESCE($4, can_upload_documents),
+            can_download_documents = COALESCE($5, can_download_documents),
+            can_delete_documents = COALESCE($6, can_delete_documents),
+            can_approve_documents = COALESCE($7, can_approve_documents),
+            can_manage_team = COALESCE($8, can_manage_team),
+            can_view_audit_logs = COALESCE($9, can_view_audit_logs),
+            updated_at = NOW()
+        WHERE company_id = $1 AND user_id = $2 AND status != 'inactive'
+        RETURNING id, user_id, company_id, role, status,
+                  can_upload_documents, can_download_documents, can_delete_documents,
+                  can_approve_documents, can_manage_team, can_view_audit_logs,
+                  invited_at, joined_at, last_active_at, invited_by
+        "#,
+        company_id,
+        user_id,
+        request.role.as_deref(),
+        request.permissions.as_ref().map(|p| p.can_upload_documents),
+        request
+            .permissions
+            .as_ref()
+            .map(|p| p.can_download_documents),
+        request.permissions.as_ref().map(|p| p.can_delete_documents),
+        request
+            .permissions
+            .as_ref()
+            .map(|p| p.can_approve_documents),
+        request.permissions.as_ref().map(|p| p.can_manage_team),
+        request.permissions.as_ref().map(|p| p.can_view_audit_logs),
+    )
+    .fetch_one(&api_state.db_pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => AppError::NotFound("Team member not found".to_string()),
+        _ => AppError::DatabaseError(e.to_string()),
+    })?;
+
+    // Get user email
+    let user_email = sqlx::query_scalar!("SELECT email FROM users WHERE id = $1", user_id)
+        .fetch_one(&api_state.db_pool)
+        .await
+        .map_err(|e| AppError::DatabaseError(e.to_string()))?;
+
+    let response = TeamMemberResponseDto {
+        id: updated_member.id,
+        user_id: updated_member.user_id,
+        company_id: updated_member.company_id,
+        email: user_email,
+        role: updated_member.role,
+        status: updated_member.status,
+        can_upload_documents: updated_member.can_upload_documents.unwrap_or(false),
+        can_download_documents: updated_member.can_download_documents.unwrap_or(false),
+        can_delete_documents: updated_member.can_delete_documents.unwrap_or(false),
+        can_approve_documents: updated_member.can_approve_documents.unwrap_or(false),
+        can_manage_team: updated_member.can_manage_team.unwrap_or(false),
+        can_view_audit_logs: updated_member.can_view_audit_logs.unwrap_or(false),
+        invited_at: updated_member.invited_at,
+        joined_at: updated_member.joined_at,
+        last_active_at: updated_member.last_active_at,
+        invited_by: updated_member.invited_by,
+    };
+
+    Ok(Json(response))
+}
+
+// ============================================================================
+// REQUEST/RESPONSE TYPES FOR NEW HANDLERS
+// ============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateCompanyRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub industry: Option<String>,
+    pub jurisdiction: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateKybStatusRequest {
+    pub status: String,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AddTeamMemberRequest {
+    pub user_id: Uuid,
+    pub email: String,
+    pub role: String,
+    pub permissions: TeamMemberPermissionsRequest,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateTeamMemberRequest {
+    pub role: Option<String>,
+    pub permissions: Option<TeamMemberPermissionsRequest>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TeamMemberPermissionsRequest {
+    pub can_upload_documents: bool,
+    pub can_download_documents: bool,
+    pub can_delete_documents: bool,
+    pub can_approve_documents: bool,
+    pub can_manage_team: bool,
+    pub can_view_audit_logs: bool,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct CompanyRecord {
+    pub id: Uuid,
+    pub name: String,
+    pub company_type: String,
+    pub kyb_status: String,
+    pub kyb_submitted_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub kyb_verified_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }

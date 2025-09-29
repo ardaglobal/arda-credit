@@ -13,10 +13,9 @@
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 
-use alloy_sol_types::private::FixedBytes;
-use alloy_sol_types::SolType;
+use alloy_sol_types::{private::FixedBytes, SolType};
 use arda_credit_lib::{
-    process_deal_batch, validate_transaction, LoanBatchPublicValues, ZkVMBatchInput,
+    process_deal_batch, validate_transaction, DealBatchPublicValues, ZkVMBatchInput,
 };
 use sha2::{Digest, Sha256};
 
@@ -72,7 +71,7 @@ pub fn main() {
     let transaction_types_hash: [u8; 32] = types_hasher.finalize().into();
 
     // Encode the public values with REAL ADS state roots
-    let public_values = LoanBatchPublicValues {
+    let public_values = DealBatchPublicValues {
         previous_state_root: FixedBytes(previous_state_root),
         new_state_root: FixedBytes(new_state_root),
         transaction_count: u32::try_from(input.batch.transactions.len())
@@ -83,7 +82,7 @@ pub fn main() {
         currentTotalBalance: current_total,
     };
 
-    let bytes = LoanBatchPublicValues::abi_encode(&public_values);
+    let bytes = DealBatchPublicValues::abi_encode(&public_values);
 
     // Commit to the public values with real ADS-generated state roots. The final proof will
     // have a commitment to all the bytes that were committed to. Individual deal amounts,

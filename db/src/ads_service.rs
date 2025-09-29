@@ -1232,6 +1232,7 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
         }
 
         // Load from database
+        let value_bytes = value.to_be_bytes().to_vec();
         let events = sqlx::query!(
             r#"
             SELECT event_id, event_type, timestamp, root_before, root_after,
@@ -1240,7 +1241,7 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
             WHERE nullifier_value = $1
             ORDER BY timestamp ASC
             "#,
-            value
+            value_bytes
         )
         .fetch_all(&self.pool)
         .await?;
@@ -1253,12 +1254,20 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
                 timestamp: row.timestamp,
                 root_before: {
                     let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&row.root_before);
+                    if let Some(ref root) = row.root_before {
+                        if root.len() == 32 {
+                            arr.copy_from_slice(root);
+                        }
+                    }
                     arr
                 },
                 root_after: {
                     let mut arr = [0u8; 32];
-                    arr.copy_from_slice(&row.root_after);
+                    if let Some(ref root) = row.root_after {
+                        if root.len() == 32 {
+                            arr.copy_from_slice(root);
+                        }
+                    }
                     arr
                 },
                 transaction_hash: row.transaction_hash,
@@ -2014,7 +2023,7 @@ impl IndexedMerkleTreeADS {
         // Convert database row to LoanOperation
         let loan_operation = LoanOperation {
             operation_type: row.transaction_type,
-            loan_id: row.deal_id,
+            loan_id: Some(row.deal_id),
             payment_id: row.payment_id,
             borrower_id: Some(row.originator_id),
             lender_id: Some(row.investor_id),

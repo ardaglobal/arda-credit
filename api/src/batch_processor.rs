@@ -1073,11 +1073,11 @@ impl BackgroundBatchProcessor {
 
         // Validate state roots and log decoded values for debugging
         if proof_data.public_values.len() >= 224 {
-            // Updated length for LoanBatchPublicValues with balance fields (7 * 32 bytes)
+            // Updated length for DealBatchPublicValues with balance fields (7 * 32 bytes)
             use alloy_sol_types::SolType;
-            use arda_credit_lib::LoanBatchPublicValues;
+            use arda_credit_lib::DealBatchPublicValues;
 
-            match LoanBatchPublicValues::abi_decode(&proof_data.public_values) {
+            match DealBatchPublicValues::abi_decode(&proof_data.public_values) {
                 Ok(decoded) => {
                     info!("✅ Using ABI-encoded public values (contract expects this format)");
                     info!(

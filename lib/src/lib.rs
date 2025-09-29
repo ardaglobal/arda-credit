@@ -53,22 +53,22 @@ mod zkvm_ads_consistency_tests; // Consistency tests for zkVM ADS
 pub mod proof;
 
 sol! {
-    /// Loan batch public values - what gets committed on-chain for loan processing
-    /// Individual loan details, amounts, and user identities remain private.
-    struct LoanBatchPublicValues {
+    /// Deal batch public values - what gets committed on-chain for deal processing
+    /// Individual deal details, amounts, and user identities remain private.
+    struct DealBatchPublicValues {
         bytes32 previous_state_root;     // Previous Merkle state root
         bytes32 new_state_root;          // New Merkle state root
         uint32 transaction_count;        // Number of transactions processed
         uint64 batch_timestamp;          // When batch was created
         bytes32 transaction_types_hash;  // Hash of transaction types (for transparency)
-        uint128 previousTotalBalance;    // Previous total debits + credits of all loans
-        uint128 currentTotalBalance;     // Current total debits + credits of all loans
+        uint128 previousTotalBalance;    // Previous total debits + credits of all deals
+        uint128 currentTotalBalance;     // Current total debits + credits of all deals
     }
 }
 
 // Re-export core processing functions and state
 pub use deal_processor::{
-    process_deal_batch, process_loan_operations, validate_transaction, GlobalLoanState,
+    process_deal_batch, process_loan_operations, validate_transaction, GlobalDealState,
     LoanOperation, MerkleTree, ProcessingError,
 };
 
@@ -118,12 +118,12 @@ pub use document_zkvm::{
 };
 
 // Keep the old LoanState type alias for backward compatibility
-pub type LoanState = GlobalLoanState;
+pub type LoanState = GlobalDealState;
 
 // Input structure for zkVM program with ADS state
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZkVMBatchInput {
-    pub initial_loan_state: GlobalLoanState,
+    pub initial_loan_state: GlobalDealState,
     pub initial_ads_state: ZkVMAds,
     pub batch: DealBatch,
 }

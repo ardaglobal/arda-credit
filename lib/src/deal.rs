@@ -30,17 +30,17 @@ use thiserror::Error;
 /// # Examples
 ///
 /// ```rust
-/// use lib::{LoanTerms, GlobalLoanState};
+/// use lib::{LoanTerms, GlobalDealState};
 ///
 /// // Use default terms (7.5% APR, 36 months)
-/// let default_state = GlobalLoanState::new();
+/// let default_state = GlobalDealState::new();
 ///
 /// // Create custom terms (12% APR, 60 months)
 /// let custom_terms = LoanTerms::new(1200, 60);
-/// let custom_state = GlobalLoanState::with_loan_terms(custom_terms);
+/// let custom_state = GlobalDealState::with_loan_terms(custom_terms);
 ///
 /// // Update terms on existing state
-/// let mut state = GlobalLoanState::new();
+/// let mut state = GlobalDealState::new();
 /// let new_terms = LoanTerms::new(500, 24); // 5% APR, 2 years
 /// state.set_loan_terms(new_terms);
 /// ```

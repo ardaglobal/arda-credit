@@ -131,7 +131,7 @@ pub async fn validate_transfer_eligibility(
     };
 
     // 2. Check if deal is for sale (Phase 1 status values)
-    if deal.loan_status == "for_sale" && deal.listing_status == "active" {
+    if deal.loan_status == "for_sale" && deal.listing_status.as_deref() == Some("active") {
         result.deal_for_sale = true;
     } else {
         result
@@ -149,7 +149,7 @@ pub async fn validate_transfer_eligibility(
     }
 
     // 4. Check price matches listing (only if listing exists)
-    if deal.listing_status == "active" {
+    if deal.listing_status.as_deref() == Some("active") {
         if deal.asking_price == request.purchase_price {
             result.price_matches = true;
         } else {

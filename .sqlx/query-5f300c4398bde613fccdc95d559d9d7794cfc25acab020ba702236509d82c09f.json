@@ -6,14 +6,14 @@
     "parameters": {
       "Left": [
         "Varchar",
-        "Varchar",
+        "Text",
         "Timestamptz",
         "Bytea",
         "Bytea",
         "Int8",
         "Varchar",
         "Jsonb",
-        "Int8"
+        "Bytea"
       ]
     },
     "nullable": []

@@ -329,9 +329,10 @@ impl NullifierDb {
 
     #[instrument(skip(self), level = "debug")]
     pub async fn exists(&self, value: i64) -> Result<bool, DbError> {
+        let value_bytes = value.to_be_bytes().to_vec();
         let count: Option<i64> = sqlx::query_scalar!(
             "SELECT COUNT(*) FROM nullifiers WHERE value = $1 AND is_active = true",
-            value
+            value_bytes
         )
         .fetch_one(&self.pool)
         .await
@@ -554,9 +555,10 @@ impl NullifierDb {
 
     #[instrument(skip(self), level = "debug")]
     pub async fn deactivate(&self, value: i64) -> Result<bool, DbError> {
+        let value_bytes = value.to_be_bytes().to_vec();
         let result = sqlx::query!(
             "UPDATE nullifiers SET is_active = false WHERE value = $1 AND is_active = true",
-            value
+            value_bytes
         )
         .execute(&self.pool)
         .await
@@ -845,6 +847,7 @@ impl NullifierDb {
             batch_id
         );
 
+        let nullifier_ids_i32: Vec<i32> = nullifier_ids.iter().map(|&id| id as i32).collect();
         let result = sqlx::query!(
             r#"
             UPDATE nullifiers
@@ -854,7 +857,7 @@ impl NullifierDb {
                 AND is_active = true
             "#,
             batch_id,
-            nullifier_ids
+            &nullifier_ids_i32[..]
         )
         .execute(&self.pool)
         .await
@@ -2739,6 +2742,7 @@ impl IndexedMerkleTree {
         nullifier_ids: &[i64],
         batch_id: i32,
     ) -> Result<u64, DbError> {
+        let nullifier_ids_i32: Vec<i32> = nullifier_ids.iter().map(|&id| id as i32).collect();
         let result = sqlx::query!(
             r#"
             UPDATE nullifiers
@@ -2746,7 +2750,7 @@ impl IndexedMerkleTree {
             WHERE id = ANY($2) AND loan_operation_type = 'balance_update'
             "#,
             batch_id,
-            nullifier_ids
+            &nullifier_ids_i32[..]
         )
         .execute(&self.db.nullifiers.pool)
         .await

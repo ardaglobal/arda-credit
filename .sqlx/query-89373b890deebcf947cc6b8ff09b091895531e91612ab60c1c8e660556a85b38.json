@@ -11,7 +11,7 @@
       {
         "ordinal": 1,
         "name": "event_type",
-        "type_info": "Varchar"
+        "type_info": "Text"
       },
       {
         "ordinal": 2,
@@ -51,7 +51,7 @@
       {
         "ordinal": 9,
         "name": "nullifier_value",
-        "type_info": "Int8"
+        "type_info": "Bytea"
       }
     ],
     "parameters": {
@@ -63,13 +63,13 @@
       false,
       false,
       false,
-      false,
-      false,
       true,
       true,
       true,
       true,
-      false
+      true,
+      true,
+      true
     ]
   },
   "hash": "89373b890deebcf947cc6b8ff09b091895531e91612ab60c1c8e660556a85b38"

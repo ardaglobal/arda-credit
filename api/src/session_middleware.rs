@@ -1,4 +1,5 @@
-use arda_credit_db::db::Identity;
+use crate::auth::AuthContext;
+use arda_credit_db::db::{Identity, User}; // Keep Identity alias for compatibility
 use axum::{
     extract::{Request, State},
     http::{HeaderMap, StatusCode},
@@ -82,17 +83,23 @@ pub async fn session_auth_middleware(
         .validate_session(&session_token)
         .await
     {
-        Ok(identity) => {
+        Ok(user) => {
             debug!(
-                "Session valid for user: {} ({})",
-                identity.email, identity.user_type
+                "Session valid for user: {} (company: {:?}, admin: {})",
+                user.email, user.company_id, user.system_admin
             );
 
             // Add user information to request headers for downstream handlers
             let headers = request.headers_mut();
-            headers.insert("x-user-id", identity.id.to_string().parse().unwrap());
-            headers.insert("x-user-email", identity.email.parse().unwrap());
-            headers.insert("x-user-type", identity.user_type.parse().unwrap());
+            headers.insert("x-user-id", user.id.to_string().parse().unwrap());
+            headers.insert("x-user-email", user.email.parse().unwrap());
+            if let Some(company_id) = user.company_id {
+                headers.insert("x-company-id", company_id.to_string().parse().unwrap());
+            }
+            headers.insert(
+                "x-system-admin",
+                user.system_admin.to_string().parse().unwrap(),
+            );
 
             Ok(next.run(request).await)
         }

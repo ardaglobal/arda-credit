@@ -10,8 +10,8 @@
         "Uuid",
         "Numeric",
         "Text",
-        "Timestamp",
-        "Timestamp"
+        "Timestamptz",
+        "Timestamptz"
       ]
     },
     "nullable": []

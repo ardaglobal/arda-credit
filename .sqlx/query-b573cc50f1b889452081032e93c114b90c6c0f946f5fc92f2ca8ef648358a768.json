@@ -1,0 +1,115 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE credit_line_requests\n        SET \n            status = 'APPROVED',\n            approved_amount = $2,\n            approved_rate_apr = $3,\n            matched_pool_id = $4,\n            updated_at = NOW()\n        WHERE id = $1\n        RETURNING\n            id, merchant_id, requested_amount, requested_rate_apr, requested_tenor_days,\n            collateral_basis, ltv_ratio, status, matched_pool_id, approved_amount,\n            approved_rate_apr, evaluation_notes, rejection_reason, created_at, updated_at, evaluation_json\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "merchant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "requested_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "requested_rate_apr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "requested_tenor_days",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "collateral_basis",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "ltv_ratio",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "matched_pool_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 9,
+        "name": "approved_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 10,
+        "name": "approved_rate_apr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 11,
+        "name": "evaluation_notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "rejection_reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "evaluation_json",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Numeric",
+        "Numeric",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "b573cc50f1b889452081032e93c114b90c6c0f946f5fc92f2ca8ef648358a768"
+}

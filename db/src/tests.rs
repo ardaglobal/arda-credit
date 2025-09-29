@@ -525,8 +525,8 @@ mod edge_case_tests {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    // Note: LoanBatchPublicValues not currently used in these tests but available if needed
-    // use arda_credit_lib::{LoanBatchPublicValues};
+    // Note: DealBatchPublicValues not currently used in these tests but available if needed
+    // use arda_credit_lib::{DealBatchPublicValues};
     use tracing_test::traced_test;
 
     #[tokio::test]

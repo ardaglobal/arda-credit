@@ -56,27 +56,27 @@
       {
         "ordinal": 10,
         "name": "opened_at",
-        "type_info": "Timestamp"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 11,
         "name": "expires_at",
-        "type_info": "Timestamp"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 12,
         "name": "closed_at",
-        "type_info": "Timestamp"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 13,
         "name": "created_at",
-        "type_info": "Timestamp"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 14,
         "name": "updated_at",
-        "type_info": "Timestamp"
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
@@ -88,15 +88,15 @@
     },
     "nullable": [
       false,
+      true,
       false,
       false,
       false,
       false,
       false,
       true,
-      false,
-      false,
       true,
+      false,
       true,
       true,
       true,

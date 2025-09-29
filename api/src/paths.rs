@@ -423,8 +423,8 @@ pub const STATE_CONTRACT: &str = api_path!("/state/{batch_id}/contract");
 /// Create batch from loan transactions
 pub const STATE_BATCH_CREATE: &str = api_path!("/state/batch/create");
 
-/// Get loan batch details
-pub const STATE_LOAN_BATCH_BY_ID: &str = api_path!("/state/loan-batch/{batch_id}");
+/// Get deal batch details
+pub const STATE_DEAL_BATCH_BY_ID: &str = api_path!("/state/deal-batch/{batch_id}");
 
 /// Get pending loan transactions ready for batching
 pub const STATE_BATCH_PENDING: &str = api_path!("/state/batch/pending");
@@ -437,12 +437,12 @@ pub const STATE_PAYMENTS: &str = api_path!("/state/payments");
 pub const STATE_PAYMENT_BY_ID: &str = api_path!("/state/payment/{transaction_id}");
 
 // Proof Operations
-/// Generate loan operation proof
-pub const STATE_PROOFS_LOAN_OPERATION: &str = api_path!("/state/proofs/loan-operation");
+/// Generate deal operation proof
+pub const STATE_PROOFS_DEAL_OPERATION: &str = api_path!("/state/proofs/deal-operation");
 
-/// Generate loan payment proof
-pub const STATE_PROOFS_LOAN_PAYMENT: &str =
-    api_path!("/state/proofs/loan-payment/{user_id}/{loan_id}/{payment_id}/{batch_id}");
+/// Generate deal payment proof
+pub const STATE_PROOFS_DEAL_PAYMENT: &str =
+    api_path!("/state/proofs/deal-payment/{user_id}/{deal_id}/{payment_id}/{batch_id}");
 
 /// Verify proof
 pub const STATE_PROOFS_VERIFY: &str = api_path!("/state/proofs/verify");
@@ -625,7 +625,7 @@ pub fn batch_path(batch_id: i32) -> String {
 
 /// Build deal batch path with batch_id parameter
 pub fn deal_batch_path(batch_id: i32) -> String {
-    replace_param(STATE_LOAN_BATCH_BY_ID, "batch_id", &batch_id.to_string())
+    replace_param(STATE_DEAL_BATCH_BY_ID, "batch_id", &batch_id.to_string())
 }
 
 /// Build batch proof path with batch_id parameter
@@ -650,7 +650,7 @@ pub fn deal_payment_proof_path(
     payment_id: &str,
     batch_id: i32,
 ) -> String {
-    let path = replace_param(STATE_PROOFS_LOAN_PAYMENT, "user_id", user_id);
+    let path = replace_param(STATE_PROOFS_DEAL_PAYMENT, "user_id", user_id);
     let path = replace_param(&path, "deal_id", deal_id);
     let path = replace_param(&path, "payment_id", payment_id);
     replace_param(&path, "batch_id", &batch_id.to_string())
@@ -1054,8 +1054,8 @@ pub fn get_all_endpoints() -> Vec<crate::health_handlers::EndpointInfo> {
         },
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
-            path: STATE_LOAN_BATCH_BY_ID.to_string(),
-            description: "Get loan batch details by ID".to_string(),
+            path: STATE_DEAL_BATCH_BY_ID.to_string(),
+            description: "Get deal batch details by ID".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
@@ -1086,18 +1086,18 @@ pub fn get_all_endpoints() -> Vec<crate::health_handlers::EndpointInfo> {
         },
         crate::health_handlers::EndpointInfo {
             method: "POST".to_string(),
-            path: STATE_PROOFS_LOAN_OPERATION.to_string(),
-            description: "Generate loan operation proof".to_string(),
+            path: STATE_PROOFS_DEAL_OPERATION.to_string(),
+            description: "Generate deal operation proof".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "GET".to_string(),
-            path: STATE_PROOFS_LOAN_PAYMENT.to_string(),
-            description: "Generate loan payment proof".to_string(),
+            path: STATE_PROOFS_DEAL_PAYMENT.to_string(),
+            description: "Generate deal payment proof".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "POST".to_string(),
             path: STATE_PROOFS_VERIFY.to_string(),
-            description: "Verify loan proof".to_string(),
+            description: "Verify deal proof".to_string(),
         },
         crate::health_handlers::EndpointInfo {
             method: "POST".to_string(),

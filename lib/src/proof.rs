@@ -4,7 +4,7 @@
 //! and verification that can be used by both the CLI script and API server.
 //! It consolidates the feature-rich logic from the script implementation.
 
-use crate::LoanBatchPublicValues;
+use crate::DealBatchPublicValues;
 use alloy_sol_types::SolType;
 use serde::{Deserialize, Serialize};
 use sindri::integrations::sp1_v5::SP1ProofInfo;
@@ -464,7 +464,7 @@ pub async fn verify_sindri_proof(
     }
 
     // Verification successful - now validate the loan batch details
-    let decoded = LoanBatchPublicValues::abi_decode(sp1_proof.public_values.as_slice())
+    let decoded = DealBatchPublicValues::abi_decode(sp1_proof.public_values.as_slice())
         .map_err(|e| ProofError::PublicValuesDecodeError(e.to_string()))?;
 
     let actual_transaction_count = decoded.transaction_count;

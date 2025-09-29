@@ -15,7 +15,7 @@
 
 use alloy_sol_types::SolType;
 use arda_credit_lib::{
-    hash_uuid, LoanBatch, LoanBatchPublicValues, LoanState, LoanTransaction, MetadataArray,
+    hash_uuid, DealBatch, DealBatchPublicValues, DealTransaction, GlobalDealState, MetadataArray,
     TransactionType, UserType, ZkVMAds, ZkVMBatchInput,
 };
 use eyre::Result;
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
 
     info!("📊 Test scenario:");
     info!("  Initial users: {}", initial_state.users.len());
-    info!("  Initial deals: {}", initial_state.loans.len());
+    info!("  Initial deals: {}", initial_state.deals.len());
     info!("  Batch transactions: {}", batch.transactions.len());
     info!(
         "  Transaction types: {:?}",
@@ -109,7 +109,7 @@ async fn main() -> Result<()> {
 }
 
 /// Run the test locally with Core proofs (fast for development)
-fn run_locally(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
+fn run_locally(initial_state: &GlobalDealState, batch: &DealBatch) -> Result<()> {
     info!("🔄 Generating Core proof (fast, for development)...");
 
     // Create a prover client for local testing
@@ -151,7 +151,7 @@ fn run_locally(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
 }
 
 /// Run the test with Sindri integration (no local proving)
-async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result<()> {
+async fn run_with_sindri(initial_state: &GlobalDealState, batch: &DealBatch) -> Result<()> {
     info!("🔄 Submitting deal batch directly to Sindri for proving...");
 
     // Submit directly to Sindri for proving (no local proof generation)
@@ -321,8 +321,8 @@ async fn run_with_sindri(initial_state: &LoanState, batch: &LoanBatch) -> Result
 fn analyze_proof_output(proof: &sp1_sdk::SP1ProofWithPublicValues) -> Result<()> {
     // Decode and analyze the public outputs
     let public_values = proof.public_values.as_slice();
-    let output = LoanBatchPublicValues::abi_decode(public_values)
-        .expect("Failed to decode loan batch public values");
+    let output = DealBatchPublicValues::abi_decode(public_values)
+        .expect("Failed to decode deal batch public values");
 
     info!("📤 Public outputs (what goes on-chain):");
     info!(
@@ -359,7 +359,7 @@ fn analyze_proof_output(proof: &sp1_sdk::SP1ProofWithPublicValues) -> Result<()>
 }
 
 /// Create a comprehensive test scenario demonstrating the deal lifecycle
-fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
+fn create_test_deal_scenario() -> (GlobalDealState, DealBatch, [u8; 32], [u8; 32]) {
     let batch_id = [1u8; 32];
     let batch_timestamp = 1_640_995_200; // January 1, 2022
 
@@ -373,7 +373,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let deal_id = hash_uuid(&deal_uuid);
 
     // Start with empty state and fund Alice so she can make deals
-    let mut initial_state = LoanState::new();
+    let mut initial_state = GlobalDealState::new();
 
     // Fund Alice with $100,000 so she can originate $50,000 deal with Bob
     initial_state.balance_state.balances.insert(
@@ -388,7 +388,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let mut alice_metadata = MetadataArray::empty();
     alice_metadata.as_mut_bytes()[0] = UserType::Originator as u8;
 
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [1u8; 32],
         user_id: alice_id,
         deal_id: [0u8; 32], // No deal for user registration
@@ -402,7 +402,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let mut bob_metadata = MetadataArray::empty();
     bob_metadata.as_mut_bytes()[0] = UserType::Investor as u8;
 
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [2u8; 32],
         user_id: bob_id,
         deal_id: [0u8; 32],
@@ -413,7 +413,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     });
 
     // 3. Alice submits KYC
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [3u8; 32],
         user_id: alice_id,
         deal_id: [0u8; 32],
@@ -424,7 +424,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     });
 
     // 4. Bob submits KYC
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [4u8; 32],
         user_id: bob_id,
         deal_id: [0u8; 32],
@@ -438,7 +438,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let mut alice_kyc_metadata = MetadataArray::empty();
     alice_kyc_metadata.as_mut_bytes()[0] = 1; // Approved
 
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [5u8; 32],
         user_id: alice_id,
         deal_id: [0u8; 32],
@@ -452,7 +452,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let mut bob_kyc_metadata = MetadataArray::empty();
     bob_kyc_metadata.as_mut_bytes()[0] = 1; // Approved
 
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [6u8; 32],
         user_id: bob_id,
         deal_id: [0u8; 32],
@@ -468,7 +468,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     deal_metadata.as_mut_bytes()[0..32].copy_from_slice(&bob_id); // originator
     deal_metadata.as_mut_bytes()[32..64].copy_from_slice(&alice_id); // investor
 
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [7u8; 32],
         user_id: alice_id, // Alice initiates the deal
         deal_id,
@@ -479,7 +479,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     });
 
     // 8. First deal payment: $2,500
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [8u8; 32],
         user_id: bob_id,
         deal_id,
@@ -490,7 +490,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     });
 
     // 9. Second deal payment: $2,500
-    transactions.push(LoanTransaction {
+    transactions.push(DealTransaction {
         transaction_id: [9u8; 32],
         user_id: bob_id,
         deal_id,
@@ -500,7 +500,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
         metadata: MetadataArray::empty(),
     });
 
-    let batch = LoanBatch {
+    let batch = DealBatch {
         batch_id,
         transactions,
         previous_state_root: initial_state.compute_state_hash(),
@@ -578,8 +578,8 @@ async fn run_benchmark_suite(args: &Args) -> Result<()> {
 }
 
 async fn run_sindri_throughput_test(
-    initial_state: &LoanState,
-    batch: &LoanBatch,
+    initial_state: &GlobalDealState,
+    batch: &DealBatch,
     args: &Args,
 ) -> Result<ThroughputAnalysis> {
     let start_time = Instant::now();
@@ -645,8 +645,8 @@ async fn run_sindri_throughput_test(
 }
 
 async fn submit_sindri_proof(
-    initial_state: LoanState,
-    batch: LoanBatch,
+    initial_state: GlobalDealState,
+    batch: DealBatch,
     _proof_index: u32,
 ) -> Result<String> {
     let mut stdin = SP1Stdin::new();
@@ -677,12 +677,12 @@ async fn submit_sindri_proof(
     Ok(proof_info.proof_id)
 }
 
-fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
+fn create_benchmark_scenario(num_transactions: u32) -> (GlobalDealState, DealBatch) {
     let batch_timestamp = 1_700_000_000u64;
     let batch_id = [1u8; 32];
 
     // Pre-fund the initial state like the working test (no UserDeposit transaction needed)
-    let mut initial_state = LoanState::new();
+    let mut initial_state = GlobalDealState::new();
     let originator_id = [1u8; 32]; // Different user IDs
     let investor_id = [2u8; 32]; // Different user IDs
     let deal_id = [1u8; 32];
@@ -702,7 +702,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
         {
             let mut originator_metadata = MetadataArray::empty();
             originator_metadata.as_mut_bytes()[0] = 1; // UserType::Originator
-            LoanTransaction {
+            DealTransaction {
                 transaction_id: [1u8; 32],
                 user_id: originator_id,
                 deal_id: [0u8; 32],
@@ -716,7 +716,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
         {
             let mut investor_metadata = MetadataArray::empty();
             investor_metadata.as_mut_bytes()[0] = 2; // UserType::Investor
-            LoanTransaction {
+            DealTransaction {
                 transaction_id: [2u8; 32],
                 user_id: investor_id,
                 deal_id: [0u8; 32],
@@ -727,7 +727,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
             }
         },
         // 3. Originator KYC submission
-        LoanTransaction {
+        DealTransaction {
             transaction_id: [3u8; 32],
             user_id: originator_id,
             deal_id: [0u8; 32],
@@ -737,7 +737,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
             metadata: MetadataArray::empty(),
         },
         // 4. Investor KYC submission
-        LoanTransaction {
+        DealTransaction {
             transaction_id: [4u8; 32],
             user_id: investor_id,
             deal_id: [0u8; 32],
@@ -750,7 +750,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
         {
             let mut kyc_metadata = MetadataArray::empty();
             kyc_metadata.as_mut_bytes()[0] = 1; // Approved
-            LoanTransaction {
+            DealTransaction {
                 transaction_id: [5u8; 32],
                 user_id: originator_id,
                 deal_id: [0u8; 32],
@@ -764,7 +764,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
         {
             let mut kyc_metadata = MetadataArray::empty();
             kyc_metadata.as_mut_bytes()[0] = 1; // Approved
-            LoanTransaction {
+            DealTransaction {
                 transaction_id: [6u8; 32],
                 user_id: investor_id,
                 deal_id: [0u8; 32],
@@ -780,7 +780,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
             // Pack originator_id and investor_id into metadata
             deal_metadata.as_mut_bytes()[0..32].copy_from_slice(&originator_id); // originator
             deal_metadata.as_mut_bytes()[32..64].copy_from_slice(&investor_id); // investor
-            LoanTransaction {
+            DealTransaction {
                 transaction_id: [7u8; 32],
                 user_id: investor_id, // Investor initiates the deal
                 deal_id,
@@ -800,7 +800,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
     // Ensure we have at least the base transactions
     if num_transactions < BASE_TRANSACTION_COUNT {
         transactions.truncate(num_transactions as usize);
-        let batch = LoanBatch {
+        let batch = DealBatch {
             batch_id,
             transactions,
             previous_state_root: initial_state.compute_state_hash(),
@@ -828,7 +828,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
         transaction_id[2] = ((i / 65536) % 256) as u8;
         transaction_id[3] = ((i / 16777216) % 256) as u8;
 
-        transactions.push(LoanTransaction {
+        transactions.push(DealTransaction {
             transaction_id,
             user_id: originator_id, // Originator makes payments
             deal_id,
@@ -839,7 +839,7 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
         });
     }
 
-    let batch = LoanBatch {
+    let batch = DealBatch {
         batch_id,
         transactions,
         previous_state_root: initial_state.compute_state_hash(),
@@ -1063,7 +1063,7 @@ fn sindri_scaling_prediction(num_transactions: u32) -> f64 {
     }
 }
 
-fn scale_batch_transactions(batch: &mut LoanBatch, target_count: u32, proof_index: u32) {
+fn scale_batch_transactions(batch: &mut DealBatch, target_count: u32, proof_index: u32) {
     let current_count = batch.transactions.len();
 
     if target_count as usize <= current_count {
@@ -1072,7 +1072,7 @@ fn scale_batch_transactions(batch: &mut LoanBatch, target_count: u32, proof_inde
     }
 
     // Find valid payment transactions to duplicate
-    let payment_txs: Vec<LoanTransaction> = batch
+    let payment_txs: Vec<DealTransaction> = batch
         .transactions
         .iter()
         .filter(|tx| tx.transaction_type == TransactionType::DealPayment)

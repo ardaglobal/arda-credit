@@ -1,4 +1,4 @@
-use arda_credit_db::db::{Identity, MagicLink, Session};
+use arda_credit_db::db::{Company, Identity, MagicLink, Session, User}; // Keep Identity alias for compatibility
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{Duration, Utc};
 use rand::Rng;
@@ -110,7 +110,7 @@ impl MagicLinkService {
         }
 
         // Find user by email
-        let user = self.get_user_by_email(email).await?;
+        let (user, _company) = self.get_user_by_email(email).await?;
 
         // Clean up expired tokens for this user first
         self.cleanup_expired_tokens_for_user(user.id).await?;
@@ -233,17 +233,16 @@ impl MagicLinkService {
         format!("{}?token={}&state={}", self.config.base_url, token, state)
     }
 
-    /// Get user by email address
+    /// Get user by email address with company information
     #[instrument(skip(self), level = "debug")]
-    async fn get_user_by_email(&self, email: &str) -> Result<Identity, MagicLinkError> {
-        let user = sqlx::query_as::<_, Identity>(
-            "SELECT * FROM identities WHERE email = $1 AND deleted_at IS NULL",
-        )
-        .bind(email)
-        .fetch_optional(&self.pool)
-        .await?;
+    async fn get_user_by_email(
+        &self,
+        email: &str,
+    ) -> Result<(User, Option<Company>), MagicLinkError> {
+        use db::get_user_by_email_with_company;
 
-        user.ok_or_else(|| MagicLinkError::UserNotFound(email.to_string()))
+        let result = get_user_by_email_with_company(&self.pool, email).await?;
+        result.ok_or_else(|| MagicLinkError::UserNotFound(email.to_string()))
     }
 
     /// Get user by ID

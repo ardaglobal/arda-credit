@@ -1,0 +1,112 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO credit_lines (\n            request_id,\n            merchant_id,\n            pool_id,\n            credit_limit,\n            available_credit,\n            utilized_amount,\n            rate_apr,\n            repayment_window_days,\n            status,\n            opened_at,\n            expires_at\n        )\n        VALUES ($1, $2, $3, $4, $4, 0, $5, $6, 'ACTIVE', NOW(), NOW() + ($7::TEXT || ' days')::INTERVAL)\n        RETURNING\n            id, request_id, merchant_id, pool_id, credit_limit, available_credit,\n            utilized_amount, rate_apr, repayment_window_days, status, opened_at,\n            expires_at, closed_at, created_at, updated_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "request_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "merchant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "pool_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "credit_limit",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "available_credit",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "utilized_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "rate_apr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "repayment_window_days",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "opened_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "closed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Numeric",
+        "Int4",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "6b06ce2fec82368aa55cac488e3787a0c21a67dd728b8ad49921c743079e4fb5"
+}

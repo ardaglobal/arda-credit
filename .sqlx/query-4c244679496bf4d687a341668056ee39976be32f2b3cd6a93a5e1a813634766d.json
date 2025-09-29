@@ -31,12 +31,12 @@
       {
         "ordinal": 5,
         "name": "listed_at",
-        "type_info": "Timestamp"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 6,
         "name": "expires_at",
-        "type_info": "Timestamp"
+        "type_info": "Timestamptz"
       },
       {
         "ordinal": 7,
@@ -96,7 +96,7 @@
       false,
       false,
       true,
-      false,
+      true,
       true,
       false,
       false,

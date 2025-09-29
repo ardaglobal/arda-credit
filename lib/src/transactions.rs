@@ -243,4 +243,4 @@ pub fn is_deal_transaction(transaction_type: TransactionType) -> bool {
 // These will be removed in a future phase after all references are updated
 pub type LoanTransaction = DealTransaction;
 pub type LoanBatch = DealBatch;
-pub type InternalLoanBatchPublicValues = InternalDealBatchPublicValues;
+// Note: InternalDealBatchPublicValues is defined as struct above, not alias

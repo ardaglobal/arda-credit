@@ -1,4 +1,4 @@
-//! Core loan processing logic for zkVM execution
+//! Core deal processing logic for zkVM execution
 //!
 //! This module contains the core state transition logic that will run inside
 //! the SP1 zkVM. It processes batches of mixed transaction types while maintaining
@@ -25,8 +25,8 @@ pub enum ProcessingError {
     #[error("User error: {0}")]
     UserError(#[from] UserError),
 
-    #[error("Loan error: {0}")]
-    LoanError(#[from] DealError), // was LoanError
+    #[error("Deal error: {0}")]
+    DealError(#[from] DealError),
 
     #[error("Balance error: {0}")]
     BalanceError(#[from] BalanceError),
@@ -60,14 +60,14 @@ pub enum ProcessingError {
     InvalidTransactionData,
 }
 
-/// Global state for loan processing (maintains user, loan, and pool state)
+/// Global state for deal processing (maintains user, deal, and pool state)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GlobalLoanState {
+pub struct GlobalDealState {
     /// All users in the system
     pub users: HashMap<[u8; 32], User>,
 
-    /// All loans in the system
-    pub loans: HashMap<[u8; 32], Deal>, // Keep loans field name for compatibility, but use Deal type
+    /// All deals in the system
+    pub deals: HashMap<[u8; 32], Deal>,
 
     /// All liquidity pools in the system
     pub pools: PoolState,
@@ -91,11 +91,11 @@ pub struct GlobalLoanState {
     pub last_updated: u64,
 }
 
-impl Default for GlobalLoanState {
+impl Default for GlobalDealState {
     fn default() -> Self {
         Self {
             users: HashMap::new(),
-            loans: HashMap::new(),
+            deals: HashMap::new(),
             pools: PoolState::new(),
             merchant_state: MerchantState::new(),
             credit_line_state: CreditLineState::new(),
@@ -107,7 +107,7 @@ impl Default for GlobalLoanState {
     }
 }
 
-impl GlobalLoanState {
+impl GlobalDealState {
     /// Create a new empty loan state with default loan terms
     #[must_use]
     pub fn new() -> Self {
@@ -119,7 +119,7 @@ impl GlobalLoanState {
     pub fn with_loan_terms(loan_terms: LoanTerms) -> Self {
         Self {
             users: HashMap::new(),
-            loans: HashMap::new(),
+            deals: HashMap::new(),
             pools: PoolState::new(),
             merchant_state: MerchantState::new(),
             balance_state: BalanceState::new(),
@@ -171,10 +171,10 @@ impl GlobalLoanState {
             TransactionType::DealOrigination => {
                 // was LoanOrigination
                 let mut deal_state = crate::deal::DealState {
-                    deals: self.loans.clone(), // Keep loans field for compatibility
+                    deals: self.deals.clone(), // Keep loans field for compatibility
                 };
                 deal_state.process_deal_origination(transaction, &self.users, &self.loan_terms)?; // was process_loan_origination
-                self.loans = deal_state.deals; // Keep loans field for compatibility
+                self.deals = deal_state.deals; // Keep loans field for compatibility
 
                 // Create balance updates for loan origination
                 let metadata = transaction.metadata.as_bytes();
@@ -201,9 +201,9 @@ impl GlobalLoanState {
                 // was LoanPayment
                 // Get deal info before processing payment for balance updates
                 let deal =
-                    self.loans
+                    self.deals
                         .get(&transaction.deal_id)
-                        .ok_or(ProcessingError::LoanError(DealError::DealNotFound {
+                        .ok_or(ProcessingError::DealError(DealError::DealNotFound {
                             // was LoanError::LoanNotFound  // Keep LoanError for compatibility
                             deal_id: transaction.deal_id, // was loan_id
                         }))?;
@@ -211,10 +211,10 @@ impl GlobalLoanState {
                 let payer_id = transaction.user_id;
 
                 let mut deal_state = crate::deal::DealState {
-                    deals: self.loans.clone(), // Keep loans field for compatibility
+                    deals: self.deals.clone(), // Keep loans field for compatibility
                 };
                 deal_state.process_deal_payment(transaction, &self.users)?; // was process_loan_payment
-                self.loans = deal_state.deals; // Keep loans field for compatibility
+                self.deals = deal_state.deals; // Keep loans field for compatibility
 
                 // Create balance updates for deal payment
                 let balance_updates = self.balance_state.create_payment_updates(
@@ -234,10 +234,10 @@ impl GlobalLoanState {
             TransactionType::DealCloseout => {
                 // was LoanCloseout
                 let mut deal_state = crate::deal::DealState {
-                    deals: self.loans.clone(), // Keep loans field for compatibility
+                    deals: self.deals.clone(), // Keep loans field for compatibility
                 };
                 deal_state.process_deal_closeout(transaction, &self.users)?; // was process_loan_closeout
-                self.loans = deal_state.deals; // Keep loans field for compatibility
+                self.deals = deal_state.deals; // Keep loans field for compatibility
             }
             TransactionType::UserDeposit => {
                 // Process user deposit by creating a balance update
@@ -582,7 +582,7 @@ impl GlobalLoanState {
     #[must_use]
     pub fn get_loan(&self, deal_id: &[u8; 32]) -> Option<&Deal> {
         // was loan_id, Loan
-        self.loans.get(deal_id) // was loan_id
+        self.deals.get(deal_id) // was loan_id
     }
 
     /// Get current state hash (for Merkle tree)
@@ -602,7 +602,7 @@ impl GlobalLoanState {
     pub fn compute_total_balance(&self) -> u128 {
         let mut total_balance = 0u128;
 
-        for loan in self.loans.values() {
+        for loan in self.deals.values() {
             // Add outstanding balance for each active loan
             if matches!(
                 loan.loan_status,
@@ -650,9 +650,9 @@ impl GlobalLoanState {
 /// Returns `ProcessingError` if batch processing fails due to validation errors,
 /// temporal ordering issues, or transaction processing errors.
 pub fn process_deal_batch(
-    initial_state: GlobalLoanState,
+    initial_state: GlobalDealState,
     batch: &LoanBatch,
-) -> Result<GlobalLoanState, ProcessingError> {
+) -> Result<GlobalDealState, ProcessingError> {
     let mut state = initial_state;
     // Additional validation: ensure batch timestamp is not older than current state
     if batch.created_at < state.last_updated {
@@ -725,7 +725,7 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
 /// or if KYC requirements are not met.
 pub fn validate_transaction_with_state(
     transaction: &LoanTransaction,
-    current_state: &GlobalLoanState,
+    current_state: &GlobalDealState,
 ) -> Result<(), ProcessingError> {
     // Run basic validation first
     validate_transaction(transaction)?;
@@ -821,7 +821,7 @@ fn validate_batch_temporal_ordering(batch: &LoanBatch) -> Result<(), ProcessingE
 }
 
 // Re-export the old LoanState name for backward compatibility
-pub type LoanState = GlobalLoanState;
+pub type LoanState = GlobalDealState;
 
 // ============================================================================
 // NEW LOAN OPERATIONS INTERFACE
@@ -983,7 +983,7 @@ pub fn process_loan_operations(
     operations: &[LoanOperation],
     previous_root: [u8; 32],
     batch_timestamp: u64,
-) -> crate::LoanBatchPublicValues {
+) -> crate::DealBatchPublicValues {
     use sha2::{Digest, Sha256};
 
     let mut current_balance = previous_balance;
@@ -1007,7 +1007,7 @@ pub fn process_loan_operations(
 
     let new_root = merkle_tree.root();
 
-    crate::LoanBatchPublicValues {
+    crate::DealBatchPublicValues {
         previous_state_root: previous_root.into(),
         new_state_root: new_root.into(),
         transaction_count: u32::try_from(operations.len()).unwrap_or(0),
@@ -1082,7 +1082,7 @@ mod tests {
 
     #[test]
     fn test_full_deal_lifecycle() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
 
         let originator_id = [1u8; 32];
         let investor_id = [2u8; 32];
@@ -1184,7 +1184,7 @@ mod tests {
 
     #[test]
     fn test_deal_origination_without_kyc_fails() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
 
         let originator_id = [1u8; 32];
         let investor_id = [2u8; 32];
@@ -1212,7 +1212,7 @@ mod tests {
 
     #[test]
     fn test_process_batch() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
 
         let originator_id = [1u8; 32];
         let investor_id = [2u8; 32];
@@ -1244,7 +1244,7 @@ mod tests {
     fn test_configurable_deal_terms() {
         // Test with custom deal terms
         let custom_terms = LoanTerms::new(1200, 60); // 12% APR, 5 year term (keep LoanTerms for compatibility)
-        let mut state = GlobalLoanState::with_loan_terms(custom_terms);
+        let mut state = GlobalDealState::with_loan_terms(custom_terms);
 
         let originator_id = [1u8; 32];
         let investor_id = [2u8; 32];
@@ -1298,7 +1298,7 @@ mod tests {
         assert_eq!(deal.maturity_date, expected_maturity);
 
         // Test with default deal terms
-        let mut default_state = GlobalLoanState::new();
+        let mut default_state = GlobalDealState::new();
         assert_eq!(default_state.loan_terms.interest_rate, 750); // Default 7.5%
         assert_eq!(default_state.loan_terms.term_months, 36); // Default 3 years
 
@@ -1311,7 +1311,7 @@ mod tests {
 
     /// Helper function to set up KYC'd users for testing
     fn setup_kycd_users(
-        state: &mut GlobalLoanState,
+        state: &mut GlobalDealState,
         originator_id: [u8; 32],
         investor_id: [u8; 32],
     ) {
@@ -1442,7 +1442,7 @@ mod tests {
 
     #[test]
     fn test_temporal_ordering_validation() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
         state.last_updated = 2000;
 
         // Test transaction newer than state (valid)
@@ -1629,7 +1629,7 @@ mod tests {
 
     #[test]
     fn test_user_deposit_processing() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
         let user_id = [1u8; 32];
         let wallet_address = [2u8; 32];
 
@@ -1718,7 +1718,7 @@ mod tests {
 
     #[test]
     fn test_mixed_batch_with_deposits() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
 
         let depositor_id = [1u8; 32];
         let borrower_id = [2u8; 32];
@@ -1931,7 +1931,7 @@ mod tests {
 
     #[test]
     fn test_compute_total_balance() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
 
         // Initially, total balance should be 0
         assert_eq!(state.compute_total_balance(), 0);
@@ -1992,22 +1992,22 @@ mod tests {
             maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
         };
 
-        state.loans.insert(loan1_id, loan1);
-        state.loans.insert(loan2_id, loan2);
-        state.loans.insert(loan3_id, loan3);
+        state.deals.insert(loan1_id, loan1);
+        state.deals.insert(loan2_id, loan2);
+        state.deals.insert(loan3_id, loan3);
 
         // Total balance should be $100 + $200 = $300 (loan3 doesn't count as it's paid off)
         assert_eq!(state.compute_total_balance(), 30000);
 
         // Make a payment on loan1 to reduce its outstanding balance
-        state.loans.get_mut(&loan1_id).unwrap().outstanding_balance = 5000; // $50 remaining
+        state.deals.get_mut(&loan1_id).unwrap().outstanding_balance = 5000; // $50 remaining
 
         // Total balance should now be $50 + $200 = $250
         assert_eq!(state.compute_total_balance(), 25000);
 
         // Pay off loan2
-        state.loans.get_mut(&loan2_id).unwrap().outstanding_balance = 0;
-        state.loans.get_mut(&loan2_id).unwrap().loan_status = LoanStatus::PaidOff;
+        state.deals.get_mut(&loan2_id).unwrap().outstanding_balance = 0;
+        state.deals.get_mut(&loan2_id).unwrap().loan_status = LoanStatus::PaidOff;
 
         // Total balance should now be just $50
         assert_eq!(state.compute_total_balance(), 5000);
@@ -2015,7 +2015,7 @@ mod tests {
 
     #[test]
     fn test_user_withdrawal_processing() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
         let user_id = [1u8; 32];
         let recipient_address = [42u8; 32]; // Mock recipient wallet address
 
@@ -2066,7 +2066,7 @@ mod tests {
 
     #[test]
     fn test_withdrawal_insufficient_balance_fails() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
         let user_id = [1u8; 32];
         let recipient_address = [42u8; 32];
 
@@ -2099,7 +2099,7 @@ mod tests {
 
     #[test]
     fn test_withdrawal_without_kyc_fails() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
         let user_id = [1u8; 32];
         let recipient_address = [42u8; 32];
 
@@ -2127,7 +2127,7 @@ mod tests {
 
     #[test]
     fn test_withdrawal_batch_processing() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
         let user1_id = [1u8; 32];
         let user2_id = [2u8; 32];
         let recipient1 = [42u8; 32];
@@ -2276,7 +2276,7 @@ mod tests {
 
     #[test]
     fn test_pool_creation() {
-        let mut state = GlobalLoanState::new();
+        let mut state = GlobalDealState::new();
         let investor_id = [1u8; 32];
         let pool_id = [10u8; 32];
 
