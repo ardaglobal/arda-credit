@@ -36,7 +36,7 @@ struct TestUser {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use api::user_handlers::RegisterUserResponse;
+    use api::handlers::users::users::RegisterUserResponse;
 
     /// Main integration test - runs all test scenarios
     /// Note: This test requires a live API server running on localhost:8080
