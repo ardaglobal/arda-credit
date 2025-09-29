@@ -1,16 +1,20 @@
 #!/usr/bin/env cargo run --bin create_user_and_magic_link
-//! Script to create a user with email chad@arda.xyz and generate a magic link for testing
+//! Script to create a user and generate a magic link for testing
 //!
 //! This script performs the following steps:
-//! 1. Registers a new user with email chad@arda.xyz using INVESTOR2025 invite code
+//! 1. Registers a new user with the specified email using INVESTOR2025 invite code
 //! 2. Requests a magic link for login
 //!
 //! Usage:
-//!     cargo run --bin create_user_and_magic_link
+//!     cargo run --bin create_user_and_magic_link [email]
+//!
+//! Arguments:
+//!     email - Email address to use (default: test@test.com)
 //!
 //! Environment variables:
 //!     API_BASE_URL - Base URL for the API server (default: http://localhost:8080)
 
+use clap::Parser;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -46,25 +50,38 @@ struct MagicLinkResponse {
     timestamp: String,
 }
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Email address to use for user creation and magic link
+    #[arg(default_value = "test@test.com")]
+    email: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
     tracing_subscriber::fmt::init();
+
+    // Parse command line arguments
+    let args = Args::parse();
+    let email = args.email.clone();
 
     // Get API base URL from environment or use default
     let api_base_url =
         env::var("API_BASE_URL").unwrap_or_else(|_| "http://0.0.0.0:8080".to_string());
 
     info!("🚀 Starting user creation and magic link generation script");
+    info!("📧 Email: {}", email);
     info!("📍 API Base URL: {}", api_base_url);
 
     let client = Client::new();
 
     // Step 1: Register the user
-    info!("👤 Step 1: Registering user chad@arda.xyz");
+    info!("👤 Step 1: Registering user {}", email);
 
     let register_request = RegisterUserRequest {
-        email: "chad@arda.xyz".to_string(),
+        email: email.clone(),
         jurisdiction: Some("US".to_string()),
         invite_code: "INVESTOR2025".to_string(),
     };
@@ -88,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("   Created At: {}", response_body.created_at);
         }
         reqwest::StatusCode::CONFLICT => {
-            info!("⚠️  User already exists with email chad@arda.xyz");
+            info!("⚠️  User already exists with email {}", email);
             info!("   Continuing to magic link generation...");
         }
         reqwest::StatusCode::OK => {
@@ -112,10 +129,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Step 2: Request magic link
-    info!("🔗 Step 2: Requesting magic link for chad@arda.xyz");
+    info!("🔗 Step 2: Requesting magic link for {}", email);
 
     let magic_link_request = MagicLinkRequest {
-        email: "chad@arda.xyz".to_string(),
+        email: email.clone(),
         redirect_uri: Some("/dashboard".to_string()),
     };
 
@@ -146,9 +163,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             info!("   Timestamp: {}", response_body.timestamp);
 
-            info!("📧 Check your email (chad@arda.xyz) for the magic link!");
+            info!("📧 Check your email ({}) for the magic link!", email);
             info!("🔍 You can also check the database directly for the magic link token:");
-            info!("   psql $DATABASE_URL -c \"SELECT token, state, expires_at FROM magic_links WHERE email = 'chad@arda.xyz' ORDER BY created_at DESC LIMIT 1;\"");
+            info!("   psql $DATABASE_URL -c \"SELECT token, state, expires_at FROM magic_links WHERE email = '{}' ORDER BY created_at DESC LIMIT 1;\"", email);
 
             info!("🎯 Next steps:");
             info!("1. Copy the magic link from your email or database");

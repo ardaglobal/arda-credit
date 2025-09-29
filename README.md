@@ -97,18 +97,13 @@ Arda Credit uses **magic link authentication** for secure, passwordless access.
 
 ### Quick Start
 
+To test the magic link authentication flow, you can use the following commands:
+
 ```bash
-# 1. Request magic link
-curl -X POST http://localhost:8080/api/v1/auth/magic-link \
-  -H "Content-Type: application/json" \
-  -d '{"email":"user@example.com"}'
-
-# 2. Check your email and click the magic link
-
-# 3. Use the session for authenticated requests
-curl -H "Cookie: session_token=your_session" \
-  http://localhost:8080/api/v1/auth/me
+./create_user_and_magic_link.sh user@example.com
 ```
+
+More details can be found in [`scripts/create-user-magic-link/README.md`](scripts/create-user-magic-link/README.md).
 
 ### Configuration
 
