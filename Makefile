@@ -15,8 +15,6 @@ help: Makefile
 	@echo " Choose a command to run in '$(APPNAME)':"
 	@sed -n 's/^##//p' $< | column -t -s ':' | sed -e 's/^/ /'
 	@echo ""
-	@echo "💡 AI-Powered Development:"
-	@echo "  make i2p ISSUE=\"your implementation request\"  - Generate AI-to-AI prompts for any codebase issue"
 
 ## install: Install all dependencies
 .PHONY: install
@@ -260,112 +258,6 @@ bench-zk:
 .PHONY: cli
 cli:
 	@cargo run --bin cli -- $(ARGS)
-
-## i2p: Generate AI-to-AI implementation prompts using dynamic codebase analysis
-# Usage: make i2p ISSUE="Add comprehensive observability metrics to batch processor"
-# Environment: Uses .env file from project root for OPENROUTER_API_KEY
-# Dependencies: Auto-installs Python requirements if needed
-.PHONY: i2p
-i2p:
-	@if [ -z "$(ISSUE)" ]; then \
-		echo "❌ ISSUE parameter is required"; \
-		echo "💡 Usage: make i2p ISSUE=\"Add comprehensive observability metrics to batch processor\""; \
-		exit 1; \
-	fi
-	@echo "🎯 Generating AI-to-AI implementation prompt..."
-	@echo "📋 Issue: $(ISSUE)"
-	@echo ""
-	@# Check and install Python dependencies
-	@echo "🔧 Checking Python dependencies..."
-	@if ! python3 -c "import openai, dotenv" 2>/dev/null; then \
-		echo "📦 Installing Python dependencies..."; \
-		pip3 install -r .evals/requirements.txt --quiet || { \
-			echo "❌ Failed to install Python dependencies"; \
-			echo "💡 Try: pip3 install -r .evals/requirements.txt"; \
-			exit 1; \
-		}; \
-		echo "✅ Python dependencies installed successfully"; \
-	else \
-		echo "✅ Python dependencies already installed"; \
-	fi
-	@# Check ast-grep dependency
-	@echo "🔧 Checking ast-grep dependency..."
-	@if ! command -v ast-grep >/dev/null 2>&1; then \
-		echo "📦 Installing ast-grep..."; \
-		if command -v brew >/dev/null 2>&1; then \
-			brew install ast-grep --quiet || { \
-				echo "❌ Failed to install ast-grep via brew"; \
-				echo "💡 Try: brew install ast-grep"; \
-				exit 1; \
-			}; \
-			echo "✅ ast-grep installed successfully via Homebrew"; \
-		elif command -v cargo >/dev/null 2>&1; then \
-			cargo install ast-grep --quiet || { \
-				echo "❌ Failed to install ast-grep via cargo"; \
-				echo "💡 Try: cargo install ast-grep"; \
-				exit 1; \
-			}; \
-			echo "✅ ast-grep installed successfully via cargo"; \
-		elif command -v npm >/dev/null 2>&1; then \
-			npm install -g @ast-grep/cli --silent || { \
-				echo "❌ Failed to install ast-grep via npm"; \
-				echo "💡 Try: npm install -g @ast-grep/cli"; \
-				exit 1; \
-			}; \
-			echo "✅ ast-grep installed successfully via npm"; \
-		else \
-			echo "❌ No package manager found (brew/cargo/npm)"; \
-			echo "💡 macOS: brew install ast-grep"; \
-			echo "💡 Rust: cargo install ast-grep"; \
-			echo "💡 Node.js: npm install -g @ast-grep/cli"; \
-			echo "💡 Or visit: https://ast-grep.github.io/guide/quick-start.html"; \
-			exit 1; \
-		fi; \
-	else \
-		echo "✅ ast-grep already installed ($$(command -v ast-grep))"; \
-	fi
-	@# Check code2prompt dependency
-	@echo "🔧 Checking code2prompt dependency..."
-	@if ! command -v code2prompt >/dev/null 2>&1; then \
-		echo "📦 Installing code2prompt..."; \
-		if command -v brew >/dev/null 2>&1; then \
-			brew install code2prompt --quiet || { \
-				echo "❌ Failed to install code2prompt via brew"; \
-				echo "💡 Try: brew install code2prompt"; \
-				exit 1; \
-			}; \
-			echo "✅ code2prompt installed successfully via Homebrew"; \
-		elif command -v pip3 >/dev/null 2>&1; then \
-			pip3 install code2prompt --quiet || { \
-				echo "❌ Failed to install code2prompt via pip"; \
-				echo "💡 Try: pip3 install code2prompt"; \
-				exit 1; \
-			}; \
-			echo "✅ code2prompt installed successfully via pip"; \
-		else \
-			echo "❌ No package manager found (brew/pip)"; \
-			echo "💡 macOS: brew install code2prompt"; \
-			echo "💡 Python: pip3 install code2prompt"; \
-			exit 1; \
-		fi; \
-	else \
-		echo "✅ code2prompt already installed ($$(command -v code2prompt))"; \
-	fi
-	@echo "🔧 Using enhanced LLM analysis for maximum accuracy"
-	@echo ""
-	@# Check .env file and run i2p
-	@if [ -f .env ]; then \
-		export $$(grep -v '^#' .env | xargs) && \
-		cd .evals && python3 i2p.py "$(ISSUE)" --llm; \
-	else \
-		echo "❌ .env file not found in project root"; \
-		echo "💡 Run 'make env' to create .env file and add OPENROUTER_API_KEY"; \
-		exit 1; \
-	fi
-	@echo ""
-	@echo "✅ Implementation prompt generated!"
-	@echo "📄 Output saved to: .evals/i2p_dynamic_prompt.md"
-	@echo "🤖 Ready for AI agent execution (Cursor, Claude Code, etc.)"
 
 ## server: Start API server locally (in debug mode with verbose logging) with deposit monitor and withdrawal executor
 .PHONY: server
