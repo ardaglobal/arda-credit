@@ -9,7 +9,7 @@ mod tests {
     #[test]
     fn test_openapi_spec_generation() {
         let spec = ApiDoc::openapi();
-        assert_eq!(spec.info.title, "Arda Credit Deal API");
+        assert_eq!(spec.info.title, "Arda API");
         assert_eq!(spec.info.version, "v1");
 
         // Verify we have some components defined
