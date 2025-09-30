@@ -8,6 +8,11 @@ DOCKER_TAG ?= $(shell whoami)-dev
 PLATFORM ?= linux/amd64
 APPNAME ?= arda-credit
 
+# Anvil default private key (from foundry docs)
+# Corresponds to account: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (10000 ETH)
+# Only used for local/staging environments - never use in production
+ANVIL_PRIVATE_KEY = ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
 
 ## help: Get more info on make commands.
 .PHONY: help
@@ -77,10 +82,12 @@ up:
 	fi
 	@echo "✅ Background Services starting"
 
-## down: Stop all services
+## down: Stop all services (including Anvil)
 .PHONY: down
 down:
-	docker compose down -v
+	@# Stop all services including those with profiles
+	@COMPOSE_PROFILES=local,staging docker compose down -v || docker compose down -v
+	@echo "✅ All services stopped"
 
 ## docker-build: Build image locally
 .PHONY: docker-build
@@ -315,7 +322,7 @@ server: up
 		--database-url postgresql://postgres:password@127.0.0.1:5432/arda_credit_db \
 		--ethereum-rpc-url $${ETHEREUM_RPC_URL:-http://127.0.0.1:8545} \
 		--contract-address $$ETHEREUM_CONTRACT_ADDRESS \
-		--private-key $${ETHEREUM_PRIVATE_KEY:-ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80} \
+		--private-key $${ETHEREUM_PRIVATE_KEY:-$(ANVIL_PRIVATE_KEY)} \
 		--poll-interval 30 \
 		--batch-size 10 \
 		> withdrawal_executor.log 2>&1 &
@@ -416,7 +423,7 @@ deploy-contracts:
 	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
 	if [ "$$SERVER_ENV" = "local" ] || [ "$$SERVER_ENV" = "staging" ]; then \
 		export ETHEREUM_RPC_URL=http://127.0.0.1:8545; \
-		export ETHEREUM_WALLET_PRIVATE_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80; \
+		export ETHEREUM_WALLET_PRIVATE_KEY=$(ANVIL_PRIVATE_KEY); \
 		echo "📡 Forcing local Anvil: $$ETHEREUM_RPC_URL"; \
 		echo "🔑 Using Anvil default key"; \
 	else \
@@ -448,13 +455,6 @@ deploy-contracts:
 	@echo "📝 Deployment details saved to contracts/deployments/$${SERVER_ENVIRONMENT:-local}-deployment.json"
 	@echo ""
 	@echo "💡 Update your .env file with the deployed contract addresses"
-
-## deploy-contract: Legacy command (use deploy-contracts instead)
-.PHONY: deploy-contract
-deploy-contract:
-	@echo "⚠️  'make deploy-contract' is deprecated. Use 'make deploy-contracts' instead."
-	@echo ""
-	@$(MAKE) deploy-contracts
 
 ## anvil-start: Start Anvil devnet manually
 .PHONY: anvil-start
@@ -503,7 +503,7 @@ faucet-request:
 	echo "📋 USDC contract: $$USDC_ADDR"; \
 	cd contracts && cast send $$FAUCET_ADDR "requestFunds()" \
 		--rpc-url http://127.0.0.1:8545 \
-		--private-key ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+		--private-key $(ANVIL_PRIVATE_KEY)
 	@echo "✅ Faucet request completed!"
 
 ## faucet-status: Check faucet status and user's next available request time
