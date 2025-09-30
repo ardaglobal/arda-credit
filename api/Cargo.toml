@@ -89,10 +89,10 @@ ipnetwork  = { version = "0.21", features = [ "serde" ] }
 time       = "0.3"
 
 # OpenTelemetry dependencies (compatible versions)
-opentelemetry                      = { version = "0.20.0", features = [ "rt-tokio", "trace" ] }
+opentelemetry                      = { version = "0.31.0", features = [ "rt-tokio", "trace" ] }
 opentelemetry-otlp                 = { version = "0.31.0", features = [ "trace" ] }
 opentelemetry-semantic-conventions = { version = "0.31.0" }
-tonic                              = { version = "0.12.0", features = [ "tls-roots" ] }
+tonic                              = { version = "0.14.1", features = [ "tls-roots" ] }
 tracing-opentelemetry              = { version = "0.31.0" }
 
 # Middleware dependencies
