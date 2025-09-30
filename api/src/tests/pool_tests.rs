@@ -13,12 +13,12 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use crate::test_utils::*;
-use crate::pool_handlers::{
+use crate::handlers::pools::pools::{
     create_pool, get_pool_details, list_pools, update_pool_status,
     get_pool_utilization, get_pool_transactions, get_investor_dashboard,
     get_investor_pool_summaries, get_market_overview, get_pool_performance,
 };
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test creating a liquidity pool
 #[tokio::test]

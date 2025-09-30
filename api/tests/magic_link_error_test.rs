@@ -7,9 +7,11 @@ use chrono::{Duration, Utc};
 use serde_json::Value;
 use tower::ServiceExt;
 
-use api::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use api::test_utils::{create_test_app_with_magic_links, create_test_user, TestApp, TestContext};
-use api::types::ApiState;
+use api::config::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
+use api::config::types::ApiState;
+use api::utils::test_utils::{
+    create_test_app_with_magic_links, create_test_user, TestApp, TestContext,
+};
 
 /// Test context for error handling tests
 struct ErrorTestContext {
@@ -257,7 +259,7 @@ async fn test_magic_link_expired() {
     use chrono::{Duration, Utc};
     let expired_time = Utc::now() - Duration::minutes(15); // 15 minutes ago
 
-    let token_hash = api::magic_link_service::MagicLinkService::hash_token(expired_token);
+    let token_hash = api::services::magic_link_service::MagicLinkService::hash_token(expired_token);
 
     sqlx::query!(
         r#"
@@ -298,7 +300,8 @@ async fn test_magic_link_already_consumed() {
     let consumed_token = "consumed-token-123456789012345678901234567";
     let consumed_state = "consumed-state-12345678901234567890123456";
 
-    let token_hash = api::magic_link_service::MagicLinkService::hash_token(consumed_token);
+    let token_hash =
+        api::services::magic_link_service::MagicLinkService::hash_token(consumed_token);
 
     sqlx::query!(
         r#"

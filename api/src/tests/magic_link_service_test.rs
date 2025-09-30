@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::magic_link_service::{MagicLinkService, MagicLinkConfig, MagicLinkError};
+    use crate::services::magic_link_service::{MagicLinkService, MagicLinkConfig, MagicLinkError};
     use std::sync::Arc;
     use tokio_test;
 
@@ -13,7 +13,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_token_generation() {
-        use crate::magic_link_service::MagicLinkService;
+        use crate::services::magic_link_service::MagicLinkService;
 
         // Test token generation
         let token1 = MagicLinkService::generate_token();
@@ -34,7 +34,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_state_generation() {
-        use crate::magic_link_service::MagicLinkService;
+        use crate::services::magic_link_service::MagicLinkService;
 
         let state1 = MagicLinkService::generate_state();
         let state2 = MagicLinkService::generate_state();
@@ -49,7 +49,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_token_hashing() {
-        use crate::magic_link_service::MagicLinkService;
+        use crate::services::magic_link_service::MagicLinkService;
 
         let token = "test-token-123";
         let hash1 = MagicLinkService::hash_token(token);

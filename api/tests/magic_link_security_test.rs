@@ -2,11 +2,11 @@
 //!
 //! Tests rate limiting, CSRF protection, and other security measures
 
-use api::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use api::test_utils::{
+use api::config::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
+use api::config::types::ApiState;
+use api::utils::test_utils::{
     create_test_app_with_magic_links, create_test_user, TestApp, TestContext, TestUser,
 };
-use api::types::ApiState;
 use axum::http::StatusCode;
 use tower::ServiceExt;
 
