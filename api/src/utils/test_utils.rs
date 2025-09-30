@@ -140,8 +140,8 @@ impl TestDatabase {
 /// Create a test API state with all required services
 pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
     use crate::{
-        auth::AuthService, batch_processor::BatchProcessorHandle, BalanceVerificationService,
-        WithdrawalTransactionService,
+        services::auth::AuthService, services::batch_processor::BatchProcessorHandle,
+        BalanceVerificationService, WithdrawalTransactionService,
     };
 
     // Create ADS service
@@ -165,7 +165,7 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
 
     ApiState {
         pool: pool.clone(),
-        config: crate::router::ApiConfig {
+        config: crate::api::router::ApiConfig {
             server_name: "Test API".to_string(),
             version: "1.0.0".to_string(),
             max_batch_size: 10,
@@ -176,7 +176,9 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
         withdrawal_service,
         balance_service,
         metrics_handle: None, // No metrics in tests
-        session_service: Arc::new(crate::session_service::SessionService::new(pool.clone())),
+        session_service: Arc::new(crate::services::session_service::SessionService::new(
+            pool.clone(),
+        )),
         magic_link_service: None,
         email_rate_limiter: None,
         withdrawal_executor: None,
@@ -187,12 +189,12 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
 /// Create a test API state with magic link services enabled
 pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
     use crate::{
-        auth::AuthService,
-        batch_processor::BatchProcessorHandle,
-        email_service::EmailService,
-        magic_link_service::{MagicLinkConfig, MagicLinkService},
-        middleware::EmailRateLimiter,
-        session_service::SessionService,
+        middleware::middleware::EmailRateLimiter,
+        services::auth::AuthService,
+        services::batch_processor::BatchProcessorHandle,
+        services::email_service::EmailService,
+        services::magic_link_service::{MagicLinkConfig, MagicLinkService},
+        services::session_service::SessionService,
         BalanceVerificationService, WithdrawalTransactionService,
     };
 
@@ -241,7 +243,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
 
     ApiState {
         pool: pool.clone(),
-        config: crate::router::ApiConfig {
+        config: crate::api::router::ApiConfig {
             server_name: "Test API".to_string(),
             version: "1.0.0".to_string(),
             max_batch_size: 50,
@@ -262,12 +264,12 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
 
 /// Create a test app (router) with the given state
 pub async fn create_test_app(state: ApiState) -> TestApp {
-    crate::router::create_router(state)
+    crate::api::router::create_router(state)
 }
 
 /// Create a test app with magic link services enabled
 pub async fn create_test_app_with_magic_links(state: ApiState) -> TestApp {
-    crate::router::create_router(state)
+    crate::api::router::create_router(state)
 }
 
 /// Create a test user in the database
@@ -325,7 +327,7 @@ pub async fn create_test_user(pool: &PgPool, email: &str, user_type: &str) -> Te
 }
 
 /// Create a mock email service for testing
-pub async fn create_mock_email_service() -> crate::email_service::EmailService {
+pub async fn create_mock_email_service() -> crate::services::email_service::EmailService {
     // This is a simplified mock - in a real implementation you'd use a proper mock
     // For now, we'll create a service that doesn't actually send emails
     use crate::config::email_config::EmailConfig;
