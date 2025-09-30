@@ -21,12 +21,14 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::config::types::UserType;
-use crate::handlers::users::users::UserDetailsResponse;
-
 // Re-export types for OpenAPI documentation
 pub use crate::api::openapi::*;
+
+// Explicitly import types needed (these will shadow the glob re-exports)
 use crate::config::types::ApiState;
+// Re-export explicitly to avoid glob conflict
+pub use crate::config::types::UserType;
+pub use crate::handlers::users::users::UserDetailsResponse;
 use arda_credit_db::{get_kyc_statistics, list_pending_kyc_applications, update_kyc_status};
 
 // ============================================================================
@@ -355,9 +357,9 @@ pub async fn bulk_kyc_approval_endpoint(
     ),
     tag = "Admin"
 )]
-#[instrument(skip(state), level = "info")]
+#[instrument(skip(_state), level = "info")]
 pub async fn get_platform_metrics_endpoint(
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
 ) -> Result<Json<PlatformMetricsResponse>, (StatusCode, String)> {
     info!("📊 API: Getting platform metrics");
 

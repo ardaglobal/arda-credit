@@ -151,7 +151,7 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
     ));
 
     // Create auth service
-    let auth_service = Arc::new(AuthService::new(
+    let _auth_service = Arc::new(AuthService::new(
         "test-jwt-secret-key-minimum-32-characters-for-testing".to_string(),
         Some(24),
     ));
@@ -203,7 +203,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
     ));
 
     // Create auth service
-    let auth_service = Arc::new(AuthService::new(
+    let _auth_service = Arc::new(AuthService::new(
         "test-jwt-secret-key-minimum-32-characters-for-testing".to_string(),
         Some(24),
     ));

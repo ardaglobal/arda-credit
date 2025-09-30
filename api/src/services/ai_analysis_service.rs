@@ -658,7 +658,7 @@ impl AiAnalysisService {
         &self,
         message: &str,
         conversation_history: &[AiChatMessage],
-        document_context: Option<&serde_json::Value>,
+        _document_context: Option<&serde_json::Value>,
     ) -> Result<AiChatResponse, anyhow::Error> {
         // Mock AI response generation
         // In production, this would call your chosen LLM API

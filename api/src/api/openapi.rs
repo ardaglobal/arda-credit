@@ -178,7 +178,7 @@ fn default_limit() -> u32 {
         crate::handlers::auth::magic_link::request_magic_link,
         crate::handlers::auth::magic_link::verify_magic_link,
         crate::handlers::auth::magic_link::get_current_user,
-        crate::handlers::auth::magic_link::logout_endpoint,
+        crate::handlers::auth::magic_link::magic_link_logout_endpoint,
 
         // Authentication utilities (keep these)
         crate::handlers::auth::authentication::validate_invite_code_endpoint,

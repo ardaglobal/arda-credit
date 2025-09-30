@@ -1241,7 +1241,7 @@ impl BatchApiClient {
     pub async fn record_deal_payment(
         &self,
         deal_id: &str, // was loan_id, now deal_id
-        payer_id: &str,
+        _payer_id: &str,
         amount: &str,
         payment_type: &str,
         payment_reference: Option<&str>,

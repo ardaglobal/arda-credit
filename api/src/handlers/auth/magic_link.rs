@@ -218,7 +218,7 @@ pub async fn verify_magic_link(
         .verify_magic_link(&request.token, &request.state, client_ip, user_agent)
         .await
     {
-        Ok((session_token, session)) => {
+        Ok((session_token, _session)) => {
             // Get user information
             let user = match state.session_service.validate_session(&session_token).await {
                 Ok(identity) => identity,
@@ -415,10 +415,10 @@ pub async fn get_current_user(
     tag = "Auth",
     security(("session_cookie" = []))
 )]
-#[instrument(skip(state), level = "info")]
+#[instrument(skip(_state), level = "info")]
 /// Logout endpoint for magic link authentication
-pub async fn logout_endpoint(
-    State(state): State<ApiState>,
+pub async fn magic_link_logout_endpoint(
+    State(_state): State<ApiState>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<MagicLinkErrorResponse>)> {
     // This is a simple logout that just returns success
     // In session-based auth, the client should remove the session cookie
@@ -431,9 +431,9 @@ pub async fn logout_endpoint(
 pub async fn logout(
     State(state): State<ApiState>,
     cookies: CookieJar,
-    headers: HeaderMap,
+    _headers: HeaderMap,
 ) -> Result<JsonWithCookie<serde_json::Value>, (StatusCode, Json<MagicLinkErrorResponse>)> {
-    let magic_link_service = state.magic_link_service.as_ref();
+    let _magic_link_service = state.magic_link_service.as_ref();
     // Extract session token from cookie
     let session_token = cookies
         .get("session_token")

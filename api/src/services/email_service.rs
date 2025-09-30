@@ -61,7 +61,7 @@ impl EmailService {
 
         // Create AWS config for the specified region
         debug!("🔧 Creating AWS config for region: {}", config.ses_region);
-        let aws_config = aws_config::defaults(aws_config::BehaviorVersion::v2024_03_28())
+        let aws_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
             .region(Region::new(config.ses_region.clone()))
             .load()
             .await;
@@ -250,7 +250,7 @@ impl EmailService {
 
     /// Create a mock SES client for when email is disabled
     async fn create_mock_client() -> SesClient {
-        let aws_config = aws_config::defaults(aws_config::BehaviorVersion::v2024_03_28())
+        let aws_config = aws_config::defaults(aws_config::BehaviorVersion::v2025_08_07())
             .region(Region::new("us-east-1"))
             .load()
             .await;

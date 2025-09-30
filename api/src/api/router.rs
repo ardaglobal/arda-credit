@@ -46,6 +46,7 @@ use tokio::sync::RwLock;
 // ============================================================================
 
 /// Helper function to parse UUID from string
+#[allow(dead_code)]
 fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
     uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
 }
@@ -59,6 +60,7 @@ pub struct AuthenticatedUser {
 }
 
 /// Convert database Identity to API UserDetailsResponse
+#[allow(dead_code)]
 fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
     UserDetailsResponse {
         user_id: identity.id.to_string(),
@@ -501,7 +503,10 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DOCUMENT_AUDIT,
             get(document_handlers::get_audit_logs),
         )
-        .route(paths::DOCUMENT_HEALTH, get(document_handlers::health_check))
+        .route(
+            paths::DOCUMENT_HEALTH,
+            get(document_handlers::document_service_health_check),
+        )
         // AI Analysis endpoints
         .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
         // Faucet endpoints (local/staging only)

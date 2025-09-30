@@ -222,7 +222,7 @@ pub async fn upload_document(
     Path(company_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<DocumentUploadResponse>, DocumentServiceError> {
-    let document_service = state.document_service.as_ref().ok_or_else(|| {
+    let _document_service = state.document_service.as_ref().ok_or_else(|| {
         DocumentServiceError::StorageError(arda_credit_lib::StorageError::ServiceUnavailable(
             "Document service not available".to_string(),
         ))
@@ -731,7 +731,7 @@ pub async fn get_audit_logs(
 
 /// Health check endpoint for document service
 /// GET /api/documents/health
-pub async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
+pub async fn document_service_health_check() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(json!({
         "status": "healthy",
         "service": "document_service",
@@ -756,7 +756,7 @@ fn extract_claims(headers: &HeaderMap) -> Result<Claims, DocumentServiceError> {
         })?;
 
     // Extract Bearer token
-    let token =
+    let _token =
         auth_str
             .strip_prefix("Bearer ")
             .ok_or_else(|| DocumentServiceError::AccessDenied {

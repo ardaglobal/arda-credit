@@ -263,9 +263,9 @@ pub async fn get_pending_withdrawals_endpoint(
     ),
     tag = "Admin"
 )]
-#[instrument(skip(state))]
+#[instrument(skip(_state))]
 pub async fn manual_execute_withdrawal(
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
     Path(request_id): Path<i32>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
     // Withdrawal executor functionality removed

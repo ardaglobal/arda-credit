@@ -565,6 +565,7 @@ async fn api_info_handler() -> Html<&'static str> {
 }
 
 /// Create unauthorized response for middleware
+#[allow(dead_code)]
 fn create_unauthorized_response(message: &str) -> Response {
     let error_body = serde_json::json!({
         "error": "AUTHENTICATION_ERROR",

@@ -1504,10 +1504,10 @@ pub async fn remove_deal_from_sale_endpoint(
     ),
     tag = "Deals"
 )]
-#[instrument(skip(state), level = "info")]
+#[instrument(skip(_state), level = "info")]
 pub async fn deal_marketplace_stats_endpoint(
     // was marketplace_stats_endpoint
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
 ) -> Result<Json<DealMarketplaceStats>, (StatusCode, String)> {
     // was MarketplaceStats
     info!("📊 API: Getting deal marketplace statistics");
@@ -1682,17 +1682,17 @@ pub async fn get_deal_transfer_history_endpoint(
     ),
     tag = "Deals"
 )]
-#[instrument(skip(state), level = "info")]
+#[instrument(skip(_state), level = "info")]
 pub async fn get_user_deal_transfer_history_endpoint(
     // was get_user_transfer_history_endpoint
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
     Path(user_id): Path<String>,
     Query(params): Query<TransferHistoryQuery>,
 ) -> Result<Json<Vec<DealTransferResponse>>, (StatusCode, String)> {
     // was LoanTransferResponse
     info!("👤 API: Getting user deal transfer history: {}", user_id);
 
-    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
+    let _user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
             "Invalid user ID format".to_string(),

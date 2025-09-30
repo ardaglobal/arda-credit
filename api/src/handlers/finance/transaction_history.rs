@@ -215,11 +215,11 @@ async fn get_transaction_history_internal(
     query: TransactionHistoryQuery,
     limit: i32,
     offset: i32,
-    include_details: bool,
+    _include_details: bool,
 ) -> Result<TransactionHistoryResponse, sqlx::Error> {
     // Build the main query with filters
     let mut transactions = Vec::new();
-    let mut total_count = 0i64;
+    let total_count: i64;
 
     // Get loan transactions
     if should_include_transaction_type(&query.transaction_type, "loan") {

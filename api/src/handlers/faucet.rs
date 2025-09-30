@@ -251,7 +251,7 @@ pub async fn check_faucet_status(
         }
     };
 
-    let deployment: serde_json::Value =
+    let _deployment: serde_json::Value =
         serde_json::from_str(&deployment_data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // For now, return basic info
