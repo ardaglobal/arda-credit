@@ -91,7 +91,7 @@ pub mod api {
     ///
     /// # Example
     /// ```rust
-    /// # use api::telemetry::api::instrument_endpoint;
+    /// # use api::config::telemetry::api::instrument_endpoint;
     /// let _span = instrument_endpoint("create_user", "/api/v1/users").entered();
     /// ```
     pub fn instrument_endpoint(operation: &str, endpoint: &str) -> Span {
@@ -116,7 +116,7 @@ pub mod api {
     ///
     /// # Example
     /// ```rust
-    /// # use api::telemetry::api::instrument_authenticated_endpoint;
+    /// # use api::config::telemetry::api::instrument_authenticated_endpoint;
     /// # use uuid::Uuid;
     /// # let user_uuid = Uuid::new_v4();
     /// let _span = instrument_authenticated_endpoint("withdraw_funds", "/api/v1/withdrawals", user_uuid).entered();
@@ -148,7 +148,7 @@ pub mod api {
     ///
     /// # Example
     /// ```rust
-    /// # use api::telemetry::api::instrument_batch_endpoint;
+    /// # use api::config::telemetry::api::instrument_batch_endpoint;
     /// let _span = instrument_batch_endpoint("process_transactions", "/api/v1/batches", 50).entered();
     /// ```
     pub fn instrument_batch_endpoint(operation: &str, endpoint: &str, batch_size: usize) -> Span {
@@ -175,7 +175,7 @@ pub mod api {
     ///
     /// # Example
     /// ```rust
-    /// # use api::telemetry::api::instrument_kyc_endpoint;
+    /// # use api::config::telemetry::api::instrument_kyc_endpoint;
     /// # use uuid::Uuid;
     /// # let user_uuid = Uuid::new_v4();
     /// let _span = instrument_kyc_endpoint("validate_kyc", "/api/v1/kyc/validate", user_uuid, "pending").entered();
@@ -210,7 +210,7 @@ pub mod api {
     ///
     /// # Example
     /// ```rust
-    /// # use api::telemetry::api::instrument_loan_endpoint;
+    /// # use api::config::telemetry::api::instrument_loan_endpoint;
     /// # use uuid::Uuid;
     /// # let loan_uuid = Uuid::new_v4();
     /// let _span = instrument_loan_endpoint("make_payment", "/api/v1/loans/payments", Some(loan_uuid), Some(1000)).entered();
