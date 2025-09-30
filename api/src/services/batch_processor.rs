@@ -834,13 +834,6 @@ impl BackgroundBatchProcessor {
 
     /// Phase 3: Post proven batches to smart contract
     async fn post_proven_batches_to_contract(pool: &PgPool) -> Result<(), String> {
-        // Check SERVER_ENVIRONMENT to determine if we should post to contract
-        let server_env = std::env::var("SERVER_ENVIRONMENT")
-            .unwrap_or_else(|_| "local".to_string())
-            .to_lowercase();
-
-        let should_post_to_contract = matches!(server_env.as_str(), "sandbox" | "production");
-
         // Get proven batches that haven't been posted to contract yet
         let unposted_batches = get_proven_unposted_batches(pool, Some(5))
             .await
@@ -851,9 +844,8 @@ impl BackgroundBatchProcessor {
         }
 
         info!(
-            "🔗 Found {} proven batches to post to smart contract (environment: {})",
-            unposted_batches.len(),
-            server_env.to_uppercase()
+            "🔗 Found {} proven batches to post to smart contract",
+            unposted_batches.len()
         );
 
         // Log batch details for debugging
@@ -867,48 +859,6 @@ impl BackgroundBatchProcessor {
             debug!("   Transaction count: {}", batch.transaction_ids.len());
             debug!("   Status: {}", batch.proof_status);
         }
-
-        // For local/staging environments, just log what would be sent
-        if !should_post_to_contract {
-            info!(
-                "🏠 SERVER_ENVIRONMENT={} - Skipping actual contract calls (dry run mode)",
-                server_env.to_uppercase()
-            );
-
-            for batch in unposted_batches {
-                info!("📝 [DRY RUN] Would post batch {} to contract:", batch.id);
-                info!("   Sindri Proof ID: {:?}", batch.sindri_proof_id);
-                info!(
-                    "   Counter transition: {} → {}",
-                    batch.previous_counter_value, batch.final_counter_value
-                );
-                info!("   Transaction count: {}", batch.transaction_ids.len());
-
-                // In dry run mode, mark as posted immediately without actual transaction
-                let mock_tx_hash = format!("0xlocal{:0>60x}", batch.id);
-                if let Err(e) =
-                    mark_batch_posted_to_contract_with_tx_hash(pool, batch.id, &mock_tx_hash).await
-                {
-                    error!(
-                        "❌ Failed to mark batch {} as posted (dry run): {}",
-                        batch.id, e
-                    );
-                } else {
-                    info!(
-                        "✅ [DRY RUN] Batch {} marked as posted with mock tx: {}",
-                        batch.id, mock_tx_hash
-                    );
-                }
-            }
-
-            return Ok(());
-        }
-
-        // For sandbox/production, proceed with actual contract calls
-        info!(
-            "🌐 SERVER_ENVIRONMENT={} - Posting to actual smart contract",
-            server_env.to_uppercase()
-        );
 
         // Try to initialize Ethereum client (graceful fallback if not configured)
         let eth_client = match EthConfig::from_env() {

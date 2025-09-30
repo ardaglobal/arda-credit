@@ -70,7 +70,34 @@ services:
     depends_on:
       - prometheus
 
+  # Anvil - Local Ethereum devnet (for local/staging environments)
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: arda_credit_anvil
+    entrypoint: []
+    command:
+      - anvil
+      - --host
+      - 0.0.0.0
+      - --chain-id
+      - "31337"
+      - --block-time
+      - "2"
+      - --state
+      - /anvil-state/state.json
+      - --state-interval
+      - "10"
+    ports:
+      - "8545:8545"
+    volumes:
+      - anvil_data:/anvil-state
+    restart: unless-stopped
+    profiles:
+      - local
+      - staging
+
 volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+  anvil_data:
