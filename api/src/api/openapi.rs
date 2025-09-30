@@ -357,6 +357,11 @@ API requests are subject to rate limiting for system stability.
         crate::handlers::finance::withdrawals::cancel_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_pending_withdrawals_endpoint,
 
+        // Faucet endpoints (local/staging only)
+        crate::handlers::faucet::get_faucet_info,
+        crate::handlers::faucet::check_faucet_status,
+        crate::handlers::faucet::get_faucet_config,
+
         // Admin withdrawal endpoints
         crate::handlers::finance::withdrawals::approve_withdrawal_request,
         crate::handlers::finance::withdrawals::reject_withdrawal_request,
@@ -615,6 +620,12 @@ API requests are subject to rate limiting for system stability.
         AdminWithdrawalDashboard,
         ApproveWithdrawalRequest,
         RejectWithdrawalRequest,
+
+        // Faucet types (local/staging only)
+        crate::handlers::faucet::FaucetInfoResponse,
+        crate::handlers::faucet::FaucetStatusQuery,
+        crate::handlers::faucet::FaucetStatusResponse,
+        crate::handlers::faucet::NetworkConfig,
 
         // Additional merchant types
         InvestorProfileQuery,
