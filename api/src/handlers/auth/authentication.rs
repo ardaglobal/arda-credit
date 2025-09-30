@@ -98,7 +98,7 @@ pub struct GenerateInviteCodeResponse {
     security(
         ("Bearer" = [])
     ),
-    tag = "Authentication"
+    tag = "Auth"
 )]
 #[instrument(skip(_state), level = "info")]
 pub async fn logout_endpoint(
@@ -130,7 +130,7 @@ pub async fn logout_endpoint(
     params(
         ("code" = String, Path, description = "Invite code to validate")
     ),
-    tag = "Authentication"
+    tag = "Auth"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn validate_invite_code_endpoint(
@@ -200,7 +200,7 @@ pub async fn validate_invite_code_endpoint(
         (status = 401, description = "Unauthorized - authentication required"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Authentication"
+    tag = "Auth"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn generate_invite_code_endpoint(

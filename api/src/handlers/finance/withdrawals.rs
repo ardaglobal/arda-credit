@@ -45,7 +45,7 @@ use arda_credit_db::WithdrawalRequest;
         (status = 404, description = "User not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Withdrawals"
+    tag = "Payments"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn initiate_withdrawal_endpoint(
@@ -82,7 +82,7 @@ pub async fn initiate_withdrawal_endpoint(
         (status = 404, description = "Withdrawal request not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Withdrawals"
+    tag = "Payments"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_withdrawal_status_endpoint(
@@ -120,7 +120,7 @@ pub async fn get_withdrawal_status_endpoint(
         (status = 404, description = "User not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Withdrawals"
+    tag = "Payments"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_available_balance_endpoint(
@@ -154,7 +154,7 @@ pub async fn get_user_available_balance_endpoint(
         (status = 200, description = "Withdrawal history retrieved", body = Vec<WithdrawalStatusResponse>),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Withdrawals"
+    tag = "Payments"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_withdrawal_history_endpoint(
@@ -190,7 +190,7 @@ pub async fn get_user_withdrawal_history_endpoint(
         (status = 404, description = "Withdrawal request not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Withdrawals"
+    tag = "Payments"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn cancel_withdrawal_endpoint(
@@ -262,7 +262,7 @@ pub async fn get_pending_withdrawals_endpoint(
         (status = 404, description = "Withdrawal request not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Admin Withdrawals"
+    tag = "Admin"
 )]
 #[instrument(skip(state))]
 pub async fn manual_execute_withdrawal(
@@ -294,7 +294,7 @@ pub async fn manual_execute_withdrawal(
         (status = 404, description = "Withdrawal request not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Admin Withdrawals"
+    tag = "Admin"
 )]
 #[instrument(skip(state))]
 pub async fn approve_withdrawal_request(
@@ -369,7 +369,7 @@ pub async fn approve_withdrawal_request(
         (status = 404, description = "Withdrawal request not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Admin Withdrawals"
+    tag = "Admin"
 )]
 #[instrument(skip(state))]
 pub async fn reject_withdrawal_request(
@@ -433,7 +433,7 @@ pub struct RejectWithdrawalRequest {
         (status = 200, description = "Admin dashboard data retrieved successfully", body = AdminWithdrawalDashboard),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Admin Dashboard"
+    tag = "Admin"
 )]
 #[instrument(skip(state))]
 pub async fn get_admin_withdrawal_dashboard(

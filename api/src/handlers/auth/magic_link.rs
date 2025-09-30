@@ -61,7 +61,7 @@ impl<T: Serialize> IntoResponse for JsonWithCookie<T> {
         (status = 429, description = "Rate limit exceeded"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Authentication"
+    tag = "Auth"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn request_magic_link(
@@ -189,7 +189,7 @@ pub async fn request_magic_link(
         (status = 410, description = "Magic link already used"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Authentication"
+    tag = "Auth"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn verify_magic_link(
@@ -352,7 +352,7 @@ pub async fn verify_magic_link(
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Authentication",
+    tag = "Auth",
     security(("session_cookie" = []))
 )]
 #[instrument(skip(state), level = "info")]
@@ -415,7 +415,7 @@ pub async fn get_current_user(
         (status = 401, description = "Not authenticated"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Authentication",
+    tag = "Auth",
     security(("session_cookie" = []))
 )]
 #[instrument(skip(state), level = "info")]

@@ -214,7 +214,7 @@ impl IntoResponse for DocumentServiceError {
         (status = 413, description = "File too large"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -261,7 +261,7 @@ pub async fn upload_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -331,7 +331,7 @@ pub async fn download_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -375,7 +375,7 @@ pub async fn get_document(
         (status = 403, description = "Insufficient permissions"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -452,7 +452,7 @@ pub async fn list_documents(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -507,7 +507,7 @@ pub async fn approve_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -553,7 +553,7 @@ pub async fn reject_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -608,7 +608,7 @@ pub async fn delete_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -672,7 +672,7 @@ pub async fn verify_document(
         (status = 403, description = "Insufficient permissions"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
