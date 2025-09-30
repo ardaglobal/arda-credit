@@ -206,43 +206,9 @@ fn default_limit() -> u32 {
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Arda Credit Deal API",
+        title = "Arda API",
         version = "v1",
-        description = r#"
-# Arda Credit Deal Processing API
-
-A privacy-preserving deal processing system built on SP1 zero-knowledge proofs.
-
-## Overview
-
-The Arda Credit API enables deal origination, payment processing, marketplace trading, and ownership transfers while maintaining transaction privacy through zero-knowledge proofs.
-
-## Core Features
-
-- **Deal Management**: Create, update, and manage deals between originators and investors
-- **Payment Processing**: Record and track deal payments with cryptographic verification
-- **Deal Marketplace**: List deals for sale, browse available deals, and manage listings
-- **Ownership Transfers**: Transfer deal ownership between investors with validation
-- **Privacy Preservation**: All operations maintain transaction privacy through ZK proofs
-
-## Recent Changes
-
-This API has been updated from loan-based terminology to deal-based terminology:
-- All `/loan/*` endpoints → `/deal/*` endpoints
-- All `/loans/*` endpoints → `/deals/*` endpoints
-- Marketplace endpoints consolidated into deal endpoints
-- Transfer endpoints consolidated into deal endpoints
-- Field names updated: borrower → originator, lender → investor
-
-## Authentication
-
-All endpoints require proper authentication and authorization.
-KYC verification may be required for certain deal operations.
-
-## Rate Limiting
-
-API requests are subject to rate limiting for system stability.
-        "#,
+        description = "Arda API",
         contact(
             name = "Arda Global",
             email = "support@arda.xyz",
@@ -426,7 +392,7 @@ API requests are subject to rate limiting for system stability.
         crate::handlers::ai::analysis::get_analytics_dashboard,
     ),
     tags(
-        // Primary API Groups (8 main groups + Health)
+        // Primary API Groups (8 main groups + Dev)
         (name = "Auth", description = "Authentication, authorization, and invite code management"),
         (name = "Users", description = "User account management, KYC verification, balances, and transaction history"),
         (name = "Companies", description = "Merchant and investor company profiles, documents, turnover tracking, and AI analysis"),
@@ -435,7 +401,7 @@ API requests are subject to rate limiting for system stability.
         (name = "Admin", description = "Administrative operations including KYC approval, withdrawal management, and platform oversight"),
         (name = "Analytics", description = "Pool analytics, credit lines, transaction history, metrics, and AI-powered insights"),
         (name = "Payments", description = "Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines"),
-        (name = "Health", description = "System health checks and API information")
+        (name = "Dev", description = "Development and testing utilities: health checks, API info, faucet operations (local/staging only)")
     ),
     components(schemas(
         // Authentication types
