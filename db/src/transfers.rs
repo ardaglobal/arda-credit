@@ -23,7 +23,7 @@ use crate::{
 /// Transfer validation request
 #[derive(Debug, Clone)]
 pub struct TransferValidationRequest {
-    pub deal_id: Uuid, // was loan_id
+    pub deal_id: Uuid, // was loan_id, now deal_id
     pub buyer_id: Uuid,
     pub purchase_price: Decimal,
 }
@@ -45,7 +45,7 @@ pub struct TransferValidationResult {
 /// Complete transfer execution request
 #[derive(Debug, Clone)]
 pub struct ExecuteTransferRequest {
-    pub deal_id: Uuid, // was loan_id
+    pub deal_id: Uuid, // was loan_id, now deal_id
     pub buyer_id: Uuid,
     pub purchase_price: Decimal,
     pub notes: Option<String>,
@@ -55,7 +55,7 @@ pub struct ExecuteTransferRequest {
 #[derive(Debug, Clone)]
 pub struct TransferExecutionResult {
     pub transfer_id: Uuid,
-    pub deal_id: Uuid,          // was loan_id
+    pub deal_id: Uuid,          // was loan_id, now deal_id
     pub from_investor_id: Uuid, // was from_lender_id
     pub to_investor_id: Uuid,   // was to_lender_id
     pub purchase_price: Decimal,

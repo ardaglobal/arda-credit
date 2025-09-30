@@ -80,7 +80,7 @@ pub async fn originate_deal(
 /// Make a payment toward a deal
 pub async fn make_deal_payment(
     client: &BatchApiClient,
-    deal_id: &str, // was loan_id
+    deal_id: &str, // was loan_id, now deal_id
     amount: f64,
     verbose: bool,
 ) -> Result<()> {
@@ -327,7 +327,7 @@ fn calculate_monthly_payment(principal: f64, annual_rate: f64, term_days: i32) -
 /// List a deal for sale in the marketplace
 pub async fn list_deal_for_sale(
     client: &BatchApiClient,
-    deal_id: &str, // was loan_id
+    deal_id: &str, // was loan_id, now deal_id
     asking_price: f64,
     description: Option<&str>,
     seller_id: &str,
@@ -407,7 +407,7 @@ pub async fn browse_deal_marketplace(
 /// Remove a deal from sale
 pub async fn remove_deal_from_sale(
     client: &BatchApiClient,
-    deal_id: &str, // was loan_id
+    deal_id: &str, // was loan_id, now deal_id
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -468,7 +468,7 @@ pub async fn get_deal_marketplace_stats(client: &BatchApiClient, verbose: bool) 
 /// Transfer deal ownership to another investor
 pub async fn transfer_deal_ownership(
     client: &BatchApiClient,
-    deal_id: &str,          // was loan_id
+    deal_id: &str,          // was loan_id, now deal_id
     from_investor_id: &str, // was from_lender_id
     to_investor_id: &str,   // was to_lender_id
     transfer_price: f64,
@@ -509,7 +509,7 @@ pub async fn transfer_deal_ownership(
 /// Get transfer history for a deal
 pub async fn get_deal_transfer_history(
     client: &BatchApiClient,
-    deal_id: &str, // was loan_id
+    deal_id: &str, // was loan_id, now deal_id
     limit: Option<i32>,
     verbose: bool,
 ) -> Result<()> {
@@ -547,7 +547,7 @@ pub async fn get_deal_transfer_history(
 /// Validate if a deal transfer is possible
 pub async fn validate_deal_transfer(
     client: &BatchApiClient,
-    deal_id: &str,             // was loan_id
+    deal_id: &str,             // was loan_id, now deal_id
     current_investor_id: &str, // was current_lender_id
     verbose: bool,
 ) -> Result<()> {

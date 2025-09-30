@@ -338,7 +338,7 @@ pub struct Deal {
 pub struct DealPayment {
     // was Payment
     pub id: uuid::Uuid,
-    pub deal_id: uuid::Uuid, // was loan_id
+    pub deal_id: uuid::Uuid, // was loan_id, now deal_id
     pub payer_id: uuid::Uuid,
     pub amount: rust_decimal::Decimal,
     pub payment_type: String, // regular, principal, interest, penalty
@@ -2243,7 +2243,7 @@ pub async fn update_deal(
 pub async fn create_deal_payment(
     // was create_payment
     pool: &PgPool,
-    deal_id: uuid::Uuid, // was loan_id
+    deal_id: uuid::Uuid, // was loan_id, now deal_id
     payer_id: uuid::Uuid,
     amount: rust_decimal::Decimal,
     payment_type: &str,
@@ -2272,7 +2272,7 @@ pub async fn create_deal_payment(
     let payment = DealPayment {
         // was Payment
         id,
-        deal_id, // was loan_id
+        deal_id, // was loan_id, now deal_id
         payer_id,
         amount,
         payment_type: payment_type.to_string(),

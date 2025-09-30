@@ -20,7 +20,7 @@ pub struct Loan {
     pub principal_amount: Decimal,
     pub outstanding_balance: Decimal,
     pub interest_rate_bps: i32,
-    pub loan_status: String,
+    pub deal_status: String,
     pub originated_at: chrono::DateTime<Utc>,
     pub maturity_date: Option<chrono::DateTime<Utc>>,
     pub created_at: chrono::DateTime<Utc>,
@@ -268,7 +268,7 @@ async fn create_test_loans(
             principal_amount: amount,
             outstanding_balance,
             interest_rate_bps: *interest_rate_bps,
-            loan_status: status.to_string(),
+            deal_status: status.to_string(),
             originated_at,
             maturity_date: Some(originated_at + chrono::Duration::days(365)), // 1 year term
             created_at: originated_at,
@@ -298,9 +298,9 @@ async fn create_test_payments(
 
     for loan in loans {
         // Skip loans that are originated or paid off
-        if loan.loan_status == "originated"
-            || loan.loan_status == "paid_off"
-            || loan.loan_status == "closed"
+        if loan.deal_status == "originated"
+            || loan.deal_status == "paid_off"
+            || loan.deal_status == "closed"
         {
             continue;
         }
@@ -393,13 +393,13 @@ async fn print_summary(identities: &[Identity], loans: &[Loan], payments: &[Paym
     }
 
     // Loan summary
-    let mut loan_status_counts = std::collections::HashMap::new();
+    let mut deal_status_counts = std::collections::HashMap::new();
     let mut total_principal = Decimal::ZERO;
     let mut total_outstanding = Decimal::ZERO;
 
     for loan in loans {
-        *loan_status_counts
-            .entry(loan.loan_status.clone())
+        *deal_status_counts
+            .entry(loan.deal_status.clone())
             .or_insert(0) += 1;
         total_principal += loan.principal_amount;
         total_outstanding += loan.outstanding_balance;
@@ -409,7 +409,7 @@ async fn print_summary(identities: &[Identity], loans: &[Loan], payments: &[Paym
     println!("   - Total Principal: ${total_principal}");
     println!("   - Total Outstanding: ${total_outstanding}");
     println!("📈 Loan Status:");
-    for (status, count) in loan_status_counts {
+    for (status, count) in deal_status_counts {
         println!("   - {status}: {count}");
     }
 

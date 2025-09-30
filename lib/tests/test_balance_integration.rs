@@ -574,7 +574,7 @@ mod tests {
         // Verify deal is fully paid off
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
         assert_eq!(deal.outstanding_balance, 0);
-        assert_eq!(deal.loan_status, LoanStatus::PaidOff); // Keep loan_status field for compatibility
+        assert_eq!(deal.loan_status, LoanStatus::PaidOff); // Keep deal_status field for compatibility
 
         // Investor should have received full repayment (200_000 initial - 100_000 invested + 100_000 repaid)
         assert_eq!(investor_balance, 200_000);

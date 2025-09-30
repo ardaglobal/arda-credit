@@ -550,7 +550,7 @@ impl DealState {
             return Err(DealError::InvalidTransactionType);
         }
 
-        let deal_id = transaction.deal_id; // was loan_id
+        let deal_id = transaction.deal_id; // was loan_id, now deal_id
                                            // Note: initiator_id not currently used in deal origination logic
 
         // Check for duplicate deal
@@ -616,7 +616,7 @@ impl DealState {
             return Err(DealError::InvalidTransactionType);
         }
 
-        let deal_id = transaction.deal_id; // was loan_id
+        let deal_id = transaction.deal_id; // was loan_id, now deal_id
         let payer_id = transaction.user_id;
 
         // Verify payer is KYC approved
@@ -680,7 +680,7 @@ impl DealState {
             return Err(DealError::InvalidTransactionType);
         }
 
-        let deal_id = transaction.deal_id; // was loan_id
+        let deal_id = transaction.deal_id; // was loan_id, now deal_id
         let closer_id = transaction.user_id;
 
         // Verify closer is KYC approved
@@ -773,7 +773,7 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id,
-            deal_id,                                            // was loan_id field
+            deal_id, // was loan_id, now deal_id field
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount,
             created_at: 1_234_567_920,
@@ -828,7 +828,7 @@ mod tests {
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
             user_id: originator_id,                         // was borrower_id
-            deal_id,                                        // was loan_id field
+            deal_id,                                        // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 5000,                                   // $50.00 payment
             created_at: 1_234_567_930,
@@ -866,7 +866,7 @@ mod tests {
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
             user_id: originator_id,                         // was borrower_id
-            deal_id,                                        // was loan_id field
+            deal_id,                                        // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 10000,                                  // Full payment
             created_at: 1_234_567_930,
@@ -878,7 +878,7 @@ mod tests {
 
         let deal = deal_state.get_deal(&deal_id).unwrap(); // was get_loan
         assert_eq!(deal.outstanding_balance, 0);
-        assert_eq!(deal.deal_status, LoanStatus::PaidOff); // Keep loan_status field for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::PaidOff); // Keep deal_status field for compatibility
         assert!(deal.is_paid_off());
     }
 
@@ -904,7 +904,7 @@ mod tests {
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
             user_id: originator_id,                         // was borrower_id
-            deal_id,                                        // was loan_id field
+            deal_id,                                        // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 10000,                                  // Full payment
             created_at: 1_234_567_930,
@@ -918,7 +918,7 @@ mod tests {
         let closeout_transaction = LoanTransaction {
             transaction_id: [5u8; 32],
             user_id: originator_id,                          // was borrower_id
-            deal_id,                                         // was loan_id field
+            deal_id,                                         // was loan_id, now deal_id field
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
             created_at: 1_234_567_940,
@@ -929,7 +929,7 @@ mod tests {
         assert!(result.is_ok());
 
         let deal = deal_state.get_deal(&deal_id).unwrap(); // was get_loan
-        assert_eq!(deal.deal_status, LoanStatus::Closed); // Keep loan_status field for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::Closed); // Keep deal_status field for compatibility
     }
 
     #[test]
@@ -955,7 +955,7 @@ mod tests {
         let closeout_transaction = LoanTransaction {
             transaction_id: [5u8; 32],
             user_id: originator_id,                          // was borrower_id
-            deal_id,                                         // was loan_id field
+            deal_id,                                         // was loan_id, now deal_id field
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
             created_at: 1_234_567_940,
@@ -992,7 +992,7 @@ mod tests {
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
             user_id: originator_id,                         // was borrower_id
-            deal_id,                                        // was loan_id field
+            deal_id,                                        // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 15000,                                  // More than outstanding balance
             created_at: 1_234_567_930,

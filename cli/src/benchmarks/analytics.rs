@@ -8,7 +8,7 @@ use eyre::Result;
 use std::time::{Duration, Instant};
 
 /// Query loan operation status from enhanced IMT
-pub async fn query_loan_status(
+pub async fn query_deal_status(
     _client: &BatchApiClient,
     loan_id: &str,
     history: bool,

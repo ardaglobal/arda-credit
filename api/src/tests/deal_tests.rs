@@ -1201,7 +1201,7 @@ async fn create_test_deal_helper(  // was create_test_loan
 /// List a deal for sale for testing marketplace functionality
 async fn list_deal_for_sale_helper(  // was list_loan_for_sale
     factory: &TestDataFactory,
-    deal_id: uuid::Uuid,   // was loan_id
+    deal_id: uuid::Uuid,   // was loan_id, now deal_id
     seller_id: uuid::Uuid,
     asking_price: rust_decimal::Decimal,
 ) -> uuid::Uuid {  // was LoanListing ID
@@ -1217,7 +1217,7 @@ async fn list_deal_for_sale_helper(  // was list_loan_for_sale
 /// Create a test transfer for testing transfer functionality
 async fn create_test_transfer_helper(  // was create_test_loan_transfer
     factory: &TestDataFactory,
-    deal_id: uuid::Uuid,  // was loan_id
+    deal_id: uuid::Uuid,  // was loan_id, now deal_id
     from_investor_id: uuid::Uuid,
     to_investor_id: uuid::Uuid,
     transfer_price: rust_decimal::Decimal,
