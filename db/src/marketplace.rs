@@ -54,7 +54,7 @@ pub struct MarketplaceDeal {
     pub principal_amount: Decimal,
     pub outstanding_balance: Decimal,
     pub interest_rate_bps: i32,
-    pub loan_status: String, // keeping same field name
+    pub deal_status: String, // keeping same field name
     pub originated_at: DateTime<Utc>,
     pub maturity_date: Option<DateTime<Utc>>,
 }
@@ -83,7 +83,7 @@ pub async fn create_deal_listing(
     sqlx::query!(
         r#"
         UPDATE deals
-        SET loan_status = 'for_sale', updated_at = NOW()
+        SET deal_status = 'for_sale', updated_at = NOW()
         WHERE id = $1 AND investor_id = $2
         "#,
         deal_id,
@@ -218,7 +218,7 @@ pub async fn remove_deal_listing(
 
     // 3. Update deal status back to 'active' (remove 'for_sale' status)
     sqlx::query!(
-        "UPDATE deals SET loan_status = 'active', updated_at = NOW() WHERE id = $1", // was loans
+        "UPDATE deals SET deal_status = 'active', updated_at = NOW() WHERE id = $1", // was loans
         deal_id
     )
     .execute(&mut *tx)
@@ -257,7 +257,7 @@ pub async fn browse_marketplace_deals(
             d.principal_amount,
             d.outstanding_balance,
             d.interest_rate_bps,
-            d.loan_status,
+            d.deal_status,
             d.originated_at,
             d.maturity_date
         FROM deal_listings dl       -- was loan_listings
@@ -289,7 +289,7 @@ pub async fn browse_marketplace_deals(
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status,
+            deal_status: row.deal_status,
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
         })
@@ -314,7 +314,7 @@ pub async fn validate_deal_for_transfer(
         FROM deals d                          -- was loans
         JOIN deal_listings dl ON d.id = dl.deal_id  -- was loan_listings, loan_id
         WHERE d.id = $1
-          AND d.loan_status = 'for_sale'
+          AND d.deal_status = 'for_sale'
           AND dl.status = 'active'  -- Only active listings can be transferred
         "#,
         deal_id
@@ -408,7 +408,7 @@ pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Er
         // was loans table
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, loan_status, originated_at)
+                          interest_rate_bps, deal_status, originated_at)
         VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         "#,

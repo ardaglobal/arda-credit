@@ -111,7 +111,7 @@ pub async fn validate_transfer_eligibility(
     // 1. Check if deal exists and get current details using Phase 1 schema
     let deal_query = sqlx::query!(
         r#"
-        SELECT d.id, d.investor_id, d.loan_status, d.principal_amount,
+        SELECT d.id, d.investor_id, d.deal_status, d.principal_amount,
                dl.asking_price, dl.status as listing_status
         FROM deals d
         LEFT JOIN deal_listings dl ON d.id = dl.deal_id AND dl.status = 'active'
@@ -131,7 +131,7 @@ pub async fn validate_transfer_eligibility(
     };
 
     // 2. Check if deal is for sale (Phase 1 status values)
-    if deal.loan_status == "for_sale" && deal.listing_status == "active" {
+    if deal.deal_status == "for_sale" && deal.listing_status == "active" {
         result.deal_for_sale = true;
     } else {
         result
@@ -272,8 +272,8 @@ pub async fn execute_deal_transfer(
     sqlx::query!(
         r#"
         UPDATE deals
-        SET loan_status = 'transfer_pending', updated_at = NOW()
-        WHERE id = $1 AND loan_status = 'for_sale'
+        SET deal_status = 'transfer_pending', updated_at = NOW()
+        WHERE id = $1 AND deal_status = 'for_sale'
         "#,
         request.deal_id
     )
@@ -357,7 +357,7 @@ pub async fn execute_deal_transfer(
     sqlx::query!(
         r#"
         UPDATE deals
-        SET investor_id = $2, loan_status = 'active', updated_at = NOW()
+        SET investor_id = $2, deal_status = 'active', updated_at = NOW()
         WHERE id = $1
         "#,
         request.deal_id,
@@ -515,7 +515,7 @@ pub async fn cancel_transfer(
 
         // 2. Restore deal status to for_sale
         sqlx::query!(
-            "UPDATE deals SET loan_status = 'for_sale', updated_at = NOW() WHERE id = $1",
+            "UPDATE deals SET deal_status = 'for_sale', updated_at = NOW() WHERE id = $1",
             transfer.deal_id
         )
         .execute(&mut *tx)

@@ -246,7 +246,7 @@ async fn create_test_loans(
         sqlx::query!(
             r#"
             INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                             interest_rate_bps, loan_status, originated_at, created_at, updated_at)
+                             interest_rate_bps, deal_status, originated_at, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $8)
             "#,
             loan_id,

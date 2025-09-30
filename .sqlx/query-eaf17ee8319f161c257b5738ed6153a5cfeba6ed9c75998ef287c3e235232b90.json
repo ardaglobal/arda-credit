@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            originator_id,\n            investor_id,\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            loan_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals\n        WHERE (originator_id = $1 OR investor_id = $1)\n          AND ($2::text IS NULL OR loan_status = $2)\n        ORDER BY created_at DESC\n        LIMIT $3 OFFSET $4\n        ",
+  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            deal_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals  -- was loans\n        WHERE ($1::text IS NULL OR deal_status = $1)\n          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id\n          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id\n          AND ($4::text IS NULL OR industry = $4)\n        ORDER BY created_at DESC\n        LIMIT $5 OFFSET $6\n        ",
   "describe": {
     "columns": [
       {
@@ -35,7 +35,7 @@
       },
       {
         "ordinal": 6,
-        "name": "loan_status",
+        "name": "deal_status",
         "type_info": "Varchar"
       },
       {
@@ -111,6 +111,8 @@
     ],
     "parameters": {
       "Left": [
+        "Text",
+        "Uuid",
         "Uuid",
         "Text",
         "Int8",
@@ -141,5 +143,5 @@
       true
     ]
   },
-  "hash": "3c76a8145586c72c039ea44dfeab1232992f2eb0879c2bc1fe02b2cbe6f70750"
+  "hash": "eaf17ee8319f161c257b5738ed6153a5cfeba6ed9c75998ef287c3e235232b90"
 }

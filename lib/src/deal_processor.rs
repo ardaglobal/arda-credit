@@ -605,7 +605,7 @@ impl GlobalLoanState {
         for loan in self.loans.values() {
             // Add outstanding balance for each active loan
             if matches!(
-                loan.loan_status,
+                loan.deal_status,
                 LoanStatus::Active | LoanStatus::Originated // was crate::loan::LoanStatus
             ) {
                 total_balance = total_balance.saturating_add(u128::from(loan.outstanding_balance));
@@ -1128,7 +1128,7 @@ mod tests {
         state.process_transaction(&deal_origination).unwrap();
 
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
-        assert_eq!(deal.loan_status, LoanStatus::Originated); // Keep loan_status for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::Originated); // Keep loan_status for compatibility
         assert_eq!(deal.principal_amount, 50000);
 
         // 5. Deal payment
@@ -1144,7 +1144,7 @@ mod tests {
         state.process_transaction(&payment).unwrap();
 
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
-        assert_eq!(deal.loan_status, LoanStatus::Active); // Keep loan_status for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::Active); // Keep loan_status for compatibility
         assert_eq!(deal.outstanding_balance, 25000);
 
         // 5. Final payment
@@ -1160,7 +1160,7 @@ mod tests {
         state.process_transaction(&final_payment).unwrap();
 
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
-        assert_eq!(deal.loan_status, LoanStatus::PaidOff); // Keep loan_status for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::PaidOff); // Keep loan_status for compatibility
         assert_eq!(deal.outstanding_balance, 0);
 
         // 6. Deal closeout
@@ -1176,7 +1176,7 @@ mod tests {
         state.process_transaction(&closeout).unwrap();
 
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
-        assert_eq!(deal.loan_status, LoanStatus::Closed); // Keep loan_status for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::Closed); // Keep loan_status for compatibility
 
         // Verify transaction count
         assert_eq!(state.transaction_count, 8); // 2 registrations + 2 KYC verifications + 1 origination + 2 payments + 1 closeout
@@ -2007,7 +2007,7 @@ mod tests {
 
         // Pay off loan2
         state.loans.get_mut(&loan2_id).unwrap().outstanding_balance = 0;
-        state.loans.get_mut(&loan2_id).unwrap().loan_status = LoanStatus::PaidOff;
+        state.loans.get_mut(&loan2_id).unwrap().deal_status = LoanStatus::PaidOff;
 
         // Total balance should now be just $50
         assert_eq!(state.compute_total_balance(), 5000);

@@ -499,7 +499,7 @@ pub async fn create_deal_endpoint(
         principal_amount: deal.principal_amount.to_string(),
         outstanding_balance: deal.outstanding_balance.to_string(),
         interest_rate_bps: deal.interest_rate_bps as u16,
-        loan_status: deal.loan_status, // keeping same field name
+        loan_status: deal.deal_status, // keeping same field name
         originated_at: deal.originated_at,
         last_updated: Some(deal.updated_at),
         custom_deal_id: deal.custom_deal_id,
@@ -607,7 +607,7 @@ pub async fn list_deals_endpoint(
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
-                loan_status: deal.loan_status, // keeping same field name
+                loan_status: deal.deal_status, // keeping same field name
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
                 custom_deal_id: deal.custom_deal_id,
@@ -696,7 +696,7 @@ pub async fn get_deals_by_user_id_endpoint(
             principal_amount: deal.principal_amount.to_string(),
             outstanding_balance: deal.outstanding_balance.to_string(),
             interest_rate_bps: deal.interest_rate_bps as u16,
-            loan_status: deal.loan_status,
+            loan_status: deal.deal_status,
             originated_at: deal.originated_at,
             last_updated: Some(deal.updated_at),
             custom_deal_id: deal.custom_deal_id,
@@ -791,7 +791,7 @@ pub async fn get_deal_details_endpoint(
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
-                loan_status: deal.loan_status, // keeping same field name
+                loan_status: deal.deal_status, // keeping same field name
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
                 custom_deal_id: deal.custom_deal_id,
@@ -1022,7 +1022,7 @@ pub async fn update_deal_endpoint(
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
-                loan_status: deal.loan_status, // keeping same field name
+                loan_status: deal.deal_status, // keeping same field name
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
                 custom_deal_id: deal.custom_deal_id,
@@ -1336,7 +1336,7 @@ pub async fn browse_deals_for_sale_endpoint(
             principal_amount: deal.principal_amount.to_string(),
             outstanding_balance: deal.outstanding_balance.to_string(),
             interest_rate_bps: deal.interest_rate_bps as u16,
-            deal_status: deal.loan_status, // keeping same field name
+            deal_status: deal.deal_status, // keeping same field name
             originated_at: deal.originated_at,
         })
         .collect();

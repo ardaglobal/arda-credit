@@ -70,7 +70,7 @@ pub struct LoanMetadata {
     pub payment_amount: Option<rust_decimal::Decimal>, // Payment amount
     pub principal_amount: Option<rust_decimal::Decimal>, // Loan principal
     pub outstanding_balance: Option<rust_decimal::Decimal>, // Remaining balance
-    pub loan_status: Option<String>,     // Loan status (active, paid_off, closed, etc.)
+    pub deal_status: Option<String>,     // Loan status (active, paid_off, closed, etc.)
     pub operation_type: String,          // Operation type (loan_origination, loan_payment, etc.)
     pub transaction_context: Option<serde_json::Value>, // Additional transaction data
 }
@@ -270,7 +270,7 @@ pub struct LoanOperation {
     pub borrower_id: Option<uuid::Uuid>, // Borrower ID
     pub lender_id: Option<uuid::Uuid>, // Lender ID
     pub amount: Option<rust_decimal::Decimal>, // Operation amount
-    pub loan_status: Option<String>, // Current loan status
+    pub deal_status: Option<String>, // Current loan status
     pub transaction_data: serde_json::Value, // Additional transaction context
     pub nullifier_prefix: Option<i64>, // Optional nullifier prefix
 }
@@ -333,7 +333,7 @@ impl LoanOperation {
                 None
             },
             outstanding_balance: None, // To be filled by business logic
-            loan_status: self.loan_status.clone(),
+            deal_status: self.deal_status.clone(),
             operation_type: self.operation_type.clone(),
             transaction_context: Some(self.transaction_data.clone()),
         }
@@ -1502,7 +1502,7 @@ impl IndexedMerkleTreeADS {
                 "borrower_id": loan_op.borrower_id,
                 "lender_id": loan_op.lender_id,
                 "amount": loan_op.amount,
-                "loan_status": loan_op.loan_status,
+                "deal_status": loan_op.deal_status,
                 "nullifier_value": transition.nullifier_value,
                 "payment_id": loan_op.payment_id
             }),
@@ -1612,7 +1612,7 @@ impl IndexedMerkleTreeADS {
                 }
 
                 // Update current status from most recent event
-                if let Some(status) = metadata.get("loan_status").and_then(|v| v.as_str()) {
+                if let Some(status) = metadata.get("deal_status").and_then(|v| v.as_str()) {
                     summary.current_status = status.to_string();
                 }
             }
@@ -1769,7 +1769,7 @@ impl IndexedMerkleTreeADS {
         let loan_operation_data = sqlx::query!(
             r#"
             SELECT dt.deal_id, dt.payment_id, dt.transaction_type, dt.amount, dt.identity_id,
-                   d.originator_id, d.investor_id, d.loan_status, dt.created_at
+                   d.originator_id, d.investor_id, d.deal_status, dt.created_at
             FROM deal_transactions dt
             JOIN deals d ON dt.deal_id = d.id
             WHERE (
@@ -1804,7 +1804,7 @@ impl IndexedMerkleTreeADS {
             borrower_id: Some(row.originator_id),
             lender_id: Some(row.investor_id),
             amount: Some(row.amount),
-            loan_status: Some(row.loan_status),
+            deal_status: Some(row.deal_status),
             transaction_data: serde_json::json!({
                 "created_at": row.created_at,
                 "identity_id": row.identity_id
@@ -1998,7 +1998,7 @@ impl IndexedMerkleTreeADS {
             borrower_id: None, // Not needed for nullifier calculation
             lender_id: None,   // Not needed for nullifier calculation
             amount: operation_proof.amount,
-            loan_status: None,
+            deal_status: None,
             transaction_data: serde_json::Value::Null,
             nullifier_prefix: None,
         };
@@ -2128,7 +2128,7 @@ impl IndexedMerkleTreeADS {
             borrower_id: None,
             lender_id: None,
             amount: proof.loan_operation.amount,
-            loan_status: None,
+            deal_status: None,
             transaction_data: serde_json::Value::Null,
             nullifier_prefix: None,
         };
