@@ -21,6 +21,7 @@ export SERVER_ENVIRONMENT=local  # Options: local, staging, sandbox, production
 - **Requirements**: None (no Sindri API key needed)
 - **Proof Type**: SP1 Core proofs
 - **Storage**: Proofs not uploaded to Sindri
+- **Smart Contract**: Dry run mode - logs what would be sent, no actual transactions
 
 ### `staging`
 - **Proof Generation**: Local SP1 prover
@@ -29,26 +30,29 @@ export SERVER_ENVIRONMENT=local  # Options: local, staging, sandbox, production
 - **Requirements**: None (no Sindri API key needed)
 - **Proof Type**: SP1 Core proofs
 - **Storage**: Proofs not uploaded to Sindri
+- **Smart Contract**: Dry run mode - logs what would be sent, no actual transactions
 
 ### `sandbox`
 - **Proof Generation**: Sindri service
 - **Speed**: Slower (~28-60 seconds depending on batch size)
 - **Use Case**: Pre-production testing with real proof infrastructure
-- **Requirements**: Valid `SINDRI_API_KEY` required
+- **Requirements**: Valid `SINDRI_API_KEY` and Ethereum configuration required
 - **Proof Type**: Groth16 (configurable)
 - **Storage**: Proofs stored in Sindri for retrieval
+- **Smart Contract**: Real transactions - posts batches to actual smart contract
 
 ### `production`
 - **Proof Generation**: Sindri service
 - **Speed**: Slower (~28-60 seconds depending on batch size)
 - **Use Case**: Production deployments
-- **Requirements**: Valid `SINDRI_API_KEY` required
+- **Requirements**: Valid `SINDRI_API_KEY` and Ethereum configuration required
 - **Proof Type**: Groth16 (configurable)
 - **Storage**: Proofs stored in Sindri for retrieval
+- **Smart Contract**: Real transactions - posts batches to actual smart contract
 
 ## How It Works
 
-### Proof Generation Flow
+### Proof Generation & Contract Posting Flow
 
 ```mermaid
 graph TD
@@ -61,8 +65,15 @@ graph TD
     D --> H[Submit to Sindri API]
     H --> I[Monitor Proof Status]
     I --> J[Update Batch When Ready]
-    G --> K[Batch Processing Complete]
-    J --> K
+    G --> L{Check SERVER_ENVIRONMENT}
+    J --> L
+    L -->|local/staging| M[DRY RUN: Log Contract Call]
+    L -->|sandbox/production| N[POST: Send to Smart Contract]
+    M --> O[Mark as Posted with Mock TX]
+    N --> P[Wait for TX Confirmation]
+    P --> Q[Mark as Posted with Real TX]
+    O --> R[Complete]
+    Q --> R
 ```
 
 ### Implementation Details
@@ -105,6 +116,12 @@ For `local` and `staging` environments:
 - Proofs not production-ready
 - No on-chain verification support
 - Not stored for later retrieval
+
+**Dry Run Mode**:
+- Smart contract calls are logged but not executed
+- Batches marked as "posted" with mock transaction hash (`0xlocal<batch_id>`)
+- Useful for testing batch processing without blockchain interaction
+- No gas costs or network requirements
 
 ## Sindri Proof Generation
 
