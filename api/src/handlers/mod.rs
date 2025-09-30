@@ -9,9 +9,8 @@
 //! - `auth`: Authentication and authorization
 //! - `users`: User management and admin operations
 //! - `deals`: Deal operations and marketplace
-//! - `merchants`: Merchant profiles and operations
+//! - `merchants`: Company profiles and documents (investors)
 //! - `credit`: Credit line management
-//! - `pools`: Liquidity pool operations
 //! - `finance`: Financial transactions and withdrawals
 //! - `ai`: AI-powered features
 
@@ -23,7 +22,6 @@ pub mod deals;
 pub mod faucet;
 pub mod finance;
 pub mod merchants;
-pub mod pools;
 pub mod users;
 
 // Re-export all handler functions for backward compatibility
@@ -35,5 +33,4 @@ pub use deals::*;
 pub use faucet::*;
 pub use finance::*;
 pub use merchants::*;
-pub use pools::*;
 pub use users::*;
