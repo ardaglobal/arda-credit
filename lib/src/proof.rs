@@ -153,7 +153,10 @@ pub async fn generate_batch_proof(
             generate_batch_proof_sindri(request).await
         }
         _ => {
-            warn!("⚠️ Unknown SERVER_ENVIRONMENT '{}', defaulting to local SP1 prover", server_env);
+            warn!(
+                "⚠️ Unknown SERVER_ENVIRONMENT '{}', defaulting to local SP1 prover",
+                server_env
+            );
             generate_batch_proof_local(request).await
         }
     }
@@ -185,9 +188,7 @@ async fn generate_batch_proof_local(
 
     info!(
         "🔐 Generating local SP1 Core proof: {} + {:?} = {}",
-        request.initial_balance,
-        request.transactions,
-        final_balance
+        request.initial_balance, request.transactions, final_balance
     );
 
     // Create prover client
@@ -222,11 +223,11 @@ async fn generate_batch_proof_local(
 
     // Create a pseudo proof ID for local proofs
     let proof_id = format!("local-{}", chrono::Utc::now().timestamp());
-    
+
     // For local proofs, we create a minimal ProofInfoResponse using serde deserialization
     // This avoids needing to know all the struct fields
     let circuit_tag = std::env::var("SINDRI_CIRCUIT_TAG").unwrap_or_else(|_| "latest".to_string());
-    
+
     // Create minimal JSON that satisfies ProofInfoResponse deserialization
     let proof_info_json = serde_json::json!({
         "proof_id": proof_id,
@@ -243,9 +244,10 @@ async fn generate_batch_proof_local(
         "finished_processing": true,
         "verified": true,
     });
-    
-    let proof_info: ProofInfoResponse = serde_json::from_value(proof_info_json)
-        .map_err(|e| ProofError::SerializationError(format!("Failed to create local proof info: {}", e)))?;
+
+    let proof_info: ProofInfoResponse = serde_json::from_value(proof_info_json).map_err(|e| {
+        ProofError::SerializationError(format!("Failed to create local proof info: {}", e))
+    })?;
 
     Ok(ProofGenerationResponse {
         proof_id: proof_id.clone(),

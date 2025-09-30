@@ -131,6 +131,8 @@ For `sandbox` and `production` environments:
 ## Testing
 
 ### Local Testing
+
+#### Via API Server
 ```bash
 # Set environment for local proofs
 export SERVER_ENVIRONMENT=local
@@ -142,7 +144,18 @@ make server
 make cli ARGS="batch trigger --verbose"
 ```
 
+#### Via Script (Direct)
+```bash
+# Set environment for local proofs
+export SERVER_ENVIRONMENT=local
+
+# Run the test script (fast ~8s)
+make run
+```
+
 ### Sindri Testing
+
+#### Via API Server
 ```bash
 # Set environment for Sindri proofs
 export SERVER_ENVIRONMENT=sandbox
@@ -155,6 +168,28 @@ make server
 make cli ARGS="batch trigger --verbose"
 ```
 
+#### Via Script (Direct)
+```bash
+# Set environment for Sindri proofs
+export SERVER_ENVIRONMENT=sandbox
+export SINDRI_API_KEY=your_api_key_here
+
+# Run the test script (slower, uses Sindri)
+make run
+```
+
+#### Benchmarking
+```bash
+# Sindri benchmark with custom parameters
+export SERVER_ENVIRONMENT=production
+export SINDRI_API_KEY=your_key_here
+make bench-zk NUM_PROOFS=10 NUM_TRANSACTIONS=100
+
+# Local benchmark
+export SERVER_ENVIRONMENT=local
+make bench-zk NUM_PROOFS=10 NUM_TRANSACTIONS=100
+```
+
 ## Migration Notes
 
 ### Changed Behavior
@@ -163,7 +198,9 @@ make cli ARGS="batch trigger --verbose"
 
 2. **Automatic proof method selection**: No need to pass `--sindri` flag; environment variable determines the method
 
-3. **script/src/bin/main.rs unchanged**: The `--sindri` flag in the test script remains for explicit testing
+3. **script/src/bin/main.rs updated**: Now uses `SERVER_ENVIRONMENT` instead of compile-time `--features sindri` flag
+
+4. **Makefile benchmarks updated**: `make bench-zk` no longer uses `--features sindri`, uses `SERVER_ENVIRONMENT` instead
 
 ### Breaking Changes
 
