@@ -494,9 +494,9 @@ impl CompanyService {
         // Get all team members
         let team_members = sqlx::query(
             r#"
-            SELECT tm.*, u.email
+            SELECT tm.*, i.email
             FROM team_members tm
-            JOIN users u ON tm.user_id = u.id
+            JOIN identities i ON tm.user_id = i.id
             WHERE tm.company_id = $1
             ORDER BY tm.invited_at DESC
             "#,
@@ -724,7 +724,7 @@ impl CompanyService {
     /// Get or create user by email
     async fn get_or_create_user_by_email(&self, email: &str) -> Result<Uuid, CompanyServiceError> {
         // First try to find existing user
-        if let Some(user) = sqlx::query!("SELECT id FROM users WHERE email = $1", email)
+        if let Some(user) = sqlx::query!("SELECT id FROM identities WHERE email = $1", email)
             .fetch_optional(&self.db_pool)
             .await?
         {
@@ -735,7 +735,7 @@ impl CompanyService {
         let user_id = Uuid::new_v4();
         sqlx::query!(
             r#"
-            INSERT INTO users (id, email, user_type, kyc_status, created_at, updated_at)
+            INSERT INTO identities (id, email, user_type, kyc_status, created_at, updated_at)
             VALUES ($1, $2, 'investor', 'not_submitted', NOW(), NOW())
             "#,
             user_id,
@@ -755,9 +755,9 @@ impl CompanyService {
     ) -> Result<TeamMemberResponseDto, CompanyServiceError> {
         let member = sqlx::query(
             r#"
-            SELECT tm.*, u.email
+            SELECT tm.*, i.email
             FROM team_members tm
-            JOIN users u ON tm.user_id = u.id
+            JOIN identities i ON tm.user_id = i.id
             WHERE tm.user_id = $1 AND tm.company_id = $2
             "#,
         )
