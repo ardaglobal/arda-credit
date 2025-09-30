@@ -213,7 +213,7 @@ pub struct ActiveCreditLinesQuery {
     path = "/api/v1/credit-lines/eligibility",
     summary = "Check credit line eligibility",
     description = "Evaluate merchant eligibility for credit lines based on profile, turnover, and documents",
-    tag = "Credit Lines",
+    tag = "Analytics",
     responses(
         (status = 200, description = "Eligibility evaluation completed", body = EligibilityCheckResponse),
         (status = 401, description = "Unauthorized - invalid JWT token"),
@@ -402,7 +402,7 @@ pub async fn check_credit_eligibility(
     path = "/api/v1/credit-lines/request",
     summary = "Submit credit line request",
     description = "Submit a credit line application with automatic evaluation and pool matching",
-    tag = "Credit Lines",
+    tag = "Analytics",
     request_body = SubmitCreditLineRequestBody,
     responses(
         (status = 200, description = "Credit line request submitted successfully", body = CreditLineRequestResponse),
@@ -770,7 +770,7 @@ pub async fn submit_credit_line_request(
     path = "/api/v1/credit-lines/requests",
     summary = "List credit line requests",
     description = "Get paginated list of merchant's credit line requests",
-    tag = "Credit Lines",
+    tag = "Analytics",
     params(CreditLineRequestQuery),
     responses(
         (status = 200, description = "Credit line requests retrieved", body = CreditLineRequestListResponse),
@@ -910,7 +910,7 @@ pub async fn list_credit_line_requests(
     path = "/api/v1/pools/available",
     summary = "Browse available pools",
     description = "Browse available liquidity pools for potential credit line matching",
-    tag = "Liquidity Pools",
+    tag = "Analytics",
     params(PoolBrowsingQuery),
     responses(
         (status = 200, description = "Available pools retrieved", body = Vec<AvailablePoolResponse>),
@@ -1002,7 +1002,7 @@ pub async fn browse_available_pools(
     path = "/api/v1/credit-lines/active",
     summary = "List active credit lines with pool details",
     description = "Get all active credit line requests that are currently borrowing from active liquidity pools",
-    tag = "Credit Lines",
+    tag = "Analytics",
     params(ActiveCreditLinesQuery),
     responses(
         (status = 200, description = "Active credit lines retrieved", body = ActiveCreditLinesListResponse),

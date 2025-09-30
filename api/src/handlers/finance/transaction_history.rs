@@ -116,7 +116,7 @@ pub struct DateRange {
         (status = 400, description = "Invalid query parameters"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Transaction History"
+    tag = "Analytics"
 )]
 #[instrument(skip(state), fields(query = ?query))]
 pub async fn get_transaction_history(
@@ -168,7 +168,7 @@ pub async fn get_transaction_history(
         (status = 404, description = "Pool not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Transaction History"
+    tag = "Analytics"
 )]
 #[instrument(skip(state), fields(pool_id = %pool_id))]
 pub async fn get_pool_transaction_history(

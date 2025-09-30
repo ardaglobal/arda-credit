@@ -198,7 +198,7 @@ impl From<MerchantProfileCompletion> for ProfileCompletionResponse {
         (status = 403, description = "Only merchants can submit turnover data"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Merchant Turnover"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn create_turnover_endpoint(
@@ -333,7 +333,7 @@ pub async fn create_turnover_endpoint(
         (status = 403, description = "Only merchants can access turnover data"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Merchant Turnover"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_turnover_endpoint(
@@ -438,7 +438,7 @@ pub async fn get_turnover_endpoint(
         (status = 404, description = "Turnover record not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Merchant Turnover"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn update_turnover_endpoint(
@@ -576,7 +576,7 @@ pub async fn update_turnover_endpoint(
         (status = 404, description = "Analytics not available"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Merchant Analytics"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_turnover_analytics_endpoint(
@@ -665,7 +665,7 @@ pub async fn get_turnover_analytics_endpoint(
         (status = 404, description = "Profile completion data not available"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Merchant Profile"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_profile_completion_endpoint(

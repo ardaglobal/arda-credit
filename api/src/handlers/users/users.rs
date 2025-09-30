@@ -213,7 +213,7 @@ fn identity_to_register_response(identity: Identity) -> RegisterUserResponse {
         (status = 409, description = "User with this email already exists"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn register_user_endpoint(
@@ -392,7 +392,7 @@ pub async fn register_user_endpoint(
         (status = 404, description = "User not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_details_endpoint(
@@ -696,7 +696,7 @@ pub async fn delete_user_endpoint(
     params(
         ("address" = String, Path, description = "Wallet address")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_balance_by_address_endpoint(
@@ -742,7 +742,7 @@ pub async fn get_user_balance_by_address_endpoint(
     params(
         ("user_id" = String, Path, description = "User ID (UUID)")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_balance_by_id_endpoint(
@@ -806,7 +806,7 @@ pub async fn get_user_balance_by_id_endpoint(
     params(
         ("user_id" = String, Path, description = "User ID (UUID)")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_transactions_endpoint(

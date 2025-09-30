@@ -34,7 +34,7 @@ use arda_credit_db::{
         (status = 200, description = "Pool list retrieved successfully", body = PoolListResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Liquidity Pools"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn list_pools(
@@ -103,7 +103,7 @@ pub async fn list_pools(
         (status = 404, description = "Pool not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Liquidity Pools"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn get_pool_details(
@@ -326,7 +326,7 @@ pub async fn get_pool_transactions(
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Liquidity Pools"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn create_pool(
@@ -477,7 +477,7 @@ pub async fn create_pool(
         (status = 404, description = "Pool not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Liquidity Pools"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn update_pool_status(
@@ -563,7 +563,7 @@ pub async fn update_pool_status(
         (status = 404, description = "Pool not found or user not authorized", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Liquidity Pools"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn deposit_to_pool(
@@ -913,7 +913,7 @@ pub async fn get_investor_pool_summaries(
         (status = 400, description = "Invalid investor ID", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Investor Metrics"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn get_enhanced_investor_metrics_handler(
@@ -977,7 +977,7 @@ pub async fn get_enhanced_investor_metrics_handler(
         (status = 400, description = "Invalid investor ID", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Investor Metrics"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn get_investor_pool_metrics_handler(
@@ -1161,7 +1161,7 @@ pub async fn get_pool_performance(
         (status = 200, description = "Pool metrics overview retrieved successfully", body = PoolMetricsOverviewResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Pool Metrics"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn get_pool_metrics_overview(
@@ -1218,7 +1218,7 @@ pub async fn get_pool_metrics_overview(
         (status = 400, description = "Invalid investor ID", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Pool Metrics"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn get_investor_pool_metrics_overview(

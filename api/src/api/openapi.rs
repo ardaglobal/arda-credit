@@ -17,11 +17,6 @@ pub use crate::handlers::{
 
     // Finance types
     AccountFinancialTransactionResponse,
-    // Credit types
-    ActiveCreditLineResponse,
-    ActiveCreditLinesListResponse,
-    ActiveCreditLinesQuery,
-    ActivePoolDetails,
     // Admin & User types
     AdminUserIdentity,
     AdminUserListResponse,
@@ -33,15 +28,9 @@ pub use crate::handlers::{
     AnalyzeDocumentQuery,
     ApiError as AiApiError,
     ApproveWithdrawalRequest,
-    AvailablePoolResponse,
     BatchInfo,
     BatchListResponse,
     BatchProcessorStatsResponse,
-    // Pool types
-    BoroughErrorResponse,
-    BoroughLimitResponse,
-    BoroughSummaryResponse,
-    BoroughValidationResponse,
     BulkKycApprovalRequest,
     BulkKycApprovalResponse,
     BulkOperationResponse,
@@ -52,16 +41,8 @@ pub use crate::handlers::{
     CreateAccountFinancialTransactionRequest,
     CreateBatchRequest,
     CreateBatchResponse,
-    CreateCreditLineFinancialTransactionRequest,
     // Deal types
     CreateDealRequest,
-    CreatePoolFinancialTransactionRequest,
-    CreatePoolFundingRequest,
-    CreditLineErrorResponse,
-    CreditLineFinancialTransactionResponse,
-    CreditLineRequestListResponse,
-    CreditLineRequestQuery,
-    CreditLineRequestResponse,
     CurrentStateResponse,
     DateRange,
     DealDetailsResponse,
@@ -72,14 +53,11 @@ pub use crate::handlers::{
     DealTransferValidationResponse,
     DeleteDealResponse,
     DocumentActivity,
-    EligibilityCheckDetail,
-    EligibilityCheckResponse,
     FinancialSummaryResponse,
     FinancialTransactionQuery,
     // Auth types
     GenerateInviteCodeRequest,
     GenerateInviteCodeResponse,
-    // Merchant types
     InvestorProfileQuery,
     InvestorProfileResponse,
     KycStatisticsResponse,
@@ -92,30 +70,19 @@ pub use crate::handlers::{
     ListPendingKycResponse,
     LogoutResponse,
     MarketplaceDealResponse,
-    MerchantProfileQuery,
-    MerchantProfileResponse,
     PaginatedFinancialTransactionsResponse,
     PaginationInfo,
     PaymentDetailsResponse,
     PaymentResponse,
     PendingTransactionsResponse,
     PlatformMetricsResponse,
-    PoolBrowsingQuery,
-    PoolFinancialTransactionResponse,
-    ProfileCompletionResponse,
     RecordDealPaymentRequest,
     RegisterInvestorRequest,
     RegisterInvestorResponse,
-    RegisterMerchantRequest,
-    RegisterMerchantResponse,
     RegisterUserRequest,
     RegisterUserResponse,
     RejectWithdrawalRequest,
-
     RiskTrendPoint,
-    SetBoroughLimitRequest,
-    SubmitCreditLineRequestBody,
-
     SubmitKycRequest,
     SubmitKycResponse,
     SubmitTransactionRequest,
@@ -130,11 +97,6 @@ pub use crate::handlers::{
     TriggerAnalysisRequest,
     TriggerAnalysisResponse,
     TriggerBatchResponse,
-    TurnoverAnalyticsResponse,
-    TurnoverCreateRequest,
-    TurnoverResponse,
-    TurnoverUpdateRequest,
-
     UnifiedFinancialTransactionResponse,
     UpdateBatchProofRequest,
 
@@ -142,30 +104,14 @@ pub use crate::handlers::{
     UpdateDealResponse,
     UpdateInvestorProfileRequest,
     UpdateKycStatusRequest,
-    UpdateMerchantProfileRequest,
     UpdateUserRequest,
     UserBalanceResponse,
     UserDetailsResponse,
     UserTransactionsResponse,
-
-    ValidateBoroughQuery,
-
     ValidateDealTransferRequest,
-
     ValidateInviteCodeResponse,
 };
 
-// Other service types
-pub use crate::api::pool_api::{
-    BenchmarkData, CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
-    InvestorMetrics, InvestorPoolMetricsOverviewResponse, InvestorPoolSummariesResponse,
-    InvestorPoolSummary, MarketOverviewResponse, PageInfo, PlatformMetrics, PoolDetailsResponse,
-    PoolListQuery, PoolListResponse, PoolMatchRequest, PoolMetricsOverviewResponse,
-    PoolPerformanceData, PoolPerformanceMetrics, PoolPerformanceResponse, PoolSummaryInfo,
-    PoolTransactionInfo, PoolTransactionsResponse, PoolUtilizationResponse, RecentActivity,
-    StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
-    UtilizationHistoryQuery,
-};
 pub use crate::config::magic_link_types::{
     MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
     VerifyMagicLinkResponse,
@@ -206,43 +152,9 @@ fn default_limit() -> u32 {
 #[derive(OpenApi)]
 #[openapi(
     info(
-        title = "Arda Credit Deal API",
+        title = "Arda API",
         version = "v1",
-        description = r#"
-# Arda Credit Deal Processing API
-
-A privacy-preserving deal processing system built on SP1 zero-knowledge proofs.
-
-## Overview
-
-The Arda Credit API enables deal origination, payment processing, marketplace trading, and ownership transfers while maintaining transaction privacy through zero-knowledge proofs.
-
-## Core Features
-
-- **Deal Management**: Create, update, and manage deals between originators and investors
-- **Payment Processing**: Record and track deal payments with cryptographic verification
-- **Deal Marketplace**: List deals for sale, browse available deals, and manage listings
-- **Ownership Transfers**: Transfer deal ownership between investors with validation
-- **Privacy Preservation**: All operations maintain transaction privacy through ZK proofs
-
-## Recent Changes
-
-This API has been updated from loan-based terminology to deal-based terminology:
-- All `/loan/*` endpoints → `/deal/*` endpoints
-- All `/loans/*` endpoints → `/deals/*` endpoints
-- Marketplace endpoints consolidated into deal endpoints
-- Transfer endpoints consolidated into deal endpoints
-- Field names updated: borrower → originator, lender → investor
-
-## Authentication
-
-All endpoints require proper authentication and authorization.
-KYC verification may be required for certain deal operations.
-
-## Rate Limiting
-
-API requests are subject to rate limiting for system stability.
-        "#,
+        description = "Arda API",
         contact(
             name = "Arda Global",
             email = "support@arda.xyz",
@@ -302,14 +214,6 @@ API requests are subject to rate limiting for system stability.
         crate::handlers::core::state::update_batch_proof_endpoint,
         crate::handlers::core::state::trigger_batch_endpoint,
 
-        // Merchant endpoints
-        crate::handlers::merchants::merchants::register_merchant_endpoint,
-        crate::handlers::merchants::merchants::get_merchant_profile_endpoint,
-        crate::handlers::merchants::merchants::update_merchant_profile_endpoint,
-        crate::handlers::merchants::merchants::get_investor_profile_endpoint,
-        crate::handlers::merchants::merchants::update_investor_profile_endpoint,
-        crate::handlers::merchants::merchants::register_investor_endpoint,
-
         // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
         crate::handlers::deals::deals::create_deal_endpoint,
         crate::handlers::deals::deals::list_deals_endpoint,
@@ -334,21 +238,6 @@ API requests are subject to rate limiting for system stability.
         crate::handlers::deals::deals::get_user_deal_transfer_history_endpoint,
         crate::handlers::deals::deals::validate_deal_transfer_endpoint,
 
-        // Pool endpoints
-        crate::handlers::pools::pools::list_pools,
-        crate::handlers::pools::pools::get_pool_details,
-        crate::handlers::pools::pools::create_pool,
-        crate::handlers::pools::pools::update_pool_status,
-        crate::handlers::pools::pools::get_pool_metrics_overview,
-        crate::handlers::pools::pools::get_investor_pool_metrics_overview,
-
-        // Pool Borough Limit endpoints
-        crate::handlers::pools::boroughs::set_borough_limit,
-        crate::handlers::pools::boroughs::get_borough_limits,
-        crate::handlers::pools::boroughs::get_borough_summary,
-        crate::handlers::pools::boroughs::validate_borough_limit,
-        crate::handlers::pools::boroughs::delete_borough_limit,
-
         // Withdrawal endpoints
         crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint,
@@ -356,6 +245,27 @@ API requests are subject to rate limiting for system stability.
         crate::handlers::finance::withdrawals::get_user_withdrawal_history_endpoint,
         crate::handlers::finance::withdrawals::cancel_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_pending_withdrawals_endpoint,
+
+        // AI Analysis endpoints
+        crate::handlers::ai::analysis::analyze_document_diff,
+        crate::handlers::ai::analysis::process_chat_message,
+        crate::handlers::ai::analysis::get_negotiation_insights,
+        crate::handlers::ai::analysis::get_chat_history,
+        crate::handlers::ai::analysis::get_analysis_history,
+        crate::handlers::ai::analysis::trigger_analysis,
+        crate::handlers::ai::analysis::get_analytics_dashboard,
+
+        // Document Management endpoints
+        crate::handlers::merchants::documents::upload_document,
+        crate::handlers::merchants::documents::download_document,
+        crate::handlers::merchants::documents::list_documents,
+        crate::handlers::merchants::documents::verify_document,
+        crate::handlers::merchants::documents::get_audit_logs,
+
+        // Investor endpoints
+        crate::handlers::merchants::merchants::register_investor_endpoint,
+        crate::handlers::merchants::merchants::get_investor_profile_endpoint,
+        crate::handlers::merchants::merchants::update_investor_profile_endpoint,
 
         // Faucet endpoints (local/staging only)
         crate::handlers::faucet::get_faucet_info,
@@ -372,96 +282,27 @@ API requests are subject to rate limiting for system stability.
         crate::handlers::finance::transactions::record_account_deposit,
         crate::handlers::finance::transactions::record_account_withdrawal,
         crate::handlers::finance::transactions::get_account_financial_transactions,
-        crate::handlers::finance::transactions::record_pool_funding,
-        crate::handlers::finance::transactions::record_pool_withdrawal,
-        crate::handlers::finance::transactions::get_pool_financial_transactions,
-        crate::handlers::finance::transactions::record_credit_line_draw,
-        crate::handlers::finance::transactions::record_credit_line_payment,
-        crate::handlers::finance::transactions::get_credit_line_financial_transactions,
         crate::handlers::finance::transactions::get_user_financial_transactions,
         crate::handlers::finance::transactions::get_user_financial_summary,
-        crate::handlers::finance::transactions::get_user_pool_financial_transactions,
-        crate::handlers::finance::transactions::get_merchant_credit_line_financial_transactions,
 
         // Transaction History endpoints
         crate::handlers::finance::transaction_history::get_transaction_history,
-        crate::handlers::finance::transaction_history::get_pool_transaction_history,
-
-        // Credit Line endpoints
-        crate::handlers::credit::credit_lines::check_credit_eligibility,
-        crate::handlers::credit::credit_lines::submit_credit_line_request,
-        crate::handlers::credit::credit_lines::list_credit_line_requests,
-        crate::handlers::credit::credit_lines::browse_available_pools,
-        crate::handlers::credit::credit_lines::list_active_credit_lines_with_pool_details,
-
-        // Turnover endpoints
-        crate::handlers::merchants::turnover::create_turnover_endpoint,
-        crate::handlers::merchants::turnover::get_turnover_endpoint,
-        crate::handlers::merchants::turnover::update_turnover_endpoint,
-        crate::handlers::merchants::turnover::get_turnover_analytics_endpoint,
-        crate::handlers::merchants::turnover::get_profile_completion_endpoint,
 
         // Contract configuration endpoints
         crate::handlers::core::contract::get_contract_config,
         crate::handlers::core::contract::get_transaction_updates,
-
-        // Document Management endpoints
-        crate::handlers::merchants::documents::upload_document,
-        crate::handlers::merchants::documents::download_document,
-        crate::handlers::merchants::documents::get_document,
-        crate::handlers::merchants::documents::list_documents,
-        crate::handlers::merchants::documents::approve_document,
-        crate::handlers::merchants::documents::reject_document,
-        crate::handlers::merchants::documents::delete_document,
-        crate::handlers::merchants::documents::verify_document,
-        crate::handlers::merchants::documents::get_audit_logs,
-
-        // AI Analysis endpoints
-        crate::handlers::ai::analysis::analyze_document_diff,
-        crate::handlers::ai::analysis::trigger_analysis,
-        crate::handlers::ai::analysis::get_negotiation_insights,
-        crate::handlers::ai::analysis::get_analysis_history,
-        crate::handlers::ai::analysis::process_chat_message,
-        crate::handlers::ai::analysis::get_chat_history,
-        crate::handlers::ai::analysis::get_analytics_dashboard,
     ),
     tags(
-        (name = "Authentication", description = "User authentication endpoints"),
-        (name = "Documents", description = "Document upload, download, and management"),
-        (name = "User Management", description = "User profile and account management"),
-        (name = "Users", description = "User identity and profile operations"),
-        (name = "Investor", description = "Investor-specific operations"),
-        (name = "Investors", description = "Investor profile and account management"),
-        (name = "Merchant", description = "Merchant profile and operations"),
-        (name = "Merchants", description = "Merchant profile and account management"),
-        (name = "Merchant Turnover", description = "Merchant turnover tracking and reporting"),
-        (name = "Merchant Analytics", description = "Merchant analytics and insights"),
-        (name = "Merchant Profile", description = "Merchant profile completion tracking"),
-        (name = "KYC", description = "Know Your Customer verification"),
-        (name = "State Management", description = "Blockchain state operations"),
-        (name = "State", description = "Application state queries"),
-        (name = "Batch Processing", description = "Transaction batch management"),
-        (name = "Batches", description = "Batch creation and management"),
-        (name = "Transactions", description = "Transaction operations"),
-        (name = "Liquidity Pools", description = "Liquidity pool management and queries"),
-        (name = "Pool Metrics", description = "Platform-wide and investor-specific pool metrics and analytics"),
-        (name = "Deals", description = "Deal lifecycle management, marketplace operations, and ownership transfers"),
-        (name = "Payments", description = "Payment processing and history"),
-        (name = "Withdrawals", description = "Withdrawal operations"),
-        (name = "Admin Withdrawals", description = "Administrative withdrawal approval and management"),
-        (name = "Admin Dashboard", description = "Administrative dashboard and monitoring"),
-        (name = "Credit Lines", description = "Credit line requests and management"),
-        (name = "Financial Transactions", description = "Financial transaction tracking and reporting"),
-        (name = "Transaction History", description = "Comprehensive transaction history across all operations"),
-        (name = "Analytics", description = "Platform analytics and reporting"),
-        (name = "Admin", description = "Administrative operations"),
-        (name = "Health", description = "Health check and system information"),
-        (name = "Info", description = "API information and discovery"),
-        (name = "contract", description = "Contract configuration and blockchain integration"),
-        (name = "transactions", description = "Real-time transaction monitoring and updates"),
-        (name = "AI Analysis", description = "AI-powered document analysis and change detection"),
-        (name = "AI Chat", description = "Conversational AI for document analysis and negotiation advice"),
-        (name = "AI Analytics", description = "Analytics and insights from AI document analysis")
+        // Primary API Groups (8 main groups + Dev)
+        (name = "Auth", description = "Authentication, authorization, and invite code management"),
+        (name = "Users", description = "User account management, KYC verification, balances, and transaction history"),
+        (name = "Companies", description = "Merchant and investor company profiles, documents, turnover tracking, and AI analysis"),
+        (name = "Deals", description = "Deal lifecycle management, marketplace operations, ownership transfers, and payment processing"),
+        (name = "State", description = "Blockchain state management, batch processing, ZK proof generation, and contract integration"),
+        (name = "Admin", description = "Administrative operations including KYC approval, withdrawal management, and platform oversight"),
+        (name = "Analytics", description = "Pool analytics, credit lines, transaction history, metrics, and AI-powered insights"),
+        (name = "Payments", description = "Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines"),
+        (name = "Dev", description = "Development and testing utilities: health checks, API info, faucet operations (local/staging only)")
     ),
     components(schemas(
         // Authentication types
@@ -471,12 +312,9 @@ API requests are subject to rate limiting for system stability.
         UpdateUserRequest,
         LogoutResponse,
         RegisterInvestorRequest,
-        RegisterMerchantRequest,
-        MerchantProfileQuery,
-        MerchantProfileResponse,
+        RegisterInvestorResponse,
         InvestorProfileQuery,
         InvestorProfileResponse,
-        UpdateMerchantProfileRequest,
         UpdateInvestorProfileRequest,
         UserType,
 
@@ -499,26 +337,10 @@ API requests are subject to rate limiting for system stability.
         ListPendingKycQuery,
         ListPendingKycResponse,
 
-        // Credit line types
-        SubmitCreditLineRequestBody,
-        CreditLineRequestResponse,
-        EligibilityCheckResponse,
-        EligibilityCheckDetail,
-        AvailablePoolResponse,
-        PoolBrowsingQuery,
-        CreditLineRequestQuery,
-        CreditLineRequestListResponse,
-        CreditLineErrorResponse,
-
         // Financial transaction types
         FinancialTransactionQuery,
         CreateAccountFinancialTransactionRequest,
-        CreatePoolFinancialTransactionRequest,
-        CreatePoolFundingRequest,
-        CreateCreditLineFinancialTransactionRequest,
         AccountFinancialTransactionResponse,
-        PoolFinancialTransactionResponse,
-        CreditLineFinancialTransactionResponse,
         UnifiedFinancialTransactionResponse,
         FinancialSummaryResponse,
 
@@ -547,38 +369,6 @@ API requests are subject to rate limiting for system stability.
         ValidateDealTransferRequest,
         DealTransferValidationResponse,
 
-        // Pool types
-        PoolListQuery,
-        UtilizationHistoryQuery,
-        TransactionHistoryQuery,
-        StandardPoolObject,
-        PoolListResponse,
-        PageInfo,
-        PoolDetailsResponse,
-        PoolSummaryInfo,
-        PoolUtilizationResponse,
-        UtilizationDataPoint,
-        PoolTransactionsResponse,
-        PoolTransactionInfo,
-        InvestorDashboardResponse,
-        InvestorMetrics,
-        RecentActivity,
-        InvestorPoolSummariesResponse,
-        InvestorPoolSummary,
-        PoolPerformanceMetrics,
-        MarketOverviewResponse,
-        PlatformMetrics,
-        PoolPerformanceResponse,
-        PoolPerformanceData,
-        BenchmarkData,
-        CreatePoolRequest,
-        CreatePoolResponse,
-        UpdatePoolStatusRequest,
-        PoolMatchRequest,
-        PoolMetricsOverviewResponse,
-        InvestorPoolMetricsOverviewResponse,
-        ErrorResponse,
-
         // State management types
         BatchInfo,
         BatchListResponse,
@@ -593,13 +383,6 @@ API requests are subject to rate limiting for system stability.
         TransactionInfo,
         TriggerBatchResponse,
         UpdateBatchProofRequest,
-
-        // Turnover types
-        ProfileCompletionResponse,
-        TurnoverAnalyticsResponse,
-        TurnoverCreateRequest,
-        TurnoverResponse,
-        TurnoverUpdateRequest,
 
         // User types
         ListIdentitiesQuery,
@@ -626,20 +409,6 @@ API requests are subject to rate limiting for system stability.
         crate::handlers::faucet::FaucetStatusQuery,
         crate::handlers::faucet::FaucetStatusResponse,
         crate::handlers::faucet::NetworkConfig,
-
-        // Additional merchant types
-        InvestorProfileQuery,
-        InvestorProfileResponse,
-        UpdateMerchantProfileRequest,
-        UpdateInvestorProfileRequest,
-
-        // Borough limit types
-        SetBoroughLimitRequest,
-        BoroughLimitResponse,
-        BoroughSummaryResponse,
-        ValidateBoroughQuery,
-        BoroughValidationResponse,
-        BoroughErrorResponse,
 
         // Contract configuration types
         ContractConfigResponse,
@@ -670,6 +439,7 @@ API requests are subject to rate limiting for system stability.
         ImpactLevel,
         NegotiationInsight,
         RiskFactor,
+
         // Magic Link Authentication schemas (NEW)
         MagicLinkRequest,
         MagicLinkResponse,

@@ -1,7 +1,0 @@
-# Needed for arm64 runners, i.e. running on M chip Macs
-# Comment out for other machines
---container-architecture=linux/arm64
--P ubuntu-22.04=ghcr.io/catthehacker/ubuntu:act-22.04
--P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-22.04
---action-offline-mode
-

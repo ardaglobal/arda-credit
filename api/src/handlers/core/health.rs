@@ -67,7 +67,7 @@ pub struct EndpointInfo {
         (status = 200, description = "Service is healthy", body = HealthResponse),
         (status = 503, description = "Service is unhealthy")
     ),
-    tag = "Health"
+    tag = "Dev"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn health_check(
@@ -194,7 +194,7 @@ pub async fn health_check(
     responses(
         (status = 200, description = "API information", body = ApiInfoResponse),
     ),
-    tag = "Info"
+    tag = "Dev"
 )]
 pub async fn api_info(State(state): State<ApiState>) -> Json<ApiInfoResponse> {
     info!("📋 API: API info requested");

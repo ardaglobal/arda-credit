@@ -83,7 +83,7 @@ pub struct FaucetStatusResponse {
 #[utoipa::path(
     get,
     path = "/api/v1/faucet/info",
-    tag = "Faucet",
+    tag = "Dev",
     responses(
         (status = 200, description = "Faucet information retrieved", body = FaucetInfoResponse),
         (status = 500, description = "Internal server error")
@@ -197,7 +197,7 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
 #[utoipa::path(
     get,
     path = "/api/v1/faucet/status",
-    tag = "Faucet",
+    tag = "Dev",
     params(
         ("address" = String, Query, description = "Ethereum wallet address to check")
     ),
@@ -273,7 +273,7 @@ pub async fn check_faucet_status(
 #[utoipa::path(
     get,
     path = "/api/v1/faucet/config",
-    tag = "Faucet",
+    tag = "Dev",
     responses(
         (status = 200, description = "Faucet configuration", body = HashMap<String, serde_json::Value>)
     )

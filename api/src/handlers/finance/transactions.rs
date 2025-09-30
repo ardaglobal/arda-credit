@@ -205,7 +205,7 @@ pub struct PaginatedFinancialTransactionsResponse<T> {
         (status = 404, description = "User not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn record_account_deposit(
@@ -318,7 +318,7 @@ pub async fn record_account_deposit(
         (status = 404, description = "User not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn record_account_withdrawal(
@@ -432,7 +432,7 @@ pub async fn record_account_withdrawal(
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn get_account_financial_transactions(
@@ -528,7 +528,7 @@ pub async fn get_account_financial_transactions(
         (status = 404, description = "Pool not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn record_pool_funding(
@@ -664,7 +664,7 @@ pub async fn record_pool_funding(
         (status = 404, description = "Pool not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn record_pool_withdrawal(
@@ -814,7 +814,7 @@ pub async fn record_pool_withdrawal(
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn get_pool_financial_transactions(
@@ -908,7 +908,7 @@ pub async fn get_pool_financial_transactions(
         (status = 404, description = "Credit line not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn record_credit_line_draw(
@@ -1046,7 +1046,7 @@ pub async fn record_credit_line_draw(
         (status = 404, description = "Credit line not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn record_credit_line_payment(
@@ -1183,7 +1183,7 @@ pub async fn record_credit_line_payment(
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn get_credit_line_financial_transactions(
@@ -1279,7 +1279,7 @@ pub async fn get_credit_line_financial_transactions(
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn get_user_financial_transactions(
@@ -1375,7 +1375,7 @@ pub async fn get_user_financial_transactions(
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn get_user_financial_summary(
@@ -1435,7 +1435,7 @@ pub async fn get_user_financial_summary(
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn get_user_pool_financial_transactions(
@@ -1531,7 +1531,7 @@ pub async fn get_user_pool_financial_transactions(
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Financial Transactions"
+    tag = "Payments"
 )]
 #[instrument(skip(state))]
 pub async fn get_merchant_credit_line_financial_transactions(

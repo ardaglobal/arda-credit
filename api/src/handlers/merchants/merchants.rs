@@ -235,7 +235,7 @@ pub struct UpdateInvestorProfileRequest {
         (status = 409, description = "Merchant with this email already exists"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Merchant"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn register_merchant_endpoint(
@@ -402,7 +402,7 @@ pub async fn register_merchant_endpoint(
         (status = 404, description = "Merchant profile not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Merchants"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_merchant_profile_endpoint(
@@ -565,7 +565,7 @@ pub async fn get_merchant_profile_endpoint(
         (status = 400, description = "Invalid request parameters"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Merchants"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn update_merchant_profile_endpoint(
@@ -739,7 +739,7 @@ pub async fn update_merchant_profile_endpoint(
         (status = 404, description = "Investor profile not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Investors",
+    tag = "Companies",
     security(
         ("jwt_auth" = [])
     )
@@ -830,7 +830,7 @@ pub async fn get_investor_profile_endpoint(
         (status = 404, description = "Investor profile not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Investors",
+    tag = "Companies",
     security(
         ("jwt_auth" = [])
     )
@@ -936,7 +936,7 @@ pub async fn update_investor_profile_endpoint(
         (status = 409, description = "Investor profile already exists for this email"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Investor"
+    tag = "Companies"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn register_investor_endpoint(

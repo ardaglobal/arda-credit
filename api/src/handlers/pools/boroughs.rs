@@ -191,7 +191,7 @@ impl From<PoolBoroughSummary> for BoroughSummaryResponse {
         (status = 404, description = "Pool not found", body = BoroughErrorResponse),
         (status = 500, description = "Internal server error", body = BoroughErrorResponse)
     ),
-    tag = "Pool Borough Limits"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn set_borough_limit(
@@ -300,7 +300,7 @@ pub async fn set_borough_limit(
         (status = 400, description = "Invalid pool ID", body = BoroughErrorResponse),
         (status = 500, description = "Internal server error", body = BoroughErrorResponse)
     ),
-    tag = "Pool Borough Limits"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn get_borough_limits(
@@ -363,7 +363,7 @@ pub async fn get_borough_limits(
         (status = 400, description = "Invalid pool ID", body = BoroughErrorResponse),
         (status = 500, description = "Internal server error", body = BoroughErrorResponse)
     ),
-    tag = "Pool Borough Limits"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn get_borough_summary(
@@ -429,7 +429,7 @@ pub async fn get_borough_summary(
         (status = 400, description = "Invalid request parameters", body = BoroughErrorResponse),
         (status = 500, description = "Internal server error", body = BoroughErrorResponse)
     ),
-    tag = "Pool Borough Limits"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn validate_borough_limit(
@@ -558,7 +558,7 @@ pub async fn validate_borough_limit(
         (status = 404, description = "Borough limit not found", body = BoroughErrorResponse),
         (status = 500, description = "Internal server error", body = BoroughErrorResponse)
     ),
-    tag = "Pool Borough Limits"
+    tag = "Analytics"
 )]
 #[instrument(skip(state))]
 pub async fn delete_borough_limit(
