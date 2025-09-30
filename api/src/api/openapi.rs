@@ -263,9 +263,9 @@ fn default_limit() -> u32 {
         crate::handlers::merchants::documents::get_audit_logs,
 
         // Investor endpoints
-        crate::handlers::merchants::merchants::register_investor_endpoint,
-        crate::handlers::merchants::merchants::get_investor_profile_endpoint,
-        crate::handlers::merchants::merchants::update_investor_profile_endpoint,
+        crate::handlers::merchants::companies::register_investor_endpoint,
+        crate::handlers::merchants::companies::get_investor_profile_endpoint,
+        crate::handlers::merchants::companies::update_investor_profile_endpoint,
 
         // Faucet endpoints (local/staging only)
         crate::handlers::faucet::get_faucet_info,
