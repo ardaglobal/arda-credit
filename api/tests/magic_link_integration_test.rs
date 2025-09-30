@@ -10,12 +10,12 @@ use std::sync::Arc;
 use tokio::time::timeout;
 use tower::ServiceExt;
 
-use api::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
-use api::test_utils::{
+use api::config::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
+use api::config::types::ApiState;
+use api::utils::test_utils::{
     create_test_app, create_test_app_with_magic_links, create_test_user, TestApp, TestContext,
     TestMagicLink, TestUser,
 };
-use api::types::ApiState;
 
 /// Test context for magic link integration tests
 struct MagicLinkTestContext {
@@ -438,7 +438,7 @@ async fn create_expired_magic_link(pool: &PgPool, user_id: uuid::Uuid) -> TestMa
 
     let token = "expired-token-1234567890123456789012345678";
     let state = "expired-state-12345678901234567890123456";
-    let token_hash = api::magic_link_service::MagicLinkService::hash_token(token);
+    let token_hash = api::services::magic_link_service::MagicLinkService::hash_token(token);
 
     sqlx::query!(
         r#"
@@ -468,7 +468,7 @@ async fn create_expired_magic_link(pool: &PgPool, user_id: uuid::Uuid) -> TestMa
 async fn create_magic_link(pool: &PgPool, user_id: uuid::Uuid) -> TestMagicLink {
     let token = "test-token-12345678901234567890123456789012";
     let state = "test-state-1234567890123456789012345678901";
-    let token_hash = api::magic_link_service::MagicLinkService::hash_token(token);
+    let token_hash = api::services::magic_link_service::MagicLinkService::hash_token(token);
     let expires_at = Utc::now() + chrono::Duration::minutes(10);
 
     sqlx::query!(

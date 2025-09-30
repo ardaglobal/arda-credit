@@ -1,0 +1,695 @@
+//! OpenAPI/Swagger documentation for the Arda Credit API
+//!
+//! This module contains all OpenAPI schema definitions and endpoint documentation
+//! for the REST API. This is the single source of truth for API documentation.
+//!
+//! The schemas and endpoints are organized by functional area for maintainability.
+
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, OpenApi, ToSchema};
+
+// Re-export types from handlers module
+pub use crate::handlers::{
+    get_current_user,
+    logout_endpoint,
+    request_magic_link,
+    verify_magic_link,
+
+    // Finance types
+    AccountFinancialTransactionResponse,
+    // Credit types
+    ActiveCreditLineResponse,
+    ActiveCreditLinesListResponse,
+    ActiveCreditLinesQuery,
+    ActivePoolDetails,
+    // Admin & User types
+    AdminUserIdentity,
+    AdminUserListResponse,
+    AdminWithdrawalDashboard,
+    // AI types
+    AnalysisHistoryResponse,
+    AnalysisSummary,
+    AnalyticsDashboardResponse,
+    AnalyzeDocumentQuery,
+    ApiError as AiApiError,
+    ApproveWithdrawalRequest,
+    AvailablePoolResponse,
+    BatchInfo,
+    BatchListResponse,
+    BatchProcessorStatsResponse,
+    // Pool types
+    BoroughErrorResponse,
+    BoroughLimitResponse,
+    BoroughSummaryResponse,
+    BoroughValidationResponse,
+    BulkKycApprovalRequest,
+    BulkKycApprovalResponse,
+    BulkOperationResponse,
+    // Core types
+    ContractConfigQuery,
+    ContractConfigResponse,
+    ContractSubmissionData,
+    CreateAccountFinancialTransactionRequest,
+    CreateBatchRequest,
+    CreateBatchResponse,
+    CreateCreditLineFinancialTransactionRequest,
+    // Deal types
+    CreateDealRequest,
+    CreatePoolFinancialTransactionRequest,
+    CreatePoolFundingRequest,
+    CreditLineErrorResponse,
+    CreditLineFinancialTransactionResponse,
+    CreditLineRequestListResponse,
+    CreditLineRequestQuery,
+    CreditLineRequestResponse,
+    CurrentStateResponse,
+    DateRange,
+    DealDetailsResponse,
+    DealListingResponse,
+    DealPaymentHistoryResponse,
+    DealStatsResponse,
+    DealTransferResponse,
+    DealTransferValidationResponse,
+    DeleteDealResponse,
+    DocumentActivity,
+    EligibilityCheckDetail,
+    EligibilityCheckResponse,
+    FinancialSummaryResponse,
+    FinancialTransactionQuery,
+    // Auth types
+    GenerateInviteCodeRequest,
+    GenerateInviteCodeResponse,
+    // Merchant types
+    InvestorProfileQuery,
+    InvestorProfileResponse,
+    KycStatisticsResponse,
+    ListDealForSaleRequest,
+    ListDealsQuery,
+    ListDealsResponse,
+    ListIdentitiesQuery,
+    ListIdentitiesResponse,
+    ListPendingKycQuery,
+    ListPendingKycResponse,
+    LogoutResponse,
+    MarketplaceDealResponse,
+    MerchantProfileQuery,
+    MerchantProfileResponse,
+    PaginatedFinancialTransactionsResponse,
+    PaginationInfo,
+    PaymentDetailsResponse,
+    PaymentResponse,
+    PendingTransactionsResponse,
+    PlatformMetricsResponse,
+    PoolBrowsingQuery,
+    PoolFinancialTransactionResponse,
+    ProfileCompletionResponse,
+    RecordDealPaymentRequest,
+    RegisterInvestorRequest,
+    RegisterInvestorResponse,
+    RegisterMerchantRequest,
+    RegisterMerchantResponse,
+    RegisterUserRequest,
+    RegisterUserResponse,
+    RejectWithdrawalRequest,
+
+    RiskTrendPoint,
+    SetBoroughLimitRequest,
+    SubmitCreditLineRequestBody,
+
+    SubmitKycRequest,
+    SubmitKycResponse,
+    SubmitTransactionRequest,
+    SubmitTransactionResponse,
+    TransactionHistoryItem,
+    TransactionHistoryResponse,
+    TransactionInfo,
+    TransactionSummary,
+    TransactionUpdateEvent,
+    TransactionUpdatesQuery,
+    TransferDealOwnershipRequest,
+    TriggerAnalysisRequest,
+    TriggerAnalysisResponse,
+    TriggerBatchResponse,
+    TurnoverAnalyticsResponse,
+    TurnoverCreateRequest,
+    TurnoverResponse,
+    TurnoverUpdateRequest,
+
+    UnifiedFinancialTransactionResponse,
+    UpdateBatchProofRequest,
+
+    UpdateDealRequest,
+    UpdateDealResponse,
+    UpdateInvestorProfileRequest,
+    UpdateKycStatusRequest,
+    UpdateMerchantProfileRequest,
+    UpdateUserRequest,
+    UserBalanceResponse,
+    UserDetailsResponse,
+    UserTransactionsResponse,
+
+    ValidateBoroughQuery,
+
+    ValidateDealTransferRequest,
+
+    ValidateInviteCodeResponse,
+};
+
+// Other service types
+pub use crate::api::pool_api::{
+    BenchmarkData, CreatePoolRequest, CreatePoolResponse, ErrorResponse, InvestorDashboardResponse,
+    InvestorMetrics, InvestorPoolMetricsOverviewResponse, InvestorPoolSummariesResponse,
+    InvestorPoolSummary, MarketOverviewResponse, PageInfo, PlatformMetrics, PoolDetailsResponse,
+    PoolListQuery, PoolListResponse, PoolMatchRequest, PoolMetricsOverviewResponse,
+    PoolPerformanceData, PoolPerformanceMetrics, PoolPerformanceResponse, PoolSummaryInfo,
+    PoolTransactionInfo, PoolTransactionsResponse, PoolUtilizationResponse, RecentActivity,
+    StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
+    UtilizationHistoryQuery,
+};
+pub use crate::config::magic_link_types::{
+    MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
+    VerifyMagicLinkResponse,
+};
+pub use crate::config::types::UserType;
+pub use crate::services::ai_analysis_service::{
+    AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
+    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
+};
+pub use crate::services::balance_service::AvailableBalance;
+pub use crate::services::withdrawal_service::{
+    InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
+};
+
+/// Pagination parameters for list endpoints
+#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+pub struct PaginationParams {
+    /// Page number (1-based)
+    #[serde(default = "default_page")]
+    pub page: u32,
+    /// Number of items per page
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+
+fn default_page() -> u32 {
+    1
+}
+fn default_limit() -> u32 {
+    20
+}
+
+// ============================================================================
+// MAIN OPENAPI DOCUMENTATION
+// ============================================================================
+
+/// Main OpenAPI documentation for the Arda Credit API
+#[derive(OpenApi)]
+#[openapi(
+    info(
+        title = "Arda Credit Deal API",
+        version = "v1",
+        description = r#"
+# Arda Credit Deal Processing API
+
+A privacy-preserving deal processing system built on SP1 zero-knowledge proofs.
+
+## Overview
+
+The Arda Credit API enables deal origination, payment processing, marketplace trading, and ownership transfers while maintaining transaction privacy through zero-knowledge proofs.
+
+## Core Features
+
+- **Deal Management**: Create, update, and manage deals between originators and investors
+- **Payment Processing**: Record and track deal payments with cryptographic verification
+- **Deal Marketplace**: List deals for sale, browse available deals, and manage listings
+- **Ownership Transfers**: Transfer deal ownership between investors with validation
+- **Privacy Preservation**: All operations maintain transaction privacy through ZK proofs
+
+## Recent Changes
+
+This API has been updated from loan-based terminology to deal-based terminology:
+- All `/loan/*` endpoints → `/deal/*` endpoints
+- All `/loans/*` endpoints → `/deals/*` endpoints
+- Marketplace endpoints consolidated into deal endpoints
+- Transfer endpoints consolidated into deal endpoints
+- Field names updated: borrower → originator, lender → investor
+
+## Authentication
+
+All endpoints require proper authentication and authorization.
+KYC verification may be required for certain deal operations.
+
+## Rate Limiting
+
+API requests are subject to rate limiting for system stability.
+        "#,
+        contact(
+            name = "Arda Global",
+            email = "support@arda.xyz",
+            url = "https://arda.xyz"
+        ),
+        license(
+            name = "MIT",
+            url = "https://opensource.org/licenses/MIT"
+        )
+    ),
+    servers(
+        (url = "http://localhost:8080", description = "Development server"),
+        (url = "https://api.arda.credit", description = "Production server")
+    ),
+    paths(
+        // Health and Info endpoints
+        crate::handlers::core::health::health_check,
+        crate::handlers::core::health::api_info,
+
+        // Magic Link Authentication endpoints (NEW)
+        crate::handlers::auth::magic_link::request_magic_link,
+        crate::handlers::auth::magic_link::verify_magic_link,
+        crate::handlers::auth::magic_link::get_current_user,
+        crate::handlers::auth::magic_link::logout_endpoint,
+
+        // Authentication utilities (keep these)
+        crate::handlers::auth::authentication::validate_invite_code_endpoint,
+        crate::handlers::auth::authentication::generate_invite_code_endpoint,
+
+        // User Management endpoints
+        crate::handlers::users::users::register_user_endpoint,
+        crate::handlers::users::users::get_user_details_endpoint,
+        crate::handlers::users::users::list_identities_endpoint,
+        crate::handlers::users::users::update_user_endpoint,
+        crate::handlers::users::users::delete_user_endpoint,
+        crate::handlers::users::users::get_user_balance_by_address_endpoint,
+        crate::handlers::users::users::get_user_balance_by_id_endpoint,
+        crate::handlers::users::users::get_user_transactions_endpoint,
+        crate::handlers::users::users::submit_kyc_endpoint,
+        crate::handlers::users::users::update_kyc_status_endpoint,
+
+        // Admin endpoints
+        crate::handlers::users::admin::list_pending_kyc_endpoint,
+        crate::handlers::users::admin::get_kyc_statistics_endpoint,
+        crate::handlers::users::admin::bulk_kyc_approval_endpoint,
+        crate::handlers::users::admin::get_platform_metrics_endpoint,
+
+        // State Management endpoints
+        crate::handlers::core::state::submit_transaction_endpoint,
+        crate::handlers::core::state::get_pending_transactions_endpoint,
+        crate::handlers::core::state::create_batch_endpoint,
+        crate::handlers::core::state::get_batches_endpoint,
+        crate::handlers::core::state::get_current_state_endpoint,
+        crate::handlers::core::state::get_batch_endpoint,
+        crate::handlers::core::state::get_batch_details_endpoint,
+        crate::handlers::core::state::get_contract_submission_data_endpoint,
+        crate::handlers::core::state::update_batch_proof_endpoint,
+        crate::handlers::core::state::trigger_batch_endpoint,
+
+        // Merchant endpoints
+        crate::handlers::merchants::merchants::register_merchant_endpoint,
+        crate::handlers::merchants::merchants::get_merchant_profile_endpoint,
+        crate::handlers::merchants::merchants::update_merchant_profile_endpoint,
+        crate::handlers::merchants::merchants::get_investor_profile_endpoint,
+        crate::handlers::merchants::merchants::update_investor_profile_endpoint,
+        crate::handlers::merchants::merchants::register_investor_endpoint,
+
+        // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
+        crate::handlers::deals::deals::create_deal_endpoint,
+        crate::handlers::deals::deals::list_deals_endpoint,
+        crate::handlers::deals::deals::get_deals_by_user_id_endpoint,
+        crate::handlers::deals::deals::get_deal_details_endpoint,
+        crate::handlers::deals::deals::get_deal_stats_endpoint,
+        crate::handlers::deals::deals::update_deal_endpoint,
+        crate::handlers::deals::deals::delete_deal_endpoint,
+        crate::handlers::deals::deals::record_deal_payment_endpoint,
+        crate::handlers::deals::deals::get_payment_details_endpoint,
+        crate::handlers::deals::deals::get_deal_payment_history_endpoint,
+
+        // Consolidated Deal Marketplace endpoints (moved from marketplace_handlers)
+        crate::handlers::deals::deals::browse_deals_for_sale_endpoint,
+        crate::handlers::deals::deals::list_deal_for_sale_endpoint,
+        crate::handlers::deals::deals::remove_deal_from_sale_endpoint,
+        crate::handlers::deals::deals::deal_marketplace_stats_endpoint,
+
+        // Consolidated Deal Transfer endpoints (moved from transfer_handlers)
+        crate::handlers::deals::deals::transfer_deal_ownership_endpoint,
+        crate::handlers::deals::deals::get_deal_transfer_history_endpoint,
+        crate::handlers::deals::deals::get_user_deal_transfer_history_endpoint,
+        crate::handlers::deals::deals::validate_deal_transfer_endpoint,
+
+        // Pool endpoints
+        crate::handlers::pools::pools::list_pools,
+        crate::handlers::pools::pools::get_pool_details,
+        crate::handlers::pools::pools::create_pool,
+        crate::handlers::pools::pools::update_pool_status,
+        crate::handlers::pools::pools::get_pool_metrics_overview,
+        crate::handlers::pools::pools::get_investor_pool_metrics_overview,
+
+        // Pool Borough Limit endpoints
+        crate::handlers::pools::boroughs::set_borough_limit,
+        crate::handlers::pools::boroughs::get_borough_limits,
+        crate::handlers::pools::boroughs::get_borough_summary,
+        crate::handlers::pools::boroughs::validate_borough_limit,
+        crate::handlers::pools::boroughs::delete_borough_limit,
+
+        // Withdrawal endpoints
+        crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
+        crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint,
+        crate::handlers::finance::withdrawals::get_user_available_balance_endpoint,
+        crate::handlers::finance::withdrawals::get_user_withdrawal_history_endpoint,
+        crate::handlers::finance::withdrawals::cancel_withdrawal_endpoint,
+        crate::handlers::finance::withdrawals::get_pending_withdrawals_endpoint,
+
+        // Admin withdrawal endpoints
+        crate::handlers::finance::withdrawals::approve_withdrawal_request,
+        crate::handlers::finance::withdrawals::reject_withdrawal_request,
+        crate::handlers::finance::withdrawals::get_admin_withdrawal_dashboard,
+        crate::handlers::finance::withdrawals::manual_execute_withdrawal,
+
+        // Financial Transaction endpoints
+        crate::handlers::finance::transactions::record_account_deposit,
+        crate::handlers::finance::transactions::record_account_withdrawal,
+        crate::handlers::finance::transactions::get_account_financial_transactions,
+        crate::handlers::finance::transactions::record_pool_funding,
+        crate::handlers::finance::transactions::record_pool_withdrawal,
+        crate::handlers::finance::transactions::get_pool_financial_transactions,
+        crate::handlers::finance::transactions::record_credit_line_draw,
+        crate::handlers::finance::transactions::record_credit_line_payment,
+        crate::handlers::finance::transactions::get_credit_line_financial_transactions,
+        crate::handlers::finance::transactions::get_user_financial_transactions,
+        crate::handlers::finance::transactions::get_user_financial_summary,
+        crate::handlers::finance::transactions::get_user_pool_financial_transactions,
+        crate::handlers::finance::transactions::get_merchant_credit_line_financial_transactions,
+
+        // Transaction History endpoints
+        crate::handlers::finance::transaction_history::get_transaction_history,
+        crate::handlers::finance::transaction_history::get_pool_transaction_history,
+
+        // Credit Line endpoints
+        crate::handlers::credit::credit_lines::check_credit_eligibility,
+        crate::handlers::credit::credit_lines::submit_credit_line_request,
+        crate::handlers::credit::credit_lines::list_credit_line_requests,
+        crate::handlers::credit::credit_lines::browse_available_pools,
+        crate::handlers::credit::credit_lines::list_active_credit_lines_with_pool_details,
+
+        // Turnover endpoints
+        crate::handlers::merchants::turnover::create_turnover_endpoint,
+        crate::handlers::merchants::turnover::get_turnover_endpoint,
+        crate::handlers::merchants::turnover::update_turnover_endpoint,
+        crate::handlers::merchants::turnover::get_turnover_analytics_endpoint,
+        crate::handlers::merchants::turnover::get_profile_completion_endpoint,
+
+        // Contract configuration endpoints
+        crate::handlers::core::contract::get_contract_config,
+        crate::handlers::core::contract::get_transaction_updates,
+
+        // Document Management endpoints
+        crate::handlers::merchants::documents::upload_document,
+        crate::handlers::merchants::documents::download_document,
+        crate::handlers::merchants::documents::get_document,
+        crate::handlers::merchants::documents::list_documents,
+        crate::handlers::merchants::documents::approve_document,
+        crate::handlers::merchants::documents::reject_document,
+        crate::handlers::merchants::documents::delete_document,
+        crate::handlers::merchants::documents::verify_document,
+        crate::handlers::merchants::documents::get_audit_logs,
+
+        // AI Analysis endpoints
+        crate::handlers::ai::analysis::analyze_document_diff,
+        crate::handlers::ai::analysis::trigger_analysis,
+        crate::handlers::ai::analysis::get_negotiation_insights,
+        crate::handlers::ai::analysis::get_analysis_history,
+        crate::handlers::ai::analysis::process_chat_message,
+        crate::handlers::ai::analysis::get_chat_history,
+        crate::handlers::ai::analysis::get_analytics_dashboard,
+    ),
+    tags(
+        (name = "Authentication", description = "User authentication endpoints"),
+        (name = "Documents", description = "Document upload, download, and management"),
+        (name = "User Management", description = "User profile and account management"),
+        (name = "Users", description = "User identity and profile operations"),
+        (name = "Investor", description = "Investor-specific operations"),
+        (name = "Investors", description = "Investor profile and account management"),
+        (name = "Merchant", description = "Merchant profile and operations"),
+        (name = "Merchants", description = "Merchant profile and account management"),
+        (name = "Merchant Turnover", description = "Merchant turnover tracking and reporting"),
+        (name = "Merchant Analytics", description = "Merchant analytics and insights"),
+        (name = "Merchant Profile", description = "Merchant profile completion tracking"),
+        (name = "KYC", description = "Know Your Customer verification"),
+        (name = "State Management", description = "Blockchain state operations"),
+        (name = "State", description = "Application state queries"),
+        (name = "Batch Processing", description = "Transaction batch management"),
+        (name = "Batches", description = "Batch creation and management"),
+        (name = "Transactions", description = "Transaction operations"),
+        (name = "Liquidity Pools", description = "Liquidity pool management and queries"),
+        (name = "Pool Metrics", description = "Platform-wide and investor-specific pool metrics and analytics"),
+        (name = "Deals", description = "Deal lifecycle management, marketplace operations, and ownership transfers"),
+        (name = "Payments", description = "Payment processing and history"),
+        (name = "Withdrawals", description = "Withdrawal operations"),
+        (name = "Admin Withdrawals", description = "Administrative withdrawal approval and management"),
+        (name = "Admin Dashboard", description = "Administrative dashboard and monitoring"),
+        (name = "Credit Lines", description = "Credit line requests and management"),
+        (name = "Financial Transactions", description = "Financial transaction tracking and reporting"),
+        (name = "Transaction History", description = "Comprehensive transaction history across all operations"),
+        (name = "Analytics", description = "Platform analytics and reporting"),
+        (name = "Admin", description = "Administrative operations"),
+        (name = "Health", description = "Health check and system information"),
+        (name = "Info", description = "API information and discovery"),
+        (name = "contract", description = "Contract configuration and blockchain integration"),
+        (name = "transactions", description = "Real-time transaction monitoring and updates"),
+        (name = "AI Analysis", description = "AI-powered document analysis and change detection"),
+        (name = "AI Chat", description = "Conversational AI for document analysis and negotiation advice"),
+        (name = "AI Analytics", description = "Analytics and insights from AI document analysis")
+    ),
+    components(schemas(
+        // Authentication types
+        RegisterUserRequest,
+        RegisterUserResponse,
+        UserDetailsResponse,
+        UpdateUserRequest,
+        LogoutResponse,
+        RegisterInvestorRequest,
+        RegisterMerchantRequest,
+        MerchantProfileQuery,
+        MerchantProfileResponse,
+        InvestorProfileQuery,
+        InvestorProfileResponse,
+        UpdateMerchantProfileRequest,
+        UpdateInvestorProfileRequest,
+        UserType,
+
+        // Document types
+        crate::handlers::merchants::documents::DocumentUploadResponse,
+        crate::handlers::merchants::documents::DocumentDownloadHeaders,
+        crate::handlers::merchants::documents::DocumentVerificationResponse,
+        crate::handlers::merchants::documents::DocumentListResponse,
+        crate::handlers::merchants::documents::AuditLogsResponse,
+        crate::services::document_service::DocumentResponseDto,
+        crate::services::document_service::DocumentAuditLogDto,
+
+        // Admin types
+        AdminUserIdentity,
+        AdminUserListResponse,
+        BulkKycApprovalRequest,
+        BulkKycApprovalResponse,
+        BulkOperationResponse,
+        KycStatisticsResponse,
+        ListPendingKycQuery,
+        ListPendingKycResponse,
+
+        // Credit line types
+        SubmitCreditLineRequestBody,
+        CreditLineRequestResponse,
+        EligibilityCheckResponse,
+        EligibilityCheckDetail,
+        AvailablePoolResponse,
+        PoolBrowsingQuery,
+        CreditLineRequestQuery,
+        CreditLineRequestListResponse,
+        CreditLineErrorResponse,
+
+        // Financial transaction types
+        FinancialTransactionQuery,
+        CreateAccountFinancialTransactionRequest,
+        CreatePoolFinancialTransactionRequest,
+        CreatePoolFundingRequest,
+        CreateCreditLineFinancialTransactionRequest,
+        AccountFinancialTransactionResponse,
+        PoolFinancialTransactionResponse,
+        CreditLineFinancialTransactionResponse,
+        UnifiedFinancialTransactionResponse,
+        FinancialSummaryResponse,
+
+        // Deal types (consolidated - includes marketplace and transfer operations)
+        CreateDealRequest,
+        DeleteDealResponse,
+        ListDealsQuery,
+        ListDealsResponse,
+        DealDetailsResponse,
+        DealPaymentHistoryResponse,
+        DealStatsResponse,
+        PaymentDetailsResponse,
+        PaymentResponse,
+        RecordDealPaymentRequest,
+        UpdateDealRequest,
+        UpdateDealResponse,
+
+        // Consolidated Deal Marketplace types (moved from marketplace_handlers)
+        MarketplaceDealResponse,
+        ListDealForSaleRequest,
+        DealListingResponse,
+
+        // Consolidated Deal Transfer types (moved from transfer_handlers)
+        TransferDealOwnershipRequest,
+        DealTransferResponse,
+        ValidateDealTransferRequest,
+        DealTransferValidationResponse,
+
+        // Pool types
+        PoolListQuery,
+        UtilizationHistoryQuery,
+        TransactionHistoryQuery,
+        StandardPoolObject,
+        PoolListResponse,
+        PageInfo,
+        PoolDetailsResponse,
+        PoolSummaryInfo,
+        PoolUtilizationResponse,
+        UtilizationDataPoint,
+        PoolTransactionsResponse,
+        PoolTransactionInfo,
+        InvestorDashboardResponse,
+        InvestorMetrics,
+        RecentActivity,
+        InvestorPoolSummariesResponse,
+        InvestorPoolSummary,
+        PoolPerformanceMetrics,
+        MarketOverviewResponse,
+        PlatformMetrics,
+        PoolPerformanceResponse,
+        PoolPerformanceData,
+        BenchmarkData,
+        CreatePoolRequest,
+        CreatePoolResponse,
+        UpdatePoolStatusRequest,
+        PoolMatchRequest,
+        PoolMetricsOverviewResponse,
+        InvestorPoolMetricsOverviewResponse,
+        ErrorResponse,
+
+        // State management types
+        BatchInfo,
+        BatchListResponse,
+        BatchProcessorStatsResponse,
+        ContractSubmissionData,
+        CreateBatchRequest,
+        CreateBatchResponse,
+        CurrentStateResponse,
+        PendingTransactionsResponse,
+        SubmitTransactionRequest,
+        SubmitTransactionResponse,
+        TransactionInfo,
+        TriggerBatchResponse,
+        UpdateBatchProofRequest,
+
+        // Turnover types
+        ProfileCompletionResponse,
+        TurnoverAnalyticsResponse,
+        TurnoverCreateRequest,
+        TurnoverResponse,
+        TurnoverUpdateRequest,
+
+        // User types
+        ListIdentitiesQuery,
+        ListIdentitiesResponse,
+        SubmitKycRequest,
+        SubmitKycResponse,
+        UpdateKycStatusRequest,
+        UserBalanceResponse,
+        UserTransactionsResponse,
+
+        // Withdrawal types
+        PaginationParams,
+        InitiateWithdrawalRequest,
+        InitiateWithdrawalResponse,
+        WithdrawalStatusResponse,
+        AvailableBalance,
+        // Admin withdrawal types
+        AdminWithdrawalDashboard,
+        ApproveWithdrawalRequest,
+        RejectWithdrawalRequest,
+
+        // Additional merchant types
+        InvestorProfileQuery,
+        InvestorProfileResponse,
+        UpdateMerchantProfileRequest,
+        UpdateInvestorProfileRequest,
+
+        // Borough limit types
+        SetBoroughLimitRequest,
+        BoroughLimitResponse,
+        BoroughSummaryResponse,
+        ValidateBoroughQuery,
+        BoroughValidationResponse,
+        BoroughErrorResponse,
+
+        // Contract configuration types
+        ContractConfigResponse,
+        ContractConfigQuery,
+        TransactionUpdateEvent,
+        TransactionUpdatesQuery,
+
+        // AI Analysis types
+        AnalyzeDocumentQuery,
+        AnalysisHistoryResponse,
+        AnalysisSummary,
+        AnalyticsDashboardResponse,
+        AiApiError,
+        DocumentActivity,
+        RiskTrendPoint,
+        TriggerAnalysisRequest,
+        TriggerAnalysisResponse,
+
+        // AI Service types
+        AiChatMessage,
+        AiChatRequest,
+        AiChatResponse,
+        ChangeAnalysis,
+        ChangeCategory,
+        ChangeType,
+        DocumentDiffRequest,
+        DocumentDiffResponse,
+        ImpactLevel,
+        NegotiationInsight,
+        RiskFactor,
+        // Magic Link Authentication schemas (NEW)
+        MagicLinkRequest,
+        MagicLinkResponse,
+        VerifyMagicLinkRequest,
+        VerifyMagicLinkResponse,
+        UserInfo,
+        MagicLinkErrorResponse,
+
+        // REMOVE these old schemas (password-based auth removed):
+        // LoginRequest, (DELETED)
+        // LoginResponse, (DELETED)
+        // UserSummary, (DELETED)
+    )),
+    modifiers(&SecurityAddon)
+)]
+pub struct ApiDoc;
+
+/// Security addon to configure session cookie authentication
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "session_cookie",
+                utoipa::openapi::security::SecurityScheme::ApiKey(
+                    utoipa::openapi::security::ApiKey::Cookie(
+                        utoipa::openapi::security::ApiKeyValue::new(String::from("session_token")),
+                    ),
+                ),
+            );
+        }
+    }
+}

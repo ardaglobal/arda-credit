@@ -16,7 +16,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use tokio::time::sleep;
 
-use api::types::UserType;
+use api::config::types::UserType;
 use arda_credit_db::{get_identity_by_id, get_invite_code_info};
 
 /// Test configuration
@@ -36,7 +36,7 @@ struct TestUser {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    use api::user_handlers::RegisterUserResponse;
+    use api::handlers::users::users::RegisterUserResponse;
 
     /// Main integration test - runs all test scenarios
     /// Note: This test requires a live API server running on localhost:8080

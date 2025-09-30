@@ -11,11 +11,11 @@ use serde_json::json;
 use tower::ServiceExt;
 
 use crate::test_utils::*;
-use crate::credit_line_handlers::{
+use crate::handlers::credit::credit_lines::{
     check_credit_eligibility, submit_credit_line_request, list_credit_line_requests,
     browse_available_pools,
 };
-use crate::types::ApiState;
+use crate::config::types::ApiState;
 
 /// Test credit eligibility check
 #[tokio::test]
