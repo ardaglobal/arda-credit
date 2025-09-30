@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id FROM users WHERE email = $1",
+  "query": "SELECT id FROM identities WHERE email = $1",
   "describe": {
     "columns": [
       {
@@ -18,5 +18,5 @@
       false
     ]
   },
-  "hash": "4560c237741ce9d4166aecd669770b3360a3ac71e649b293efb88d92c3254068"
+  "hash": "8dd48302033e9645fdd3b5c41811c19908c9b4cebe1f5bf88de406a4b9d53007"
 }
