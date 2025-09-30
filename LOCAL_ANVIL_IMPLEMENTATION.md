@@ -255,13 +255,21 @@ ETHEREUM_WALLET_PRIVATE_KEY=<your private key WITHOUT 0x>
 - `contracts/src/ARDAFaucet.sol` - Faucet smart contract
 - `contracts/script/Deploy.s.sol` - Deployment automation script
 - `contracts/deployments/local-deployment.json` - Local deployment addresses (generated)
+- `api/src/handlers/faucet.rs` - Backend API handler for faucet info
 - `docs/development/local-anvil-workflow.md` - Complete workflow documentation
+- `docs/integrations/frontend-faucet-integration.md` - Frontend implementation guide
+- `test_local_anvil_setup.sh` - End-to-end test suite
 - `LOCAL_ANVIL_IMPLEMENTATION.md` - This summary
 
 ### Modified Files
 - `docker-compose.yml` - Added Anvil service with profiles
 - `Makefile` - Added anvil/faucet commands, updated deployment
 - `AGENTS.md` - Updated workflow documentation
+- `api/src/handlers/mod.rs` - Added faucet module
+- `api/src/config/paths.rs` - Added faucet API paths
+- `api/src/api/router.rs` - Added faucet routes
+- `api/src/services/batch_processor.rs` - Removed `SERVER_ENVIRONMENT` check
+- `.gitignore` - Ignore local deployment files
 
 ## Next Steps
 
@@ -274,12 +282,12 @@ ETHEREUM_WALLET_PRIVATE_KEY=<your private key WITHOUT 0x>
 - [x] Document the changes
 
 ### Future Enhancements
-- [ ] **Frontend Faucet UI**: Add "Request Test USDC" button to UI
-- [ ] **CLI Faucet Command**: `make cli ARGS="faucet request"`
+- [x] **Backend API Endpoints**: Faucet info, status, and config endpoints created
+- [ ] **Frontend Faucet UI**: Implement using `docs/integrations/frontend-faucet-integration.md`
 - [ ] **Auto-Faucet on Registration**: Give new users test USDC automatically
 - [ ] **Staging Environment**: Deploy shared staging Anvil for team testing
 - [ ] **CI Integration**: Use Anvil in GitHub Actions for integration tests
-- [ ] **MetaMask Guide**: Step-by-step guide for adding local network
+- [ ] **MetaMask Guide**: User-facing step-by-step guide
 - [ ] **Multi-Chain Support**: Support Base, Arbitrum, Optimism local devnets
 
 ### Migration Path
@@ -302,23 +310,32 @@ make server              # Works with local contracts
 **Q: Do I need to change my .env file?**  
 A: No! For local development, the Makefile automatically overrides to use Anvil. Your existing .env with Sepolia settings will be used for sandbox/production.
 
+**Q: Where does the private key in the Makefile come from?**  
+A: It's the standard Anvil test account private key (`0xac09...`). This is a publicly-known test key that Anvil generates from its default mnemonic ("test test test..."). It's safe to use in local development because it only controls test ETH on your local blockchain. **Never use this key on real networks!** For sandbox/production, we use your actual private key from `.env`.
+
+**Q: Can I change the Anvil test accounts?**  
+A: Yes! You can modify the Anvil configuration in `docker-compose.yml` to use a custom mnemonic or generate different test accounts. However, using the default is recommended for consistency across the team.
+
 **Q: How do I reset everything?**  
 A: `make clean-anvil && make deploy-contracts`
 
 **Q: Can I use MetaMask with local Anvil?**  
-A: Yes! Add network with RPC `http://127.0.0.1:8545`, Chain ID `31337`
+A: Yes! Add network with RPC `http://127.0.0.1:8545`, Chain ID `31337`. Import the test account with private key `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80` to get 10,000 test ETH.
 
 **Q: Will my deposit/withdrawal monitors work?**  
 A: Yes! They listen to real contract events from Anvil, just like on mainnet.
 
 **Q: How much USDC can I get from the faucet?**  
-A: 1M USDC per hour, per address. Faucet has 100M total (99 requests).
+A: 1M USDC per hour, per address. Faucet has 100M total (100 requests).
 
 **Q: What if I need more USDC?**  
 A: Wait 1 hour for cooldown, or redeploy contracts (fresh 100M faucet), or use admin `requestFundsImmediate()`
 
 **Q: Does this work in CI?**  
 A: Not yet, but it's easy to add! Anvil can run in GitHub Actions for integration tests.
+
+**Q: How does the frontend request faucet funds?**  
+A: The backend provides faucet info via API (`/api/v1/faucet/info`), then the frontend calls the faucet contract directly via MetaMask. See `docs/integrations/frontend-faucet-integration.md` for complete implementation guide.
 
 ## Conclusion
 
