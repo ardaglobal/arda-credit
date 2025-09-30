@@ -23,7 +23,7 @@ use crate::{
 /// Transfer validation request
 #[derive(Debug, Clone)]
 pub struct TransferValidationRequest {
-    pub deal_id: Uuid, // was loan_id
+    pub deal_id: Uuid, // was loan_id, now deal_id
     pub buyer_id: Uuid,
     pub purchase_price: Decimal,
 }
@@ -45,7 +45,7 @@ pub struct TransferValidationResult {
 /// Complete transfer execution request
 #[derive(Debug, Clone)]
 pub struct ExecuteTransferRequest {
-    pub deal_id: Uuid, // was loan_id
+    pub deal_id: Uuid, // was loan_id, now deal_id
     pub buyer_id: Uuid,
     pub purchase_price: Decimal,
     pub notes: Option<String>,
@@ -55,7 +55,7 @@ pub struct ExecuteTransferRequest {
 #[derive(Debug, Clone)]
 pub struct TransferExecutionResult {
     pub transfer_id: Uuid,
-    pub deal_id: Uuid,          // was loan_id
+    pub deal_id: Uuid,          // was loan_id, now deal_id
     pub from_investor_id: Uuid, // was from_lender_id
     pub to_investor_id: Uuid,   // was to_lender_id
     pub purchase_price: Decimal,
@@ -111,7 +111,7 @@ pub async fn validate_transfer_eligibility(
     // 1. Check if deal exists and get current details using Phase 1 schema
     let deal_query = sqlx::query!(
         r#"
-        SELECT d.id, d.investor_id, d.loan_status, d.principal_amount,
+        SELECT d.id, d.investor_id, d.deal_status, d.principal_amount,
                dl.asking_price, dl.status as listing_status
         FROM deals d
         LEFT JOIN deal_listings dl ON d.id = dl.deal_id AND dl.status = 'active'
@@ -131,7 +131,7 @@ pub async fn validate_transfer_eligibility(
     };
 
     // 2. Check if deal is for sale (Phase 1 status values)
-    if deal.loan_status == "for_sale" && deal.listing_status == "active" {
+    if deal.deal_status == "for_sale" && deal.listing_status == "active" {
         result.deal_for_sale = true;
     } else {
         result
@@ -268,12 +268,12 @@ pub async fn execute_deal_transfer(
     let seller_id = seller_info.seller_id;
     let _listing_id = seller_info.listing_id;
 
-    // 3. Update deal status to transfer_pending (prevents concurrent transfers)
+    // 3. Update deal marketplace status to transfer_pending (prevents concurrent transfers)
     sqlx::query!(
         r#"
         UPDATE deals
-        SET loan_status = 'transfer_pending', updated_at = NOW()
-        WHERE id = $1 AND loan_status = 'for_sale'
+        SET status = 'transfer_pending', updated_at = NOW()
+        WHERE id = $1 AND status = 'for_sale'
         "#,
         request.deal_id
     )
@@ -357,7 +357,7 @@ pub async fn execute_deal_transfer(
     sqlx::query!(
         r#"
         UPDATE deals
-        SET investor_id = $2, loan_status = 'active', updated_at = NOW()
+        SET investor_id = $2, deal_status = 'active', updated_at = NOW()
         WHERE id = $1
         "#,
         request.deal_id,
@@ -513,9 +513,9 @@ pub async fn cancel_transfer(
         .execute(&mut *tx)
         .await?;
 
-        // 2. Restore deal status to for_sale
+        // 2. Restore deal marketplace status to for_sale
         sqlx::query!(
-            "UPDATE deals SET loan_status = 'for_sale', updated_at = NOW() WHERE id = $1",
+            "UPDATE deals SET status = 'for_sale', updated_at = NOW() WHERE id = $1",
             transfer.deal_id
         )
         .execute(&mut *tx)

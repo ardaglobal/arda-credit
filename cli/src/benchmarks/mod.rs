@@ -417,7 +417,7 @@ pub async fn handle_benchmark_command(
             limit,
             verbose: cmd_verbose,
         } => {
-            query_loan_status(
+            query_deal_status(
                 client,
                 &loan_id,
                 history,

@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("✅ New loan status values (for_sale, transfer_pending) work");
     } else {
         // Try alternative approach - check if we can update a loan to for_sale
-        let alternative_test = sqlx::query!("UPDATE loans SET loan_status = 'for_sale' WHERE false")
+        let alternative_test = sqlx::query!("UPDATE loans SET deal_status = 'for_sale' WHERE false")
             .execute(&pool)
             .await
             .is_ok();

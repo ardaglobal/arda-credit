@@ -185,7 +185,7 @@ impl GlobalLoanState {
 
                 let balance_updates = self.balance_state.create_origination_updates(
                     transaction.transaction_id,
-                    transaction.deal_id, // was loan_id
+                    transaction.deal_id, // was loan_id, now deal_id
                     borrower_id,
                     lender_id,
                     u128::from(transaction.amount),
@@ -205,7 +205,7 @@ impl GlobalLoanState {
                         .get(&transaction.deal_id)
                         .ok_or(ProcessingError::LoanError(DealError::DealNotFound {
                             // was LoanError::LoanNotFound  // Keep LoanError for compatibility
-                            deal_id: transaction.deal_id, // was loan_id
+                            deal_id: transaction.deal_id, // was loan_id, now deal_id
                         }))?;
                 let investor_id = deal.investor_id; // was lender_id field
                 let payer_id = transaction.user_id;
@@ -219,7 +219,7 @@ impl GlobalLoanState {
                 // Create balance updates for deal payment
                 let balance_updates = self.balance_state.create_payment_updates(
                     transaction.transaction_id,
-                    transaction.deal_id, // was loan_id
+                    transaction.deal_id, // was loan_id, now deal_id
                     payer_id,
                     investor_id, // was lender_id
                     u128::from(transaction.amount),
@@ -319,7 +319,7 @@ impl GlobalLoanState {
 
                 // Create new pool using loan_id as pool_id
                 let pool = Pool::new(
-                    transaction.deal_id, // was loan_id // Using loan_id field as pool_id
+                    transaction.deal_id, // was loan_id, now deal_id // Using loan_id field as pool_id
                     transaction.user_id, // investor_id
                     pool_config,
                     transaction.created_at,
@@ -581,8 +581,8 @@ impl GlobalLoanState {
     /// Get loan by ID (read-only)
     #[must_use]
     pub fn get_loan(&self, deal_id: &[u8; 32]) -> Option<&Deal> {
-        // was loan_id, Loan
-        self.loans.get(deal_id) // was loan_id
+        // was loan_id, now deal_id, Loan
+        self.loans.get(deal_id) // was loan_id, now deal_id
     }
 
     /// Get current state hash (for Merkle tree)
@@ -605,7 +605,7 @@ impl GlobalLoanState {
         for loan in self.loans.values() {
             // Add outstanding balance for each active loan
             if matches!(
-                loan.loan_status,
+                loan.deal_status,
                 LoanStatus::Active | LoanStatus::Originated // was crate::loan::LoanStatus
             ) {
                 total_balance = total_balance.saturating_add(u128::from(loan.outstanding_balance));
@@ -702,7 +702,7 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
         | TransactionType::SubmitTurnover
         | TransactionType::VerifyDocument => {
             if transaction.deal_id != zero_deal_id {
-                // was loan_id, zero_loan_id
+                // was loan_id, now deal_id, zero_loan_id
                 return Err(ProcessingError::InvalidTransactionType);
             }
         }
@@ -832,7 +832,7 @@ pub type LoanState = GlobalLoanState;
 pub enum LoanOperation {
     /// Create a new deal
     LoanCreation {
-        deal_id: [u8; 32], // was loan_id
+        deal_id: [u8; 32], // was loan_id, now deal_id
         borrower_id: [u8; 32],
         lender_id: [u8; 32],
         principal: u128,
@@ -841,18 +841,18 @@ pub enum LoanOperation {
     },
     /// Make a payment towards a deal
     Payment {
-        deal_id: [u8; 32], // was loan_id
+        deal_id: [u8; 32], // was loan_id, now deal_id
         payer_id: [u8; 32],
         amount: u128,
     },
     /// Fund an originated deal
     LoanFunding {
-        deal_id: [u8; 32], // was loan_id
+        deal_id: [u8; 32], // was loan_id, now deal_id
         lender_id: [u8; 32],
     },
     /// Update balance (for reconciliation)
     BalanceUpdate {
-        deal_id: [u8; 32], // was loan_id
+        deal_id: [u8; 32], // was loan_id, now deal_id
         new_balance: u128,
     },
 }
@@ -877,7 +877,7 @@ impl LoanOperation {
         let mut hasher = Sha256::new();
         match self {
             Self::LoanCreation {
-                deal_id, // was loan_id
+                deal_id, // was loan_id, now deal_id
                 borrower_id,
                 lender_id,
                 principal,
@@ -890,7 +890,7 @@ impl LoanOperation {
                 hasher.update(principal.to_le_bytes());
             }
             Self::Payment {
-                deal_id, // was loan_id
+                deal_id, // was loan_id, now deal_id
                 payer_id,
                 amount,
             } => {
@@ -900,13 +900,13 @@ impl LoanOperation {
                 hasher.update(amount.to_le_bytes());
             }
             Self::LoanFunding { deal_id, lender_id } => {
-                // was loan_id
+                // was loan_id, now deal_id
                 hasher.update(b"funding");
                 hasher.update(deal_id);
                 hasher.update(lender_id);
             }
             Self::BalanceUpdate {
-                deal_id, // was loan_id
+                deal_id, // was loan_id, now deal_id
                 new_balance,
             } => {
                 hasher.update(b"balance_update");
@@ -1128,7 +1128,7 @@ mod tests {
         state.process_transaction(&deal_origination).unwrap();
 
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
-        assert_eq!(deal.loan_status, LoanStatus::Originated); // Keep loan_status for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::Originated); // Keep loan_status for compatibility
         assert_eq!(deal.principal_amount, 50000);
 
         // 5. Deal payment
@@ -1144,7 +1144,7 @@ mod tests {
         state.process_transaction(&payment).unwrap();
 
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
-        assert_eq!(deal.loan_status, LoanStatus::Active); // Keep loan_status for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::Active); // Keep loan_status for compatibility
         assert_eq!(deal.outstanding_balance, 25000);
 
         // 5. Final payment
@@ -1160,7 +1160,7 @@ mod tests {
         state.process_transaction(&final_payment).unwrap();
 
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
-        assert_eq!(deal.loan_status, LoanStatus::PaidOff); // Keep loan_status for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::PaidOff); // Keep loan_status for compatibility
         assert_eq!(deal.outstanding_balance, 0);
 
         // 6. Deal closeout
@@ -1176,7 +1176,7 @@ mod tests {
         state.process_transaction(&closeout).unwrap();
 
         let deal = state.get_loan(&deal_id).unwrap(); // Keep using get_loan for compatibility
-        assert_eq!(deal.loan_status, LoanStatus::Closed); // Keep loan_status for compatibility
+        assert_eq!(deal.deal_status, LoanStatus::Closed); // Keep loan_status for compatibility
 
         // Verify transaction count
         assert_eq!(state.transaction_count, 8); // 2 registrations + 2 KYC verifications + 1 origination + 2 payments + 1 closeout
@@ -1852,7 +1852,7 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [22u8; 32],
                         user_id: lender_id, // Keep lender_id for test compatibility
-                        deal_id,            // was loan_id
+                        deal_id,            // was loan_id, now deal_id
                         transaction_type: TransactionType::DealOrigination, // was LoanOrigination
                         amount: 50000,
                         created_at: base_timestamp + 5000,
@@ -1956,7 +1956,7 @@ mod tests {
             outstanding_balance: 10000,
             interest_rate: 750,
             term_months: 36,
-            loan_status: LoanStatus::Active,
+            deal_status: LoanStatus::Active,
             originated_at: 1_640_995_200,
             funded_at: 1_640_995_200,
             maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
@@ -1971,7 +1971,7 @@ mod tests {
             outstanding_balance: 20000,
             interest_rate: 750,
             term_months: 36,
-            loan_status: LoanStatus::Originated,
+            deal_status: LoanStatus::Originated,
             originated_at: 1_640_995_200,
             funded_at: 0,
             maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
@@ -1986,7 +1986,7 @@ mod tests {
             outstanding_balance: 0,
             interest_rate: 750,
             term_months: 36,
-            loan_status: LoanStatus::PaidOff,
+            deal_status: LoanStatus::PaidOff,
             originated_at: 1_640_995_200,
             funded_at: 1_640_995_200,
             maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
@@ -2007,7 +2007,7 @@ mod tests {
 
         // Pay off loan2
         state.loans.get_mut(&loan2_id).unwrap().outstanding_balance = 0;
-        state.loans.get_mut(&loan2_id).unwrap().loan_status = LoanStatus::PaidOff;
+        state.loans.get_mut(&loan2_id).unwrap().deal_status = LoanStatus::PaidOff;
 
         // Total balance should now be just $50
         assert_eq!(state.compute_total_balance(), 5000);

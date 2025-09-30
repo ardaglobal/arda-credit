@@ -833,7 +833,7 @@ impl UnifiedBatchService {
             borrower_id: loan_transaction.identity_id, // Assuming identity is borrower
             lender_id: None, // Would need to be populated from loan record
             amount: Some(loan_transaction.amount),
-            loan_status: Some("active".to_string()), // Would need to be determined from context
+            deal_status: Some("active".to_string()), // Would need to be determined from context
             transaction_data: serde_json::json!({
                 "transaction_id_hash": hex::encode(&loan_transaction.transaction_id_hash),
                 "user_id_hash": hex::encode(&loan_transaction.user_id_hash),

@@ -44,7 +44,7 @@ async fn test_marketplace_foundation_complete() {
     println!("📋 Test 3: Loan status enum validation");
     // Try to update a loan status to for_sale (should not fail due to constraint)
     let status_update_result =
-        sqlx::query!("UPDATE deals SET loan_status = 'for_sale' WHERE false")
+        sqlx::query!("UPDATE deals SET deal_status = 'for_sale' WHERE false")
             .execute(&pool)
             .await;
 
@@ -142,7 +142,7 @@ async fn test_marketplace_crud_operations() {
     sqlx::query!(
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, loan_status, originated_at)
+                          interest_rate_bps, deal_status, originated_at)
         VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         "#,
