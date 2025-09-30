@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
     // Setup logging
     tracing_subscriber::fmt().with_env_filter("info").init();
 
-    // Feature-based configuration
+    // Environment-based configuration
     let num_proofs = env::var("NUM_PROOFS")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -59,8 +59,15 @@ async fn main() -> Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(9);
 
+    // Determine proof generation method from SERVER_ENVIRONMENT
+    let server_env = env::var("SERVER_ENVIRONMENT")
+        .unwrap_or_else(|_| "local".to_string())
+        .to_lowercase();
+
+    let use_sindri = matches!(server_env.as_str(), "sandbox" | "production");
+
     let args = Args {
-        sindri: cfg!(feature = "sindri"),
+        sindri: use_sindri,
         benchmark: cfg!(feature = "benchmark"),
         num_proofs,
         num_transactions,
@@ -75,6 +82,7 @@ async fn main() -> Result<()> {
         return run_benchmark_suite(&args).await;
     }
 
+    info!("🌍 Server Environment: {}", server_env.to_uppercase());
     if args.sindri {
         info!("🌐 Starting SP1 deal processing test with Sindri integration");
         info!("🔐 Will submit circuit to Sindri for verification");

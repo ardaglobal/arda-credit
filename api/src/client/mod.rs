@@ -118,21 +118,6 @@ pub enum ApiClientError {
 // REQUEST/RESPONSE TYPES (matching the API)
 // ============================================================================
 
-/// Request to submit a transaction
-#[derive(Debug, Serialize)]
-pub struct SubmitTransactionRequest {
-    pub amount: i32,
-}
-
-/// Response from transaction submission
-#[derive(Debug, Deserialize)]
-pub struct SubmitTransactionResponse {
-    pub transaction_id: i32,
-    pub amount: i32,
-    pub status: String,
-    pub created_at: String,
-}
-
 /// Request to create a batch
 #[derive(Debug, Serialize)]
 pub struct CreateBatchRequest {
@@ -390,18 +375,6 @@ impl BatchApiClient {
     /// Get the HTTP client
     pub fn http_client(&self) -> &Client {
         &self.client
-    }
-
-    /// Submit a new transaction
-    pub async fn submit_transaction(
-        &self,
-        amount: i32,
-    ) -> Result<SubmitTransactionResponse, ApiClientError> {
-        let url = format!("{}{}", self.base_url, paths::STATE_TRANSACTIONS);
-        let request = SubmitTransactionRequest { amount };
-
-        let response = self.client.post(&url).json(&request).send().await?;
-        self.handle_response(response).await
     }
 
     /// Get pending transactions

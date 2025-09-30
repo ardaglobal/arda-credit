@@ -78,15 +78,50 @@ make deploy                         # Deploy circuit using SINDRI_CIRCUIT_TAG fr
 # Fast local SP1 development (no database required)
 make run                           # ~8s Core proofs: test deal operations
 
-# Full stack development
-make up                             # Start database + server (uses pre-built image)
-make up-dev                         # Start with local Docker build
-make down                           # Stop all services
+# Full stack development with local Anvil devnet
+make up                             # Start Postgres + Anvil (local/staging) or just Postgres (sandbox/production)
+make deploy-contracts               # Deploy contracts (environment-aware)
+make server                         # Run server with deposit/withdrawal monitors
 
-# Local API server (alternative to Docker)
-docker-compose up postgres -d      # Start just database
-make server                         # Run server locally with debug logging
+# Alternative: Server auto-deploys contracts if needed
+make server                         # One command to start everything
+
+# Stop services
+make down                           # Stop all services
+make clean-anvil                    # Reset Anvil blockchain state
 ```
+
+### Local Anvil Devnet (Local/Staging Environments)
+
+For local and staging environments, Arda Credit uses a local Anvil devnet instead of remote testnets:
+
+```bash
+# Anvil management
+make anvil-start                    # Start Anvil devnet
+make anvil-stop                     # Stop Anvil (preserves state)
+make anvil-logs                     # View Anvil logs
+make clean-anvil                    # Reset blockchain state
+
+# Faucet commands (get test USDC)
+make faucet-request ADDRESS=0x742d35Cc6...   # Request 1M USDC (1 hour cooldown)
+make faucet-status ADDRESS=0x742d35Cc6...    # Check balance and cooldown status
+make faucet-stats                            # View overall faucet statistics
+
+# Contract deployment (environment-aware)
+SERVER_ENVIRONMENT=local make deploy-contracts      # Deploy to local Anvil
+SERVER_ENVIRONMENT=sandbox make deploy-contracts    # Deploy to Sepolia testnet
+```
+
+**What gets deployed:**
+- **Local/Staging**: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier (to Anvil)
+- **Sandbox/Production**: ARDA only (to Sepolia/Mainnet with real USDC)
+
+**Faucet Configuration:**
+- Amount: 1,000,000 USDC per request
+- Cooldown: 1 hour between requests
+- Initial balance: 100,000,000 USDC
+
+See [`docs/development/local-anvil-workflow.md`](docs/development/local-anvil-workflow.md) for complete details.
 
 ### CLI Commands (Primary Interface)
 
@@ -194,39 +229,56 @@ MAGIC_BASE_URL=https://app.arda.xyz/auth/verify  # Base URL for magic links
 
 ### Smart Contract Deployment
 
-**Production deployment:**
+**Environment-aware deployment** (recommended):
 ```bash
-# Deploy Arda Credit ARDA contract (set env vars first)
-make deploy-contract
-make deploy-contract-help           # Show required environment variables
+# Deploy based on SERVER_ENVIRONMENT
+make deploy-contracts               # Uses SERVER_ENVIRONMENT (default: local)
+
+# Or specify environment explicitly
+SERVER_ENVIRONMENT=local make deploy-contracts      # → Anvil (with mocks)
+SERVER_ENVIRONMENT=sandbox make deploy-contracts    # → Sepolia testnet
+SERVER_ENVIRONMENT=production make deploy-contracts # → Mainnet
+
+make deploy-contract-help           # Show deployment help
 ```
 
-**Local development with Anvil:**
+**What gets deployed:**
+- **Local/Staging**: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier (automated)
+- **Sandbox/Production**: ARDA only (requires env vars: RPC URL, verifier, program key)
+
+**Local development with Anvil** (automated):
 ```bash
-# Start local Ethereum testnet
-cd contracts
+# Anvil is automatically managed by docker-compose
+make up                             # Starts Anvil + Postgres
+make deploy-contracts               # Deploys all contracts to Anvil
+make server                         # Auto-deploys if needed, then starts server
+
+# Or manual Anvil management
+make anvil-start                    # Start Anvil manually
+make anvil-stop                     # Stop Anvil (preserves state)
+make anvil-logs                     # View Anvil logs
+make clean-anvil                    # Reset blockchain state
+
+# Faucet for test USDC (local/staging only)
+make faucet-request ADDRESS=0x...   # Request 1M USDC (1hr cooldown)
+make faucet-status ADDRESS=0x...    # Check balance and status
+make faucet-stats                   # View overall statistics
+```
+
+**Manual deployment** (legacy):
+```bash
+# Start Anvil manually
 anvil                               # Runs on http://127.0.0.1:8545 (Chain ID: 31337)
 
-# Build and deploy contracts
+# Deploy with forge create
 cd contracts
-forge build                         # Compile all contracts
-
-# Deploy SP1MockVerifier (for testing)
-forge create lib/sp1-contracts/contracts/src/SP1MockVerifier.sol:SP1MockVerifier \
-  --rpc-url http://127.0.0.1:8545 \
-  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-  --broadcast
-
-# Deploy ARDA contract (replace VERIFIER_ADDRESS with deployed address above)
 forge create src/ARDA.sol:ARDA \
   --rpc-url http://127.0.0.1:8545 \
   --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-  --broadcast \
-  --constructor-args VERIFIER_ADDRESS 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+  --constructor-args VERIFIER_ADDRESS PROGRAM_VKEY
 
-# Interact with deployed contracts
-cast call CONTRACT_ADDRESS "verifier()" --rpc-url http://127.0.0.1:8545
-cast call CONTRACT_ADDRESS "owner()" --rpc-url http://127.0.0.1:8545
+# Better: Use automated deployment script
+make deploy-contracts
 ```
 
 ## High-Level Architecture
@@ -275,7 +327,10 @@ make env                            # Copies .env.example to .env
 
 **Key variables for development:**
 - `DATABASE_URL` - PostgreSQL connection string
-- `SINDRI_API_KEY` - API key for proof generation (get from https://sindri.app)
+- `SERVER_ENVIRONMENT` - Server environment: `local`, `staging`, `sandbox`, or `production` (default: `local`)
+  - `local` and `staging` use local SP1 prover for fast development
+  - `sandbox` and `production` use Sindri service for proof generation
+- `SINDRI_API_KEY` - API key for proof generation (get from https://sindri.app) - required for `sandbox`/`production`
 - `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
 - `ETHEREUM_RPC_URL` - Ethereum RPC endpoint for contract interactions
 - `ETHEREUM_ARDA_CONTRACT_ADDRESS` - Deployed ARDA contract address (was LOAN_CONTRACT_ADDRESS)

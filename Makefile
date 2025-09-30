@@ -8,6 +8,11 @@ DOCKER_TAG ?= $(shell whoami)-dev
 PLATFORM ?= linux/amd64
 APPNAME ?= arda-credit
 
+# Anvil default private key (from foundry docs)
+# Corresponds to account: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (10000 ETH)
+# Only used for local/staging environments - never use in production
+ANVIL_PRIVATE_KEY = ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+
 
 ## help: Get more info on make commands.
 .PHONY: help
@@ -67,13 +72,22 @@ deploy:
 ## up: Start services (uses pre-built image)
 .PHONY: up
 up:
-	docker compose up -d
-	@echo "✅ Backgrond Services starting"
+	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
+	if [ "$$SERVER_ENV" = "local" ] || [ "$$SERVER_ENV" = "staging" ]; then \
+		echo "🌍 Starting services with Anvil ($$SERVER_ENV environment)..."; \
+		COMPOSE_PROFILES=$$SERVER_ENV docker compose up -d; \
+	else \
+		echo "🌍 Starting services without Anvil ($$SERVER_ENV environment)..."; \
+		docker compose up -d postgres prometheus grafana; \
+	fi
+	@echo "✅ Background Services starting"
 
-## down: Stop all services
+## down: Stop all services (including Anvil)
 .PHONY: down
 down:
-	docker compose down -v
+	@# Stop all services including those with profiles
+	@COMPOSE_PROFILES=local,staging docker compose down -v || docker compose down -v
+	@echo "✅ All services stopped"
 
 ## docker-build: Build image locally
 .PHONY: docker-build
@@ -227,9 +241,13 @@ cover:
 	@echo ""
 	@echo "💡 Open target/llvm-cov/html/index.html in your browser to view the detailed HTML report"
 
-## run: Local SP1 unit testing (fast ~3.5s Core proofs)
+## run: SP1 deal processing test (proof method determined by SERVER_ENVIRONMENT)
+## Default: local (uses local SP1 prover, fast ~8s Core proofs)
+## Sindri: Set SERVER_ENVIRONMENT=sandbox or production (uses Sindri service)
 .PHONY: run
 run:
+	@echo "🌍 Server Environment: $${SERVER_ENVIRONMENT:-local} (determines proof method)"
+	@echo ""
 	cargo run --release
 
 # =============================================================================
@@ -240,19 +258,22 @@ NUM_PROOFS=1
 NUM_TRANSACTIONS=100
 
 ## bench-zk: Run a zk benchmark test. Usage: make bench-zk NUM_PROOFS=50 NUM_TRANSACTIONS=500
+## Note: Uses SERVER_ENVIRONMENT to determine proof method (local/staging=local, sandbox/production=Sindri)
 .PHONY: bench-zk
 bench-zk:
 	@echo ""
 	@echo "Prerequisites:"
-	@echo "  • SINDRI_API_KEY set in .env"
-	@echo "  • Update sindri.json provingScheme to compressed"
-	@echo "  • Circuit deployed: make deploy"
+	@echo "  • For Sindri benchmarks: Set SERVER_ENVIRONMENT=sandbox or production"
+	@echo "  • For Sindri benchmarks: SINDRI_API_KEY set in .env"
+	@echo "  • For Sindri benchmarks: Circuit deployed (make deploy)"
+	@echo "  • For local benchmarks: Set SERVER_ENVIRONMENT=local or staging (default)"
 	@echo ""
 	@TOTAL_TXS=$$(($(NUM_PROOFS) * $(NUM_TRANSACTIONS))); \
 	echo "🎛️  Running benchmark test..."; \
 	echo "Configuration: $(NUM_PROOFS) proofs × $(NUM_TRANSACTIONS) transactions = $$TOTAL_TXS total transactions"; \
+	echo "Environment: $${SERVER_ENVIRONMENT:-local} (determines proof method)"; \
 	echo ""
-	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features sindri,benchmark
+	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features benchmark
 
 ## cli: CLI client (requires API server running)
 .PHONY: cli
@@ -263,21 +284,45 @@ cli:
 .PHONY: server
 server: up
 	@sleep 2
+	@# Deploy contracts if in local/staging environment
+	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
+	if [ "$$SERVER_ENV" = "local" ] || [ "$$SERVER_ENV" = "staging" ]; then \
+		echo "🔍 Checking if contracts are deployed on Anvil..."; \
+		DEPLOYMENT_FILE="contracts/deployments/$$SERVER_ENV-deployment.json"; \
+		if [ ! -f "$$DEPLOYMENT_FILE" ]; then \
+			echo "📦 Contracts not found, deploying..."; \
+			$(MAKE) deploy-contracts; \
+		else \
+			echo "✅ Contracts already deployed ($$DEPLOYMENT_FILE exists)"; \
+			echo "💡 Run 'make clean-anvil && make deploy-contracts' to redeploy"; \
+		fi; \
+		echo ""; \
+		echo "📋 Loading contract addresses from deployment file..."; \
+		export ETHEREUM_RPC_URL=http://127.0.0.1:8545; \
+		export ETHEREUM_CONTRACT_ADDRESS=$$(cat $$DEPLOYMENT_FILE | jq -r '.arda'); \
+		export ETHEREUM_DEPLOYER_ADDRESS=$$(cat $$DEPLOYMENT_FILE | jq -r '.deployer'); \
+		export VERIFIER_CONTRACT_ADDRESS=$$(cat $$DEPLOYMENT_FILE | jq -r '.verifier'); \
+		export USDC_CONTRACT_ADDRESS=$$(cat $$DEPLOYMENT_FILE | jq -r '.usdc'); \
+		export FAUCET_CONTRACT_ADDRESS=$$(cat $$DEPLOYMENT_FILE | jq -r '.faucet'); \
+		echo "✅ Using ARDA contract: $$ETHEREUM_CONTRACT_ADDRESS"; \
+		echo "✅ Using Faucet contract: $$FAUCET_CONTRACT_ADDRESS"; \
+		echo ""; \
+	fi
 	@echo "Running database migrations..."
 	sqlx migrate run --source db/migrations
 	@echo "Starting deposit monitor in background..."
 	@SQLX_OFFLINE=true cargo run -p ethereum-client --bin deposit_monitor --release -- \
 		--database-url postgresql://postgres:password@127.0.0.1:5432/arda_credit_db \
-		--ethereum-rpc-url $$ETHEREUM_RPC_URL \
+		--ethereum-rpc-url $${ETHEREUM_RPC_URL:-http://127.0.0.1:8545} \
 		--contract-address $$ETHEREUM_CONTRACT_ADDRESS \
 		> deposit_monitor.log 2>&1 &
 	@echo "Deposit monitor started (logs: deposit_monitor.log)"
 	@echo "Starting withdrawal executor in background..."
 	@SQLX_OFFLINE=true cargo run -p ethereum-client --bin withdrawal_executor --release -- \
 		--database-url postgresql://postgres:password@127.0.0.1:5432/arda_credit_db \
-		--ethereum-rpc-url $$ETHEREUM_RPC_URL \
+		--ethereum-rpc-url $${ETHEREUM_RPC_URL:-http://127.0.0.1:8545} \
 		--contract-address $$ETHEREUM_CONTRACT_ADDRESS \
-		--private-key $$ETHEREUM_PRIVATE_KEY \
+		--private-key $${ETHEREUM_PRIVATE_KEY:-$(ANVIL_PRIVATE_KEY)} \
 		--poll-interval 30 \
 		--batch-size 10 \
 		> withdrawal_executor.log 2>&1 &
@@ -357,45 +402,157 @@ forge-test:
 	cd contracts && forge test
 	@echo "✅ ARDA smart contract tests completed"
 
-## deploy-contract: Deploy Arda Credit smart contract
+## deploy-contracts: Deploy ARDA smart contracts (environment-aware)
+# Deploys different contract sets based on SERVER_ENVIRONMENT:
+#   local/staging: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier (to Anvil)
+#   sandbox/production: ARDA only (to Sepolia/Mainnet)
+# 
 # Required environment variables:
-#   ETHEREUM_RPC_URL     - RPC endpoint URL (e.g., Alchemy, Infura)
-#   ETHEREUM_WALLET_PRIVATE_KEY         - Private key for deployment (without 0x prefix)
-#   VERIFIER_CONTRACT_ADDRESS - SP1 verifier contract address
-#   PROGRAM_VKEY        - Program verification key
-.PHONY: deploy-contract
-deploy-contract:
-	@echo "🚀 Deploying ARDA smart contract..."
-	@echo "🔍 Checking required environment variables..."
-	@if [ -z "$$ETHEREUM_RPC_URL" ]; then \
-		echo "❌ ETHEREUM_RPC_URL is required"; \
-		exit 1; \
-	fi
-	@if [ -z "$$ETHEREUM_WALLET_PRIVATE_KEY" ]; then \
-		echo "❌ ETHEREUM_WALLET_PRIVATE_KEY is required"; \
-		exit 1; \
-	fi
-	@if [ -z "$$VERIFIER_CONTRACT_ADDRESS" ]; then \
-		echo "❌ VERIFIER_CONTRACT_ADDRESS is required"; \
-		exit 1; \
-	fi
-	@if [ -z "$$PROGRAM_VKEY" ]; then \
-		echo "❌ PROGRAM_VKEY is required"; \
-		exit 1; \
-	fi
-	@echo "✅ All environment variables are set"
+#   ETHEREUM_WALLET_PRIVATE_KEY - Private key for deployment (without 0x prefix)
+#
+# For production/sandbox, also requires:
+#   ETHEREUM_RPC_URL            - RPC endpoint URL (e.g., Alchemy, Infura)
+#   VERIFIER_CONTRACT_ADDRESS   - SP1 verifier contract address
+#   PROGRAM_VKEY                - Program verification key
+.PHONY: deploy-contracts
+deploy-contracts:
+	@echo "🚀 Deploying ARDA smart contracts..."
+	@echo "🌍 Environment: $${SERVER_ENVIRONMENT:-local}"
 	@echo ""
-	@echo "🚀 Deploying contract..."
-	@echo "📡 RPC URL: $$ETHEREUM_RPC_URL"
-	@echo "🔑 Verifier: $$VERIFIER_CONTRACT_ADDRESS"
-	@echo "🗝️  Program VKey: $$PROGRAM_VKEY"
-	@echo ""
-	cd contracts && forge create src/ARDA.sol:ARDA \
+	@# Set RPC URL based on environment (force local Anvil for local/staging)
+	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
+	if [ "$$SERVER_ENV" = "local" ] || [ "$$SERVER_ENV" = "staging" ]; then \
+		export ETHEREUM_RPC_URL=http://127.0.0.1:8545; \
+		export ETHEREUM_WALLET_PRIVATE_KEY=$(ANVIL_PRIVATE_KEY); \
+		echo "📡 Forcing local Anvil: $$ETHEREUM_RPC_URL"; \
+		echo "🔑 Using Anvil default key"; \
+	else \
+		if [ -z "$$ETHEREUM_RPC_URL" ]; then \
+			echo "❌ ETHEREUM_RPC_URL is required for $$SERVER_ENV"; \
+			exit 1; \
+		fi; \
+		if [ -z "$$ETHEREUM_WALLET_PRIVATE_KEY" ]; then \
+			echo "❌ ETHEREUM_WALLET_PRIVATE_KEY is required for $$SERVER_ENV"; \
+			exit 1; \
+		fi; \
+		if [ -z "$$VERIFIER_CONTRACT_ADDRESS" ]; then \
+			echo "❌ VERIFIER_CONTRACT_ADDRESS is required for $$SERVER_ENV"; \
+			exit 1; \
+		fi; \
+		if [ -z "$$PROGRAM_VKEY" ]; then \
+			echo "❌ PROGRAM_VKEY is required for $$SERVER_ENV"; \
+			exit 1; \
+		fi; \
+		echo "📡 Using RPC: $$ETHEREUM_RPC_URL"; \
+	fi; \
+	cd contracts && forge script script/Deploy.s.sol:Deploy \
 		--broadcast \
 		--rpc-url $$ETHEREUM_RPC_URL \
 		--private-key $$ETHEREUM_WALLET_PRIVATE_KEY \
-		--constructor-args $$VERIFIER_CONTRACT_ADDRESS $$PROGRAM_VKEY
-	@echo "✅ Contract deployed successfully!"
+		--legacy
+	@echo ""
+	@echo "✅ Contracts deployed successfully!"
+	@echo "📝 Deployment details saved to contracts/deployments/$${SERVER_ENVIRONMENT:-local}-deployment.json"
+	@echo ""
+	@echo "💡 Update your .env file with the deployed contract addresses"
+
+## anvil-start: Start Anvil devnet manually
+.PHONY: anvil-start
+anvil-start:
+	@echo "🔥 Starting Anvil devnet..."
+	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
+	COMPOSE_PROFILES=$$SERVER_ENV docker compose up anvil -d
+	@echo "✅ Anvil started at http://127.0.0.1:8545 (Chain ID: 31337)"
+	@echo "💡 Default account: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+
+## anvil-stop: Stop Anvil devnet
+.PHONY: anvil-stop
+anvil-stop:
+	@echo "🛑 Stopping Anvil devnet..."
+	@docker compose down anvil
+	@echo "✅ Anvil stopped (state preserved)"
+
+## anvil-logs: Show Anvil logs
+.PHONY: anvil-logs
+anvil-logs:
+	@docker compose logs anvil --tail=50 -f
+
+## faucet-request: Request test USDC from faucet (local/staging only)
+# Usage: make faucet-request ADDRESS=0x742d35Cc6...
+.PHONY: faucet-request
+faucet-request:
+	@if [ -z "$(ADDRESS)" ]; then \
+		echo "❌ ADDRESS is required"; \
+		echo "Usage: make faucet-request ADDRESS=0x742d35Cc6..."; \
+		exit 1; \
+	fi
+	@echo "💰 Requesting faucet funds for $(ADDRESS)..."
+	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
+	if [ "$$SERVER_ENV" != "local" ] && [ "$$SERVER_ENV" != "staging" ]; then \
+		echo "❌ Faucet only available in local/staging environments"; \
+		exit 1; \
+	fi; \
+	DEPLOYMENT_FILE="contracts/deployments/$$SERVER_ENV-deployment.json"; \
+	if [ ! -f "$$DEPLOYMENT_FILE" ]; then \
+		echo "❌ Deployment file not found. Run 'make deploy-contracts' first."; \
+		exit 1; \
+	fi; \
+	FAUCET_ADDR=$$(cat $$DEPLOYMENT_FILE | jq -r '.faucet'); \
+	USDC_ADDR=$$(cat $$DEPLOYMENT_FILE | jq -r '.usdc'); \
+	echo "📋 Faucet contract: $$FAUCET_ADDR"; \
+	echo "📋 USDC contract: $$USDC_ADDR"; \
+	cd contracts && cast send $$FAUCET_ADDR "requestFunds()" \
+		--rpc-url http://127.0.0.1:8545 \
+		--private-key $(ANVIL_PRIVATE_KEY)
+	@echo "✅ Faucet request completed!"
+
+## faucet-status: Check faucet status and user's next available request time
+# Usage: make faucet-status ADDRESS=0x742d35Cc6...
+.PHONY: faucet-status
+faucet-status:
+	@if [ -z "$(ADDRESS)" ]; then \
+		echo "❌ ADDRESS is required"; \
+		echo "Usage: make faucet-status ADDRESS=0x742d35Cc6..."; \
+		exit 1; \
+	fi
+	@echo "📊 Checking faucet status for $(ADDRESS)..."
+	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
+	DEPLOYMENT_FILE="contracts/deployments/$$SERVER_ENV-deployment.json"; \
+	if [ ! -f "$$DEPLOYMENT_FILE" ]; then \
+		echo "❌ Deployment file not found."; \
+		exit 1; \
+	fi; \
+	FAUCET_ADDR=$$(cat $$DEPLOYMENT_FILE | jq -r '.faucet'); \
+	USDC_ADDR=$$(cat $$DEPLOYMENT_FILE | jq -r '.usdc'); \
+	echo ""; \
+	echo "📋 Contracts:"; \
+	echo "  Faucet: $$FAUCET_ADDR"; \
+	echo "  USDC:   $$USDC_ADDR"; \
+	echo ""; \
+	echo "💰 Faucet Balance:"; \
+	RUST_LOG=error cast call $$FAUCET_ADDR "getFaucetBalance()" --rpc-url http://127.0.0.1:8545; \
+	echo ""; \
+	echo "💵 User Balance:"; \
+	RUST_LOG=error cast call $$USDC_ADDR "balanceOf(address)(uint256)" $(ADDRESS) --rpc-url http://127.0.0.1:8545; \
+	echo ""; \
+	echo "⏰ Can Request Now?:"; \
+	RUST_LOG=error cast call $$FAUCET_ADDR "canRequestNow(address)(bool)" $(ADDRESS) --rpc-url http://127.0.0.1:8545
+
+## faucet-stats: Show overall faucet statistics
+.PHONY: faucet-stats
+faucet-stats:
+	@echo "📊 Faucet Statistics..."
+	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
+	DEPLOYMENT_FILE="contracts/deployments/$$SERVER_ENV-deployment.json"; \
+	if [ ! -f "$$DEPLOYMENT_FILE" ]; then \
+		echo "❌ Deployment file not found."; \
+		exit 1; \
+	fi; \
+	FAUCET_ADDR=$$(cat $$DEPLOYMENT_FILE | jq -r '.faucet'); \
+	echo ""; \
+	echo "Faucet Contract: $$FAUCET_ADDR"; \
+	echo ""; \
+	cast call $$FAUCET_ADDR "getStats()(uint256,uint256,uint256)" --rpc-url http://127.0.0.1:8545
 
 ## deploy-contract-help: Show deployment command usage
 .PHONY: deploy-contract-help
@@ -403,7 +560,18 @@ deploy-contract-help:
 	@echo "ARDA Smart Contract Deployment Help"
 	@echo "==================================="
 	@echo ""
-	@echo "Required Environment Variables:"
+	@echo "Environment-Aware Deployment:"
+	@echo "  make deploy-contracts              - Deploy based on SERVER_ENVIRONMENT"
+	@echo ""
+	@echo "Local/Staging (deploys to Anvil):"
+	@echo "  SERVER_ENVIRONMENT=local make deploy-contracts"
+	@echo "  - Deploys: MockUSDC, ARDAFaucet, ARDA, SP1MockVerifier"
+	@echo "  - No environment variables required (uses Anvil defaults)"
+	@echo ""
+	@echo "Production/Sandbox (deploys to testnet/mainnet):"
+	@echo "  SERVER_ENVIRONMENT=production make deploy-contracts"
+	@echo ""
+	@echo "Required Environment Variables (production/sandbox):"
 	@echo "  ETHEREUM_RPC_URL          - Ethereum RPC endpoint"
 	@echo "  ETHEREUM_WALLET_PRIVATE_KEY              - Deployment wallet private key (no 0x prefix)"
 	@echo "  VERIFIER_CONTRACT_ADDRESS - SP1 verifier contract address"
@@ -414,10 +582,19 @@ deploy-contract-help:
 	@echo "  export ETHEREUM_WALLET_PRIVATE_KEY='your-private-key-without-0x-prefix'"
 	@echo "  export VERIFIER_CONTRACT_ADDRESS='0x1234...'"
 	@echo "  export PROGRAM_VKEY='0xabcd...'"
-	@echo "  make deploy-contract"
+	@echo "  make deploy-contracts"
 	@echo ""
 	@echo "Or set them in your .env file and run:"
-	@echo "  export \$$(cat .env | grep -v '^#' | xargs) && make deploy-contract"
+	@echo "  export \$$(cat .env | grep -v '^#' | xargs) && make deploy-contracts"
+
+## clean-anvil: Clean Anvil state (reset local blockchain)
+.PHONY: clean-anvil
+clean-anvil:
+	@echo "🧹 Cleaning Anvil state..."
+	@docker compose down anvil -v
+	@docker volume rm arda-credit_anvil_data 2>/dev/null || true
+	@echo "✅ Anvil state cleaned (blockchain reset)"
+	@echo "💡 Run 'make deploy-contracts' to redeploy contracts after reset"
 
 ## clean-docker: Clean up Docker resources
 .PHONY: clean-docker
@@ -466,7 +643,7 @@ clean-builds:
 
 ## clean: Clean up all resources
 .PHONY: clean
-clean: clean-docker clean-sqlx clean-builds
+clean: clean-docker clean-sqlx clean-builds clean-anvil
 	@echo "✅ All resources cleaned up"
 
 ## helm-deps: Update Helm chart dependencies
