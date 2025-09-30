@@ -79,11 +79,11 @@ pub async fn create_deal_listing(
     let listing_id = Uuid::new_v4();
     let now = Utc::now();
 
-    // First update the deal status to 'for_sale'
+    // First update the deal marketplace status to 'for_sale'
     sqlx::query!(
         r#"
         UPDATE deals
-        SET deal_status = 'for_sale', updated_at = NOW()
+        SET status = 'for_sale', updated_at = NOW()
         WHERE id = $1 AND investor_id = $2
         "#,
         deal_id,
@@ -216,9 +216,9 @@ pub async fn remove_deal_listing(
     // 2. Update listing status to 'delisted' (this will also set delisted_at via trigger)
     update_deal_listing_status(&mut tx, deal_id, "delisted").await?; // was update_listing_status, loan_id
 
-    // 3. Update deal status back to 'active' (remove 'for_sale' status)
+    // 3. Update deal marketplace status back to 'active' (remove 'for_sale' status)
     sqlx::query!(
-        "UPDATE deals SET deal_status = 'active', updated_at = NOW() WHERE id = $1", // was loans
+        "UPDATE deals SET status = 'active', updated_at = NOW() WHERE id = $1", // was loans
         deal_id
     )
     .execute(&mut *tx)
@@ -314,7 +314,7 @@ pub async fn validate_deal_for_transfer(
         FROM deals d                          -- was loans
         JOIN deal_listings dl ON d.id = dl.deal_id  -- was loan_listings, loan_id
         WHERE d.id = $1
-          AND d.deal_status = 'for_sale'
+          AND d.status = 'for_sale'
           AND dl.status = 'active'  -- Only active listings can be transferred
         "#,
         deal_id

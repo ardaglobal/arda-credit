@@ -268,12 +268,12 @@ pub async fn execute_deal_transfer(
     let seller_id = seller_info.seller_id;
     let _listing_id = seller_info.listing_id;
 
-    // 3. Update deal status to transfer_pending (prevents concurrent transfers)
+    // 3. Update deal marketplace status to transfer_pending (prevents concurrent transfers)
     sqlx::query!(
         r#"
         UPDATE deals
-        SET deal_status = 'transfer_pending', updated_at = NOW()
-        WHERE id = $1 AND deal_status = 'for_sale'
+        SET status = 'transfer_pending', updated_at = NOW()
+        WHERE id = $1 AND status = 'for_sale'
         "#,
         request.deal_id
     )
@@ -513,9 +513,9 @@ pub async fn cancel_transfer(
         .execute(&mut *tx)
         .await?;
 
-        // 2. Restore deal status to for_sale
+        // 2. Restore deal marketplace status to for_sale
         sqlx::query!(
-            "UPDATE deals SET deal_status = 'for_sale', updated_at = NOW() WHERE id = $1",
+            "UPDATE deals SET status = 'for_sale', updated_at = NOW() WHERE id = $1",
             transfer.deal_id
         )
         .execute(&mut *tx)
