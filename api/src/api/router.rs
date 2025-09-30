@@ -747,6 +747,19 @@ pub fn create_router(state: ApiState) -> Router {
         .route(paths::DOCUMENT_HEALTH, get(document_handlers::health_check))
         // AI Analysis endpoints
         .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
+        // Faucet endpoints (local/staging only)
+        .route(
+            paths::FAUCET_INFO,
+            get(crate::handlers::faucet::get_faucet_info),
+        )
+        .route(
+            paths::FAUCET_STATUS,
+            get(crate::handlers::faucet::check_faucet_status),
+        )
+        .route(
+            paths::FAUCET_CONFIG,
+            get(crate::handlers::faucet::get_faucet_config),
+        )
         .with_state(state)
 }
 

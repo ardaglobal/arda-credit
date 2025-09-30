@@ -44,3 +44,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.log
+
+# Local/staging contract deployments (auto-generated)
+contracts/deployments/local-deployment.json
+contracts/deployments/staging-deployment.json
+# Keep sandbox and production deployments for reference
