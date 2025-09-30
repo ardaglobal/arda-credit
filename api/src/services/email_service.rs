@@ -3,10 +3,8 @@ use aws_sdk_sesv2::{
     types::{Body, Content, Destination, EmailContent, Message},
     Client as SesClient,
 };
-use chrono::Utc;
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
-use uuid::Uuid;
 
 use crate::config::email_config::{EmailConfig, EmailConfigError};
 use crate::config::email_templates::{EmailContent as TemplateContent, MagicLinkEmailData};

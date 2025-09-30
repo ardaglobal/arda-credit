@@ -7,16 +7,14 @@
 //! - Session-based logout
 
 use axum::{
-    extract::{Query, State},
+    extract::State,
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response},
 };
 use axum_extra::extract::CookieJar;
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde::Serialize;
 use tracing::{error, info, instrument, warn};
-use utoipa::ToSchema;
 
 use crate::config::magic_link_types::{
     MagicLinkErrorResponse, MagicLinkRequest, MagicLinkResponse, UserInfo, VerifyMagicLinkRequest,
@@ -24,9 +22,8 @@ use crate::config::magic_link_types::{
 };
 use crate::config::types::ApiState;
 use crate::middleware::cookie_utils::{create_expired_session_cookie, create_session_cookie};
-use crate::middleware::session_middleware::extract_current_user;
-use crate::services::magic_link_service::{MagicLinkError, MagicLinkService};
-use crate::services::session_service::{SessionError, SessionService};
+use crate::services::magic_link_service::MagicLinkError;
+use crate::services::session_service::SessionError;
 
 /// Custom response that includes JSON body and cookie headers
 pub struct JsonWithCookie<T: Serialize> {

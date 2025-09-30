@@ -926,7 +926,6 @@ pub async fn handle_deal_command(
         } => {
             get_user_deal_transfer_history(
                 // was get_user_loan_transfer_history
-                client,
                 &user_id,
                 limit,
                 cmd_verbose || verbose,

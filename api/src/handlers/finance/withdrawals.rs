@@ -26,9 +26,8 @@ use crate::config::types::{ApiState, ErrorResponse};
 use crate::services::balance_service::AvailableBalance;
 use crate::services::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
-    WithdrawalStatusResponse, WithdrawalTransactionService,
+    WithdrawalStatusResponse,
 };
-use arda_credit_db::WithdrawalRequest;
 
 // ============================================================================
 // WITHDRAWAL HANDLERS

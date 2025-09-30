@@ -22,12 +22,10 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use metrics;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::config::paths;
 use crate::config::types::ApiState;
 use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
@@ -36,8 +34,7 @@ use arda_credit_db::{
     cancel_transfer,          // was cancel_transfer
     // ... other imports
     create_deal,         // was create_loan
-    create_deal_listing, // was create_loan_listing
-    create_deal_payment, // was create_payment
+    create_deal_listing, // was create_payment
     // Transfer functions (consolidated)
     execute_deal_transfer,         // was execute_loan_transfer
     get_deal_by_id,                // was get_loan_by_id

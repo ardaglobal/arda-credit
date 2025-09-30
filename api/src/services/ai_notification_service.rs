@@ -1,5 +1,4 @@
-use crate::services::ai_analysis_service::{ChangeAnalysis, DocumentDiffResponse, ImpactLevel};
-use crate::ApiState;
+use crate::services::ai_analysis_service::{DocumentDiffResponse, ImpactLevel};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;

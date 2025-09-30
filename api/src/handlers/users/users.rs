@@ -9,7 +9,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::Json,
 };
 use chrono::{DateTime, Utc};
@@ -18,15 +18,13 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::config::paths;
 use crate::config::types::{ApiState, UserType};
 use arda_credit_db::{
     get_deposits_by_user_address, get_identity_by_id, get_invite_code_info,
     get_user_balance_by_address, get_user_balance_by_id, register_or_reregister_user,
-    store_ads_state_commit, submit_kyc_data, update_identity_profile, update_kyc_status,
-    use_invite_code, Identity, RegisterResult,
+    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code, Identity,
+    RegisterResult,
 };
-use sqlx::Error as SqlxError;
 
 // ============================================================================
 // USER MANAGEMENT TYPES (MOVED FROM rest.rs)

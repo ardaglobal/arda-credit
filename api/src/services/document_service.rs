@@ -5,9 +5,8 @@
 
 use crate::services::auth::Claims;
 use arda_credit_lib::{
-    AccessLevel, ApprovalStatus, Company, CompanyType, Document, DocumentAction, DocumentError,
-    DocumentStatus, DocumentStorageClient, DocumentType, DocumentUploadRequest, KybStatus,
-    S3Metadata, StorageConfig, StorageError, SupportedFileType, TeamMember, TeamRole,
+    AccessLevel, ApprovalStatus, DocumentAction, DocumentError, DocumentStatus,
+    DocumentStorageClient, DocumentUploadRequest, StorageConfig, StorageError, SupportedFileType,
 };
 use chrono::{DateTime, Utc};
 use ipnetwork::IpNetwork;
@@ -16,7 +15,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use thiserror::Error;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use validator::Validate;

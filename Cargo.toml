@@ -9,7 +9,6 @@ members = [
     "script",
     "scripts",
     "scripts/create-user-magic-link",
-    "utils",
 ]
 resolver = "2"
 

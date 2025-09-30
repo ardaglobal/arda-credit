@@ -5,7 +5,7 @@
 //!
 //! The schemas and endpoints are organized by functional area for maintainability.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
 // Re-export types from handlers module

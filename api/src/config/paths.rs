@@ -23,7 +23,6 @@ macro_rules! api_path {
 }
 
 // Import for EndpointInfo type
-use crate::handlers::core::health::EndpointInfo;
 
 // ============================================================================
 // CORE API PATHS

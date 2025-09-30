@@ -12,9 +12,9 @@ use eyre::Result;
 
 /// Register a new merchant with business information
 pub async fn register_merchant(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     email: &str,
-    password: &str,
+    _password: &str,
     legal_name: &str,
     dba: Option<&str>,
     tax_id: Option<&str>,
@@ -77,7 +77,7 @@ pub async fn register_merchant(
 
 /// Submit daily turnover data for a merchant
 pub async fn submit_turnover(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     date: &str,
     gross_receipts: &str,
     refunds: Option<&str>,
@@ -140,7 +140,7 @@ pub async fn submit_turnover(
 
 /// Get merchant turnover data
 pub async fn get_turnover(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     start_date: Option<&str>,
     end_date: Option<&str>,
     limit: Option<i32>,
@@ -182,7 +182,7 @@ pub async fn get_turnover(
 
 /// Update existing turnover record
 pub async fn update_turnover(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     date: &str,
     gross_receipts: Option<&str>,
     refunds: Option<&str>,
@@ -229,7 +229,7 @@ pub async fn update_turnover(
 
 /// Get merchant turnover analytics
 pub async fn get_turnover_analytics(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     period: &str,
     verbose: bool,
 ) -> Result<()> {

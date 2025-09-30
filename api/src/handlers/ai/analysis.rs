@@ -4,7 +4,6 @@ use crate::services::ai_analysis_service::{
 };
 // Authentication will be added later
 use crate::config::types::ApiState;
-use crate::config::types::ErrorResponse;
 use crate::services::auth::Claims;
 use axum::{
     extract::{Path, Query, State},

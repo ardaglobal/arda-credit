@@ -1,9 +1,8 @@
 use arda_credit_db::db::{Identity, Session};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 use rand::Rng;
 use sqlx::PgPool;
-use std::net::SocketAddr;
 use tracing::{debug, instrument, warn};
 
 /// Errors that can occur during session management

@@ -8,8 +8,7 @@ use crate::{
     config::types::ErrorResponse,
     services::auth::Claims,
     services::document_service::{
-        DocumentAuditLogDto, DocumentListRequest, DocumentResponseDto, DocumentService,
-        DocumentServiceError, DocumentUploadRequestDto,
+        DocumentAuditLogDto, DocumentListRequest, DocumentResponseDto, DocumentServiceError,
     },
 };
 use axum::{
@@ -18,13 +17,12 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
-use std::{collections::HashMap, sync::Arc};
-use tracing::{error, info, warn};
-use utoipa::{IntoParams, ToSchema};
+use std::collections::HashMap;
+use tracing::info;
+use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::Validate;
 
 /// Document upload response
 #[derive(Debug, Serialize, ToSchema)]
@@ -300,7 +298,7 @@ pub async fn download_document(
     );
 
     // Create response with appropriate headers
-    let mut response = Response::builder()
+    let response = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", content_type)
         .header(

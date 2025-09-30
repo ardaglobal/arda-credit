@@ -626,7 +626,7 @@ pub async fn get_transaction_status(
 
 /// Set wallet address for a user
 pub async fn set_user_wallet(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     user_id: &str,
     wallet_address: &str,
     verbose: bool,
@@ -728,7 +728,7 @@ pub async fn link_wallet(
 
 /// Initiate a withdrawal request
 pub async fn initiate_withdrawal(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     user_address: &str,
     recipient_address: &str,
     amount: &str,
@@ -837,7 +837,7 @@ pub async fn initiate_withdrawal(
 
 /// Get withdrawal request status
 pub async fn get_withdrawal_status(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     request_id: i32,
     verbose: bool,
 ) -> Result<()> {
@@ -929,7 +929,7 @@ pub async fn get_withdrawal_status(
 
 /// Get user's available balance for withdrawals
 pub async fn get_available_balance(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     address: &str,
     verbose: bool,
 ) -> Result<()> {
@@ -1012,7 +1012,7 @@ pub async fn get_available_balance(
 
 /// Get user's withdrawal history
 pub async fn get_withdrawal_history(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     address: &str,
     limit: Option<i32>,
     verbose: bool,
@@ -1150,7 +1150,7 @@ pub async fn get_withdrawal_history(
 
 /// Cancel a withdrawal request
 pub async fn cancel_withdrawal(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     request_id: i32,
     verbose: bool,
 ) -> Result<()> {
@@ -1219,7 +1219,7 @@ pub async fn cancel_withdrawal(
 
 /// Get pending withdrawal requests (admin command)
 pub async fn get_pending_withdrawals(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     limit: Option<i32>,
     verbose: bool,
 ) -> Result<()> {
@@ -1355,7 +1355,7 @@ pub async fn get_pending_withdrawals(
 
 /// Test balance and withdrawal operations
 pub async fn test_balance_operations(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     test_address: &str,
     test_withdrawals: bool,
     test_linking: bool,
@@ -1492,7 +1492,7 @@ pub async fn start_withdrawal_executor(
 
 /// Execute a single withdrawal request manually
 pub async fn execute_single_withdrawal(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     request_id: i32,
     ethereum_rpc_url: &str,
     contract_address: &str,

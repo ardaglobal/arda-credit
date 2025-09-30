@@ -13,7 +13,7 @@
 //! TODO: Implement proper database integration.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Query, State},
     http::StatusCode,
     response::Json,
 };
@@ -21,17 +21,13 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::api::openapi::PaginationParams;
-use crate::config::paths;
 use crate::config::types::UserType;
 use crate::handlers::users::users::UserDetailsResponse;
 
 // Re-export types for OpenAPI documentation
 pub use crate::api::openapi::*;
 use crate::config::types::ApiState;
-use arda_credit_db::{
-    get_kyc_statistics, list_pending_kyc_applications, update_kyc_status, Identity,
-};
+use arda_credit_db::{get_kyc_statistics, list_pending_kyc_applications, update_kyc_status};
 
 // ============================================================================
 // ADMIN-SPECIFIC TYPES
@@ -146,18 +142,6 @@ pub struct BulkKycApprovalResponse {
 /// Helper function to parse UUID from string
 fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
     uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
-}
-
-// ============================================================================
-// PLACEHOLDER IMPLEMENTATIONS
-// ============================================================================
-
-/// Placeholder error response type
-fn placeholder_error() -> (StatusCode, String) {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        "Not yet implemented".to_string(),
-    )
 }
 
 /// List pending KYC applications (admin only)
