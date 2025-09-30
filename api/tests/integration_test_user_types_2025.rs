@@ -16,7 +16,7 @@ use serde_json::json;
 use sqlx::PgPool;
 use tokio::time::sleep;
 
-use api::types::UserType;
+use api::config::types::UserType;
 use arda_credit_db::{get_identity_by_id, get_invite_code_info};
 
 /// Test configuration

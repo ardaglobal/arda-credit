@@ -13,10 +13,8 @@ pub mod magic_link_cleanup;
 pub mod metrics;
 pub mod session_cleanup;
 
-#[cfg(test)]
+// Test utilities - always available for both unit and integration tests
 pub mod openapi_test;
-
-#[cfg(test)]
 pub mod test_utils;
 
 // Re-export commonly used items
