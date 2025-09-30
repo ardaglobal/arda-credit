@@ -275,7 +275,10 @@ make env                            # Copies .env.example to .env
 
 **Key variables for development:**
 - `DATABASE_URL` - PostgreSQL connection string
-- `SINDRI_API_KEY` - API key for proof generation (get from https://sindri.app)
+- `SERVER_ENVIRONMENT` - Server environment: `local`, `staging`, `sandbox`, or `production` (default: `local`)
+  - `local` and `staging` use local SP1 prover for fast development
+  - `sandbox` and `production` use Sindri service for proof generation
+- `SINDRI_API_KEY` - API key for proof generation (get from https://sindri.app) - required for `sandbox`/`production`
 - `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
 - `ETHEREUM_RPC_URL` - Ethereum RPC endpoint for contract interactions
 - `ETHEREUM_ARDA_CONTRACT_ADDRESS` - Deployed ARDA contract address (was LOAN_CONTRACT_ADDRESS)

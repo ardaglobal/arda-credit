@@ -227,9 +227,13 @@ cover:
 	@echo ""
 	@echo "💡 Open target/llvm-cov/html/index.html in your browser to view the detailed HTML report"
 
-## run: Local SP1 unit testing (fast ~3.5s Core proofs)
+## run: SP1 deal processing test (proof method determined by SERVER_ENVIRONMENT)
+## Default: local (uses local SP1 prover, fast ~8s Core proofs)
+## Sindri: Set SERVER_ENVIRONMENT=sandbox or production (uses Sindri service)
 .PHONY: run
 run:
+	@echo "🌍 Server Environment: $${SERVER_ENVIRONMENT:-local} (determines proof method)"
+	@echo ""
 	cargo run --release
 
 # =============================================================================
@@ -240,19 +244,22 @@ NUM_PROOFS=1
 NUM_TRANSACTIONS=100
 
 ## bench-zk: Run a zk benchmark test. Usage: make bench-zk NUM_PROOFS=50 NUM_TRANSACTIONS=500
+## Note: Uses SERVER_ENVIRONMENT to determine proof method (local/staging=local, sandbox/production=Sindri)
 .PHONY: bench-zk
 bench-zk:
 	@echo ""
 	@echo "Prerequisites:"
-	@echo "  • SINDRI_API_KEY set in .env"
-	@echo "  • Update sindri.json provingScheme to compressed"
-	@echo "  • Circuit deployed: make deploy"
+	@echo "  • For Sindri benchmarks: Set SERVER_ENVIRONMENT=sandbox or production"
+	@echo "  • For Sindri benchmarks: SINDRI_API_KEY set in .env"
+	@echo "  • For Sindri benchmarks: Circuit deployed (make deploy)"
+	@echo "  • For local benchmarks: Set SERVER_ENVIRONMENT=local or staging (default)"
 	@echo ""
 	@TOTAL_TXS=$$(($(NUM_PROOFS) * $(NUM_TRANSACTIONS))); \
 	echo "🎛️  Running benchmark test..."; \
 	echo "Configuration: $(NUM_PROOFS) proofs × $(NUM_TRANSACTIONS) transactions = $$TOTAL_TXS total transactions"; \
+	echo "Environment: $${SERVER_ENVIRONMENT:-local} (determines proof method)"; \
 	echo ""
-	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features sindri,benchmark
+	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features benchmark
 
 ## cli: CLI client (requires API server running)
 .PHONY: cli

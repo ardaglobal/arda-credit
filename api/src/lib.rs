@@ -108,8 +108,6 @@ pub use client::{
     DepositTransactionInfo,
     HealthResponse,
     PendingTransactionsResponse,
-    SubmitTransactionRequest,
-    SubmitTransactionResponse,
     TransactionInfo,
     TransactionStatusResponse,
     UserBalanceResponse,
