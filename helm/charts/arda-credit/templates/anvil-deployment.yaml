@@ -57,16 +57,14 @@ spec:
               containerPort: 8545
               protocol: TCP
           livenessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: rpc
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: rpc
             initialDelaySeconds: 5
             periodSeconds: 5

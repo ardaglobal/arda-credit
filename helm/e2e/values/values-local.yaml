@@ -72,6 +72,9 @@ postgresql:
 server:
   enabled: true
   
+  # Server environment for local development
+  environment: "local"
+  
   # Local registry configuration - use local registry
   image:
     registry: "kind-registry:5000"  # Local container registry (internal network name)
@@ -198,9 +201,12 @@ secrets:
   # Reference the external secret created by setup script
   existingSecret: "arda-credit-secrets-external"
 
+  # Secret keys configuration
+  # Note: ethereumRpcUrl points to the internal Anvil service for local development
+  # In production, this should be set via external secrets to point to a real Ethereum node
   secretKeys:
     sindriApiKey: "sindri-api-key"
-    ethereumRpcUrl: "http://arda-credit-anvil:8545"
+    ethereumRpcUrl: "http://arda-credit-anvil:8545"  # Points to local Anvil devnet
     ethereumContractAddress: "ethereum-contract-address"
     ethereumWalletPrivateKey: "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"  # Anvil testing key
     ethereumDeployerAddress: "ethereum-deployer-address"
@@ -505,7 +511,7 @@ anvil:
     enabled: true
     path: "/anvil-state"
     file: "state.json"
-    interval: "10"
+    interval: "30"  # Longer interval for local development to reduce I/O overhead
     persistence:
       enabled: false  # Use ephemeral storage for faster testing
 
