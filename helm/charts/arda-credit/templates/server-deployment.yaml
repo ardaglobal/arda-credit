@@ -113,6 +113,9 @@ spec:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://{{ include "arda-credit.fullname" . }}-opentelemetry-collector:4317"
             {{- end }}
+            # Server environment configuration
+            - name: SERVER_ENVIRONMENT
+              value: "{{ .Values.server.environment | default "production" }}"
             {{- range $key, $value := .Values.server.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}

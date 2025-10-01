@@ -200,9 +200,9 @@ secrets:
 
   secretKeys:
     sindriApiKey: "sindri-api-key"
-    ethereumRpcUrl: "ethereum-rpc-url"
+    ethereumRpcUrl: "http://arda-credit-anvil:8545"
     ethereumContractAddress: "ethereum-contract-address"
-    ethereumWalletPrivateKey: "ethereum-wallet-private-key"
+    ethereumWalletPrivateKey: "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"  # Anvil testing key
     ethereumDeployerAddress: "ethereum-deployer-address"
     signozIngestionKey: "signoz-ingestion-key"
     awsAccessKeyId: "aws-access-key-id"
@@ -482,3 +482,48 @@ dataPopulator:
     requests:
       cpu: 50m
       memory: 128Mi
+
+# Anvil - Local Ethereum devnet (enabled for local development)
+anvil:
+  enabled: true
+
+  # Use latest Foundry image
+  image:
+    repository: ghcr.io/foundry-rs/foundry
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # Single replica for local development
+  replicaCount: 1
+
+  # Anvil configuration matching docker-compose
+  chainId: "31337"
+  blockTime: "2"
+
+  # State persistence for local development
+  state:
+    enabled: true
+    path: "/anvil-state"
+    file: "state.json"
+    interval: "10"
+    persistence:
+      enabled: false  # Use ephemeral storage for faster testing
+
+  # Expose via NodePort for direct access
+  service:
+    type: NodePort
+    port: 8545
+    nodePort: 30005
+
+  # Minimal resources for local testing
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+  # Disable security context for local development
+  podSecurityContext: {}
+  securityContext: {}
