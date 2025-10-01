@@ -39,7 +39,7 @@ arda-credit-lib    = { path = "../lib", package = "lib", features = [ "document_
 ethereum-client    = { path = "../ethereum-client" }
 sindri             = { version = "0.3.1", features = [ "sp1-v5" ] }
 sp1-sdk            = "5.2.1"
-sqlx               = { workspace = true }
+sqlx               = { workspace = true, features = [ "chrono", "ipnetwork", "postgres", "uuid" ] }
 
 # API framework dependencies
 async-graphql = { version = "7.0", features = [ "chrono" ] }
@@ -79,20 +79,20 @@ aws-config    = "1.0"
 aws-sdk-sesv2 = "1.0"
 
 # Email template support
-askama      = "0.14"
-askama_axum = "0.5"
+askama = "0.14"
 
 # Session management dependencies
 axum-extra = { version = "0.10", features = [ "cookie" ] }
 base64     = "0.22"
-ipnetwork  = { version = "0.21", features = [ "serde" ] }
+ipnetwork  = { version = "0.20", features = [ "serde" ] }
 time       = "0.3"
 
 # OpenTelemetry dependencies (compatible versions)
-opentelemetry                      = { version = "0.31.0", features = [ "rt-tokio", "trace" ] }
+opentelemetry                      = { version = "0.31.0", features = [ "trace" ] }
 opentelemetry-otlp                 = { version = "0.31.0", features = [ "trace" ] }
 opentelemetry-semantic-conventions = { version = "0.31.0" }
-tonic                              = { version = "0.14.1", features = [ "tls-roots" ] }
+opentelemetry_sdk                  = { version = "0.31.0", features = [ "rt-tokio" ] }
+tonic                              = { version = "0.14.1", features = [ "tls-native-roots" ] }
 tracing-opentelemetry              = { version = "0.31.0" }
 
 # Middleware dependencies

@@ -4,8 +4,8 @@
 //! for the Arda Credit API. It exports traces to the existing OTEL collector
 //! running in Kubernetes, which then forwards to SigNoz Cloud.
 
-use opentelemetry::sdk::Resource;
-use opentelemetry::{global, KeyValue};
+use opentelemetry::KeyValue;
+use opentelemetry_sdk::Resource;
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
@@ -51,10 +51,13 @@ pub fn init_tracing() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("   Endpoint: {}", endpoint);
 
     // Create service resource (unused in this simplified version)
-    let _resource = Resource::new(vec![
-        KeyValue::new("service.name", service_name),
-        KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-    ]);
+    let _resource = Resource::builder()
+        .with_service_name(service_name)
+        .with_attributes(vec![KeyValue::new(
+            "service.version",
+            env!("CARGO_PKG_VERSION"),
+        )])
+        .build();
 
     // Initialize tracer pipeline - NOTE: OpenTelemetry 0.30.0 API changed significantly
     // This is a simplified version that creates a basic tracer
@@ -300,8 +303,7 @@ pub async fn shutdown_telemetry() {
         .unwrap_or(false);
 
     if enable_tracing {
-        // Simple shutdown - just signal the global provider
-        global::shutdown_tracer_provider();
+        // Simple shutdown - OpenTelemetry 0.31.0 handles cleanup automatically on drop
         info!("✅ OpenTelemetry tracer provider shutdown complete");
     } else {
         info!("✅ OpenTelemetry shutdown complete (was disabled)");
