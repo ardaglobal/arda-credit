@@ -260,6 +260,7 @@ fn default_limit() -> u32 {
         crate::handlers::faucet::get_faucet_info,
         crate::handlers::faucet::check_faucet_status,
         crate::handlers::faucet::get_faucet_config,
+        crate::handlers::faucet::request_faucet_funds,
 
         // Admin withdrawal endpoints
         crate::handlers::finance::withdrawals::approve_withdrawal_request,
@@ -397,6 +398,8 @@ fn default_limit() -> u32 {
         crate::handlers::faucet::FaucetInfoResponse,
         crate::handlers::faucet::FaucetStatusQuery,
         crate::handlers::faucet::FaucetStatusResponse,
+        crate::handlers::faucet::FaucetRequestBody,
+        crate::handlers::faucet::FaucetRequestResponse,
         crate::handlers::faucet::NetworkConfig,
 
         // Contract configuration types
