@@ -43,7 +43,6 @@ use crate::{
     balance::{handle_balance_command, BalanceCommands},
     batch::{handle_batch_command, BatchCommands},
     deals::{handle_deal_command, DealCommands},
-    pools::{handle_pool_command, PoolCommands},
     user::{handle_user_command, UserCommands},
 };
 
@@ -96,10 +95,6 @@ pub enum Commands {
     #[command(subcommand)]
     User(UserCommands),
 
-    /// Liquidity pool creation and management
-    #[command(subcommand)]
-    Pool(PoolCommands),
-
     /// Deal operations (CRUD, payments, marketplace, transfers) - consolidated from separate categories
     #[command(subcommand)]
     Deal(DealCommands),
@@ -149,9 +144,6 @@ pub async fn run_cli() -> Result<()> {
     match cli.command {
         Commands::User(cmd) => {
             handle_user_command(&client, cmd, cli.verbose).await?;
-        }
-        Commands::Pool(cmd) => {
-            handle_pool_command(&client, cmd, cli.verbose).await?;
         }
         Commands::Deal(cmd) => {
             handle_deal_command(&client, cmd, cli.verbose).await?;

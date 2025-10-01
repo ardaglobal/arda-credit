@@ -140,8 +140,7 @@ impl TestDatabase {
 /// Create a test API state with all required services
 pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
     use crate::{
-        services::auth::AuthService, services::batch_processor::BatchProcessorHandle,
-        BalanceVerificationService, WithdrawalTransactionService,
+        services::auth::AuthService, BalanceVerificationService, WithdrawalTransactionService,
     };
 
     // Create ADS service
@@ -152,7 +151,7 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
     ));
 
     // Create auth service
-    let auth_service = Arc::new(AuthService::new(
+    let _auth_service = Arc::new(AuthService::new(
         "test-jwt-secret-key-minimum-32-characters-for-testing".to_string(),
         Some(24),
     ));
@@ -191,8 +190,6 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
     use crate::{
         middleware::middleware::EmailRateLimiter,
         services::auth::AuthService,
-        services::batch_processor::BatchProcessorHandle,
-        services::email_service::EmailService,
         services::magic_link_service::{MagicLinkConfig, MagicLinkService},
         services::session_service::SessionService,
         BalanceVerificationService, WithdrawalTransactionService,
@@ -206,7 +203,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
     ));
 
     // Create auth service
-    let auth_service = Arc::new(AuthService::new(
+    let _auth_service = Arc::new(AuthService::new(
         "test-jwt-secret-key-minimum-32-characters-for-testing".to_string(),
         Some(24),
     ));
@@ -487,8 +484,7 @@ impl TestDataFactory {
 /// HTTP client utilities for integration testing
 pub mod http_utils {
     use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use tower::ServiceExt;
+    use axum::http::Request;
 
     /// Create a test HTTP request
     pub fn create_test_request(
@@ -496,7 +492,7 @@ pub mod http_utils {
         uri: &str,
         body: Option<serde_json::Value>,
     ) -> Request<Body> {
-        let mut req = Request::builder()
+        let req = Request::builder()
             .method(method)
             .uri(uri)
             .header("content-type", "application/json");

@@ -1437,7 +1437,7 @@ pub async fn check_invite_code(client: &BatchApiClient, code: &str, verbose: boo
 
 /// Use an invite code (for testing - marks it as used)
 pub async fn use_invite_code(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     code: &str,
     user_id: Option<&str>,
     verbose: bool,
@@ -1482,7 +1482,7 @@ pub async fn use_invite_code(
 
 /// Test user operations end-to-end
 pub async fn test_user_operations(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     count: Option<i32>,
     user_type: Option<&str>,
     test_kyc: bool,

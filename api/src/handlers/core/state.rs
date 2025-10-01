@@ -23,15 +23,12 @@ use utoipa::ToSchema;
 
 extern crate hex;
 
-use crate::api::openapi::PaginationParams;
-use crate::config::paths;
 use crate::config::types::ApiState;
 
 // Use Axum's built-in response types for Axum 0.8 compatibility
 use arda_credit_db::{
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
     get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
-    ProofBatch,
 };
 
 // ============================================================================

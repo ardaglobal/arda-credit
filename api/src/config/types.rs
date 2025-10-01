@@ -3,18 +3,8 @@
 //! This module contains the fundamental types and configurations used across
 //! the API, extracted from the original rest.rs file.
 
-use crate::{
-    services::auth::AuthService, services::balance_service::BalanceVerificationService,
-    services::batch_processor::BatchProcessorHandle,
-    services::withdrawal_service::WithdrawalTransactionService,
-};
-use arda_credit_db::IndexedMerkleTreeADS;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use utoipa::{IntoParams, ToSchema};
+use utoipa::ToSchema;
 
 // Re-export the core types from router.rs
 pub use crate::api::router::{ApiConfig, ApiState};

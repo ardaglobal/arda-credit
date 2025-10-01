@@ -22,12 +22,10 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use metrics;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::config::paths;
 use crate::config::types::ApiState;
 use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
@@ -36,8 +34,7 @@ use arda_credit_db::{
     cancel_transfer,          // was cancel_transfer
     // ... other imports
     create_deal,         // was create_loan
-    create_deal_listing, // was create_loan_listing
-    create_deal_payment, // was create_payment
+    create_deal_listing, // was create_payment
     // Transfer functions (consolidated)
     execute_deal_transfer,         // was execute_loan_transfer
     get_deal_by_id,                // was get_loan_by_id
@@ -1507,10 +1504,10 @@ pub async fn remove_deal_from_sale_endpoint(
     ),
     tag = "Deals"
 )]
-#[instrument(skip(state), level = "info")]
+#[instrument(skip(_state), level = "info")]
 pub async fn deal_marketplace_stats_endpoint(
     // was marketplace_stats_endpoint
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
 ) -> Result<Json<DealMarketplaceStats>, (StatusCode, String)> {
     // was MarketplaceStats
     info!("📊 API: Getting deal marketplace statistics");
@@ -1685,17 +1682,17 @@ pub async fn get_deal_transfer_history_endpoint(
     ),
     tag = "Deals"
 )]
-#[instrument(skip(state), level = "info")]
+#[instrument(skip(_state), level = "info")]
 pub async fn get_user_deal_transfer_history_endpoint(
     // was get_user_transfer_history_endpoint
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
     Path(user_id): Path<String>,
     Query(params): Query<TransferHistoryQuery>,
 ) -> Result<Json<Vec<DealTransferResponse>>, (StatusCode, String)> {
     // was LoanTransferResponse
     info!("👤 API: Getting user deal transfer history: {}", user_id);
 
-    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
+    let _user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
             "Invalid user ID format".to_string(),

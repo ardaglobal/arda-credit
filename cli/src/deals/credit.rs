@@ -11,7 +11,7 @@ use arda_credit_api::BatchApiClient;
 use eyre::Result;
 
 /// Get merchant profile completion status
-pub async fn get_profile_completion(client: &BatchApiClient, verbose: bool) -> Result<()> {
+pub async fn get_profile_completion(_client: &BatchApiClient, verbose: bool) -> Result<()> {
     println!("📋 Merchant Profile Completion Status");
 
     // Placeholder implementation - would check actual profile completeness
@@ -53,7 +53,7 @@ pub async fn get_profile_completion(client: &BatchApiClient, verbose: bool) -> R
 
 /// Check merchant eligibility for credit line
 pub async fn check_credit_eligibility(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     merchant_id: &str,
     verbose: bool,
 ) -> Result<()> {
@@ -107,7 +107,7 @@ pub async fn check_credit_eligibility(
 
 /// Submit a credit line request
 pub async fn submit_credit_line_request(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     merchant_id: &str,
     requested_amount: u64,
     requested_rate_bps: Option<u64>,
@@ -175,7 +175,7 @@ pub async fn submit_credit_line_request(
 
 /// Browse available liquidity pools for credit matching
 pub async fn browse_available_pools(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     required_liquidity: u64,
     max_ltv_bps: u64,
     max_rate_bps: u64,
@@ -236,7 +236,7 @@ pub async fn browse_available_pools(
 
 /// List credit line requests for a merchant
 pub async fn list_credit_line_requests(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     merchant_id: &str,
     status: Option<&str>,
     limit: u32,

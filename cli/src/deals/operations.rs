@@ -15,13 +15,13 @@ use tracing::{error, info};
 
 /// Originate a new deal between parties
 pub async fn originate_deal(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     originator_id: &str, // was borrower_id
     investor_id: &str,   // was lender_id
     amount: f64,
     interest_rate: Option<f64>,
     term_days: i32,
-    description: Option<String>,
+    _description: Option<String>,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -79,7 +79,7 @@ pub async fn originate_deal(
 
 /// Make a payment toward a deal
 pub async fn make_deal_payment(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     deal_id: &str, // was loan_id, now deal_id
     amount: f64,
     verbose: bool,
@@ -129,7 +129,7 @@ pub async fn make_deal_payment(
 }
 
 /// Close out a deal
-pub async fn closeout_deal(client: &BatchApiClient, deal_id: &str, verbose: bool) -> Result<()> {
+pub async fn closeout_deal(_client: &BatchApiClient, deal_id: &str, verbose: bool) -> Result<()> {
     if verbose {
         info!("🏁 Closing out deal: {}", deal_id);
     }
@@ -162,7 +162,7 @@ pub async fn closeout_deal(client: &BatchApiClient, deal_id: &str, verbose: bool
 
 /// List deals for a user
 pub async fn list_deals(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     user_id: Option<&str>,
     status: Option<&str>,
     limit: Option<i32>,
@@ -205,7 +205,7 @@ pub async fn list_deals(
 }
 
 /// Get deal details
-pub async fn get_deal(client: &BatchApiClient, deal_id: &str, verbose: bool) -> Result<()> {
+pub async fn get_deal(_client: &BatchApiClient, deal_id: &str, verbose: bool) -> Result<()> {
     if verbose {
         info!("🔍 Deal details for: {}", deal_id);
     }
@@ -239,7 +239,7 @@ pub async fn get_deal(client: &BatchApiClient, deal_id: &str, verbose: bool) -> 
 
 /// Test deal operations end-to-end
 pub async fn test_deal_operations(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     count: Option<u32>,
     test_payments: bool,
     test_marketplace: bool,
@@ -326,11 +326,11 @@ fn calculate_monthly_payment(principal: f64, annual_rate: f64, term_days: i32) -
 
 /// List a deal for sale in the marketplace
 pub async fn list_deal_for_sale(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     deal_id: &str, // was loan_id, now deal_id
     asking_price: f64,
     description: Option<&str>,
-    seller_id: &str,
+    _seller_id: &str,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -363,9 +363,9 @@ pub async fn list_deal_for_sale(
 
 /// Browse deals available for sale
 pub async fn browse_deal_marketplace(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     limit: Option<i32>,
-    status: Option<&str>,
+    _status: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
@@ -406,7 +406,7 @@ pub async fn browse_deal_marketplace(
 
 /// Remove a deal from sale
 pub async fn remove_deal_from_sale(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     deal_id: &str, // was loan_id, now deal_id
     verbose: bool,
 ) -> Result<()> {
@@ -430,7 +430,7 @@ pub async fn remove_deal_from_sale(
 }
 
 /// Get marketplace statistics
-pub async fn get_deal_marketplace_stats(client: &BatchApiClient, verbose: bool) -> Result<()> {
+pub async fn get_deal_marketplace_stats(_client: &BatchApiClient, verbose: bool) -> Result<()> {
     if verbose {
         info!("📊 Getting deal marketplace statistics");
     }
@@ -467,7 +467,7 @@ pub async fn get_deal_marketplace_stats(client: &BatchApiClient, verbose: bool) 
 
 /// Transfer deal ownership to another investor
 pub async fn transfer_deal_ownership(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     deal_id: &str,          // was loan_id, now deal_id
     from_investor_id: &str, // was from_lender_id
     to_investor_id: &str,   // was to_lender_id
@@ -508,7 +508,7 @@ pub async fn transfer_deal_ownership(
 
 /// Get transfer history for a deal
 pub async fn get_deal_transfer_history(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     deal_id: &str, // was loan_id, now deal_id
     limit: Option<i32>,
     verbose: bool,
@@ -546,7 +546,7 @@ pub async fn get_deal_transfer_history(
 
 /// Validate if a deal transfer is possible
 pub async fn validate_deal_transfer(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     deal_id: &str,             // was loan_id, now deal_id
     current_investor_id: &str, // was current_lender_id
     verbose: bool,
@@ -585,7 +585,6 @@ pub async fn validate_deal_transfer(
 
 /// Get user's deal transfer history
 pub async fn get_user_deal_transfer_history(
-    client: &BatchApiClient,
     user_id: &str,
     limit: Option<i32>,
     verbose: bool,
@@ -631,16 +630,16 @@ pub async fn get_user_deal_transfer_history(
 
 /// Update deal details
 pub async fn update_deal(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     deal_id: &str,
     outstanding_balance: Option<f64>,
-    status: Option<&str>,
+    _status: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
     if verbose {
         info!(
             "🔄 Updating deal: deal_id={}, balance={:?}, status={:?}",
-            deal_id, outstanding_balance, status
+            deal_id, outstanding_balance, _status
         );
     }
 
@@ -649,7 +648,7 @@ pub async fn update_deal(
     if let Some(balance) = outstanding_balance {
         println!("   New Outstanding Balance: ${:.2}", balance);
     }
-    if let Some(status) = status {
+    if let Some(status) = _status {
         println!("   New Status: {}", status);
     }
 
@@ -665,7 +664,7 @@ pub async fn update_deal(
     if let Some(balance) = outstanding_balance {
         println!("   Outstanding Balance: ${:.2}", balance);
     }
-    if let Some(status) = status {
+    if let Some(status) = _status {
         println!("   Status: {}", status);
     }
 

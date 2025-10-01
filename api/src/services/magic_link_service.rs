@@ -136,7 +136,7 @@ impl MagicLinkService {
         let token_hash = Self::hash_token(&token);
 
         // Store magic link in database
-        let magic_link = self
+        let _magic_link = self
             .store_magic_link(
                 user.id,
                 token_hash,
@@ -210,14 +210,14 @@ impl MagicLinkService {
     /// Generate a cryptographically secure token (32 bytes -> base64url)
     pub fn generate_token() -> String {
         let mut token_bytes = [0u8; 32];
-        rand::thread_rng().fill(&mut token_bytes);
+        rand::rng().fill(&mut token_bytes);
         URL_SAFE_NO_PAD.encode(token_bytes)
     }
 
     /// Generate a CSRF state parameter (16 bytes -> base64url)
     pub fn generate_state() -> String {
         let mut state_bytes = [0u8; 16];
-        rand::thread_rng().fill(&mut state_bytes);
+        rand::rng().fill(&mut state_bytes);
         URL_SAFE_NO_PAD.encode(state_bytes)
     }
 

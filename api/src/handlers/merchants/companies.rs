@@ -357,7 +357,7 @@ pub async fn remove_team_member_endpoint(
     // For now, we'll implement this by setting status to 'inactive'
     // In a full implementation, you might want to add this method to the CompanyService
 
-    let company_service = CompanyService::new(state.pool.clone());
+    let _company_service = CompanyService::new(state.pool.clone());
 
     let dummy_claims = create_dummy_claims();
     // Check if the requester has team management access
@@ -711,7 +711,7 @@ pub async fn get_investor_profile_endpoint(
 
     match get_investor_profile_by_user_id_or_email(&state.pool, user_id_option, email_option).await
     {
-        Ok(Some((profile, identity))) => {
+        Ok(Some((_profile, identity))) => {
             let response = InvestorProfileResponse {
                 user_id: identity.id,
                 email: identity.email,
@@ -749,7 +749,7 @@ pub async fn get_investor_profile_endpoint(
 pub async fn update_investor_profile_endpoint(
     State(state): State<ApiState>,
     headers: HeaderMap,
-    Json(request): Json<UpdateInvestorProfileRequest>,
+    Json(_request): Json<UpdateInvestorProfileRequest>,
 ) -> Result<Json<InvestorProfileResponse>, (StatusCode, String)> {
     let user_id_str = headers
         .get("X-User-ID")
@@ -776,7 +776,7 @@ pub async fn update_investor_profile_endpoint(
 
     match update_investor_profile(&state.pool, user_id, &db_request).await {
         Ok(_) => match get_investor_profile_with_identity(&state.pool, user_id).await {
-            Ok(Some((profile, identity))) => {
+            Ok(Some((_profile, identity))) => {
                 let response = InvestorProfileResponse {
                     user_id: identity.id,
                     email: identity.email,

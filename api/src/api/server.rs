@@ -1,8 +1,7 @@
 use axum::{
-    extract::State,
     http::StatusCode,
     response::{Html, IntoResponse, Json, Response},
-    routing::{get, post, put},
+    routing::{get, post},
     Router,
 };
 use std::time::Duration;
@@ -20,8 +19,6 @@ use tracing::{info, instrument, warn};
 use crate::api::openapi::ApiDoc;
 use crate::config::types::{ApiConfig, ApiState};
 use crate::middleware::middleware::{EmailRateLimiter, RateLimiter};
-use crate::middleware::session_middleware::session_auth_middleware;
-use crate::services::auth::AuthService;
 use crate::services::batch_processor::{create_batch_processor_config, start_batch_processor};
 use crate::services::email_service::EmailService;
 use crate::services::magic_link_service::{MagicLinkConfig, MagicLinkService};
@@ -31,7 +28,6 @@ use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use arda_credit_db::{init_db, AdsConfig, AdsServiceFactory, IndexedMerkleTreeADS};
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -569,6 +565,7 @@ async fn api_info_handler() -> Html<&'static str> {
 }
 
 /// Create unauthorized response for middleware
+#[allow(dead_code)]
 fn create_unauthorized_response(message: &str) -> Response {
     let error_body = serde_json::json!({
         "error": "AUTHENTICATION_ERROR",

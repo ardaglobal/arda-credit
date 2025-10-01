@@ -104,9 +104,9 @@ pub struct TransactionUpdatesQuery {
     ),
     tag = "State"
 )]
-#[instrument(skip(state))]
+#[instrument(skip(_state))]
 pub async fn get_contract_config(
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
     Query(params): Query<ContractConfigQuery>,
 ) -> Result<Json<ContractConfigResponse>, StatusCode> {
     info!(

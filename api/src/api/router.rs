@@ -1,12 +1,11 @@
 use axum::{
     extract::State,
-    response::{Json, Response},
+    response::Json,
     routing::{delete, get, post, put},
     Router,
 };
-use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tracing::{error, info, instrument, warn};
+use tracing::instrument;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
@@ -16,83 +15,24 @@ use crate::config::paths;
 use crate::config::types::UserType;
 use crate::handlers::{
     // Deals
-    browse_deals_for_sale_endpoint,
-    // Companies (merchant module)
     companies as company_handlers,
-    // State
-    create_batch_endpoint,
-    create_deal_endpoint,
-    delete_deal_endpoint,
     // Documents (merchant module)
     documents as document_handlers,
-    // Auth
-    generate_invite_code_endpoint,
     // Finance
     get_account_financial_transactions,
-    get_batch_details_endpoint,
-    get_batches_endpoint,
-    get_contract_submission_data_endpoint,
-    get_current_state_endpoint,
     // Magic Link Auth
     get_current_user,
-    get_deal_details_endpoint,
-    get_deal_payment_history_endpoint,
-    get_deal_stats_endpoint,
-    get_deal_transfer_history_endpoint,
-    get_deals_by_user_id_endpoint,
-    get_payment_details_endpoint,
-    get_pending_transactions_endpoint,
     get_transaction_history,
     get_user_financial_summary,
     get_user_financial_transactions,
     logout_endpoint,
     record_account_deposit,
     record_account_withdrawal,
-    record_deal_payment_endpoint,
-    remove_deal_from_sale_endpoint,
     request_magic_link,
-    submit_transaction_endpoint,
-    transfer_deal_ownership_endpoint,
-    trigger_batch_endpoint,
-    update_batch_proof_endpoint,
-    update_deal_endpoint,
-    validate_deal_transfer_endpoint,
-    validate_invite_code_endpoint,
     verify_magic_link,
     withdrawals as withdrawal_handlers,
-    DeleteDealResponse,
-    // Users
-    DeleteUserResponse,
-    // Health
-    EndpointInfo,
-    GenerateInviteCodeRequest,
-    GenerateInviteCodeResponse,
-    // Investors
-    InvestorProfileQuery,
-    InvestorProfileResponse,
-    InviteCodeResponse,
-    KycData,
-    // Admin
-    KycStatisticsResponse,
-    ListPendingKycQuery,
-    ListPendingKycResponse,
-    LogoutRequest,
-    LogoutResponse,
-    PlatformMetricsResponse,
-    RegisterInvestorRequest,
-    RegisterInvestorResponse,
-    RegisterUserRequest,
-    RegisterUserResponse,
-    SubmitKycRequest,
-    SubmitKycResponse,
-    UpdateInvestorProfileRequest,
-    UpdateKycStatusRequest,
-    UpdateUserRequest,
-    UpdateUserResponse,
     UserDetailsResponse,
-    ValidateInviteCodeResponse,
 };
-use crate::services::auth::AuthService;
 use crate::services::batch_processor::BatchProcessorHandle;
 use crate::services::document_service::DocumentService;
 use crate::services::session_service::SessionService;
@@ -106,6 +46,7 @@ use tokio::sync::RwLock;
 // ============================================================================
 
 /// Helper function to parse UUID from string
+#[allow(dead_code)]
 fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
     uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
 }
@@ -119,6 +60,7 @@ pub struct AuthenticatedUser {
 }
 
 /// Convert database Identity to API UserDetailsResponse
+#[allow(dead_code)]
 fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
     UserDetailsResponse {
         user_id: identity.id.to_string(),
@@ -561,7 +503,10 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DOCUMENT_AUDIT,
             get(document_handlers::get_audit_logs),
         )
-        .route(paths::DOCUMENT_HEALTH, get(document_handlers::health_check))
+        .route(
+            paths::DOCUMENT_HEALTH,
+            get(document_handlers::document_service_health_check),
+        )
         // AI Analysis endpoints
         .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
         // Faucet endpoints (local/staging only)

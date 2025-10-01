@@ -1,9 +1,8 @@
 use arda_credit_db::db::{Identity, Session};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{Duration, Utc};
 use rand::Rng;
 use sqlx::PgPool;
-use std::net::SocketAddr;
 use tracing::{debug, instrument, warn};
 
 /// Errors that can occur during session management
@@ -160,7 +159,7 @@ impl SessionService {
     /// Generate a cryptographically secure session token
     fn generate_session_token() -> String {
         let mut token_bytes = [0u8; 32]; // 256 bits
-        rand::thread_rng().fill(&mut token_bytes);
+        rand::rng().fill(&mut token_bytes);
         URL_SAFE_NO_PAD.encode(token_bytes)
     }
 
