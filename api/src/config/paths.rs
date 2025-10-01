@@ -148,6 +148,9 @@ pub const FAUCET_STATUS: &str = api_path!("/faucet/status");
 /// Get faucet configuration
 pub const FAUCET_CONFIG: &str = api_path!("/faucet/config");
 
+/// Request funds from faucet
+pub const FAUCET_REQUEST: &str = api_path!("/faucet/request");
+
 // ============================================================================
 // WITHDRAWAL MANAGEMENT PATHS
 // ============================================================================
