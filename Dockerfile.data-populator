@@ -3,10 +3,10 @@ FROM ghcr.io/ardaglobal/base-containers/rust-sp1-base:latest AS builder
 
 WORKDIR /app
 
-# Copy the actual workspace Cargo.toml instead of hardcoding it
-COPY Cargo.toml ./
+# Copy workspace files and dependency manifests
+COPY Cargo.toml Cargo.lock ./
 
-# Copy dependency manifests
+# Copy dependency manifests for all workspace members
 COPY db/Cargo.toml ./db/
 COPY lib/Cargo.toml ./lib/
 
@@ -16,10 +16,11 @@ COPY db/ ./db/
 # Copy SQLx offline query cache for offline compilation
 COPY .sqlx/ ./.sqlx/
 
-# Build only the populate_fake_data binary
-WORKDIR /app/db
+# Build only the populate_fake_data binary from the workspace root
+# This ensures all workspace dependencies are resolved correctly
+WORKDIR /app
 ENV SQLX_OFFLINE=true
-RUN cargo build --release --bin populate_fake_data
+RUN cargo build --release --package db --bin populate_fake_data
 
 # Runtime stage - use existing arda-credit image as base
 # NOTE: This image only supports linux/amd64 platform
