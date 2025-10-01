@@ -1,6 +1,6 @@
 # Arda Credit Development Environment Setup
 
-This document explains the automated setup process for the Arda Credit development environment using the provided `setup.sh` script.
+This document explains how to set up your local development environment for the Arda Credit project.
 
 ## Quick Start
 
@@ -9,29 +9,162 @@ This document explains the automated setup process for the Arda Credit developme
 git clone https://github.com/ardaglobal/arda-credit.git
 cd arda-credit
 
-# Run the setup script
-./.openhands/setup.sh
+# Run the automated setup
+make setup
 ```
 
-## What the Setup Script Does
+## What the Setup Does
 
-The `setup.sh` script provides a comprehensive, automated setup for the entire Arda Credit development stack:
+The `make setup` command provides a streamlined setup for the Arda Credit development environment:
 
-### 1. System Dependencies
-- **Build Tools**: GCC, Make, pkg-config for compiling native dependencies
-- **SSL Libraries**: OpenSSL development headers for cryptographic operations
-- **Database**: PostgreSQL server and client libraries
-- **Containerization**: Docker and Docker Compose for deployment
-- **Utilities**: curl, wget, git, jq for various development tasks
+1. **Install Dependencies**: Installs required system dependencies and tools
+2. **Environment Configuration**: Creates a `.env` file from the template
+3. **Database Setup**: Initializes the PostgreSQL database and runs migrations
+4. **Git Hooks**: Sets up pre-commit hooks for code quality
 
-### 2. DevOps and Kubernetes Tools
-- **kubectl**: Kubernetes command-line tool for cluster management
-- **KIND**: Kubernetes IN Docker for local cluster development
-- **Helm**: Kubernetes package manager for application deployment
-- **Docker**: Container runtime and image management
-- **Container Orchestration**: Complete local Kubernetes development environment
+## Prerequisites
 
-### 3. Rust Ecosystem
+Before running `make setup`, ensure you have the following installed on your system:
+
+### Required Tools
+
+- **Rust**: Version 1.70+ (install via [rustup](https://rustup.rs/))
+- **Docker**: For running PostgreSQL and containerized services
+- **Docker Compose**: For orchestrating local services
+- **Node.js**: Version 18+ for frontend tooling (if developing frontend)
+
+### Platform-Specific Installation
+
+#### Ubuntu/Debian
+```bash
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+
+# Install Docker Compose
+sudo apt-get install docker-compose
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+#### macOS
+```bash
+# Install Homebrew (if not already installed)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Docker Desktop
+brew install --cask docker
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Optional Tools (for full development)
+
+- **SP1 zkVM**: For zero-knowledge proof development
+  ```bash
+  curl -L https://sp1.succinct.xyz | bash
+  sp1up
+  ```
+
+- **Foundry**: For smart contract development
+  ```bash
+  curl -L https://foundry.paradigm.xyz | bash
+  foundryup
+  ```
+
+- **kubectl, KIND, Helm**: For Kubernetes development
+  ```bash
+  # Install via package manager or make install
+  make install
+  ```
+
+## Detailed Setup Steps
+
+### 1. Install Dependencies
+
+```bash
+make install
+```
+
+This installs:
+- Kubernetes tools (kubectl, KIND, Helm)
+- DevOps utilities required for deployment
+
+### 2. Configure Environment
+
+```bash
+make env
+```
+
+This creates a `.env` file from `.env.example`. Edit the file to add your configuration:
+- **SINDRI_API_KEY**: Your Sindri API key for SP1 proving
+- **Database credentials**: Default values work for local development
+- **API configuration**: Host and port settings
+- **OpenTelemetry**: Tracing and monitoring configuration
+
+### 3. Initialize Database
+
+```bash
+make initDB
+```
+
+This will:
+- Start the PostgreSQL database via Docker Compose
+- Run all database migrations
+- Generate SQLx metadata cache
+
+### 4. Setup Git Hooks
+
+```bash
+make setup-hooks
+```
+
+This configures pre-commit hooks that run:
+- Code formatting checks (`cargo fmt`)
+- Linting (`cargo clippy`)
+- Security audits (`cargo audit`)
+
+### 5. Start Development
+
+```bash
+# Start all background services
+make up
+
+# Run the API server
+make server
+```
+
+The API server will be available at http://localhost:8080
+
+## Development Workflow
+
+### Daily Development
+1. `make up` - Starts database and required services
+2. `make server` - Runs the API server with debug logging
+3. Make your changes
+4. Test with `curl` or your frontend
+5. Run tests: `make test`
+
+### Available Make Commands
+
+Run `make help` to see all available commands:
+
+```bash
+make help          # Show all available commands
+make setup         # Complete setup from scratch
+make server        # Start API server locally
+make test          # Run all tests
+make check         # Run type checking and linting
+make fmt           # Format code
+make clean         # Clean build artifacts
+```
+
+## Component Setup
+
+### Rust Ecosystem
 - **Rust Toolchain**: Latest stable Rust via rustup
 - **Components**: clippy (linting), rustfmt (formatting)
 - **Tools**: 
@@ -39,179 +172,99 @@ The `setup.sh` script provides a comprehensive, automated setup for the entire A
   - `cargo-deny` - Dependency policy enforcement
   - `sqlx-cli` - Database migration and query management
   - `cargo-watch` - File watching for development
-  - `cargo-expand` - Macro expansion for debugging
 
-### 4. Zero-Knowledge Proof Stack
+### Zero-Knowledge Proof Stack
 - **SP1 zkVM**: Complete SP1 toolchain for zero-knowledge proof generation
 - **Prover Tools**: `cargo-prove` for SP1 program compilation and proving
-- **Dependencies**: All required libraries for zkVM operations
+- **Configuration**: Set `SP1_PROVER=local` in `.env` for local proving
 
-### 5. Blockchain Development
+### Blockchain Development
 - **Foundry**: Complete Ethereum development toolkit
   - `forge` - Smart contract compilation and testing
   - `cast` - Ethereum RPC interaction
   - `anvil` - Local Ethereum node for testing
-- **Solidity Support**: Full Solidity compilation and testing environment
 
-### 6. Frontend Development
-- **Node.js**: Version 18+ for frontend tooling
-- **TypeScript**: Type-safe JavaScript development
-- **Development Tools**: Prettier, ESLint for code quality
+### Database
+- **PostgreSQL**: Runs in Docker with persistent storage
+- **Migrations**: SQLx-based migration system
+- **Connection**: Default connection string in `.env`
 
-### 7. Database Setup
-- **PostgreSQL Configuration**: Automated database and user creation
-- **Environment Variables**: Pre-configured `.env` file with sensible defaults
-- **Migration Support**: SQLx migration system setup
+## Services Overview
 
-### 8. Development Tools
-- **Git Hooks**: Pre-commit hooks for code quality enforcement
-- **VS Code Configuration**: Optimized settings and recommended extensions
-- **Docker Environment**: Container orchestration setup
+| Service | Port | Purpose | URL |
+|---------|------|---------|-----|
+| Arda Credit API | 8080 | Main application | http://localhost:8080 |
+| PostgreSQL | 5432 | Database | localhost:5432 |
 
-## Supported Platforms
+## Testing and Verification
 
-### Ubuntu/Debian
-- Uses `apt-get` for system package management
-- Installs PostgreSQL via system packages
-- Configures systemd services
+### Verify Installation
 
-### macOS
-- Uses Homebrew for package management
-- Installs PostgreSQL@14 via Homebrew
-- Configures Homebrew services
-
-### Other Linux Distributions
-- Provides manual installation guidance
-- Supports Arch Linux (pacman) and CentOS (yum) detection
-- Falls back to manual instructions for unsupported distributions
-
-## Environment Configuration
-
-The script creates a comprehensive `.env` file with all necessary configuration:
-
-```bash
-# Database Configuration
-DATABASE_URL=postgresql://arda_user:arda_password@localhost/arda_credit
-
-# API Configuration  
-API_HOST=0.0.0.0
-API_PORT=8080
-
-# JWT Configuration
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-
-# OpenTelemetry Configuration
-ENABLE_OPENTELEMETRY=false
-OTEL_SERVICE_NAME=arda-credit-api
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
-
-# Ethereum Configuration
-ETHEREUM_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/your-api-key
-PRIVATE_KEY=your-private-key-for-development-only
-
-# SP1 Configuration
-SP1_PROVER=local
-SINDRI_API_KEY=your-sindri-api-key
-```
-
-## Post-Setup Configuration
-
-After running the setup script, you'll need to:
-
-### 1. Update Environment Variables
-Edit the `.env` file to include your actual API keys and configuration:
-- **Ethereum RPC URL**: Replace with your Alchemy/Infura endpoint
-- **Private Key**: Use a development-only private key
-- **JWT Secret**: Generate a secure random string for production
-- **Sindri API Key**: Add your Sindri API key for proof generation
-
-### 2. Database Migrations
-Run database migrations to set up the schema:
-```bash
-sqlx migrate run
-```
-
-### 3. Verify Installation
 Test that all components are working:
+
 ```bash
 # Test Rust compilation
 cargo check --workspace
 
-# Test SP1 zkVM
+# Test SP1 zkVM (if installed)
 cd program && cargo prove build
 
-# Test smart contracts
+# Test smart contracts (if Foundry is installed)
 cd contracts && forge test
 
-# Test DevOps tools
+# Test DevOps tools (if installed)
 kubectl version --client
 kind version
 helm version
 
 # Test API server
-cargo run --bin server
+make server
 ```
 
-### 4. Optional: Setup Local Kubernetes Cluster
-The setup script can optionally create a local Kubernetes cluster:
+### Run Tests
+
 ```bash
-# Create KIND cluster with ingress support
-kind create cluster --name arda-credit --config .openhands/kind-config.yaml
+# Run all tests
+make test
 
-# Verify cluster is running
-kubectl cluster-info --context kind-arda-credit
-
-# Deploy applications using Helm
-helm install arda-credit ./charts/arda-credit
+# Run specific tests
+cargo test --package api
+cargo test --package db
 ```
 
-## Development Workflow
+## Kubernetes Development
 
-The setup script configures several development workflow enhancements:
+For local Kubernetes development and testing:
 
-### Pre-commit Hooks
-Automatically runs before each commit:
-- **Code Formatting**: `cargo fmt` ensures consistent code style
-- **Linting**: `clippy` catches common mistakes and suggests improvements
-- **Security Audit**: `cargo audit` checks for known vulnerabilities
+```bash
+# Setup local KIND cluster
+make kind-setup
 
-### VS Code Integration
-Optimized VS Code configuration includes:
-- **Rust Analyzer**: Advanced Rust language support
-- **Solidity Support**: Smart contract development tools
-- **Debugging**: LLDB integration for Rust debugging
-- **Extensions**: Recommended extensions for the full development stack
+# Deploy to local cluster
+make kind-deploy
 
-### Docker Development
-Docker configuration for:
-- **Local Development**: Consistent development environment
-- **Testing**: Isolated testing environment
-- **Deployment**: Production-ready containerization
+# Check cluster status
+make kind-status
+
+# Cleanup cluster
+make kind-cleanup
+```
 
 ## Troubleshooting
 
-### Common Issues
-
-**SP1 Installation Fails**
+### Database Connection Issues
 ```bash
-# Manually install SP1
-curl -L https://sp1.succinct.xyz | bash
-source ~/.bashrc  # or ~/.zshrc
-sp1up
+# Check if PostgreSQL is running
+docker-compose ps postgres
+
+# Check database logs
+docker logs arda_credit_postgres
+
+# Restart database
+docker-compose restart postgres
 ```
 
-**PostgreSQL Connection Issues**
-```bash
-# Check PostgreSQL status
-sudo systemctl status postgresql  # Ubuntu
-brew services list | grep postgresql  # macOS
-
-# Reset database
-sudo -u postgres dropdb arda_credit
-sudo -u postgres createdb arda_credit
-```
-
-**Docker Permission Issues (Ubuntu)**
+### Docker Permission Issues (Ubuntu)
 ```bash
 # Add user to docker group
 sudo usermod -aG docker $USER
@@ -219,76 +272,75 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-### Verification Commands
-
-Verify each component is working:
+### Port Conflicts
 ```bash
-# Rust toolchain
-rustc --version
-cargo --version
+# Check what's using port 8080 (API)
+lsof -i :8080
 
-# SP1 zkVM
-cargo prove --version
+# Check what's using port 5432 (PostgreSQL)
+lsof -i :5432
+```
 
-# Foundry
-forge --version
+### SQLx Offline Mode
+If you don't have a database connection, you can use SQLx offline mode:
+```bash
+# Generate SQLx metadata
+make sqlx-prepare
 
-# DevOps tools
-kubectl version --client
-kind version
-helm version
-
-# Node.js
-node --version
-npm --version
-
-# Database
-psql -h localhost -U arda_user -d arda_credit -c "SELECT version();"
-
-# Docker
-docker --version
-docker-compose --version
-
-# Kubernetes cluster (if created)
-kubectl get nodes --context kind-arda-credit
+# Build with offline mode
+SQLX_OFFLINE=true cargo build
 ```
 
 ## Security Considerations
 
-The setup script follows security best practices:
-
 ### Development vs Production
-- **Default Passwords**: Uses development-only passwords that must be changed for production
-- **Local Services**: Configures services for local development only
-- **Environment Separation**: Clear separation between development and production configuration
-
-### Dependency Management
-- **Verified Sources**: All tools installed from official sources
-- **Version Pinning**: Uses specific versions where possible
-- **Security Scanning**: Includes automated security vulnerability scanning
+- **Default Passwords**: Development passwords must be changed for production
+- **Local Services**: Configured for local development only
+- **Environment Separation**: Clear separation between dev and production config
 
 ### Access Control
-- **Database Users**: Creates dedicated database user with minimal privileges
-- **File Permissions**: Sets appropriate permissions on configuration files
-- **Service Isolation**: Configures services with appropriate isolation
+- **Database Users**: Uses dedicated database user
+- **Service Isolation**: Proper service isolation in Docker
+- **Secrets Management**: Never commit `.env` to version control
 
 ## Integration with Microagents
 
-The setup script is designed to work seamlessly with the distributed microagent system:
+The development environment is designed to work with the distributed microagent system located in `.openhands/microagents/`:
 
-### DevOps Integration
-- Supports the **DevOps and Infrastructure Specialist** with complete CI/CD setup
-- Provides monitoring and observability tools configuration
-- Includes Docker and Kubernetes development support
+- **API Security Specialist**: Security tools and automated scanning
+- **Database Specialist**: PostgreSQL setup and performance tools
+- **DevOps Specialist**: CI/CD, monitoring, and Kubernetes support
+- **zkVM Specialist**: SP1 development and proof generation
+- **Blockchain Specialist**: Ethereum and smart contract tools
 
-### Security Integration  
-- Supports the **API Security and Authentication Specialist** with security tools
-- Includes automated security scanning and vulnerability detection
-- Provides secure development environment configuration
+For more information on microagents, see [`.openhands/microagents/README.md`](./microagents/README.md)
 
-### Database Integration
-- Supports the **Database and Performance Optimization Specialist** with PostgreSQL setup
-- Includes SQLx CLI for database management and migrations
-- Provides performance monitoring and optimization tools
+## Additional Resources
 
-This comprehensive setup ensures that developers can quickly get started with Arda Credit development while maintaining the high standards of security, performance, and code quality expected in a privacy-preserving financial system.
+- **Development Setup**: [`docs/deployment/development-setup.md`](../docs/deployment/development-setup.md)
+- **Production Deployment**: [`docs/deployment/security-production.md`](../docs/deployment/security-production.md)
+- **Testing Guide**: [`docs/development/local-testing.md`](../docs/development/local-testing.md)
+- **Architecture**: [`docs/architecture/`](../docs/architecture/)
+- **Main README**: [`README.md`](../README.md)
+- **Agent Guide**: [`AGENTS.md`](../AGENTS.md)
+
+## Quick Reference
+
+```bash
+# Complete setup from scratch
+make setup
+
+# Daily development
+make up && make server
+
+# Run tests
+make test
+
+# Format and lint
+make fmt && make check
+
+# View all commands
+make help
+```
+
+This streamlined setup ensures developers can quickly start working on Arda Credit while maintaining high standards of security, performance, and code quality.
