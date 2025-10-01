@@ -1,5 +1,5 @@
-use crate::db::{get_pending_transactions, init_db, submit_transaction};
-use crate::test_utils::TestDatabase;
+use db::db::{get_pending_transactions, init_db, submit_transaction};
+use db::test_utils::TestDatabase;
 use std::env;
 
 #[cfg(test)]

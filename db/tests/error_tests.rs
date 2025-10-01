@@ -1,4 +1,4 @@
-use crate::db::init_db_with_url;
+use db::db::init_db_with_url;
 
 #[cfg(test)]
 mod error_handling_tests {

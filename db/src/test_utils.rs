@@ -1,4 +1,3 @@
-use crate::{create_merchant, Merchant};
 use sqlx::PgPool;
 use std::env;
 use uuid::Uuid;
@@ -81,24 +80,4 @@ pub async fn setup_test_db() -> PgPool {
     pool
 }
 
-/// Create a test merchant for testing
-pub async fn create_test_merchant(pool: &PgPool) -> Result<Merchant, sqlx::Error> {
-    use crate::{create_identity, CreateMerchantRequest};
-    use chrono::Utc;
-
-    // First create a test identity (required for foreign key constraint)
-    let timestamp = Utc::now().timestamp();
-    let test_email = format!("test-merchant-{}.example.com", timestamp);
-    let identity = create_identity(pool, "admin", &test_email).await?;
-
-    let request = CreateMerchantRequest {
-        legal_name: "Test Merchant LLC".to_string(),
-        dba: Some("Test Store".to_string()),
-        tax_id: Some(format!("12-{}", timestamp)),
-        mcc: Some("5411".to_string()),
-        country: "US".to_string(),
-        business_type: Some("LLC".to_string()),
-    };
-
-    create_merchant(pool, identity.id, &request).await
-}
+// Removed create_test_merchant - merchant functionality has been refactored

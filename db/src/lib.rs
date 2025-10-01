@@ -247,8 +247,8 @@ pub use processing::background_processor::{
     BackgroundProcessor, ProcessorBuilder, ProcessorConfig,
 };
 
-#[cfg(test)]
-mod test_utils;
+#[cfg(any(test, feature = "test-utils", debug_assertions))]
+pub mod test_utils;
 
 // Test modules moved to db/tests/ directory
 // See: tests/tests.rs, tests/error_tests.rs, tests/ads_service_tests.rs, etc.

@@ -770,29 +770,25 @@ impl IndexedMerkleTreeADS {
     }
 
     /// Get current block height based on audit event history
-    fn get_current_block_height(&self) -> Result<u64, AdsError> {
+    async fn get_current_block_height(&self) -> Result<u64, AdsError> {
         // Use a runtime query to get the highest block height from audit events
         // This provides a realistic block height that increments with activity
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                let result = sqlx::query!(
-                    r#"
-                    SELECT COALESCE(MAX(block_height), 0) as max_block_height
-                    FROM audit_events
-                    "#
-                )
-                .fetch_one(&self.pool)
-                .await
-                .map_err(|e| AdsError::Database(DbError::Database(e)))?;
+        let result = sqlx::query!(
+            r#"
+            SELECT COALESCE(MAX(block_height), 0) as max_block_height
+            FROM audit_events
+            "#
+        )
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AdsError::Database(DbError::Database(e)))?;
 
-                // Start from block 1000 and increment based on activity
-                let base_height = 1000u64;
-                let max_height = result.max_block_height.unwrap_or(0) as u64;
+        // Start from block 1000 and increment based on activity
+        let base_height = 1000u64;
+        let max_height = result.max_block_height.unwrap_or(0) as u64;
 
-                // Increment block height for each new operation
-                Ok(base_height + max_height + 1)
-            })
-        })
+        // Increment block height for each new operation
+        Ok(base_height + max_height + 1)
     }
 
     /// Generate witness data for ZK circuits
@@ -869,7 +865,7 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
         let witnesses = self.generate_witness_data(&insertion_result);
 
         // Get current block height
-        let block_height = self.get_current_block_height()?;
+        let block_height = self.get_current_block_height().await?;
 
         // Create state transition
         let transition_id = Self::generate_transaction_id();
@@ -993,7 +989,7 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
         };
 
         // Record audit event
-        let block_height = self.get_current_block_height()?;
+        let block_height = self.get_current_block_height().await?;
         self.record_audit_event(
             value,
             AuditEventType::MembershipProof,
@@ -1077,7 +1073,7 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
         };
 
         // Record audit event
-        let block_height = self.get_current_block_height()?;
+        let block_height = self.get_current_block_height().await?;
         self.record_audit_event(
             value,
             AuditEventType::NonMembershipProof,

@@ -74,7 +74,7 @@ async fn test_remove_deal_listing_functionality() {
 
     // Test 1: Create a deal listing
     println!("📝 Creating deal listing...");
-    let listing = arda_credit_db::marketplace::create_deal_listing(
+    let listing = arda_credit_db::business::marketplace::create_deal_listing(
         &pool,
         test_deal_id,
         test_investor_id,
@@ -98,18 +98,22 @@ async fn test_remove_deal_listing_functionality() {
 
     // Test 2: Verify we can retrieve the active listing
     println!("🔍 Verifying listing exists...");
-    let retrieved = arda_credit_db::marketplace::get_deal_listing_by_deal_id(&pool, test_deal_id)
-        .await
-        .unwrap();
+    let retrieved =
+        arda_credit_db::business::marketplace::get_deal_listing_by_deal_id(&pool, test_deal_id)
+            .await
+            .unwrap();
     assert!(retrieved.is_some());
     assert_eq!(retrieved.unwrap().status, "active");
 
     // Test 3: Remove the listing (this should set status to 'delisted')
     println!("🗑️ Removing deal listing...");
-    let remove_result =
-        arda_credit_db::marketplace::remove_deal_listing(&pool, test_deal_id, test_investor_id)
-            .await
-            .unwrap();
+    let remove_result = arda_credit_db::business::marketplace::remove_deal_listing(
+        &pool,
+        test_deal_id,
+        test_investor_id,
+    )
+    .await
+    .unwrap();
 
     println!("✅ Remove result: {}", remove_result);
     assert!(remove_result); // Should return true for successful removal
@@ -145,7 +149,7 @@ async fn test_remove_deal_listing_functionality() {
     // Test 6: Verify listing no longer appears in marketplace browse
     println!("🏪 Verifying listing doesn't appear in marketplace...");
     let marketplace_deals =
-        arda_credit_db::marketplace::browse_marketplace_deals(&pool, Some(10), None)
+        arda_credit_db::business::marketplace::browse_marketplace_deals(&pool, Some(10), None)
             .await
             .unwrap();
 
@@ -161,7 +165,7 @@ async fn test_remove_deal_listing_functionality() {
     // Test 7: Test validation for transfer (should fail for delisted deals)
     println!("🔒 Verifying delisted deal cannot be transferred...");
     let transfer_validation =
-        arda_credit_db::marketplace::validate_deal_for_transfer(&pool, test_deal_id)
+        arda_credit_db::business::marketplace::validate_deal_for_transfer(&pool, test_deal_id)
             .await
             .unwrap();
     println!("📊 Transfer validation result: {:?}", transfer_validation);

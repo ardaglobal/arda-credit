@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n                    SELECT COALESCE(MAX(block_height), 0) as max_block_height\n                    FROM audit_events\n                    ",
+  "query": "\n            SELECT COALESCE(MAX(block_height), 0) as max_block_height\n            FROM audit_events\n            ",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       null
     ]
   },
-  "hash": "b1edeb3b573687946f58b918f10a8a1389bd47b4f537388fcff5670608b5d6a7"
+  "hash": "e2e2732bb286ab1e9a2f91494049b035111a6c50f8b410ec0e15618278f146d7"
 }
