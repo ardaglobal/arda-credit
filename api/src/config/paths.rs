@@ -207,7 +207,7 @@ pub const DEAL: &str = api_path!("/deal");
 /// Individual deal operations - was LOAN_BY_ID
 pub const DEAL_BY_ID: &str = api_path!("/deal/{deal_id}");
 
-/// Deal payment history - was LOAN_PAYMENTS
+/// Deal payment history - was DEAL_PAYMENTS
 pub const DEAL_PAYMENTS: &str = api_path!("/deal/{deal_id}/payments");
 
 /// Deal statistics - was LOANS_STATS
@@ -262,7 +262,7 @@ pub const DEAL_TRANSFER_VALIDATE: &str = api_path!("/deal/{deal_id}/transfer/val
 // pub const LOANS: &str = api_path!("/loans");
 // pub const LOAN: &str = api_path!("/loan");
 // pub const LOAN_BY_ID: &str = api_path!("/loan/{loan_id}");
-// pub const LOAN_PAYMENTS: &str = api_path!("/loan/{loan_id}/payments");
+// pub const DEAL_PAYMENTS: &str = api_path!("/loan/{loan_id}/payments");
 
 // REMOVED: Separate marketplace paths (consolidated into deal paths)
 // pub const LOANS_FOR_SALE: &str = api_path!("/loans/for-sale");
@@ -453,7 +453,7 @@ pub const STATE_PAYMENT_BY_ID: &str = api_path!("/state/payment/{transaction_id}
 pub const STATE_PROOFS_LOAN_OPERATION: &str = api_path!("/state/proofs/loan-operation");
 
 /// Generate loan payment proof
-pub const STATE_PROOFS_LOAN_PAYMENT: &str =
+pub const STATE_PROOFS_DEAL_PAYMENT: &str =
     api_path!("/state/proofs/loan-payment/{user_id}/{loan_id}/{payment_id}/{batch_id}");
 
 /// Verify proof
@@ -662,7 +662,7 @@ pub fn deal_payment_proof_path(
     payment_id: &str,
     batch_id: i32,
 ) -> String {
-    let path = replace_param(STATE_PROOFS_LOAN_PAYMENT, "user_id", user_id);
+    let path = replace_param(STATE_PROOFS_DEAL_PAYMENT, "user_id", user_id);
     let path = replace_param(&path, "deal_id", deal_id);
     let path = replace_param(&path, "payment_id", payment_id);
     replace_param(&path, "batch_id", &batch_id.to_string())
@@ -1103,7 +1103,7 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
         },
         crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
-            path: STATE_PROOFS_LOAN_PAYMENT.to_string(),
+            path: STATE_PROOFS_DEAL_PAYMENT.to_string(),
             description: "Generate loan payment proof".to_string(),
         },
         crate::handlers::core::health::EndpointInfo {

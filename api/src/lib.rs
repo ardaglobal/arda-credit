@@ -63,16 +63,6 @@ pub use services::{
     SessionService, UnifiedBatchService, WithdrawalTransactionService,
 };
 
-// Re-export pool API types
-pub use api::{
-    CreatePoolRequest, CreatePoolResponse, InvestorDashboardResponse, InvestorMetrics,
-    InvestorPoolSummariesResponse, InvestorPoolSummary, MarketOverviewResponse, PageInfo,
-    PlatformMetrics, PoolDetailsResponse, PoolListQuery, PoolListResponse, PoolMatchRequest,
-    PoolPerformanceResponse, PoolSummaryInfo, PoolTransactionsResponse, PoolUtilizationResponse,
-    StandardPoolObject, TransactionHistoryQuery, UpdatePoolStatusRequest, UtilizationDataPoint,
-    UtilizationHistoryQuery,
-};
-
 // Re-export withdrawal types
 pub use services::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
@@ -122,64 +112,30 @@ pub use handlers::*;
 // Re-export database types that the API uses
 pub use arda_credit_db::{
     // Credit line operations
-    approve_credit_line_request,
-    close_credit_line,
     create_batch,
-    create_credit_line,
-    create_credit_line_request,
     create_deal,
     get_all_batches,
-    get_all_liquidity_pools,
     get_batch_by_id,
     get_contract_submission_data,
-    get_credit_line_by_id,
-    get_credit_line_request_by_id,
-    get_credit_line_requests_by_merchant,
     get_current_state,
     get_deal_by_id,
-    get_investor_dashboard_metrics,
-    get_investor_pool_summaries as db_get_investor_pool_summaries,
-    get_liquidity_pool_by_id,
-    get_market_overview_metrics,
-    get_merchant_credit_line_stats,
-    get_pending_transactions,
-    get_pool_summary,
-    get_pool_transactions as db_get_pool_transactions,
-    get_pool_utilization_history,
     // Database functions
     init_db,
-    list_active_credit_lines,
-    list_credit_lines_by_merchant,
     list_deals,
     store_ads_state_commit,
     submit_transaction,
     update_batch_proof,
-    update_credit_line_request_evaluation,
-    update_credit_line_request_status,
-    update_credit_line_utilization,
     update_deal,
-
     AdsStateCommit,
     ContractPrivateData,
 
     ContractPublicData,
     ContractSubmissionData as DbContractSubmissionData,
     CounterState,
-    CreateCreditLineRequestData,
-    CreditLine as DbCreditLine,
-    CreditLineRequest as DbCreditLineRequest,
-    CreditLineStatus as DbCreditLineStatus,
     // Essential error handling
     DbError,
     DbResult,
     // New batch processing types
     IncomingTransaction,
-    InvestorDashboardMetrics,
-    MarketOverviewMetrics,
-    MerchantCreditLineStats,
-
-    PoolSummary,
-    PoolTransaction,
-    PoolUtilizationData,
     ProofBatch,
 };

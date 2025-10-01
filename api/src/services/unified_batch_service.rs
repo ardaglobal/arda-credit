@@ -30,13 +30,13 @@ use tokio::time::timeout;
 /// Each prefix reserves a 1 billion value range for its operation type
 pub mod transaction_prefixes {
     /// Loan origination transactions: 1,000,000,000 - 1,999,999,999
-    pub const LOAN_ORIGINATION: i64 = 1_000_000_000;
+    pub const DEAL_ORIGINATION: i64 = 1_000_000_000;
 
     /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999
-    pub const LOAN_CLOSEOUT: i64 = 2_000_000_000;
+    pub const DEAL_CLOSEOUT: i64 = 2_000_000_000;
 
     /// Loan payment transactions: 3,000,000,000 - 3,999,999,999
-    pub const LOAN_PAYMENT: i64 = 3_000_000_000;
+    pub const DEAL_PAYMENT: i64 = 3_000_000_000;
 
     /// User registration transactions: 5,000,000,000 - 5,999,999,999
     pub const USER_REGISTRATION: i64 = 5_000_000_000;

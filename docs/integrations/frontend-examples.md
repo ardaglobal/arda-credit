@@ -504,18 +504,6 @@ class ApiClient {
         return response.status === 204 ? null : await response.json();
     }
 
-    // Specific API methods
-    async getUserDetails(userId) {
-        return this.get(`/ccr/user/${userId}`);
-    }
-
-    async createLoan(loanData) {
-        return this.post('/ccr/loans', loanData);
-    }
-
-    async getLoans() {
-        return this.get('/ccr/loans');
-    }
 
     async getBatches() {
         return this.get('/state/batches');

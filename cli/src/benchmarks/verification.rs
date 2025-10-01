@@ -37,7 +37,7 @@ pub async fn verify_loan_payment(
     if verbose {
         println!();
         println!("🔧 Verification Details:");
-        println!("   Transaction type: LOAN_PAYMENT");
+        println!("   Transaction type: DEAL_PAYMENT");
         println!("   Merkle path verified: ✅");
         println!("   Nullifier checked: ✅");
         println!("   Amount hash matched: ✅");
@@ -80,7 +80,7 @@ pub async fn verify_loan_origination(
     if verbose {
         println!();
         println!("🔧 Verification Details:");
-        println!("   Transaction type: LOAN_ORIGINATION");
+        println!("   Transaction type: DEAL_ORIGINATION");
         println!("   KYC verification: Both parties verified");
         println!("   Collateral check: ✅");
         println!("   Interest rate commitment: ✅");
