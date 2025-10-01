@@ -22,6 +22,8 @@ ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin populate_fake_data
 
 # Runtime stage - use existing arda-credit image as base
+# NOTE: This image only supports linux/amd64 platform
+# Multi-platform builds will fail - see .github/workflows/data-populator.yml
 FROM ghcr.io/ardaglobal/arda-credit:latest
 
 # Switch to root to install the population binary

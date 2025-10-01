@@ -95,15 +95,8 @@ jobs:
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Determine build platforms
-        id: platforms
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"
-          else
-            echo "platforms=linux/amd64" >> "$GITHUB_OUTPUT"
-          fi
-
+      # NOTE: Only building for linux/amd64 because the base image
+      # (ghcr.io/ardaglobal/arda-credit:latest) only supports that platform
       - name: Build and push data populator Docker image
         id: build
         uses: docker/build-push-action@v6
@@ -113,6 +106,6 @@ jobs:
           push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: ${{ steps.platforms.outputs.platforms }}
+          platforms: linux/amd64
           cache-from: type=s3,region=us-east-1,bucket=codebuild-s3-cache-arda,prefix=output/arda-credit-data-populator,mode=max
           cache-to: type=s3,region=us-east-1,bucket=codebuild-s3-cache-arda,prefix=output/arda-credit-data-populator,mode=max
