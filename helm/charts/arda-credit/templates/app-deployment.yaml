@@ -40,8 +40,8 @@ spec:
             - configMapRef:
                 name: {{ include "arda-credit.fullname" . }}-config
           env:
-            # Server environment configuration
-            - name: SERVER_ENVIRONMENT
+            # Server environment configuration (with VITE_ prefix for frontend)
+            - name: VITE_SERVER_ENVIRONMENT
               value: "{{ .Values.server.environment | default "production" }}"
           volumeMounts:
             - name: nginx-config
