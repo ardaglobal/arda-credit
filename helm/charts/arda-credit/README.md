@@ -86,6 +86,7 @@ Key configuration options in `values.yaml`:
 | `namespaceCreate` | Auto-create namespace | `true` |
 | **Server Configuration** |
 | `server.replicaCount` | Number of server replicas | `2` |
+| `server.environment` | Server environment (local/staging/sandbox/production) | `"production"` |
 | `server.config.rustLog` | Rust logging level | `"info"` |
 | `server.config.serverPort` | Server port | `"8080"` |
 | **App Configuration** |
@@ -110,6 +111,13 @@ Key configuration options in `values.yaml`:
 | `ingress.enabled` | Enable ingress | `true` |
 | `ingress.className` | Ingress class (nginx/alb) | `"nginx"` |
 | `ingress.hosts[0].host` | Ingress hostname | `arda-credit.example.com` |
+| **Anvil (Local Ethereum Devnet)** |
+| `anvil.enabled` | Enable Anvil service | `false` |
+| `anvil.chainId` | Ethereum chain ID | `"31337"` |
+| `anvil.blockTime` | Block mining interval (seconds) | `"2"` |
+| `anvil.state.persistence.enabled` | Enable persistent state storage | `true` |
+| `anvil.service.type` | Service type (ClusterIP/NodePort) | `"NodePort"` |
+| `anvil.service.nodePort` | NodePort for external access | `30005` |
 
 ## EKS Deployment
 
@@ -312,3 +320,195 @@ helm upgrade arda-credit ./helm/charts/arda-credit --namespace arda-credit
 ```bash
 helm uninstall arda-credit --namespace arda-credit
 ```
+
+## Local Development with Anvil
+
+For local development and testing, the chart includes an optional **Anvil** component - a local Ethereum devnet from Foundry. This is useful for testing smart contract integrations without connecting to real networks.
+
+### What is Anvil?
+
+Anvil is a lightweight, fast Ethereum node designed for local testing. It provides:
+- Instant block mining or configurable block times
+- Pre-funded test accounts
+- State persistence across restarts
+- Full Ethereum JSON-RPC API support
+
+### Enabling Anvil
+
+Enable Anvil in your local development environment:
+
+```bash
+# Deploy with Anvil enabled
+helm install arda-credit ./helm/charts/arda-credit \
+  --set anvil.enabled=true \
+  --set server.environment=local \
+  --namespace arda-credit
+```
+
+### Configuration Options
+
+```yaml
+anvil:
+  enabled: true                    # Enable/disable Anvil
+  chainId: "31337"                 # Ethereum chain ID (31337 is Anvil default)
+  blockTime: "2"                   # Block mining interval in seconds
+
+  state:
+    enabled: true                  # Enable state persistence
+    path: "/anvil-state"          # Mount path for state files
+    file: "state.json"            # State file name
+    interval: "10"                # State dump interval in seconds
+    persistence:
+      enabled: true               # Use PVC for persistent storage
+      size: "1Gi"                # PVC size
+      storageClass: ""           # Storage class (empty = cluster default)
+
+  service:
+    type: NodePort                # Service type (ClusterIP/NodePort)
+    port: 8545                    # RPC port
+    nodePort: 30005              # NodePort for external access
+```
+
+### Accessing Anvil
+
+**Inside the cluster:**
+```bash
+# Services can access Anvil at:
+http://arda-credit-anvil:8545
+
+# Example: Configure server to use Anvil
+kubectl create secret generic arda-credit-secrets \
+  --from-literal=ethereum-rpc-url=http://arda-credit-anvil:8545 \
+  --from-literal=ethereum-wallet-private-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+  --namespace arda-credit
+```
+
+**From outside the cluster (NodePort):**
+```bash
+# Get the cluster node IP
+NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="ExternalIP")].address}')
+
+# If no external IP, use internal IP (for local clusters)
+NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+
+# Connect to Anvil
+curl -X POST http://$NODE_IP:30005 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+```
+
+### Default Test Account
+
+Anvil provides pre-funded test accounts. The first account is commonly used for testing:
+
+```bash
+# Address: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+# Private Key: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+# Balance: 10000 ETH
+```
+
+⚠️ **Security Note**: Never use these test keys in production or on real networks!
+
+### State Persistence
+
+**Ephemeral storage (faster, recommended for testing):**
+```yaml
+anvil:
+  state:
+    persistence:
+      enabled: false  # Uses emptyDir volume
+```
+
+**Persistent storage (preserves state across pod restarts):**
+```yaml
+anvil:
+  state:
+    persistence:
+      enabled: true
+      size: "1Gi"
+      storageClass: "fast-ssd"  # Optional: specify storage class
+```
+
+### Health Checks
+
+The Anvil deployment includes RPC-level health checks that verify the node is responding correctly:
+
+```yaml
+readinessProbe:
+  exec:
+    command: ["sh", "-c", "curl -sf http://localhost:8545 -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"id\":1}' | grep result"]
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+livenessProbe:
+  exec:
+    command: ["sh", "-c", "curl -sf http://localhost:8545 -d '{\"jsonrpc\":\"2.0\",\"method\":\"eth_blockNumber\",\"id\":1}' | grep result"]
+  initialDelaySeconds: 30
+  periodSeconds: 10
+```
+
+### Resource Requirements
+
+Anvil is lightweight and requires minimal resources:
+
+```yaml
+anvil:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+```
+
+### Troubleshooting Anvil
+
+**Check Anvil pod status:**
+```bash
+kubectl get pods -n arda-credit -l app.kubernetes.io/component=anvil
+kubectl describe pod -n arda-credit -l app.kubernetes.io/component=anvil
+```
+
+**View Anvil logs:**
+```bash
+kubectl logs -n arda-credit -l app.kubernetes.io/component=anvil -f
+```
+
+**Test RPC connectivity:**
+```bash
+# From inside a pod
+kubectl run test-curl --rm -it --image=curlimages/curl --restart=Never -- \
+  curl -X POST http://arda-credit-anvil:8545 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+
+# From outside (NodePort)
+curl -X POST http://<NODE_IP>:30005 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+```
+
+**Reset Anvil state:**
+```bash
+# Delete the pod to restart with fresh state (if using emptyDir)
+kubectl delete pod -n arda-credit -l app.kubernetes.io/component=anvil
+
+# Or delete the PVC to reset persistent state
+kubectl delete pvc -n arda-credit arda-credit-anvil-pvc
+```
+
+### Production Warning
+
+⚠️ **Anvil is for development/testing only!**
+
+Never enable Anvil in production environments:
+- It has no security features
+- All transactions are public
+- Test accounts have well-known private keys
+- No redundancy or high availability
+
+For production, use:
+- Alchemy, Infura, or QuickNode for managed nodes
+- Your own Geth/Nethermind nodes
+- Set `anvil.enabled=false` and configure `ethereum-rpc-url` to point to real networks

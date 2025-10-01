@@ -297,9 +297,12 @@ EOF
             fi
         fi
         
+        # For local development, use Anvil service URL; otherwise use ETHEREUM_RPC_URL from .env
+        local RPC_URL="${ETHEREUM_RPC_URL:-http://arda-credit-anvil:8545}"
+
         kubectl create secret generic arda-credit-secrets-external \
             --from-literal=sindri-api-key="${SINDRI_API_KEY}" \
-            --from-literal=ethereum-rpc-url="${ETHEREUM_RPC_URL:-http://localhost:8545}" \
+            --from-literal=ethereum-rpc-url="${RPC_URL}" \
             --from-literal=ethereum-contract-address="${ETHEREUM_CONTRACT_ADDRESS:-0x0}" \
             --from-literal=ethereum-wallet-private-key="${ETHEREUM_WALLET_PRIVATE_KEY:-0x0}" \
             --from-literal=ethereum-deployer-address="${ETHEREUM_DEPLOYER_ADDRESS:-0x0}" \
@@ -315,7 +318,7 @@ EOF
         log_warning "SINDRI_API_KEY not found, creating test secret for Helm lookup"
         kubectl create secret generic arda-credit-secrets-external \
             --from-literal=sindri-api-key="test-key" \
-            --from-literal=ethereum-rpc-url="http://localhost:8545" \
+            --from-literal=ethereum-rpc-url="http://arda-credit-anvil:8545" \
             --from-literal=ethereum-contract-address="0x1234567890123456789012345678901234567890" \
             --from-literal=ethereum-wallet-private-key="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" \
             --from-literal=ethereum-deployer-address="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" \

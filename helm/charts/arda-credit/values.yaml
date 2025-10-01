@@ -294,6 +294,11 @@ ingress:
           service:
             name: server
             port: 8080
+        - path: /api-docs
+          pathType: Prefix
+          service:
+            name: server
+            port: 8080
         - path: /
           pathType: Prefix
           service:
@@ -792,8 +797,8 @@ dataPopulator:
 
 # Anvil - Local Ethereum devnet (for local/staging environments)
 anvil:
-  # Enable Anvil service
-  enabled: false
+  # Enable Anvil service (default: true for local/staging, set to false for production)
+  enabled: true
 
   # Anvil image configuration
   image:
@@ -818,7 +823,7 @@ anvil:
       enabled: true
       size: "1Gi"
       accessMode: "ReadWriteOnce"
-      storageClass: ""
+      storageClass: "gp2"  # Use gp2 for EKS, leave empty for cluster default
 
   # Service configuration
   service:
