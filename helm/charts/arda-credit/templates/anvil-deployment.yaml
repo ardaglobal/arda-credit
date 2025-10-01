@@ -29,7 +29,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "arda-credit.serviceAccountName" . }}
+      serviceAccountName: {{ include "arda-credit.fullname" . }}
       securityContext:
         {{- toYaml .Values.anvil.podSecurityContext | nindent 8 }}
       containers:
@@ -101,4 +101,3 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-  {{- end }}

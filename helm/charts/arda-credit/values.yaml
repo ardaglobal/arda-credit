@@ -99,9 +99,9 @@ server:
   
   image:
     registry: ghcr.io/ardaglobal
-  repository: arda-credit
-  tag: "latest"
-  pullPolicy: Always
+    repository: arda-credit
+    tag: "latest"
+    pullPolicy: Always
   
   replicaCount: 1
   

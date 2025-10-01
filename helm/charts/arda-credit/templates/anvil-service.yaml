@@ -13,9 +13,9 @@ spec:
       targetPort: rpc
       protocol: TCP
       name: rpc
+      {{- if eq .Values.anvil.service.type "NodePort" }}
+      nodePort: {{ .Values.anvil.service.nodePort }}
+      {{- end }}
   selector:
     {{- include "arda-credit.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: anvil
-  {{- if eq .Values.anvil.service.type "NodePort" }}
-    nodePort: {{ .Values.anvil.service.nodePort }}
-  {{- end }}
