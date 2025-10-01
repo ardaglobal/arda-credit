@@ -1,5 +1,6 @@
 # Build stage - build only the db crate and populate_fake_data binary
-FROM ghcr.io/ardaglobal/base-containers/rust-sp1-base:latest AS builder
+# Use --platform to explicitly specify we need amd64 to match the runtime stage
+FROM --platform=linux/amd64 ghcr.io/ardaglobal/base-containers/rust-sp1-base:latest AS builder
 
 WORKDIR /app
 
@@ -22,7 +23,8 @@ ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin populate_fake_data
 
 # Runtime stage - use existing arda-credit image as base
-FROM ghcr.io/ardaglobal/arda-credit:latest
+# Use --platform to explicitly specify we need amd64 since that's what arda-credit builds
+FROM --platform=linux/amd64 ghcr.io/ardaglobal/arda-credit:latest
 
 # Switch to root to install the population binary
 USER root
