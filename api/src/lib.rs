@@ -108,8 +108,6 @@ pub use client::{
     DepositTransactionInfo,
     HealthResponse,
     PendingTransactionsResponse,
-    SubmitTransactionRequest,
-    SubmitTransactionResponse,
     TransactionInfo,
     TransactionStatusResponse,
     UserBalanceResponse,
@@ -118,20 +116,6 @@ pub use client::{
 
 // Re-export handler modules for backward compatibility
 pub use handlers::*;
-
-// Re-export specific pool and credit line handlers for backward compatibility
-pub use handlers::pools::pools::{
-    get_investor_dashboard, get_investor_pool_summaries as handler_get_investor_pool_summaries,
-    get_market_overview, get_pool_details, get_pool_performance,
-    get_pool_transactions as handler_get_pool_transactions, get_pool_utilization, list_pools,
-};
-
-pub use handlers::credit::credit_lines::{
-    browse_available_pools, check_credit_eligibility, list_credit_line_requests,
-    submit_credit_line_request, AvailablePoolResponse, CreditLineErrorResponse,
-    CreditLineRequestListResponse, CreditLineRequestQuery, CreditLineRequestResponse,
-    EligibilityCheckResponse, PoolBrowsingQuery, SubmitCreditLineRequestBody,
-};
 
 // Note: New handler modules are available but not yet replacing rest.rs functionality
 

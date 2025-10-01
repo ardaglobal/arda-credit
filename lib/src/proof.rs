@@ -126,7 +126,140 @@ pub struct SP1ArithmeticProofFixture {
     pub proof: String,
 }
 
-/// Generate a batch proof via Sindri with full feature support
+/// Generate a batch proof using the appropriate prover based on SERVER_ENVIRONMENT
+///
+/// This function automatically selects between:
+/// - Local SP1 prover (for local/staging environments)  
+/// - Sindri service (for sandbox/production environments)
+///
+/// # Errors
+///
+/// Returns `ProofError` if proof generation fails
+pub async fn generate_batch_proof(
+    request: BatchProofGenerationRequest,
+) -> Result<ProofGenerationResponse, ProofError> {
+    // Determine which prover to use based on SERVER_ENVIRONMENT
+    let server_env = std::env::var("SERVER_ENVIRONMENT")
+        .unwrap_or_else(|_| "local".to_string())
+        .to_lowercase();
+
+    match server_env.as_str() {
+        "local" | "staging" => {
+            info!("🏠 Using local SP1 prover for {} environment", server_env);
+            generate_batch_proof_local(request).await
+        }
+        "sandbox" | "production" => {
+            info!("🌐 Using Sindri service for {} environment", server_env);
+            generate_batch_proof_sindri(request).await
+        }
+        _ => {
+            warn!(
+                "⚠️ Unknown SERVER_ENVIRONMENT '{}', defaulting to local SP1 prover",
+                server_env
+            );
+            generate_batch_proof_local(request).await
+        }
+    }
+}
+
+/// Generate a batch proof using local SP1 prover (for local/staging)
+///
+/// This function:
+/// 1. Creates SP1 stdin with initial balance and transactions
+/// 2. Uses local ProverClient to generate Core proofs
+/// 3. Verifies the proof locally
+/// 4. Marks the proof as "Ready" immediately (no async proof generation)
+///
+/// Note: Local proofs skip Sindri entirely for fast development iteration.
+/// The proof is generated and verified immediately, then marked as "Ready".
+///
+/// # Errors
+///
+/// Returns `ProofError` if:
+/// - SP1 prover setup fails
+/// - Proof generation fails
+/// - Proof verification fails
+async fn generate_batch_proof_local(
+    request: BatchProofGenerationRequest,
+) -> Result<ProofGenerationResponse, ProofError> {
+    use sp1_sdk::{ProverClient, SP1Stdin};
+
+    let final_balance = request.initial_balance + request.transactions.iter().sum::<i32>();
+
+    info!(
+        "🔐 Generating local SP1 Core proof: {} + {:?} = {}",
+        request.initial_balance, request.transactions, final_balance
+    );
+
+    // Create prover client
+    let client = ProverClient::from_env();
+
+    // Create inputs
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&request.initial_balance);
+    stdin.write(&request.transactions);
+
+    // Get the ELF from the program build
+    // Note: Use relative path from lib crate to build directory
+    const DEAL_PROGRAM_ELF: &[u8] = include_bytes!("../../build/program");
+
+    // Generate Core proof (fast for local development)
+    let (pk, vk) = client.setup(DEAL_PROGRAM_ELF);
+    let proof = client
+        .prove(&pk, &stdin)
+        .core() // Use Core proof mode for speed
+        .run()
+        .map_err(|e| ProofError::ProofGenerationFailed(e.to_string()))?;
+
+    info!("✅ Local Core proof generated successfully!");
+
+    // Verify the proof
+    info!("🔍 Verifying local proof...");
+    client
+        .verify(&proof, &vk)
+        .map_err(|e| ProofError::VerificationFailed(e.to_string()))?;
+
+    info!("✅ Local proof verification passed!");
+
+    // Create a pseudo proof ID for local proofs
+    let proof_id = format!("local-{}", chrono::Utc::now().timestamp());
+
+    // For local proofs, we create a minimal ProofInfoResponse using serde deserialization
+    // This avoids needing to know all the struct fields
+    let circuit_tag = std::env::var("SINDRI_CIRCUIT_TAG").unwrap_or_else(|_| "latest".to_string());
+
+    // Create minimal JSON that satisfies ProofInfoResponse deserialization
+    let proof_info_json = serde_json::json!({
+        "proof_id": proof_id,
+        "status": "Ready",
+        "project_name": "arda-credit-local",
+        "circuit_name": format!("arda-credit:{}", circuit_tag),
+        "circuit_id": "local-circuit",
+        "circuit_type": "sp1",
+        "team": "local-team",
+        "team_avatar_url": null,
+        "team_slug": "local",
+        "date_created": chrono::Utc::now().to_rfc3339(),
+        "perform_verify": false,
+        "finished_processing": true,
+        "verified": true,
+    });
+
+    let proof_info: ProofInfoResponse = serde_json::from_value(proof_info_json).map_err(|e| {
+        ProofError::SerializationError(format!("Failed to create local proof info: {}", e))
+    })?;
+
+    Ok(ProofGenerationResponse {
+        proof_id: proof_id.clone(),
+        status: "Ready".to_string(),
+        circuit_name: "arda-credit-local".to_string(),
+        circuit_tag: "local".to_string(),
+        verification_command: format!("Local proof verified (proof_id: {})", proof_id),
+        proof_info,
+    })
+}
+
+/// Generate a batch proof via Sindri service (for sandbox/production)
 ///
 /// # Errors
 ///
@@ -136,7 +269,7 @@ pub struct SP1ArithmeticProofFixture {
 /// - Proof generation fails on Sindri servers
 /// - Network communication errors occur
 #[allow(clippy::cognitive_complexity)]
-pub async fn generate_batch_proof(
+async fn generate_batch_proof_sindri(
     request: BatchProofGenerationRequest,
 ) -> Result<ProofGenerationResponse, ProofError> {
     let final_balance = request.initial_balance + request.transactions.iter().sum::<i32>();

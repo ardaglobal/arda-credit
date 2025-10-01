@@ -23,7 +23,6 @@ macro_rules! api_path {
 }
 
 // Import for EndpointInfo type
-use crate::handlers::core::health::EndpointInfo;
 
 // ============================================================================
 // CORE API PATHS
@@ -134,6 +133,19 @@ pub const MERCHANT_TURNOVER_ANALYTICS: &str = api_path!("/merchant/turnover/anal
 
 /// Merchant profile completion
 pub const MERCHANT_PROFILE_COMPLETION: &str = api_path!("/merchant/profile/completion");
+
+// ============================================================================
+// FAUCET MANAGEMENT PATHS (local/staging only)
+// ============================================================================
+
+/// Get faucet information
+pub const FAUCET_INFO: &str = api_path!("/faucet/info");
+
+/// Check faucet status for an address
+pub const FAUCET_STATUS: &str = api_path!("/faucet/status");
+
+/// Get faucet configuration
+pub const FAUCET_CONFIG: &str = api_path!("/faucet/config");
 
 // ============================================================================
 // WITHDRAWAL MANAGEMENT PATHS

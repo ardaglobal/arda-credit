@@ -100,7 +100,7 @@ pub enum AuthCommands {
 
 /// Handle auth command routing and execution
 pub async fn handle_auth_command(
-    client: &BatchApiClient,
+    _client: &BatchApiClient,
     command: AuthCommands,
     verbose: bool,
 ) -> Result<()> {

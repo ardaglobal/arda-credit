@@ -10,21 +10,17 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::Json,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::ToSchema;
 
-use crate::config::paths;
-use crate::config::types::{ApiState, UserType};
+use crate::config::types::ApiState;
 
 // Use Axum's built-in response types for Axum 0.8 compatibility
-use arda_credit_db::{
-    generate_invite_code, get_identity_by_email, get_invite_code_info, update_last_login,
-    use_invite_code,
-};
+use arda_credit_db::{generate_invite_code, get_invite_code_info};
 
 // ============================================================================
 // AUTHENTICATION TYPES (MOVED FROM rest.rs)
@@ -98,7 +94,7 @@ pub struct GenerateInviteCodeResponse {
     security(
         ("Bearer" = [])
     ),
-    tag = "Authentication"
+    tag = "Auth"
 )]
 #[instrument(skip(_state), level = "info")]
 pub async fn logout_endpoint(
@@ -130,7 +126,7 @@ pub async fn logout_endpoint(
     params(
         ("code" = String, Path, description = "Invite code to validate")
     ),
-    tag = "Authentication"
+    tag = "Auth"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn validate_invite_code_endpoint(
@@ -200,7 +196,7 @@ pub async fn validate_invite_code_endpoint(
         (status = 401, description = "Unauthorized - authentication required"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Authentication"
+    tag = "Auth"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn generate_invite_code_endpoint(

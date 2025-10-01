@@ -17,7 +17,7 @@ use api::utils::test_utils::{
 struct ErrorTestContext {
     pub app: TestApp,
     pub pool: sqlx::PgPool,
-    pub state: ApiState,
+    _state: ApiState,
 }
 
 impl ErrorTestContext {
@@ -27,7 +27,7 @@ impl ErrorTestContext {
         Self {
             app,
             pool: ctx.pool,
-            state: ctx.state,
+            _state: ctx.state,
         }
     }
 
@@ -212,7 +212,7 @@ async fn test_malformed_state_parameters() {
 async fn test_invalid_redirect_uris() {
     let ctx = ErrorTestContext::new().await;
 
-    let user = create_test_user(&ctx.pool, "test@example.com", "investor").await;
+    let _user = create_test_user(&ctx.pool, "test@example.com", "investor").await;
 
     let invalid_redirects = vec![
         "http://evil.com/steal-session",                // External domain

@@ -21,13 +21,6 @@ use ethereum_client::{config::Config, EthereumClient};
 /// Batch-related CLI commands
 #[derive(Subcommand)]
 pub enum BatchCommands {
-    /// Submit a new transaction to the batch processing queue
-    SubmitTransaction {
-        /// Transaction amount to add to the counter
-        #[arg(short, long)]
-        amount: i32,
-    },
-
     /// View all pending (unbatched) transactions
     ViewPending,
 
@@ -107,7 +100,6 @@ pub async fn handle_batch_command(
     verbose: bool,
 ) -> Result<()> {
     match command {
-        BatchCommands::SubmitTransaction { amount } => submit_transaction(client, amount).await,
         BatchCommands::ViewPending => view_pending_transactions(client).await,
         BatchCommands::GetCurrentState => get_current_state(client).await,
         BatchCommands::Trigger {
@@ -143,27 +135,6 @@ pub async fn handle_batch_command(
     }
 }
 
-/// Submit a new transaction to the batch processing queue
-pub async fn submit_transaction(client: &BatchApiClient, amount: i32) -> Result<()> {
-    match client.submit_transaction(amount).await {
-        Ok(response) => {
-            println!("✅ Transaction submitted successfully!");
-            println!("   Transaction ID: {}", response.transaction_id);
-            println!("   Amount: {}", response.amount);
-            println!("   Status: {}", response.status);
-            println!("   Created: {}", response.created_at);
-            println!();
-            println!("💡 Use 'cli batch view-pending' to see all pending transactions");
-            println!("💡 Use 'cli batch trigger' to create a batch and generate proof");
-        }
-        Err(e) => {
-            eprintln!("❌ Failed to submit transaction: {}", e);
-        }
-    }
-
-    Ok(())
-}
-
 /// View all pending (unbatched) transactions
 pub async fn view_pending_transactions(client: &BatchApiClient) -> Result<()> {
     match client.get_pending_transactions().await {
@@ -172,7 +143,7 @@ pub async fn view_pending_transactions(client: &BatchApiClient) -> Result<()> {
                 println!("📭 No pending transactions found.");
                 println!();
                 println!(
-                    "💡 Submit transactions using: cli batch submit-transaction --amount <amount>"
+                    "💡 Transactions are created automatically by API operations (user registration, deal operations, etc.)"
                 );
             } else {
                 println!("📋 Pending Transactions (Unbatched):");

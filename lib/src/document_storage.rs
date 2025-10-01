@@ -4,7 +4,6 @@
 //! encryption, bucket organization, and lifecycle policies.
 
 use aws_config::{BehaviorVersion, Region};
-use aws_sdk_kms::Client as KmsClient;
 use aws_sdk_s3::{
     operation::get_object::GetObjectOutput,
     presigning::PresigningConfigError,
@@ -184,7 +183,6 @@ pub enum StorageError {
 /// AWS S3 document storage client
 pub struct DocumentStorageClient {
     s3_client: S3Client,
-    kms_client: Option<KmsClient>,
     config: StorageConfig,
 }
 
@@ -197,17 +195,8 @@ impl DocumentStorageClient {
             .await;
 
         let s3_client = S3Client::new(&aws_config);
-        let kms_client = if config.kms_key_id.is_some() {
-            Some(KmsClient::new(&aws_config))
-        } else {
-            None
-        };
 
-        Ok(Self {
-            s3_client,
-            kms_client,
-            config,
-        })
+        Ok(Self { s3_client, config })
     }
 
     /// Generate S3 key for document storage
@@ -732,7 +721,6 @@ mod tests {
                     .behavior_version(aws_config::BehaviorVersion::latest())
                     .build(),
             ),
-            kms_client: None,
             config,
         };
 

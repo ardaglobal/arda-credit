@@ -1,4 +1,4 @@
-use arda_credit_db::db::*;
+// use arda_credit_db::db::*; // Unused import
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::env;
@@ -58,7 +58,7 @@ async fn test_remove_deal_listing_functionality() {
     sqlx::query!(
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, loan_status, originated_at)
+                          interest_rate_bps, status, originated_at)
         VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -89,12 +89,12 @@ async fn test_remove_deal_listing_functionality() {
     assert_eq!(listing.status, "active");
 
     // Verify deal status changed to 'for_sale'
-    let deal_status = sqlx::query!("SELECT loan_status FROM deals WHERE id = $1", test_deal_id)
+    let deal_status = sqlx::query!("SELECT status FROM deals WHERE id = $1", test_deal_id)
         .fetch_one(&pool)
         .await
         .unwrap();
-    println!("📊 Deal status after listing: {}", deal_status.loan_status);
-    assert_eq!(deal_status.loan_status, "for_sale");
+    println!("📊 Deal status after listing: {:?}", deal_status.status);
+    assert_eq!(deal_status.status, Some("for_sale".to_string()));
 
     // Test 2: Verify we can retrieve the active listing
     println!("🔍 Verifying listing exists...");
@@ -132,16 +132,15 @@ async fn test_remove_deal_listing_functionality() {
     assert!(updated_listing.delisted_at.is_some()); // Should have delisted_at timestamp
 
     // Test 5: Verify deal status changed back to 'active'
-    let updated_deal_status =
-        sqlx::query!("SELECT loan_status FROM deals WHERE id = $1", test_deal_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let updated_deal_status = sqlx::query!("SELECT status FROM deals WHERE id = $1", test_deal_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     println!(
-        "📊 Deal status after removal: {}",
-        updated_deal_status.loan_status
+        "📊 Deal status after removal: {:?}",
+        updated_deal_status.status
     );
-    assert_eq!(updated_deal_status.loan_status, "active");
+    assert_eq!(updated_deal_status.status, Some("active".to_string()));
 
     // Test 6: Verify listing no longer appears in marketplace browse
     println!("🏪 Verifying listing doesn't appear in marketplace...");

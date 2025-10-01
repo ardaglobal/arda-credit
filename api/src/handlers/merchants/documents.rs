@@ -8,8 +8,7 @@ use crate::{
     config::types::ErrorResponse,
     services::auth::Claims,
     services::document_service::{
-        DocumentAuditLogDto, DocumentListRequest, DocumentResponseDto, DocumentService,
-        DocumentServiceError, DocumentUploadRequestDto,
+        DocumentAuditLogDto, DocumentListRequest, DocumentResponseDto, DocumentServiceError,
     },
 };
 use axum::{
@@ -18,13 +17,12 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
-use std::{collections::HashMap, sync::Arc};
-use tracing::{error, info, warn};
-use utoipa::{IntoParams, ToSchema};
+use std::collections::HashMap;
+use tracing::info;
+use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::Validate;
 
 /// Document upload response
 #[derive(Debug, Serialize, ToSchema)]
@@ -214,7 +212,7 @@ impl IntoResponse for DocumentServiceError {
         (status = 413, description = "File too large"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -224,7 +222,7 @@ pub async fn upload_document(
     Path(company_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<DocumentUploadResponse>, DocumentServiceError> {
-    let document_service = state.document_service.as_ref().ok_or_else(|| {
+    let _document_service = state.document_service.as_ref().ok_or_else(|| {
         DocumentServiceError::StorageError(arda_credit_lib::StorageError::ServiceUnavailable(
             "Document service not available".to_string(),
         ))
@@ -261,7 +259,7 @@ pub async fn upload_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -300,7 +298,7 @@ pub async fn download_document(
     );
 
     // Create response with appropriate headers
-    let mut response = Response::builder()
+    let response = Response::builder()
         .status(StatusCode::OK)
         .header("Content-Type", content_type)
         .header(
@@ -331,7 +329,7 @@ pub async fn download_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -375,7 +373,7 @@ pub async fn get_document(
         (status = 403, description = "Insufficient permissions"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -452,7 +450,7 @@ pub async fn list_documents(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -507,7 +505,7 @@ pub async fn approve_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -553,7 +551,7 @@ pub async fn reject_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -608,7 +606,7 @@ pub async fn delete_document(
         (status = 404, description = "Document not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -672,7 +670,7 @@ pub async fn verify_document(
         (status = 403, description = "Insufficient permissions"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Documents",
+    tag = "Companies",
     security(
         ("bearer_auth" = [])
     )
@@ -733,7 +731,7 @@ pub async fn get_audit_logs(
 
 /// Health check endpoint for document service
 /// GET /api/documents/health
-pub async fn health_check() -> Result<Json<serde_json::Value>, StatusCode> {
+pub async fn document_service_health_check() -> Result<Json<serde_json::Value>, StatusCode> {
     Ok(Json(json!({
         "status": "healthy",
         "service": "document_service",
@@ -758,7 +756,7 @@ fn extract_claims(headers: &HeaderMap) -> Result<Claims, DocumentServiceError> {
         })?;
 
     // Extract Bearer token
-    let token =
+    let _token =
         auth_str
             .strip_prefix("Bearer ")
             .ok_or_else(|| DocumentServiceError::AccessDenied {
@@ -780,7 +778,6 @@ fn extract_claims(headers: &HeaderMap) -> Result<Claims, DocumentServiceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::StatusCode;
 
     #[test]
     fn test_error_response_serialization() {
@@ -793,20 +790,5 @@ mod tests {
         let serialized = serde_json::to_string(&error).unwrap();
         assert!(serialized.contains("test_error"));
         assert!(serialized.contains("Test error message"));
-    }
-
-    #[test]
-    fn test_document_service_error_status_codes() {
-        let access_denied = DocumentServiceError::AccessDenied {
-            message: "Access denied".to_string(),
-        };
-        let response = access_denied.into_response();
-        // Would need to extract status code from response in real test
-
-        let not_found = DocumentServiceError::DocumentNotFound {
-            document_id: Uuid::new_v4(),
-        };
-        let response = not_found.into_response();
-        // Would need to extract status code from response in real test
     }
 }

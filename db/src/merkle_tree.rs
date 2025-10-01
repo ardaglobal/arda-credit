@@ -90,7 +90,7 @@ pub struct LoanAuditComprehensive {
     // Loan context information
     pub principal_amount: Option<rust_decimal::Decimal>,
     pub outstanding_balance: Option<rust_decimal::Decimal>,
-    pub loan_status: Option<String>,
+    pub loan_status: Option<String>, // view column name (aliased from deal_status in deals table)
     pub originated_at: Option<DateTime<Utc>>,
     // User context information
     pub user_email: Option<String>,

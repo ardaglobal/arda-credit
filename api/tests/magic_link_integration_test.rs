@@ -4,24 +4,24 @@
 
 use axum::http::StatusCode;
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::Value;
 use sqlx::PgPool;
-use std::sync::Arc;
-use tokio::time::timeout;
+// use std::sync::Arc; // Unused
+// use tokio::time::timeout; // Unused
 use tower::ServiceExt;
 
 use api::config::magic_link_types::{MagicLinkRequest, VerifyMagicLinkRequest};
 use api::config::types::ApiState;
 use api::utils::test_utils::{
-    create_test_app, create_test_app_with_magic_links, create_test_user, TestApp, TestContext,
-    TestMagicLink, TestUser,
+    create_test_app_with_magic_links, create_test_user, TestApp, TestContext, TestMagicLink,
+    TestUser,
 };
 
 /// Test context for magic link integration tests
 struct MagicLinkTestContext {
     pub app: TestApp,
     pub pool: PgPool,
-    pub state: ApiState,
+    _state: ApiState,
 }
 
 impl MagicLinkTestContext {
@@ -31,7 +31,7 @@ impl MagicLinkTestContext {
         Self {
             app,
             pool: ctx.pool,
-            state: ctx.state,
+            _state: ctx.state,
         }
     }
 

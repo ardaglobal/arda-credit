@@ -116,7 +116,7 @@ pub struct DateRange {
         (status = 400, description = "Invalid query parameters"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Transaction History"
+    tag = "Analytics"
 )]
 #[instrument(skip(state), fields(query = ?query))]
 pub async fn get_transaction_history(
@@ -168,7 +168,7 @@ pub async fn get_transaction_history(
         (status = 404, description = "Pool not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Transaction History"
+    tag = "Analytics"
 )]
 #[instrument(skip(state), fields(pool_id = %pool_id))]
 pub async fn get_pool_transaction_history(
@@ -215,11 +215,11 @@ async fn get_transaction_history_internal(
     query: TransactionHistoryQuery,
     limit: i32,
     offset: i32,
-    include_details: bool,
+    _include_details: bool,
 ) -> Result<TransactionHistoryResponse, sqlx::Error> {
     // Build the main query with filters
     let mut transactions = Vec::new();
-    let mut total_count = 0i64;
+    let total_count: i64;
 
     // Get loan transactions
     if should_include_transaction_type(&query.transaction_type, "loan") {

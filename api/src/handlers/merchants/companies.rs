@@ -357,7 +357,7 @@ pub async fn remove_team_member_endpoint(
     // For now, we'll implement this by setting status to 'inactive'
     // In a full implementation, you might want to add this method to the CompanyService
 
-    let company_service = CompanyService::new(state.pool.clone());
+    let _company_service = CompanyService::new(state.pool.clone());
 
     let dummy_claims = create_dummy_claims();
     // Check if the requester has team management access
@@ -617,4 +617,269 @@ async fn get_recent_activity(
             created_at: row.try_get("created_at").unwrap_or_default(),
         })
         .collect())
+}
+
+// ============================================================================
+// INVESTOR PROFILE ENDPOINTS
+// ============================================================================
+
+use arda_credit_db::db::{
+    get_investor_profile_by_user_id, get_investor_profile_by_user_id_or_email,
+    get_investor_profile_with_identity, register_or_reregister_user, update_investor_profile,
+};
+use axum::extract::Query;
+use axum::http::HeaderMap;
+
+/// Query parameters for investor profile lookup
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams, utoipa::ToSchema)]
+pub struct InvestorProfileQuery {
+    /// User ID to look up
+    pub user_id: Option<Uuid>,
+    /// Email to look up
+    pub email: Option<String>,
+}
+
+/// Investor profile response
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct InvestorProfileResponse {
+    pub user_id: Uuid,
+    pub email: String,
+    pub user_type: String,
+    pub kyc_status: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Request to register a new investor
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema, Validate)]
+pub struct RegisterInvestorRequest {
+    #[validate(email)]
+    pub email: String,
+    pub invite_code: Option<String>,
+}
+
+/// Response after registering investor
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct RegisterInvestorResponse {
+    pub user_id: Uuid,
+    pub email: String,
+    pub user_type: String,
+    pub message: String,
+}
+
+/// Request to update investor profile
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct UpdateInvestorProfileRequest {
+    pub email: Option<String>,
+}
+
+/// Get investor profile by user ID or email
+#[utoipa::path(
+    get,
+    path = "/api/v1/investor/profile",
+    params(InvestorProfileQuery),
+    responses(
+        (status = 200, description = "Investor profile retrieved", body = InvestorProfileResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Investor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
+pub async fn get_investor_profile_endpoint(
+    State(state): State<ApiState>,
+    Query(query): Query<InvestorProfileQuery>,
+) -> Result<Json<InvestorProfileResponse>, (StatusCode, String)> {
+    match (&query.user_id, &query.email) {
+        (Some(_), Some(_)) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Provide either user_id or email, not both".to_string(),
+            ))
+        }
+        (None, None) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "Must provide either user_id or email".to_string(),
+            ))
+        }
+        _ => {}
+    }
+
+    let user_id_option = query.user_id;
+    let email_option = query.email.as_deref();
+
+    match get_investor_profile_by_user_id_or_email(&state.pool, user_id_option, email_option).await
+    {
+        Ok(Some((_profile, identity))) => {
+            let response = InvestorProfileResponse {
+                user_id: identity.id,
+                email: identity.email,
+                user_type: identity.user_type,
+                kyc_status: identity.kyc_status,
+                created_at: identity.created_at,
+                updated_at: identity.updated_at,
+            };
+            Ok(Json(response))
+        }
+        Ok(None) => Err((StatusCode::NOT_FOUND, "Investor not found".to_string())),
+        Err(e) => {
+            error!("Failed to get investor profile: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get investor profile: {}", e),
+            ))
+        }
+    }
+}
+
+/// Update investor profile
+#[utoipa::path(
+    put,
+    path = "/api/v1/investor/profile",
+    request_body = UpdateInvestorProfileRequest,
+    responses(
+        (status = 200, description = "Investor profile updated", body = InvestorProfileResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Investor not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
+pub async fn update_investor_profile_endpoint(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Json(_request): Json<UpdateInvestorProfileRequest>,
+) -> Result<Json<InvestorProfileResponse>, (StatusCode, String)> {
+    let user_id_str = headers
+        .get("X-User-ID")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                "Missing X-User-ID header".to_string(),
+            )
+        })?;
+
+    let user_id = Uuid::parse_str(user_id_str).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid user ID format".to_string(),
+        )
+    })?;
+
+    let db_request = arda_credit_db::db::UpdateInvestorProfileRequest {
+        accredited_investor: None,
+        investment_capacity: None,
+        regulatory_jurisdiction: None,
+    };
+
+    match update_investor_profile(&state.pool, user_id, &db_request).await {
+        Ok(_) => match get_investor_profile_with_identity(&state.pool, user_id).await {
+            Ok(Some((_profile, identity))) => {
+                let response = InvestorProfileResponse {
+                    user_id: identity.id,
+                    email: identity.email,
+                    user_type: identity.user_type,
+                    kyc_status: identity.kyc_status,
+                    created_at: identity.created_at,
+                    updated_at: identity.updated_at,
+                };
+                Ok(Json(response))
+            }
+            Ok(None) => Err((
+                StatusCode::NOT_FOUND,
+                "Investor profile not found after update".to_string(),
+            )),
+            Err(e) => {
+                error!("Failed to fetch updated investor profile: {}", e);
+                Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to fetch updated profile: {}", e),
+                ))
+            }
+        },
+        Err(e) => {
+            error!("Failed to update investor profile: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to update investor profile: {}", e),
+            ))
+        }
+    }
+}
+
+/// Register a new investor
+#[utoipa::path(
+    post,
+    path = "/api/v1/investor/register",
+    request_body = RegisterInvestorRequest,
+    responses(
+        (status = 201, description = "Investor registered successfully", body = RegisterInvestorResponse),
+        (status = 400, description = "Invalid request"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
+pub async fn register_investor_endpoint(
+    State(state): State<ApiState>,
+    Json(request): Json<RegisterInvestorRequest>,
+) -> Result<Json<RegisterInvestorResponse>, (StatusCode, String)> {
+    info!("💼 API: Registering new investor: email={}", request.email);
+
+    if let Err(e) = request.validate() {
+        return Err((StatusCode::BAD_REQUEST, format!("Validation error: {}", e)));
+    }
+
+    let result = match register_or_reregister_user(&state.pool, "investor", &request.email).await {
+        Ok(result) => result,
+        Err(e) => {
+            error!("Failed to register investor: {}", e);
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to register investor: {}", e),
+            ));
+        }
+    };
+
+    let identity = match result {
+        arda_credit_db::db::RegisterResult::Created(identity) => identity,
+        arda_credit_db::db::RegisterResult::Reregistered(identity) => identity,
+        arda_credit_db::db::RegisterResult::AlreadyExists => {
+            return Err((StatusCode::CONFLICT, "Investor already exists".to_string()));
+        }
+    };
+
+    info!(
+        "✅ Investor registered successfully: user_id={}",
+        identity.id
+    );
+
+    match get_investor_profile_by_user_id(&state.pool, identity.id).await {
+        Ok(Some(_profile)) => {
+            let response = RegisterInvestorResponse {
+                user_id: identity.id,
+                email: identity.email.clone(),
+                user_type: identity.user_type.clone(),
+                message: "Investor registered successfully".to_string(),
+            };
+            Ok(Json(response))
+        }
+        Ok(None) => {
+            let response = RegisterInvestorResponse {
+                user_id: identity.id,
+                email: identity.email.clone(),
+                user_type: identity.user_type.clone(),
+                message: "Investor registered successfully (no profile created yet)".to_string(),
+            };
+            Ok(Json(response))
+        }
+        Err(e) => {
+            error!("Failed to fetch investor profile after registration: {}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Registration succeeded but failed to fetch profile: {}", e),
+            ))
+        }
+    }
 }

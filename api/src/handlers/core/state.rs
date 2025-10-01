@@ -23,15 +23,12 @@ use utoipa::ToSchema;
 
 extern crate hex;
 
-use crate::api::openapi::PaginationParams;
-use crate::config::paths;
 use crate::config::types::ApiState;
 
 // Use Axum's built-in response types for Axum 0.8 compatibility
 use arda_credit_db::{
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
     get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
-    ProofBatch,
 };
 
 // ============================================================================
@@ -184,7 +181,7 @@ pub struct TriggerBatchResponse {
         (status = 200, description = "Transaction submitted successfully", body = SubmitTransactionResponse),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Transactions"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn submit_transaction_endpoint(
@@ -224,7 +221,7 @@ pub async fn submit_transaction_endpoint(
         (status = 200, description = "List of pending transactions", body = PendingTransactionsResponse),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Transactions"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_pending_transactions_endpoint(State(state): State<ApiState>) -> Response {
@@ -274,7 +271,7 @@ pub async fn get_pending_transactions_endpoint(State(state): State<ApiState>) ->
         (status = 200, description = "Batch created successfully", body = CreateBatchResponse),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Batches"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn create_batch_endpoint(
@@ -371,7 +368,7 @@ pub async fn create_batch_endpoint(
         (status = 200, description = "Batches retrieved successfully", body = BatchListResponse),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Batches"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_batches_endpoint(
@@ -475,7 +472,7 @@ pub async fn get_current_state_endpoint(
         (status = 404, description = "Batch not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "Batches"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_batch_endpoint(
@@ -529,7 +526,7 @@ pub async fn get_batch_endpoint(
         (status = 404, description = "Batch not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "State Management"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_batch_details_endpoint(
@@ -585,7 +582,7 @@ pub async fn get_batch_details_endpoint(
         (status = 404, description = "Batch not found or no contract data available"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "State Management"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_contract_submission_data_endpoint(
@@ -648,7 +645,7 @@ pub async fn get_contract_submission_data_endpoint(
     params(
         ("batch_id" = i32, Path, description = "Batch ID")
     ),
-    tag = "Batches"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn update_batch_proof_endpoint(
@@ -802,7 +799,7 @@ pub async fn update_batch_proof_endpoint(
         (status = 200, description = "Batch processing triggered successfully", body = TriggerBatchResponse),
         (status = 500, description = "Failed to trigger batch processing")
     ),
-    tag = "Batches"
+    tag = "State"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn trigger_batch_endpoint(

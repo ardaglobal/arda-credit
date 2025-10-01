@@ -301,7 +301,7 @@ pub enum DealCommands {
     Payment {
         /// Deal ID to make payment to
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// Payment amount in USDC
         #[arg(long)]
         amount: f64,
@@ -314,7 +314,7 @@ pub enum DealCommands {
     Closeout {
         /// Deal ID to close out
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -340,7 +340,7 @@ pub enum DealCommands {
     Get {
         /// Deal ID to retrieve
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -350,7 +350,7 @@ pub enum DealCommands {
     Update {
         /// Deal ID to update
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// New outstanding balance
         #[arg(long)]
         outstanding_balance: Option<f64>,
@@ -369,7 +369,7 @@ pub enum DealCommands {
     ListForSale {
         /// Deal ID to list for sale
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// Asking price in USDC
         #[arg(long)]
         asking_price: f64,
@@ -401,7 +401,7 @@ pub enum DealCommands {
     RemoveFromSale {
         /// Deal ID to remove from sale
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// Show detailed output
         #[arg(short, long)]
         verbose: bool,
@@ -421,7 +421,7 @@ pub enum DealCommands {
     Transfer {
         /// Deal ID to transfer
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// Current investor user ID (must own the deal)
         #[arg(long)]
         from_investor_id: String, // was from_lender_id
@@ -440,7 +440,7 @@ pub enum DealCommands {
     TransferHistory {
         /// Deal ID to get transfer history for
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// Maximum number of transfers to display
         #[arg(long, default_value = "10")]
         limit: Option<i32>,
@@ -453,7 +453,7 @@ pub enum DealCommands {
     ValidateTransfer {
         /// Deal ID to validate transfer for
         #[arg(long)]
-        deal_id: String, // was loan_id
+        deal_id: String, // was loan_id, now deal_id
         /// Current investor user ID
         #[arg(long)]
         current_investor_id: String, // was current_lender_id
@@ -729,7 +729,7 @@ pub async fn handle_deal_command(
 
         DealCommands::Payment {
             // was LoanCommands::MakePayment
-            deal_id, // was loan_id
+            deal_id, // was loan_id, now deal_id
             amount,
             verbose: cmd_verbose,
         } => {
@@ -745,7 +745,7 @@ pub async fn handle_deal_command(
 
         DealCommands::Closeout {
             // was LoanCommands::CloseoutLoan
-            deal_id, // was loan_id
+            deal_id, // was loan_id, now deal_id
             verbose: cmd_verbose,
         } => {
             closeout_deal(
@@ -777,7 +777,7 @@ pub async fn handle_deal_command(
 
         DealCommands::Get {
             // was LoanCommands::GetLoan
-            deal_id, // was loan_id
+            deal_id, // was loan_id, now deal_id
             verbose: cmd_verbose,
         } => {
             get_deal(
@@ -790,7 +790,7 @@ pub async fn handle_deal_command(
         }
 
         DealCommands::Update {
-            deal_id, // was loan_id
+            deal_id, // was loan_id, now deal_id
             outstanding_balance,
             status,
             verbose: cmd_verbose,
@@ -810,7 +810,7 @@ pub async fn handle_deal_command(
         // CONSOLIDATED MARKETPLACE HANDLERS (moved from marketplace module)
         // ====================================================================
         DealCommands::ListForSale {
-            deal_id, // was loan_id
+            deal_id, // was loan_id, now deal_id
             asking_price,
             description,
             seller_id,
@@ -844,7 +844,7 @@ pub async fn handle_deal_command(
         }
 
         DealCommands::RemoveFromSale {
-            deal_id, // was loan_id
+            deal_id, // was loan_id, now deal_id
             verbose: cmd_verbose,
         } => {
             remove_deal_from_sale(
@@ -871,7 +871,7 @@ pub async fn handle_deal_command(
         // CONSOLIDATED TRANSFER HANDLERS (moved from transfer module)
         // ====================================================================
         DealCommands::Transfer {
-            deal_id,          // was loan_id
+            deal_id,          // was loan_id, now deal_id
             from_investor_id, // was from_lender_id
             to_investor_id,   // was to_lender_id
             transfer_price,
@@ -890,7 +890,7 @@ pub async fn handle_deal_command(
         }
 
         DealCommands::TransferHistory {
-            deal_id, // was loan_id
+            deal_id, // was loan_id, now deal_id
             limit,
             verbose: cmd_verbose,
         } => {
@@ -905,7 +905,7 @@ pub async fn handle_deal_command(
         }
 
         DealCommands::ValidateTransfer {
-            deal_id,             // was loan_id
+            deal_id,             // was loan_id, now deal_id
             current_investor_id, // was current_lender_id
             verbose: cmd_verbose,
         } => {
@@ -926,7 +926,6 @@ pub async fn handle_deal_command(
         } => {
             get_user_deal_transfer_history(
                 // was get_user_loan_transfer_history
-                client,
                 &user_id,
                 limit,
                 cmd_verbose || verbose,

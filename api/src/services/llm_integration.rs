@@ -449,6 +449,7 @@ impl LlmService {
         }
 
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct OpenRouterResponseMessage {
             role: String,
             content: String,

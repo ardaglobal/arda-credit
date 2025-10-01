@@ -4,7 +4,6 @@ use crate::services::ai_analysis_service::{
 };
 // Authentication will be added later
 use crate::config::types::ApiState;
-use crate::config::types::ErrorResponse;
 use crate::services::auth::Claims;
 use axum::{
     extract::{Path, Query, State},
@@ -98,7 +97,7 @@ fn handle_service_error(err: anyhow::Error) -> (StatusCode, Json<ApiError>) {
         (status = 404, description = "Document not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
-    tag = "AI Analysis",
+    tag = "Analytics",
     summary = "Analyze document changes",
     description = "Analyzes differences between document versions using AI to identify changes, assess risk, and provide recommendations"
 )]
@@ -161,7 +160,7 @@ pub async fn analyze_document_diff(
         (status = 400, description = "Invalid request", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
-    tag = "AI Chat",
+    tag = "Companies",
     summary = "Send chat message to AI",
     description = "Sends a message to the AI chat system for document analysis and advice"
 )]
@@ -202,7 +201,7 @@ pub async fn process_chat_message(
         (status = 404, description = "Document not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
-    tag = "AI Analysis",
+    tag = "Analytics",
     summary = "Get negotiation insights",
     description = "Retrieves AI-generated negotiation insights and recommendations for a document"
 )]
@@ -233,7 +232,7 @@ pub async fn get_negotiation_insights(
         (status = 404, description = "Session not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
-    tag = "AI Chat",
+    tag = "Companies",
     summary = "Get chat history",
     description = "Retrieves the message history for a specific AI chat session"
 )]
@@ -296,7 +295,7 @@ pub struct AnalysisSummary {
         (status = 404, description = "Document not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
-    tag = "AI Analysis",
+    tag = "Analytics",
     summary = "Get analysis history",
     description = "Retrieves the history of AI analyses performed on a specific document"
 )]
@@ -360,7 +359,7 @@ pub struct TriggerAnalysisResponse {
         (status = 404, description = "Document not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
-    tag = "AI Analysis",
+    tag = "Analytics",
     summary = "Trigger document analysis",
     description = "Triggers immediate AI analysis of document changes with optional notifications"
 )]
@@ -462,7 +461,7 @@ pub struct RiskTrendPoint {
         (status = 200, description = "Dashboard data retrieved successfully", body = AnalyticsDashboardResponse),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
-    tag = "AI Analytics",
+    tag = "Analytics",
     summary = "Get analytics dashboard",
     description = "Retrieves comprehensive analytics data for AI document analysis including trends, activity, and performance metrics"
 )]
@@ -696,7 +695,7 @@ pub fn create_ai_analysis_router() -> Router<ApiState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::ai_analysis_service::{ChangeCategory, ChangeType, ImpactLevel};
+    use crate::services::ai_analysis_service::ChangeCategory;
 
     #[test]
     fn test_focus_areas_parsing() {

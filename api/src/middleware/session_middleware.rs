@@ -1,6 +1,5 @@
-use arda_credit_db::db::Identity;
 use axum::{
-    extract::{Request, State},
+    extract::Request,
     http::{HeaderMap, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -8,10 +7,9 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use chrono::Utc;
 use serde_json::json;
-use std::sync::Arc;
 use tracing::{debug, instrument, warn};
 
-use crate::services::session_service::{SessionError, SessionService};
+use crate::services::session_service::SessionError;
 
 /// Configuration for session-based authentication
 #[derive(Debug, Clone)]

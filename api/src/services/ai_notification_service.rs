@@ -1,5 +1,4 @@
-use crate::services::ai_analysis_service::{ChangeAnalysis, DocumentDiffResponse, ImpactLevel};
-use crate::ApiState;
+use crate::services::ai_analysis_service::{DocumentDiffResponse, ImpactLevel};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -625,7 +624,7 @@ impl AiNotificationService {
 
     async fn deliver_notification(
         &self,
-        notification_id: Uuid,
+        _notification_id: Uuid,
         user_id: Uuid,
         delivery_method: &DeliveryMethod,
         title: &str,
@@ -678,7 +677,7 @@ impl AiNotificationService {
     async fn mark_notification_failed(
         &self,
         notification_id: Uuid,
-        error: &str,
+        _error: &str,
     ) -> Result<(), sqlx::Error> {
         sqlx::query!(
             r#"
@@ -822,6 +821,7 @@ impl EmailService {
     }
 }
 
+#[allow(dead_code)]
 pub struct WebhookService {
     client: reqwest::Client,
 }

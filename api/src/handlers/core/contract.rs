@@ -102,11 +102,11 @@ pub struct TransactionUpdatesQuery {
         (status = 200, description = "Contract configuration retrieved successfully", body = ContractConfigResponse),
         (status = 500, description = "Internal server error")
     ),
-    tag = "contract"
+    tag = "State"
 )]
-#[instrument(skip(state))]
+#[instrument(skip(_state))]
 pub async fn get_contract_config(
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
     Query(params): Query<ContractConfigQuery>,
 ) -> Result<Json<ContractConfigResponse>, StatusCode> {
     info!(
@@ -176,7 +176,7 @@ pub async fn get_contract_config(
         (status = 400, description = "Invalid query parameters"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "transactions"
+    tag = "State"
 )]
 #[instrument(skip(_state))]
 pub async fn get_transaction_updates(

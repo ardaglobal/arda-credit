@@ -314,7 +314,7 @@ pub struct Deal {
     pub principal_amount: rust_decimal::Decimal,
     pub outstanding_balance: rust_decimal::Decimal,
     pub interest_rate_bps: i32, // Basis points
-    pub loan_status: String,    // originated, active, paid_off, closed, defaulted
+    pub deal_status: String,    // originated, active, paid_off, closed, defaulted (was loan_status)
     pub originated_at: DateTime<Utc>,
     pub maturity_date: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -338,7 +338,7 @@ pub struct Deal {
 pub struct DealPayment {
     // was Payment
     pub id: uuid::Uuid,
-    pub deal_id: uuid::Uuid, // was loan_id
+    pub deal_id: uuid::Uuid, // was loan_id, now deal_id
     pub payer_id: uuid::Uuid,
     pub amount: rust_decimal::Decimal,
     pub payment_type: String, // regular, principal, interest, penalty
@@ -1821,7 +1821,7 @@ pub async fn create_deal(
     principal_amount: rust_decimal::Decimal,
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,
-    loan_status: Option<&str>, // Deal status: "originated", "active", "paid_off", "closed", "defaulted"
+    deal_status: Option<&str>, // Deal status: "originated", "active", "paid_off", "closed", "defaulted" (was loan_status)
     custom_deal_id: Option<&str>,
     status: Option<&str>,
     industry: Option<&str>,
@@ -1842,7 +1842,7 @@ pub async fn create_deal(
     sqlx::query!(
         r#"
         INSERT INTO deals (
-            id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, loan_status, maturity_date, originated_at, created_at, updated_at,
+            id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, deal_status, maturity_date, originated_at, created_at, updated_at,
             custom_deal_id, status, industry, document_ids,
             title, description, risk_level, asset_class, region, minimum_investment
         )
@@ -1857,7 +1857,7 @@ pub async fn create_deal(
         investor_id,    // was lender_id
         principal_amount,
         interest_rate_bps,
-        loan_status.unwrap_or("originated"),
+        deal_status.unwrap_or("originated"),
         maturity_date,
         now,
         custom_deal_id,
@@ -1882,7 +1882,7 @@ pub async fn create_deal(
         principal_amount,
         outstanding_balance: principal_amount,
         interest_rate_bps,
-        loan_status: loan_status.unwrap_or("originated").to_string(),
+        deal_status: deal_status.unwrap_or("originated").to_string(),
         originated_at: now,
         maturity_date,
         created_at: now,
@@ -1914,7 +1914,7 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             principal_amount,
             outstanding_balance,
             interest_rate_bps,
-            loan_status,
+            deal_status,
             originated_at,
             maturity_date,
             created_at,
@@ -1946,7 +1946,7 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status.clone(),
+            deal_status: row.deal_status.clone(),
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
@@ -1988,7 +1988,7 @@ pub async fn list_deals(
             principal_amount,
             outstanding_balance,
             interest_rate_bps,
-            loan_status,
+            deal_status,
             originated_at,
             maturity_date,
             created_at,
@@ -2004,7 +2004,7 @@ pub async fn list_deals(
             region,
             minimum_investment
         FROM deals  -- was loans
-        WHERE ($1::text IS NULL OR loan_status = $1)
+        WHERE ($1::text IS NULL OR deal_status = $1)
           AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id
           AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id
           AND ($4::text IS NULL OR industry = $4)
@@ -2031,7 +2031,7 @@ pub async fn list_deals(
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status.clone(),
+            deal_status: row.deal_status.clone(),
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
@@ -2069,7 +2069,7 @@ pub async fn get_deals_by_user_id(
             principal_amount,
             outstanding_balance,
             interest_rate_bps,
-            loan_status,
+            deal_status,
             originated_at,
             maturity_date,
             created_at,
@@ -2086,7 +2086,7 @@ pub async fn get_deals_by_user_id(
             minimum_investment
         FROM deals
         WHERE (originator_id = $1 OR investor_id = $1)
-          AND ($2::text IS NULL OR loan_status = $2)
+          AND ($2::text IS NULL OR deal_status = $2)
         ORDER BY created_at DESC
         LIMIT $3 OFFSET $4
         "#,
@@ -2107,7 +2107,7 @@ pub async fn get_deals_by_user_id(
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status,
+            deal_status: row.deal_status,
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
             created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
@@ -2136,7 +2136,7 @@ pub async fn update_deal(
     principal_amount: Option<rust_decimal::Decimal>,
     outstanding_balance: Option<rust_decimal::Decimal>,
     interest_rate_bps: Option<i32>,
-    loan_status: Option<&str>,
+    deal_status: Option<&str>,
     maturity_date: Option<Option<DateTime<Utc>>>, // Option<Option<T>> to handle setting to NULL
     custom_deal_id: Option<Option<&str>>,         // Option<Option<T>> to handle setting to NULL
     title: Option<Option<&str>>,                  // Option<Option<T>> to handle setting to NULL
@@ -2160,7 +2160,7 @@ pub async fn update_deal(
     let new_principal = principal_amount.unwrap_or(existing_deal.principal_amount);
     let new_outstanding = outstanding_balance.unwrap_or(existing_deal.outstanding_balance);
     let new_rate = interest_rate_bps.unwrap_or(existing_deal.interest_rate_bps);
-    let new_status = loan_status.unwrap_or(&existing_deal.loan_status);
+    let new_status = deal_status.unwrap_or(&existing_deal.deal_status);
     let new_maturity = maturity_date.unwrap_or(existing_deal.maturity_date);
     let new_custom_deal_id = match custom_deal_id {
         Some(Some(value)) => Some(value.to_string()),
@@ -2205,7 +2205,7 @@ pub async fn update_deal(
             principal_amount = $2,
             outstanding_balance = $3,
             interest_rate_bps = $4,
-            loan_status = $5,
+            deal_status = $5,
             maturity_date = $6,
             custom_deal_id = $8,
             title = $9,
@@ -2243,7 +2243,7 @@ pub async fn update_deal(
 pub async fn create_deal_payment(
     // was create_payment
     pool: &PgPool,
-    deal_id: uuid::Uuid, // was loan_id
+    deal_id: uuid::Uuid, // was loan_id, now deal_id
     payer_id: uuid::Uuid,
     amount: rust_decimal::Decimal,
     payment_type: &str,
@@ -2272,7 +2272,7 @@ pub async fn create_deal_payment(
     let payment = DealPayment {
         // was Payment
         id,
-        deal_id, // was loan_id
+        deal_id, // was loan_id, now deal_id
         payer_id,
         amount,
         payment_type: payment_type.to_string(),

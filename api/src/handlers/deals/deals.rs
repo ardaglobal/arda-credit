@@ -22,12 +22,10 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use metrics;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::config::paths;
 use crate::config::types::ApiState;
 use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
@@ -36,8 +34,7 @@ use arda_credit_db::{
     cancel_transfer,          // was cancel_transfer
     // ... other imports
     create_deal,         // was create_loan
-    create_deal_listing, // was create_loan_listing
-    create_deal_payment, // was create_payment
+    create_deal_listing, // was create_payment
     // Transfer functions (consolidated)
     execute_deal_transfer,         // was execute_loan_transfer
     get_deal_by_id,                // was get_loan_by_id
@@ -89,13 +86,13 @@ pub struct CreateDealRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DealDetailsResponse {
     // was LoanDetailsResponse
-    pub deal_id: String,       // was loan_id
+    pub deal_id: String,       // was loan_id, now deal_id
     pub originator_id: String, // was borrower_id
     pub investor_id: String,   // was lender_id
     pub principal_amount: String,
     pub outstanding_balance: String,
     pub interest_rate_bps: u16,
-    pub loan_status: String, // keeping same field name
+    pub loan_status: String, // deal_status field
     pub originated_at: DateTime<Utc>,
     pub last_updated: Option<DateTime<Utc>>,
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
@@ -168,7 +165,7 @@ pub struct UpdateDealRequest {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UpdateDealResponse {
     // was UpdateLoanResponse
-    pub deal_id: String, // was loan_id
+    pub deal_id: String, // was loan_id, now deal_id
     pub updated_fields: Vec<String>,
     pub updated_at: DateTime<Utc>,
     pub deal_details: DealDetailsResponse, // was loan_details
@@ -178,7 +175,7 @@ pub struct UpdateDealResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DeleteDealResponse {
     // was DeleteLoanResponse
-    pub deal_id: String, // was loan_id
+    pub deal_id: String, // was loan_id, now deal_id
     pub deleted: bool,
     pub deleted_at: DateTime<Utc>,
     pub final_status: String,
@@ -188,7 +185,7 @@ pub struct DeleteDealResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct RecordDealPaymentRequest {
     // was RecordPaymentRequest
-    pub deal_id: String,                   // was loan_id
+    pub deal_id: String,                   // was loan_id, now deal_id
     pub amount: String,                    // Amount in cents as string
     pub payment_type: String,              // "Principal" | "Interest" | "Mixed"
     pub payment_reference: Option<String>, // Optional external reference
@@ -199,7 +196,7 @@ pub struct RecordDealPaymentRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PaymentResponse {
     pub transaction_id: String,
-    pub deal_id: String, // was loan_id
+    pub deal_id: String, // was loan_id, now deal_id
     pub amount: String,
     pub payment_type: String,
     pub transaction_status: String, // "Pending" | "Processed" | "Failed"
@@ -210,7 +207,7 @@ pub struct PaymentResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct PaymentDetailsResponse {
     pub transaction_id: String,
-    pub deal_id: String, // was loan_id
+    pub deal_id: String, // was loan_id, now deal_id
     pub amount: String,
     pub payment_type: String,
     pub transaction_status: String,
@@ -223,7 +220,7 @@ pub struct PaymentDetailsResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DealPaymentHistoryResponse {
     // was LoanPaymentHistoryResponse
-    pub deal_id: String, // was loan_id
+    pub deal_id: String, // was loan_id, now deal_id
     pub payments: Vec<PaymentDetailsResponse>,
     pub total_payments: usize,
     pub total_amount_paid: String,
@@ -256,7 +253,7 @@ pub struct ListDealForSaleRequest {
 pub struct DealListingResponse {
     // was LoanListingResponse
     pub listing_id: uuid::Uuid,
-    pub deal_id: String, // was loan_id
+    pub deal_id: String, // was loan_id, now deal_id
     pub seller_id: uuid::Uuid,
     pub asking_price: String,
     pub description: Option<String>,
@@ -272,7 +269,7 @@ pub struct MarketplaceDealResponse {
     // was MarketplaceLoanResponse
     // Listing information
     pub listing_id: uuid::Uuid,
-    pub deal_id: uuid::Uuid, // was loan_id
+    pub deal_id: uuid::Uuid, // was loan_id, now deal_id
     pub seller_id: uuid::Uuid,
     pub asking_price: String,
     pub description: Option<String>,
@@ -286,7 +283,7 @@ pub struct MarketplaceDealResponse {
     pub principal_amount: String,
     pub outstanding_balance: String,
     pub interest_rate_bps: u16,
-    pub deal_status: String, // keeping same field name
+    pub deal_status: String, // deal_status field
     pub originated_at: DateTime<Utc>,
 }
 
@@ -319,7 +316,7 @@ pub struct TransferDealOwnershipRequest {
 pub struct DealTransferResponse {
     // was LoanTransferResponse
     pub transfer_id: uuid::Uuid,
-    pub deal_id: String,              // was loan_id
+    pub deal_id: String,              // was loan_id, now deal_id
     pub from_investor_id: uuid::Uuid, // was from_lender_id
     pub to_investor_id: uuid::Uuid,   // was to_lender_id
     pub transfer_price: String,
@@ -345,7 +342,7 @@ pub struct ValidateDealTransferRequest {
 pub struct DealTransferValidationResponse {
     // was TransferValidationResponse
     pub is_valid: bool,
-    pub deal_id: String,                 // was loan_id
+    pub deal_id: String,                 // was loan_id, now deal_id
     pub current_investor_id: uuid::Uuid, // was current_lender_id
     pub message: String,
 }
@@ -493,13 +490,13 @@ pub async fn create_deal_endpoint(
 
     let response = DealDetailsResponse {
         // was LoanDetailsResponse
-        deal_id: deal.id.to_string(),                  // was loan_id
+        deal_id: deal.id.to_string(), // was loan_id, now deal_id
         originator_id: deal.originator_id.to_string(), // was borrower_id
-        investor_id: deal.investor_id.to_string(),     // was lender_id
+        investor_id: deal.investor_id.to_string(), // was lender_id
         principal_amount: deal.principal_amount.to_string(),
         outstanding_balance: deal.outstanding_balance.to_string(),
         interest_rate_bps: deal.interest_rate_bps as u16,
-        loan_status: deal.loan_status, // keeping same field name
+        loan_status: deal.deal_status, // deal_status field
         originated_at: deal.originated_at,
         last_updated: Some(deal.updated_at),
         custom_deal_id: deal.custom_deal_id,
@@ -601,13 +598,13 @@ pub async fn list_deals_endpoint(
 
             DealDetailsResponse {
                 // was loan, LoanDetailsResponse
-                deal_id: deal.id.to_string(), // was loan_id
+                deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: deal.originator_id.to_string(), // was borrower_id
                 investor_id: deal.investor_id.to_string(), // was lender_id
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
-                loan_status: deal.loan_status, // keeping same field name
+                loan_status: deal.deal_status, // deal_status field
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
                 custom_deal_id: deal.custom_deal_id,
@@ -696,7 +693,7 @@ pub async fn get_deals_by_user_id_endpoint(
             principal_amount: deal.principal_amount.to_string(),
             outstanding_balance: deal.outstanding_balance.to_string(),
             interest_rate_bps: deal.interest_rate_bps as u16,
-            loan_status: deal.loan_status,
+            loan_status: deal.deal_status,
             originated_at: deal.originated_at,
             last_updated: Some(deal.updated_at),
             custom_deal_id: deal.custom_deal_id,
@@ -734,9 +731,9 @@ pub async fn get_deals_by_user_id_endpoint(
 /// Get deal details by ID (converted from get_loan_details_endpoint)
 #[utoipa::path(
     get,
-    path = "/api/v1/deal/{deal_id}",  // was loan_id
+    path = "/api/v1/deal/{deal_id}",  // was loan_id, now deal_id
     params(
-        ("deal_id" = String, Path, description = "Deal ID to retrieve")  // was loan_id
+        ("deal_id" = String, Path, description = "Deal ID to retrieve")  // was loan_id, now deal_id
     ),
     responses(
         (status = 200, description = "Deal details", body = DealDetailsResponse),  // was Loan
@@ -749,13 +746,13 @@ pub async fn get_deals_by_user_id_endpoint(
 pub async fn get_deal_details_endpoint(
     // was get_loan_details_endpoint
     State(state): State<ApiState>,
-    Path(deal_id): Path<String>, // was loan_id
+    Path(deal_id): Path<String>, // was loan_id, now deal_id
 ) -> Result<Json<DealDetailsResponse>, (StatusCode, String)> {
     // was LoanDetailsResponse
     info!("🔍 API: Getting deal details: {}", deal_id); // updated log message
 
     let deal_uuid = uuid::Uuid::parse_str(&deal_id).map_err(|_| {
-        // was loan_id
+        // was loan_id, now deal_id
         (
             StatusCode::BAD_REQUEST,
             "Invalid deal ID format".to_string(), // was loan ID
@@ -785,13 +782,13 @@ pub async fn get_deal_details_endpoint(
 
             let response = DealDetailsResponse {
                 // was LoanDetailsResponse
-                deal_id: deal.id.to_string(), // was loan_id
+                deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: deal.originator_id.to_string(), // was borrower_id
                 investor_id: deal.investor_id.to_string(), // was lender_id
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
-                loan_status: deal.loan_status, // keeping same field name
+                loan_status: deal.deal_status, // deal_status field
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
                 custom_deal_id: deal.custom_deal_id,
@@ -862,7 +859,7 @@ pub async fn get_deal_stats_endpoint(
 /// Update deal (converted from update_loan_endpoint)
 #[utoipa::path(
     put,
-    path = "/api/v1/deal/{deal_id}",  // was loan_id
+    path = "/api/v1/deal/{deal_id}",  // was loan_id, now deal_id
     request_body = UpdateDealRequest,  // was UpdateLoanRequest
     responses(
         (status = 200, description = "Deal updated successfully", body = UpdateDealResponse),  // was Loan
@@ -871,7 +868,7 @@ pub async fn get_deal_stats_endpoint(
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("deal_id" = String, Path, description = "Deal ID")  // was loan_id
+        ("deal_id" = String, Path, description = "Deal ID")  // was loan_id, now deal_id
     ),
     tag = "Deals"  // was "Loans"
 )]
@@ -879,7 +876,7 @@ pub async fn get_deal_stats_endpoint(
 pub async fn update_deal_endpoint(
     // was update_loan_endpoint
     State(state): State<ApiState>,
-    Path(deal_id): Path<String>,            // was loan_id
+    Path(deal_id): Path<String>,            // was loan_id, now deal_id
     Json(request): Json<UpdateDealRequest>, // was UpdateLoanRequest
 ) -> Result<Json<UpdateDealResponse>, (StatusCode, String)> {
     // was UpdateLoanResponse
@@ -887,7 +884,7 @@ pub async fn update_deal_endpoint(
 
     // Parse deal ID
     let deal_uuid = uuid::Uuid::parse_str(&deal_id).map_err(|_| {
-        // was loan_id
+        // was loan_id, now deal_id
         (
             StatusCode::BAD_REQUEST,
             "Invalid deal ID format".to_string(), // was loan ID
@@ -1016,13 +1013,13 @@ pub async fn update_deal_endpoint(
             // Convert to response format
             let deal_details = DealDetailsResponse {
                 // was LoanDetailsResponse
-                deal_id: deal.id.to_string(), // was loan_id
+                deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: deal.originator_id.to_string(), // was borrower_id
                 investor_id: deal.investor_id.to_string(), // was lender_id
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
-                loan_status: deal.loan_status, // keeping same field name
+                loan_status: deal.deal_status, // deal_status field
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
                 custom_deal_id: deal.custom_deal_id,
@@ -1039,7 +1036,7 @@ pub async fn update_deal_endpoint(
 
             let response = UpdateDealResponse {
                 // was UpdateLoanResponse
-                deal_id: deal.id.to_string(), // was loan_id
+                deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 updated_fields,
                 updated_at: deal.updated_at,
                 deal_details, // was loan_details
@@ -1058,14 +1055,14 @@ pub async fn update_deal_endpoint(
 /// Delete/close deal (converted from delete_loan_endpoint)
 #[utoipa::path(
     delete,
-    path = "/api/v1/deal/{deal_id}",  // was loan_id
+    path = "/api/v1/deal/{deal_id}",  // was loan_id, now deal_id
     responses(
         (status = 200, description = "Deal closed successfully", body = DeleteDealResponse),  // was Loan
         (status = 404, description = "Deal not found"),  // was Loan
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("deal_id" = String, Path, description = "Deal ID")  // was loan_id
+        ("deal_id" = String, Path, description = "Deal ID")  // was loan_id, now deal_id
     ),
     tag = "Deals"  // was "Loans"
 )]
@@ -1073,13 +1070,13 @@ pub async fn update_deal_endpoint(
 pub async fn delete_deal_endpoint(
     // was delete_loan_endpoint
     State(_state): State<ApiState>,
-    Path(deal_id): Path<String>, // was loan_id
+    Path(deal_id): Path<String>, // was loan_id, now deal_id
 ) -> Result<Json<DeleteDealResponse>, (StatusCode, String)> {
     // was DeleteLoanResponse
     info!("🗑️ API: Closing deal: deal_id={}", deal_id); // updated log message
 
     let _deal_uuid = uuid::Uuid::parse_str(&deal_id).map_err(|_| {
-        // was loan_id
+        // was loan_id, now deal_id
         (
             StatusCode::BAD_REQUEST,
             "Invalid deal ID format".to_string(), // was loan ID
@@ -1092,7 +1089,7 @@ pub async fn delete_deal_endpoint(
 
     let response = DeleteDealResponse {
         // was DeleteLoanResponse
-        deal_id, // was loan_id
+        deal_id, // was loan_id, now deal_id
         deleted: true,
         deleted_at: Utc::now(),
         final_status: "closed".to_string(),
@@ -1144,7 +1141,7 @@ pub async fn record_deal_payment_endpoint(
 
     let response = PaymentResponse {
         transaction_id,
-        deal_id: request.deal_id, // was loan_id
+        deal_id: request.deal_id, // was loan_id, now deal_id
         amount: request.amount,
         payment_type: request.payment_type,
         transaction_status: "Pending".to_string(), // Will be batched for ZK proof
@@ -1182,7 +1179,7 @@ pub async fn get_payment_details_endpoint(
     // TODO: Implement payment lookup with database integration
     let response = PaymentDetailsResponse {
         transaction_id,
-        deal_id: Uuid::new_v4().to_string(), // was loan_id
+        deal_id: Uuid::new_v4().to_string(), // was loan_id, now deal_id
         amount: "25000".to_string(),
         payment_type: "Principal".to_string(),
         transaction_status: "Processed".to_string(),
@@ -1198,14 +1195,14 @@ pub async fn get_payment_details_endpoint(
 /// Get deal payment history (converted from get_loan_payment_history_endpoint)
 #[utoipa::path(
     get,
-    path = "/api/v1/deal/{deal_id}/payments",  // was loan_id
+    path = "/api/v1/deal/{deal_id}/payments",  // was loan_id, now deal_id
     responses(
         (status = 200, description = "Payment history retrieved successfully", body = DealPaymentHistoryResponse),  // was Loan
         (status = 404, description = "Deal not found"),  // was Loan
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("deal_id" = String, Path, description = "Deal ID"),  // was loan_id
+        ("deal_id" = String, Path, description = "Deal ID"),  // was loan_id, now deal_id
         ListDealsQuery  // was ListLoansQuery
     ),
     tag = "Payments"
@@ -1214,7 +1211,7 @@ pub async fn get_payment_details_endpoint(
 pub async fn get_deal_payment_history_endpoint(
     // was get_loan_payment_history_endpoint
     State(_state): State<ApiState>,
-    Path(deal_id): Path<String>,           // was loan_id
+    Path(deal_id): Path<String>,           // was loan_id, now deal_id
     Query(_params): Query<ListDealsQuery>, // Reuse query params for limit/offset, was ListLoansQuery
 ) -> Result<Json<DealPaymentHistoryResponse>, (StatusCode, String)> {
     // was LoanPaymentHistoryResponse
@@ -1223,7 +1220,7 @@ pub async fn get_deal_payment_history_endpoint(
     // TODO: Implement payment history lookup with database integration
     let response = DealPaymentHistoryResponse {
         // was LoanPaymentHistoryResponse
-        deal_id, // was loan_id
+        deal_id, // was loan_id, now deal_id
         payments: vec![],
         total_payments: 0,
         total_amount_paid: "0".to_string(),
@@ -1323,7 +1320,7 @@ pub async fn browse_deals_for_sale_endpoint(
         .map(|deal| MarketplaceDealResponse {
             // was loan, MarketplaceLoanResponse
             listing_id: deal.listing_id,
-            deal_id: deal.deal_id, // was loan_id
+            deal_id: deal.deal_id, // was loan_id, now deal_id
             seller_id: deal.seller_id,
             asking_price: deal.asking_price.to_string(),
             description: deal.description,
@@ -1336,7 +1333,7 @@ pub async fn browse_deals_for_sale_endpoint(
             principal_amount: deal.principal_amount.to_string(),
             outstanding_balance: deal.outstanding_balance.to_string(),
             interest_rate_bps: deal.interest_rate_bps as u16,
-            deal_status: deal.loan_status, // keeping same field name
+            deal_status: deal.deal_status, // deal_status field
             originated_at: deal.originated_at,
         })
         .collect();
@@ -1365,7 +1362,7 @@ pub async fn browse_deals_for_sale_endpoint(
 pub async fn list_deal_for_sale_endpoint(
     // was list_loan_for_sale_endpoint
     State(state): State<ApiState>,
-    Path(deal_id): Path<String>,                 // was loan_id
+    Path(deal_id): Path<String>, // was loan_id, now deal_id
     Json(request): Json<ListDealForSaleRequest>, // was ListLoanForSaleRequest
 ) -> Result<Json<DealListingResponse>, (StatusCode, String)> {
     // was LoanListingResponse
@@ -1391,7 +1388,7 @@ pub async fn list_deal_for_sale_endpoint(
     let listing = create_deal_listing(
         // was create_loan_listing
         &state.pool,
-        deal_uuid, // was loan_id
+        deal_uuid, // was loan_id, now deal_id
         request.seller_id,
         asking_price,
         request.description,
@@ -1409,7 +1406,7 @@ pub async fn list_deal_for_sale_endpoint(
     let response = DealListingResponse {
         // was LoanListingResponse
         listing_id: listing.listing_id,
-        deal_id: listing.deal_id.to_string(), // was loan_id
+        deal_id: listing.deal_id.to_string(), // was loan_id, now deal_id
         seller_id: listing.seller_id,
         asking_price: listing.asking_price.to_string(),
         description: listing.description,
@@ -1443,7 +1440,7 @@ pub async fn remove_deal_from_sale_endpoint(
     // was remove_loan_from_sale_endpoint
     State(state): State<ApiState>,
     headers: HeaderMap,
-    Path(deal_id): Path<String>, // was loan_id
+    Path(deal_id): Path<String>, // was loan_id, now deal_id
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     info!("🗑️ API: Removing deal from sale: {}", deal_id);
 
@@ -1507,10 +1504,10 @@ pub async fn remove_deal_from_sale_endpoint(
     ),
     tag = "Deals"
 )]
-#[instrument(skip(state), level = "info")]
+#[instrument(skip(_state), level = "info")]
 pub async fn deal_marketplace_stats_endpoint(
     // was marketplace_stats_endpoint
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
 ) -> Result<Json<DealMarketplaceStats>, (StatusCode, String)> {
     // was MarketplaceStats
     info!("📊 API: Getting deal marketplace statistics");
@@ -1548,7 +1545,7 @@ pub async fn deal_marketplace_stats_endpoint(
 pub async fn transfer_deal_ownership_endpoint(
     // was transfer_loan_ownership_endpoint
     State(state): State<ApiState>,
-    Path(deal_id): Path<String>,                       // was loan_id
+    Path(deal_id): Path<String>, // was loan_id, now deal_id
     Json(request): Json<TransferDealOwnershipRequest>, // was TransferLoanOwnershipRequest
 ) -> Result<Json<DealTransferResponse>, (StatusCode, String)> {
     // was LoanTransferResponse
@@ -1576,7 +1573,7 @@ pub async fn transfer_deal_ownership_endpoint(
         // was execute_loan_transfer
         &state.pool,
         &ExecuteTransferRequest {
-            deal_id: deal_uuid,               // was loan_id
+            deal_id: deal_uuid,               // was loan_id, now deal_id
             buyer_id: request.to_investor_id, // was to_lender_id
             purchase_price: transfer_price,
             notes: None,
@@ -1594,7 +1591,7 @@ pub async fn transfer_deal_ownership_endpoint(
     let response = DealTransferResponse {
         // was LoanTransferResponse
         transfer_id: transfer.transfer_id,
-        deal_id: transfer.deal_id.to_string(), // was loan_id
+        deal_id: transfer.deal_id.to_string(), // was loan_id, now deal_id
         from_investor_id: transfer.from_investor_id, // was from_lender_id
         to_investor_id: transfer.to_investor_id, // was to_lender_id
         transfer_price: transfer.purchase_price.to_string(),
@@ -1625,7 +1622,7 @@ pub async fn transfer_deal_ownership_endpoint(
 pub async fn get_deal_transfer_history_endpoint(
     // was get_loan_transfer_history_endpoint
     State(state): State<ApiState>,
-    Path(deal_id): Path<String>, // was loan_id
+    Path(deal_id): Path<String>, // was loan_id, now deal_id
     Query(params): Query<TransferHistoryQuery>,
 ) -> Result<Json<Vec<DealTransferResponse>>, (StatusCode, String)> {
     // was LoanTransferResponse
@@ -1641,7 +1638,7 @@ pub async fn get_deal_transfer_history_endpoint(
     let transfers = get_deal_transfer_history(
         // was get_loan_transfer_history
         &state.pool,
-        deal_uuid, // was loan_id
+        deal_uuid, // was loan_id, now deal_id
     )
     .await
     .map_err(|e| {
@@ -1657,7 +1654,7 @@ pub async fn get_deal_transfer_history_endpoint(
         .map(|transfer| DealTransferResponse {
             // was LoanTransferResponse
             transfer_id: transfer.transfer_id,
-            deal_id: transfer.deal_id.to_string(), // was loan_id
+            deal_id: transfer.deal_id.to_string(), // was loan_id, now deal_id
             from_investor_id: transfer.from_investor_id, // was from_lender_id
             to_investor_id: transfer.to_investor_id, // was to_lender_id
             transfer_price: transfer.purchase_price.to_string(),
@@ -1685,17 +1682,17 @@ pub async fn get_deal_transfer_history_endpoint(
     ),
     tag = "Deals"
 )]
-#[instrument(skip(state), level = "info")]
+#[instrument(skip(_state), level = "info")]
 pub async fn get_user_deal_transfer_history_endpoint(
     // was get_user_transfer_history_endpoint
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
     Path(user_id): Path<String>,
     Query(params): Query<TransferHistoryQuery>,
 ) -> Result<Json<Vec<DealTransferResponse>>, (StatusCode, String)> {
     // was LoanTransferResponse
     info!("👤 API: Getting user deal transfer history: {}", user_id);
 
-    let user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
+    let _user_uuid = uuid::Uuid::parse_str(&user_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
             "Invalid user ID format".to_string(),
@@ -1728,7 +1725,7 @@ pub async fn get_user_deal_transfer_history_endpoint(
 pub async fn validate_deal_transfer_endpoint(
     // was validate_transfer_endpoint
     State(state): State<ApiState>,
-    Path(deal_id): Path<String>,                      // was loan_id
+    Path(deal_id): Path<String>, // was loan_id, now deal_id
     Json(request): Json<ValidateDealTransferRequest>, // was ValidateTransferRequest
 ) -> Result<Json<DealTransferValidationResponse>, (StatusCode, String)> {
     // was TransferValidationResponse
@@ -1744,7 +1741,7 @@ pub async fn validate_deal_transfer_endpoint(
     let validation = validate_transfer_eligibility(
         &state.pool,
         &TransferValidationRequest {
-            deal_id: deal_uuid,                          // was loan_id
+            deal_id: deal_uuid,                          // was loan_id, now deal_id
             buyer_id: request.current_investor_id,       // was current_lender_id
             purchase_price: rust_decimal::Decimal::ZERO, // placeholder
         },
@@ -1761,7 +1758,7 @@ pub async fn validate_deal_transfer_endpoint(
     let response = DealTransferValidationResponse {
         // was TransferValidationResponse
         is_valid: validation.is_valid,
-        deal_id: deal_id.clone(),                         // was loan_id
+        deal_id: deal_id.clone(), // was loan_id, now deal_id
         current_investor_id: request.current_investor_id, // was current_lender_id
         message: if validation.is_valid {
             "Deal transfer is valid".to_string()

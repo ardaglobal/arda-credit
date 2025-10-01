@@ -1,11 +1,9 @@
-use crate::ApiState;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::collections::HashMap;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -660,7 +658,7 @@ impl AiAnalysisService {
         &self,
         message: &str,
         conversation_history: &[AiChatMessage],
-        document_context: Option<&serde_json::Value>,
+        _document_context: Option<&serde_json::Value>,
     ) -> Result<AiChatResponse, anyhow::Error> {
         // Mock AI response generation
         // In production, this would call your chosen LLM API

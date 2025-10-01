@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT d.investor_id, dl.asking_price  -- was lender_id, loan_listings\n        FROM deals d                          -- was loans\n        JOIN deal_listings dl ON d.id = dl.deal_id  -- was loan_listings, loan_id\n        WHERE d.id = $1\n          AND d.status = 'for_sale'\n          AND dl.status = 'active'  -- Only active listings can be transferred\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "asking_price",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e7d79d83093827d63de21f948ae2fdc2c04656771cc590d5573a9678c0631a7e"
+}

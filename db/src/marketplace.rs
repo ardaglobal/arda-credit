@@ -22,7 +22,7 @@ use uuid::Uuid;
 pub struct DealListing {
     // was LoanListing
     pub listing_id: Uuid,
-    pub deal_id: Uuid, // was loan_id
+    pub deal_id: Uuid, // was loan_id, now deal_id
     pub seller_id: Uuid,
     pub asking_price: Decimal,
     pub description: Option<String>,
@@ -40,7 +40,7 @@ pub struct MarketplaceDeal {
     // was MarketplaceLoan
     // Listing data
     pub listing_id: Uuid,
-    pub deal_id: Uuid, // was loan_id
+    pub deal_id: Uuid, // was loan_id, now deal_id
     pub seller_id: Uuid,
     pub asking_price: Decimal,
     pub description: Option<String>,
@@ -54,7 +54,7 @@ pub struct MarketplaceDeal {
     pub principal_amount: Decimal,
     pub outstanding_balance: Decimal,
     pub interest_rate_bps: i32,
-    pub loan_status: String, // keeping same field name
+    pub deal_status: String, // deal_status field
     pub originated_at: DateTime<Utc>,
     pub maturity_date: Option<DateTime<Utc>>,
 }
@@ -70,7 +70,7 @@ pub struct MarketplaceDeal {
 pub async fn create_deal_listing(
     // was create_loan_listing
     pool: &PgPool,
-    deal_id: Uuid, // was loan_id
+    deal_id: Uuid, // was loan_id, now deal_id
     seller_id: Uuid,
     asking_price: Decimal,
     description: Option<String>,
@@ -79,11 +79,11 @@ pub async fn create_deal_listing(
     let listing_id = Uuid::new_v4();
     let now = Utc::now();
 
-    // First update the deal status to 'for_sale'
+    // First update the deal marketplace status to 'for_sale'
     sqlx::query!(
         r#"
         UPDATE deals
-        SET loan_status = 'for_sale', updated_at = NOW()
+        SET status = 'for_sale', updated_at = NOW()
         WHERE id = $1 AND investor_id = $2
         "#,
         deal_id,
@@ -99,7 +99,7 @@ pub async fn create_deal_listing(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $6, $6)
         "#,
         listing_id,
-        deal_id,        // was loan_id
+        deal_id,        // was loan_id, now deal_id
         seller_id,
         asking_price,
         description,
@@ -111,7 +111,7 @@ pub async fn create_deal_listing(
 
     Ok(DealListing {
         listing_id,
-        deal_id, // was loan_id
+        deal_id, // was loan_id, now deal_id
         seller_id,
         asking_price,
         description,
@@ -130,14 +130,14 @@ pub async fn create_deal_listing(
 pub async fn get_deal_listing_by_deal_id(
     // was get_loan_listing_by_loan_id
     pool: &PgPool,
-    deal_id: Uuid, // was loan_id
+    deal_id: Uuid, // was loan_id, now deal_id
 ) -> Result<Option<DealListing>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
         SELECT listing_id, deal_id, seller_id, asking_price, description,
                listed_at, expires_at, status, delisted_at, created_at, updated_at
         FROM deal_listings  -- was loan_listings
-        WHERE deal_id = $1 AND status = 'active'  -- was loan_id
+        WHERE deal_id = $1 AND status = 'active'  -- was loan_id, now deal_id
         "#,
         deal_id
     )
@@ -147,7 +147,7 @@ pub async fn get_deal_listing_by_deal_id(
     match row {
         Some(row) => Ok(Some(DealListing {
             listing_id: row.listing_id,
-            deal_id: row.deal_id, // was loan_id
+            deal_id: row.deal_id, // was loan_id, now deal_id
             seller_id: row.seller_id,
             asking_price: row.asking_price,
             description: row.description,
@@ -168,14 +168,14 @@ pub async fn get_deal_listing_by_deal_id(
 pub async fn update_deal_listing_status(
     // was update_listing_status
     tx: &mut Transaction<'_, Postgres>,
-    deal_id: Uuid, // was loan_id
+    deal_id: Uuid, // was loan_id, now deal_id
     new_status: &str,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query!(
         r#"
         UPDATE deal_listings  -- was loan_listings
         SET status = $2, updated_at = NOW()
-        WHERE deal_id = $1 AND status = 'active'  -- was loan_id
+        WHERE deal_id = $1 AND status = 'active'  -- was loan_id, now deal_id
         "#,
         deal_id,
         new_status
@@ -193,7 +193,7 @@ pub async fn update_deal_listing_status(
 pub async fn remove_deal_listing(
     // was remove_loan_listing
     pool: &PgPool,
-    deal_id: Uuid, // was loan_id
+    deal_id: Uuid, // was loan_id, now deal_id
     seller_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
     // Begin transaction
@@ -216,9 +216,9 @@ pub async fn remove_deal_listing(
     // 2. Update listing status to 'delisted' (this will also set delisted_at via trigger)
     update_deal_listing_status(&mut tx, deal_id, "delisted").await?; // was update_listing_status, loan_id
 
-    // 3. Update deal status back to 'active' (remove 'for_sale' status)
+    // 3. Update deal marketplace status back to 'active' (remove 'for_sale' status)
     sqlx::query!(
-        "UPDATE deals SET loan_status = 'active', updated_at = NOW() WHERE id = $1", // was loans
+        "UPDATE deals SET status = 'active', updated_at = NOW() WHERE id = $1", // was loans
         deal_id
     )
     .execute(&mut *tx)
@@ -245,7 +245,7 @@ pub async fn browse_marketplace_deals(
         r#"
         SELECT
             dl.listing_id,
-            dl.deal_id,              -- was loan_id
+            dl.deal_id,              -- was loan_id, now deal_id
             dl.seller_id,
             dl.asking_price,
             dl.description,
@@ -257,7 +257,7 @@ pub async fn browse_marketplace_deals(
             d.principal_amount,
             d.outstanding_balance,
             d.interest_rate_bps,
-            d.loan_status,
+            d.deal_status,
             d.originated_at,
             d.maturity_date
         FROM deal_listings dl       -- was loan_listings
@@ -277,7 +277,7 @@ pub async fn browse_marketplace_deals(
         .into_iter()
         .map(|row| MarketplaceDeal {
             listing_id: row.listing_id,
-            deal_id: row.deal_id, // was loan_id
+            deal_id: row.deal_id, // was loan_id, now deal_id
             seller_id: row.seller_id,
             asking_price: row.asking_price,
             description: row.description,
@@ -289,7 +289,7 @@ pub async fn browse_marketplace_deals(
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
-            loan_status: row.loan_status,
+            deal_status: row.deal_status,
             originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
             maturity_date: row.maturity_date,
         })
@@ -305,7 +305,7 @@ pub async fn browse_marketplace_deals(
 pub async fn validate_deal_for_transfer(
     // was validate_loan_for_transfer
     pool: &PgPool,
-    deal_id: Uuid, // was loan_id
+    deal_id: Uuid, // was loan_id, now deal_id
 ) -> Result<Option<(Uuid, Decimal)>, sqlx::Error> {
     // Return (current_owner_id, asking_price) if deal can be transferred
     let result = sqlx::query!(
@@ -314,7 +314,7 @@ pub async fn validate_deal_for_transfer(
         FROM deals d                          -- was loans
         JOIN deal_listings dl ON d.id = dl.deal_id  -- was loan_listings, loan_id
         WHERE d.id = $1
-          AND d.loan_status = 'for_sale'
+          AND d.status = 'for_sale'
           AND dl.status = 'active'  -- Only active listings can be transferred
         "#,
         deal_id
@@ -408,7 +408,7 @@ pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Er
         // was loans table
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, loan_status, originated_at)
+                          interest_rate_bps, deal_status, originated_at)
         VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         "#,

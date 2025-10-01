@@ -1,12 +1,11 @@
 use axum::{
     extract::State,
-    response::{Json, Response},
+    response::Json,
     routing::{delete, get, post, put},
     Router,
 };
-use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use tracing::{error, info, instrument, warn};
+use tracing::instrument;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
 use uuid;
@@ -15,130 +14,25 @@ use crate::api::openapi::ApiDoc;
 use crate::config::paths;
 use crate::config::types::UserType;
 use crate::handlers::{
-    // Credit lines
-    browse_available_pools,
     // Deals
-    browse_deals_for_sale_endpoint,
-    check_credit_eligibility,
-    // Companies (merchant module)
     companies as company_handlers,
-    // State
-    create_batch_endpoint,
-    create_deal_endpoint,
-    // Pools
-    create_pool,
-    // Turnover (merchant module)
-    create_turnover_endpoint,
-    // Pool boroughs
-    delete_borough_limit,
-    delete_deal_endpoint,
-    deposit_to_pool,
     // Documents (merchant module)
     documents as document_handlers,
-    // Auth
-    generate_invite_code_endpoint,
     // Finance
     get_account_financial_transactions,
-    get_batch_details_endpoint,
-    get_batches_endpoint,
-    get_borough_limits,
-    get_borough_summary,
-    get_contract_submission_data_endpoint,
-    get_credit_line_financial_transactions,
-    get_current_state_endpoint,
     // Magic Link Auth
     get_current_user,
-    get_deal_details_endpoint,
-    get_deal_payment_history_endpoint,
-    get_deal_stats_endpoint,
-    get_deal_transfer_history_endpoint,
-    get_deals_by_user_id_endpoint,
-    get_investor_dashboard,
-    get_investor_pool_metrics_handler,
-    get_investor_pool_metrics_overview,
-    get_investor_pool_summaries,
-    get_market_overview,
-    get_merchant_credit_line_financial_transactions,
-    get_payment_details_endpoint,
-    get_pending_transactions_endpoint,
-    get_pool_details,
-    get_pool_financial_transactions,
-    get_pool_metrics_overview,
-    get_pool_performance,
-    get_pool_transaction_history,
-    get_pool_transactions,
-    get_pool_utilization,
-    get_profile_completion_endpoint,
     get_transaction_history,
-    get_turnover_analytics_endpoint,
-    get_turnover_endpoint,
     get_user_financial_summary,
     get_user_financial_transactions,
-    get_user_pool_financial_transactions,
-    list_active_credit_lines_with_pool_details,
-    list_credit_line_requests,
-    list_pools,
     logout_endpoint,
     record_account_deposit,
     record_account_withdrawal,
-    record_credit_line_draw,
-    record_credit_line_payment,
-    record_deal_payment_endpoint,
-    record_pool_funding,
-    record_pool_withdrawal,
-    remove_deal_from_sale_endpoint,
     request_magic_link,
-    set_borough_limit,
-    submit_credit_line_request,
-    submit_transaction_endpoint,
-    transfer_deal_ownership_endpoint,
-    trigger_batch_endpoint,
-    update_batch_proof_endpoint,
-    update_deal_endpoint,
-    update_pool_status,
-    update_turnover_endpoint,
-    validate_borough_limit,
-    validate_deal_transfer_endpoint,
-    validate_invite_code_endpoint,
     verify_magic_link,
     withdrawals as withdrawal_handlers,
-    DeleteDealResponse,
-    // Users
-    DeleteUserResponse,
-    // Health
-    EndpointInfo,
-    GenerateInviteCodeRequest,
-    GenerateInviteCodeResponse,
-    // Merchants
-    InvestorProfileQuery,
-    InvestorProfileResponse,
-    InviteCodeResponse,
-    KycData,
-    // Admin
-    KycStatisticsResponse,
-    ListPendingKycQuery,
-    ListPendingKycResponse,
-    LogoutRequest,
-    LogoutResponse,
-    MerchantProfileResponse,
-    PlatformMetricsResponse,
-    RegisterInvestorRequest,
-    RegisterInvestorResponse,
-    RegisterMerchantRequest,
-    RegisterMerchantResponse,
-    RegisterUserRequest,
-    RegisterUserResponse,
-    SubmitKycRequest,
-    SubmitKycResponse,
-    UpdateInvestorProfileRequest,
-    UpdateKycStatusRequest,
-    UpdateMerchantProfileRequest,
-    UpdateUserRequest,
-    UpdateUserResponse,
     UserDetailsResponse,
-    ValidateInviteCodeResponse,
 };
-use crate::services::auth::AuthService;
 use crate::services::batch_processor::BatchProcessorHandle;
 use crate::services::document_service::DocumentService;
 use crate::services::session_service::SessionService;
@@ -152,6 +46,7 @@ use tokio::sync::RwLock;
 // ============================================================================
 
 /// Helper function to parse UUID from string
+#[allow(dead_code)]
 fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, String> {
     uuid::Uuid::parse_str(user_id).map_err(|_| format!("Invalid user ID format: {}", user_id))
 }
@@ -165,6 +60,7 @@ pub struct AuthenticatedUser {
 }
 
 /// Convert database Identity to API UserDetailsResponse
+#[allow(dead_code)]
 fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
     UserDetailsResponse {
         user_id: identity.id.to_string(),
@@ -354,25 +250,12 @@ pub fn create_router(state: ApiState) -> Router {
         // Investor Management endpoints
         .route(
             paths::REGISTER_INVESTOR,
-            post(crate::handlers::merchants::merchants::register_investor_endpoint),
+            post(crate::handlers::merchants::companies::register_investor_endpoint),
         )
         .route(
             paths::INVESTOR_PROFILE,
-            get(crate::handlers::merchants::merchants::get_investor_profile_endpoint),
-        )
-        // Merchant Management endpoints
-        .route(
-            paths::REGISTER_MERCHANT,
-            post(crate::handlers::merchants::merchants::register_merchant_endpoint),
-        )
-        .route(
-            paths::MERCHANT_PROFILE,
-            get(crate::handlers::merchants::merchants::get_merchant_profile_endpoint)
-                .put(crate::handlers::merchants::merchants::update_merchant_profile_endpoint),
-        )
-        .route(
-            paths::INVESTOR_PROFILE,
-            put(crate::handlers::merchants::merchants::update_investor_profile_endpoint),
+            get(crate::handlers::merchants::companies::get_investor_profile_endpoint)
+                .put(crate::handlers::merchants::companies::update_investor_profile_endpoint),
         )
         // User Balance & Transaction endpoints
         .route(
@@ -429,34 +312,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::USER_ACCOUNT_FINANCIAL,
             get(get_account_financial_transactions),
-        )
-        // Pool Financial Transactions
-        .route(paths::POOL_FINANCIAL_FUND, post(record_pool_funding))
-        .route(paths::POOL_FINANCIAL_WITHDRAW, post(record_pool_withdrawal))
-        .route(
-            paths::POOL_FINANCIAL_TRANSACTIONS,
-            get(get_pool_financial_transactions),
-        )
-        .route(
-            paths::USER_POOL_FINANCIAL,
-            get(get_user_pool_financial_transactions),
-        )
-        // Credit Line Financial Transactions
-        .route(
-            paths::CREDIT_LINE_FINANCIAL_DRAW,
-            post(record_credit_line_draw),
-        )
-        .route(
-            paths::CREDIT_LINE_FINANCIAL_PAYMENT,
-            post(record_credit_line_payment),
-        )
-        .route(
-            paths::CREDIT_LINE_FINANCIAL_TRANSACTIONS,
-            get(get_credit_line_financial_transactions),
-        )
-        .route(
-            paths::MERCHANT_CREDIT_LINE_FINANCIAL,
-            get(get_merchant_credit_line_financial_transactions),
         )
         // Unified Financial Views
         .route(
@@ -545,102 +400,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::DEAL_PAYMENTS,
             get(crate::handlers::deals::deals::get_deal_payment_history_endpoint),
-        )
-        // ========================================================================
-        // LIQUIDITY POOL QUERY ENDPOINTS
-        // ========================================================================
-        .route(paths::POOLS, get(list_pools).post(create_pool))
-        .route(
-            paths::POOL_BY_ID,
-            get(get_pool_details).put(update_pool_status),
-        )
-        .route(paths::POOL_DEPOSIT, post(deposit_to_pool))
-        .route(paths::POOL_UTILIZATION, get(get_pool_utilization))
-        .route(paths::POOL_TRANSACTIONS, get(get_pool_transactions))
-        .route(
-            paths::POOL_TRANSACTION_HISTORY,
-            get(get_pool_transaction_history),
-        )
-        // ========================================================================
-        // POOL BOROUGH LIMIT ENDPOINTS
-        // ========================================================================
-        .route(
-            paths::POOL_BOROUGH_LIMITS,
-            get(get_borough_limits).put(set_borough_limit),
-        )
-        .route(
-            paths::POOL_BOROUGH_LIMIT_BY_BOROUGH,
-            delete(delete_borough_limit),
-        )
-        .route(paths::POOL_BOROUGH_SUMMARY, get(get_borough_summary))
-        .route(paths::POOL_BOROUGH_VALIDATION, get(validate_borough_limit))
-        // ========================================================================
-        // POOL METRICS ENDPOINTS
-        // ========================================================================
-        .route(paths::POOL_METRICS_OVERVIEW, get(get_pool_metrics_overview))
-        .route(
-            paths::POOL_METRICS_INVESTOR,
-            get(get_investor_pool_metrics_overview),
-        )
-        // Investor Query Endpoints
-        .route(paths::INVESTOR_DASHBOARD, get(get_investor_dashboard))
-        .route(
-            paths::INVESTOR_POOL_SUMMARIES,
-            get(get_investor_pool_summaries),
-        )
-        .route(
-            paths::INVESTOR_POOL_METRICS,
-            get(get_investor_pool_metrics_handler),
-        )
-        /* .route(
-            paths::INVESTOR_METRICS,
-            get(get_enhanced_investor_metrics_handler),
-        ) */
-        // Analytics Endpoints
-        .route(paths::ANALYTICS_MARKET_OVERVIEW, get(get_market_overview))
-        .route(paths::ANALYTICS_POOL_PERFORMANCE, get(get_pool_performance))
-        // ========================================================================
-        // MERCHANT TURNOVER ENDPOINTS
-        // ========================================================================
-        .route(
-            paths::MERCHANT_TURNOVER,
-            post(crate::handlers::merchants::turnover::create_turnover_endpoint),
-        )
-        .route(
-            paths::MERCHANT_TURNOVER,
-            get(crate::handlers::merchants::turnover::get_turnover_endpoint),
-        )
-        .route(
-            paths::MERCHANT_TURNOVER_BY_DATE,
-            put(crate::handlers::merchants::turnover::update_turnover_endpoint),
-        )
-        .route(
-            paths::MERCHANT_TURNOVER_ANALYTICS,
-            get(crate::handlers::merchants::turnover::get_turnover_analytics_endpoint),
-        )
-        .route(
-            paths::MERCHANT_PROFILE_COMPLETION,
-            get(crate::handlers::merchants::turnover::get_profile_completion_endpoint),
-        )
-        // ========================================================================
-        // CREDIT LINE ENDPOINTS
-        // ========================================================================
-        .route(paths::CREDIT_LINES, get(list_credit_line_requests))
-        .route(
-            paths::CREDIT_LINES_AVAILABLE_POOLS,
-            get(browse_available_pools),
-        )
-        .route(
-            paths::CREDIT_LINES_ELIGIBILITY,
-            get(check_credit_eligibility),
-        )
-        .route(
-            paths::CREDIT_LINES_REQUEST,
-            post(submit_credit_line_request),
-        )
-        .route(
-            paths::CREDIT_LINES_ACTIVE,
-            get(list_active_credit_lines_with_pool_details),
         )
         // ========================================================================
         // CONTRACT CONFIGURATION ENDPOINTS
@@ -744,9 +503,25 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DOCUMENT_AUDIT,
             get(document_handlers::get_audit_logs),
         )
-        .route(paths::DOCUMENT_HEALTH, get(document_handlers::health_check))
+        .route(
+            paths::DOCUMENT_HEALTH,
+            get(document_handlers::document_service_health_check),
+        )
         // AI Analysis endpoints
         .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
+        // Faucet endpoints (local/staging only)
+        .route(
+            paths::FAUCET_INFO,
+            get(crate::handlers::faucet::get_faucet_info),
+        )
+        .route(
+            paths::FAUCET_STATUS,
+            get(crate::handlers::faucet::check_faucet_status),
+        )
+        .route(
+            paths::FAUCET_CONFIG,
+            get(crate::handlers::faucet::get_faucet_config),
+        )
         .with_state(state)
 }
 

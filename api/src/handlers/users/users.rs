@@ -9,7 +9,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
     response::Json,
 };
 use chrono::{DateTime, Utc};
@@ -18,15 +18,13 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::config::paths;
 use crate::config::types::{ApiState, UserType};
 use arda_credit_db::{
     get_deposits_by_user_address, get_identity_by_id, get_invite_code_info,
     get_user_balance_by_address, get_user_balance_by_id, register_or_reregister_user,
-    store_ads_state_commit, submit_kyc_data, update_identity_profile, update_kyc_status,
-    use_invite_code, Identity, RegisterResult,
+    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code, Identity,
+    RegisterResult,
 };
-use sqlx::Error as SqlxError;
 
 // ============================================================================
 // USER MANAGEMENT TYPES (MOVED FROM rest.rs)
@@ -213,7 +211,7 @@ fn identity_to_register_response(identity: Identity) -> RegisterUserResponse {
         (status = 409, description = "User with this email already exists"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn register_user_endpoint(
@@ -392,7 +390,7 @@ pub async fn register_user_endpoint(
         (status = 404, description = "User not found"),
         (status = 500, description = "Internal server error")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_details_endpoint(
@@ -696,7 +694,7 @@ pub async fn delete_user_endpoint(
     params(
         ("address" = String, Path, description = "Wallet address")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_balance_by_address_endpoint(
@@ -742,7 +740,7 @@ pub async fn get_user_balance_by_address_endpoint(
     params(
         ("user_id" = String, Path, description = "User ID (UUID)")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_balance_by_id_endpoint(
@@ -806,7 +804,7 @@ pub async fn get_user_balance_by_id_endpoint(
     params(
         ("user_id" = String, Path, description = "User ID (UUID)")
     ),
-    tag = "User Management"
+    tag = "Users"
 )]
 #[instrument(skip(state), level = "info")]
 pub async fn get_user_transactions_endpoint(
