@@ -7,8 +7,16 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 
 # Copy dependency manifests for all workspace members
+# (Required by Cargo workspace even if we only build db package)
+COPY api/Cargo.toml ./api/
+COPY cli/Cargo.toml ./cli/
 COPY db/Cargo.toml ./db/
+COPY ethereum-client/Cargo.toml ./ethereum-client/
 COPY lib/Cargo.toml ./lib/
+COPY program/Cargo.toml ./program/
+COPY script/Cargo.toml ./script/
+COPY scripts/Cargo.toml ./scripts/
+COPY scripts/create-user-magic-link/Cargo.toml ./scripts/create-user-magic-link/
 
 # Copy source code for required crates
 COPY lib/ ./lib/
