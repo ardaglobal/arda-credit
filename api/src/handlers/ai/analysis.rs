@@ -695,7 +695,7 @@ pub fn create_ai_analysis_router() -> Router<ApiState> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::ai_analysis_service::{ChangeCategory, ChangeType, ImpactLevel};
+    use crate::services::ai_analysis_service::ChangeCategory;
 
     #[test]
     fn test_focus_areas_parsing() {

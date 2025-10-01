@@ -221,7 +221,6 @@ mod tests {
     async fn test_balance_verification_service() -> sqlx::Result<()> {
         let pool = init_db().await?;
         let service = BalanceVerificationService::new(pool.clone());
-        let wallet_address = "0x1234567890123456789012345678901234567890";
 
         // Create a test user with linked wallet
         let timestamp = std::time::SystemTime::now()

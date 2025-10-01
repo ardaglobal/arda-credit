@@ -533,7 +533,7 @@ pub fn document_operation_to_loan_transaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::document::{AccessLevel, ApprovalStatus, DocumentStatus, DocumentType};
+    use crate::document::DocumentType;
 
     fn create_test_document() -> Document {
         let document_id = [1u8; 32];

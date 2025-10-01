@@ -1,4 +1,4 @@
-use arda_credit_db::db::*;
+// use arda_credit_db::db::*; // Unused import
 use rust_decimal::Decimal;
 use sqlx::PgPool;
 use std::env;

@@ -3,7 +3,7 @@
 //! This module contains comprehensive integration tests for the CLI functionality,
 //! following Rust best practices for test organization.
 
-use cli::{cli::run_cli, CliConfig};
+use cli::CliConfig;
 use eyre::Result;
 use std::env;
 

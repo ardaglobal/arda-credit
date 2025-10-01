@@ -8,21 +8,21 @@
 //!
 //! Tests both API endpoints and CLI commands to ensure complete functionality.
 
-use std::collections::HashMap;
-use std::time::Duration;
+// use std::collections::HashMap; // Unused
+// use std::time::Duration; // Unused
 
 use reqwest::Client;
 use serde_json::json;
 use sqlx::PgPool;
-use tokio::time::sleep;
+// use tokio::time::sleep; // Unused
 
 use api::config::types::UserType;
-use arda_credit_db::{get_identity_by_id, get_invite_code_info};
+use arda_credit_db::get_invite_code_info;
 
 /// Test configuration
 struct TestConfig {
     base_url: String,
-    test_emails: Vec<String>,
+    _test_emails: Vec<String>,
 }
 
 /// Test user data for different user types
@@ -48,7 +48,7 @@ mod integration_tests {
 
         let config = TestConfig {
             base_url: "http://localhost:8080".to_string(),
-            test_emails: vec![
+            _test_emails: vec![
                 "matt@arda.xyz".to_string(),
                 "investor-test@arda.xyz".to_string(),
                 "originator-test@arda.xyz".to_string(),
@@ -80,7 +80,7 @@ mod integration_tests {
     }
 
     /// Test 1: Verify database setup and 2025 invite codes exist
-    async fn test_database_setup(config: &TestConfig) {
+    async fn test_database_setup(_config: &TestConfig) {
         println!("📋 Test 1: Verifying database setup and invite codes...");
 
         // Connect to database (assuming it's running)
@@ -208,7 +208,7 @@ mod integration_tests {
 
         assert_eq!(response.status(), 200, "Magic link request should succeed");
 
-        let response_json: serde_json::Value = response
+        let _response_json: serde_json::Value = response
             .json()
             .await
             .expect("Failed to parse magic link response");
@@ -312,7 +312,7 @@ mod integration_tests {
     }
 
     /// Test 5: CLI commands
-    async fn test_cli_commands(config: &TestConfig) {
+    async fn test_cli_commands(_config: &TestConfig) {
         println!("💻 Test 5: Testing CLI commands...");
 
         use std::process::Command;
@@ -379,7 +379,7 @@ mod integration_tests {
     }
 
     /// Test 6: Database state verification
-    async fn verify_database_state(config: &TestConfig) {
+    async fn verify_database_state(_config: &TestConfig) {
         println!("🗄️  Test 6: Verifying database state...");
 
         // Connect to database

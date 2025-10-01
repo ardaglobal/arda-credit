@@ -778,7 +778,6 @@ fn extract_claims(headers: &HeaderMap) -> Result<Claims, DocumentServiceError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::StatusCode;
 
     #[test]
     fn test_error_response_serialization() {
@@ -791,20 +790,5 @@ mod tests {
         let serialized = serde_json::to_string(&error).unwrap();
         assert!(serialized.contains("test_error"));
         assert!(serialized.contains("Test error message"));
-    }
-
-    #[test]
-    fn test_document_service_error_status_codes() {
-        let access_denied = DocumentServiceError::AccessDenied {
-            message: "Access denied".to_string(),
-        };
-        let response = access_denied.into_response();
-        // Would need to extract status code from response in real test
-
-        let not_found = DocumentServiceError::DocumentNotFound {
-            document_id: Uuid::new_v4(),
-        };
-        let response = not_found.into_response();
-        // Would need to extract status code from response in real test
     }
 }

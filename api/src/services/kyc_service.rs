@@ -85,7 +85,7 @@ impl KycValidationService {
 mod tests {
     use super::*;
     use arda_credit_db::{init_db, register_or_reregister_user, submit_kyc_data};
-    use chrono::Utc;
+
     #[tokio::test]
     async fn test_kyc_validation_service() -> sqlx::Result<()> {
         let pool = init_db().await?;
