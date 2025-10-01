@@ -522,6 +522,10 @@ pub fn create_router(state: ApiState) -> Router {
             paths::FAUCET_CONFIG,
             get(crate::handlers::faucet::get_faucet_config),
         )
+        .route(
+            paths::FAUCET_REQUEST,
+            post(crate::handlers::faucet::request_faucet_funds),
+        )
         .with_state(state)
 }
 
