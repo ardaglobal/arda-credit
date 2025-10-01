@@ -95,7 +95,7 @@ server:
   enabled: true
   
   # Server environment (local, staging, sandbox, production)
-  environment: "production"
+  environment: "staging"
   
   image:
     registry: ghcr.io/ardaglobal
