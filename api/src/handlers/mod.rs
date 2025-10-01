@@ -16,21 +16,19 @@
 
 pub mod ai;
 pub mod auth;
+pub mod companies;
 pub mod core;
-pub mod credit;
 pub mod deals;
 pub mod faucet;
 pub mod finance;
-pub mod merchants;
 pub mod users;
 
 // Re-export all handler functions for backward compatibility
 pub use ai::*;
 pub use auth::*;
+pub use companies::*;
 pub use core::*;
-pub use credit::*;
 pub use deals::*;
 pub use faucet::*;
 pub use finance::*;
-pub use merchants::*;
 pub use users::*;

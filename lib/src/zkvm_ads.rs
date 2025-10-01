@@ -12,10 +12,10 @@ use sha2::{Digest, Sha256};
 // Re-export transaction prefixes constants to ensure consistency
 pub mod transaction_prefixes {
     /// Loan origination transactions: 1,000,000,000 - 1,999,999,999
-    pub const LOAN_ORIGINATION: i64 = 1_000_000_000;
+    pub const DEAL_ORIGINATION: i64 = 1_000_000_000;
 
     /// Loan closeout transactions: 2,000,000,000 - 2,999,999,999
-    pub const LOAN_CLOSEOUT: i64 = 2_000_000_000;
+    pub const DEAL_CLOSEOUT: i64 = 2_000_000_000;
 
     /// Default/legacy transactions (for backward compatibility): 0 - 999,999,999
     pub const LEGACY_DEFAULT: i64 = 0;

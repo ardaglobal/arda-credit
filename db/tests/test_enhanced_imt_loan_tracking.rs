@@ -1,5 +1,5 @@
-use db::error::DbError;
-use db::merkle_tree::*;
+use db::ads::merkle_tree::*;
+use db::DbError;
 use sqlx::PgPool;
 use uuid::Uuid;
 

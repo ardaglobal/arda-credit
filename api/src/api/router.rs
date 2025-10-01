@@ -250,12 +250,12 @@ pub fn create_router(state: ApiState) -> Router {
         // Investor Management endpoints
         .route(
             paths::REGISTER_INVESTOR,
-            post(crate::handlers::merchants::companies::register_investor_endpoint),
+            post(crate::handlers::companies::companies::register_investor_endpoint),
         )
         .route(
             paths::INVESTOR_PROFILE,
-            get(crate::handlers::merchants::companies::get_investor_profile_endpoint)
-                .put(crate::handlers::merchants::companies::update_investor_profile_endpoint),
+            get(crate::handlers::companies::companies::get_investor_profile_endpoint)
+                .put(crate::handlers::companies::companies::update_investor_profile_endpoint),
         )
         // User Balance & Transaction endpoints
         .route(

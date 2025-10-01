@@ -21,13 +21,13 @@ See the **[Magic Link Authentication Guide](./magic-link-authentication.md)** fo
 
 ### Key Changes
 
-| Old (Password-based) | New (Magic Link) |
-|---------------------|------------------|
-| `POST /auth/login` | `POST /auth/magic-link` |
-| Password + Email | Email only |
-| Bearer tokens | Session cookies |
-| JWT validation | Cookie-based sessions |
-| Stateless | Session storage |
+| Old (Password-based) | New (Magic Link)        |
+| -------------------- | ----------------------- |
+| `POST /auth/login`   | `POST /auth/magic-link` |
+| Password + Email     | Email only              |
+| Bearer tokens        | Session cookies         |
+| JWT validation       | Cookie-based sessions   |
+| Stateless            | Session storage         |
 
 ### Benefits
 
@@ -41,7 +41,6 @@ See the **[Magic Link Authentication Guide](./magic-link-authentication.md)** fo
 ### Authentication Endpoints
 - `POST /api/auth/login` - Login with email/password
 - `POST /api/auth/logout` - Logout (for logging purposes)
-- `POST /api/ccr/user` - Register new user
 
 ### Protected Endpoints
 All other endpoints require authentication except:
@@ -101,18 +100,18 @@ class AuthService {
         }
 
         const data = await response.json();
-        
+
         // Store token and user data
         localStorage.setItem(this.tokenKey, data.access_token);
         localStorage.setItem(this.userKey, JSON.stringify(data.user));
-        
+
         return data;
     }
 
     // Logout user
     async logout() {
         const token = this.getToken();
-        
+
         if (token) {
             try {
                 await fetch(`${this.apiBaseUrl}/auth/logout`, {
@@ -162,7 +161,7 @@ class AuthService {
     // Make authenticated API request
     async authenticatedFetch(url, options = {}) {
         const token = this.getToken();
-        
+
         if (!token) {
             throw new Error('No authentication token available');
         }
@@ -300,9 +299,9 @@ const LoginForm = () => {
     return (
         <form onSubmit={handleSubmit} className="auth-form">
             <h2>Login</h2>
-            
+
             {error && <div className="error-message">{error}</div>}
-            
+
             <div className="form-group">
                 <label htmlFor="email">Email:</label>
                 <input
@@ -314,7 +313,7 @@ const LoginForm = () => {
                     disabled={loading}
                 />
             </div>
-            
+
             <div className="form-group">
                 <label htmlFor="password">Password:</label>
                 <input
@@ -326,11 +325,11 @@ const LoginForm = () => {
                     disabled={loading}
                 />
             </div>
-            
+
             <button type="submit" disabled={loading}>
                 {loading ? 'Logging in...' : 'Login'}
             </button>
-            
+
             <div className="form-footer">
                 <p>Don't have an account? <a href="/register">Register here</a></p>
             </div>
@@ -393,9 +392,9 @@ const RegisterForm = () => {
     return (
         <form onSubmit={handleSubmit} className="auth-form">
             <h2>Register</h2>
-            
+
             {error && <div className="error-message">{error}</div>}
-            
+
             <div className="form-group">
                 <label htmlFor="email">Email:</label>
                 <input
@@ -407,7 +406,7 @@ const RegisterForm = () => {
                     disabled={loading}
                 />
             </div>
-            
+
             <div className="form-group">
                 <label htmlFor="userType">User Type:</label>
                 <select
@@ -421,7 +420,7 @@ const RegisterForm = () => {
                     <option value="admin">Admin</option>
                 </select>
             </div>
-            
+
             <div className="form-group">
                 <label htmlFor="password">Password:</label>
                 <input
@@ -434,7 +433,7 @@ const RegisterForm = () => {
                 />
                 <small>Password must be at least 8 characters with uppercase, lowercase, number, and special character.</small>
             </div>
-            
+
             <div className="form-group">
                 <label htmlFor="confirmPassword">Confirm Password:</label>
                 <input
@@ -446,11 +445,11 @@ const RegisterForm = () => {
                     disabled={loading}
                 />
             </div>
-            
+
             <button type="submit" disabled={loading}>
                 {loading ? 'Creating Account...' : 'Register'}
             </button>
-            
+
             <div className="form-footer">
                 <p>Already have an account? <a href="/login">Login here</a></p>
             </div>
@@ -501,7 +500,7 @@ class ApiClient {
 
     async get(endpoint) {
         const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`);
-        
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.message || `HTTP ${response.status}`);
@@ -653,7 +652,7 @@ export const useAuth = () => {
         token.value = data.access_token;
         user.value = data.user;
         localStorage.setItem('arda_access_token', data.access_token);
-        
+
         return data;
     };
 

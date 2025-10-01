@@ -4,8 +4,8 @@
 //! provides all the necessary components for Worker B to start their work.
 
 use chrono;
+use db::business::marketplace;
 use db::init_db;
-use db::marketplace;
 
 #[tokio::test]
 async fn test_marketplace_foundation_complete() {

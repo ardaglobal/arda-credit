@@ -255,17 +255,6 @@ fn default_limit() -> u32 {
         crate::handlers::ai::analysis::trigger_analysis,
         crate::handlers::ai::analysis::get_analytics_dashboard,
 
-        // Document Management endpoints
-        crate::handlers::merchants::documents::upload_document,
-        crate::handlers::merchants::documents::download_document,
-        crate::handlers::merchants::documents::list_documents,
-        crate::handlers::merchants::documents::verify_document,
-        crate::handlers::merchants::documents::get_audit_logs,
-
-        // Investor endpoints
-        crate::handlers::merchants::companies::register_investor_endpoint,
-        crate::handlers::merchants::companies::get_investor_profile_endpoint,
-        crate::handlers::merchants::companies::update_investor_profile_endpoint,
 
         // Faucet endpoints (local/staging only)
         crate::handlers::faucet::get_faucet_info,
@@ -320,11 +309,11 @@ fn default_limit() -> u32 {
         UserType,
 
         // Document types
-        crate::handlers::merchants::documents::DocumentUploadResponse,
-        crate::handlers::merchants::documents::DocumentDownloadHeaders,
-        crate::handlers::merchants::documents::DocumentVerificationResponse,
-        crate::handlers::merchants::documents::DocumentListResponse,
-        crate::handlers::merchants::documents::AuditLogsResponse,
+        crate::handlers::companies::documents::DocumentUploadResponse,
+        crate::handlers::companies::documents::DocumentDownloadHeaders,
+        crate::handlers::companies::documents::DocumentVerificationResponse,
+        crate::handlers::companies::documents::DocumentListResponse,
+        crate::handlers::companies::documents::AuditLogsResponse,
         crate::services::document_service::DocumentResponseDto,
         crate::services::document_service::DocumentAuditLogDto,
 
