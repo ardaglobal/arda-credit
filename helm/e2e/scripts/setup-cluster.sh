@@ -145,14 +145,14 @@ connect_registry_to_kind() {
 # Create Kind cluster
 create_cluster() {
     log_info "Creating Kind cluster '${CLUSTER_NAME}'..."
-    
+
     if ! kind create cluster --name="${CLUSTER_NAME}" --config="${KIND_CONFIG}"; then
         log_error "Failed to create Kind cluster"
         exit 1
     fi
-    
+
     log_success "Kind cluster '${CLUSTER_NAME}' created successfully"
-    
+
     # Wait for cluster to be ready
     log_info "Waiting for cluster to be ready..."
     kubectl wait --for=condition=Ready nodes --all --timeout=120s

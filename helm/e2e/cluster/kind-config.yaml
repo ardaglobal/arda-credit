@@ -21,7 +21,7 @@ networking:
 nodes:
   # Control plane node with port mappings for local access
   - role: control-plane
-    image: kindest/node:v1.33.0
+    image: kindest/node:v1.34.0@sha256:7416a61b42b1662ca6ca89f02028ac133a309a2a30ba309614e8ec94d976dc5a
     extraPortMappings:
       # App frontend (port 3000 -> NodePort 30000)
       - containerPort: 30000
@@ -38,7 +38,7 @@ nodes:
 
   # Single worker node for realistic multi-node behavior
   - role: worker
-    image: kindest/node:v1.33.0
+    image: kindest/node:v1.34.0@sha256:7416a61b42b1662ca6ca89f02028ac133a309a2a30ba309614e8ec94d976dc5a
 
 # Configure containerd to allow insecure registries
 containerdConfigPatches:
