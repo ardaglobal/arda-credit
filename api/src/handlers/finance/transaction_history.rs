@@ -239,12 +239,6 @@ async fn get_transaction_history_internal(
         transactions.extend(withdrawal_txs);
     }
 
-    // Get pool transactions (funding, withdrawals)
-    if should_include_transaction_type(&query.transaction_type, "pool") {
-        let pool_txs = get_pool_transactions_data(pool, &query, limit, offset).await?;
-        transactions.extend(pool_txs);
-    }
-
     // Sort all transactions by created_at descending
     transactions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 

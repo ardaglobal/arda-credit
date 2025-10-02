@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE nullifiers\n            SET\n                loan_operation_type = $1,\n                loan_id = $2,\n                user_id = $3,\n                operation_amount = $4,\n                operation_metadata = $5,\n                batch_id = $6\n            WHERE id = $7 AND is_active = true\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Jsonb",
+        "Int4",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e792e523eff703fa5ccb6294efd22b7c2ab51bda26d3070ff4de7abc0282d6ca"
+}

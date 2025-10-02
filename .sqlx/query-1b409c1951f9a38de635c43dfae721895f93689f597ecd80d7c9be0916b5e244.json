@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE identities\n        SET email_verified = true, email_verification_token = NULL, updated_at = $1\n        WHERE email_verification_token = $2\n          AND created_at > $3  -- Token expires after 7 days\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1b409c1951f9a38de635c43dfae721895f93689f597ecd80d7c9be0916b5e244"
+}

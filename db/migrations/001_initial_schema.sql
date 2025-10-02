@@ -6019,7 +6019,6 @@ VALUES
 INSERT INTO merchant_documents (merchant_id, document_type, document_url, status)
 VALUES ((SELECT id FROM merchants LIMIT 1), 'BANK_STATEMENT', '/uploads/bank_statement_202501.pdf', 'PENDING');
 */-- Create credit line request and approval system
--- Enables merchants to request credit lines with automated evaluation and pool matching
 
 -- ============================================================================
 -- CREATE CREDIT LINE REQUESTS TABLE

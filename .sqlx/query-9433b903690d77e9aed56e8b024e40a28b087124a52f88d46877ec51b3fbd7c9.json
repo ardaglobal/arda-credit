@@ -1,0 +1,84 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            dt.transfer_id,\n            dt.deal_id,\n            dt.from_investor_id,\n            dt.to_investor_id,\n            dt.purchase_price,\n            dt.transfer_status,\n            dt.transfer_date,\n            dt.completed_at,\n            dt.notes,\n            from_user.email as from_investor_email,\n            to_user.email as to_investor_email\n        FROM deal_transfers dt\n        JOIN identities from_user ON dt.from_investor_id = from_user.id\n        JOIN identities to_user ON dt.to_investor_id = to_user.id\n        WHERE dt.from_investor_id = $1 OR dt.to_investor_id = $1\n        ORDER BY dt.transfer_date DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "transfer_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "from_investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "to_investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "purchase_price",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "transfer_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "transfer_date",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 7,
+        "name": "completed_at",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 8,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "from_investor_email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "to_investor_email",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "9433b903690d77e9aed56e8b024e40a28b087124a52f88d46877ec51b3fbd7c9"
+}

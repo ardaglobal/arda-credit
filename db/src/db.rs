@@ -3910,7 +3910,6 @@ pub struct UserFinancialTransaction {
     pub currency: String,
     pub transaction_hash: Option<String>, // Can be NULL from view
     pub processed_at: DateTime<Utc>,      // NOT NULL from view
-    pub pool_id: Option<uuid::Uuid>,      // Can be NULL from view
     pub credit_line_id: Option<uuid::Uuid>, // Can be NULL from view
     pub description: String,              // NOT NULL from view (has COALESCE)
 }
@@ -3921,10 +3920,6 @@ pub struct UserFinancialSummary {
     pub total_deposits: rust_decimal::Decimal,
     pub total_withdrawals: rust_decimal::Decimal,
     pub net_account_flow: rust_decimal::Decimal,
-    pub total_pool_funding: rust_decimal::Decimal,
-    pub total_pool_withdrawals: rust_decimal::Decimal,
-    pub total_credit_line_payments: rust_decimal::Decimal,
-    pub total_credit_line_draws: rust_decimal::Decimal,
 }
 
 /// Request to create account financial transaction
@@ -4106,11 +4101,5 @@ pub async fn get_user_financial_summary(
         total_deposits: row.total_deposits.unwrap_or(rust_decimal::Decimal::ZERO),
         total_withdrawals: row.total_withdrawals.unwrap_or(rust_decimal::Decimal::ZERO),
         net_account_flow: row.net_account_flow.unwrap_or(rust_decimal::Decimal::ZERO),
-        total_credit_line_payments: row
-            .total_credit_line_payments
-            .unwrap_or(rust_decimal::Decimal::ZERO),
-        total_credit_line_draws: row
-            .total_credit_line_draws
-            .unwrap_or(rust_decimal::Decimal::ZERO),
     })
 }
