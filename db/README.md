@@ -156,9 +156,14 @@ All functions return `Result<T, sqlx::Error>` for proper error handling. Common 
 
 #### 1. Test ADS Integration
 ```bash
-# Submit transaction and trigger batch
-make cli ARGS="submit-transaction --amount 42"
-curl -X POST http://localhost:8080/api/v1/batches/trigger
+# Submit transaction and trigger batch via API
+curl -X POST http://localhost:8080/api/v1/transaction \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"amount":42}'
+
+curl -X POST http://localhost:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### 2. Debug Logging

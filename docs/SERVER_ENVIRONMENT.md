@@ -157,8 +157,9 @@ export SERVER_ENVIRONMENT=local
 # Start the API server
 make server
 
-# In another terminal, trigger a batch
-make cli ARGS="batch trigger --verbose"
+# In another terminal, trigger a batch via API
+curl -X POST http://localhost:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### Via Script (Direct)
@@ -181,8 +182,9 @@ export SINDRI_API_KEY=your_api_key_here
 # Start the API server
 make server
 
-# In another terminal, trigger a batch
-make cli ARGS="batch trigger --verbose"
+# In another terminal, trigger a batch via API
+curl -X POST http://localhost:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### Via Script (Direct)
