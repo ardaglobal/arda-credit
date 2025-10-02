@@ -532,25 +532,6 @@ async fn get_withdrawal_transactions(
     Ok(transactions)
 }
 
-fn extract_amount_from_pool_audit(
-    row: &sqlx::postgres::PgRow,
-    operation_type: &str,
-) -> (String, String) {
-    // Try to extract amount from JSON values
-    if let Ok(_old_values) = row.try_get::<Option<serde_json::Value>, _>("old_values") {
-        if let Ok(_new_values) = row.try_get::<Option<serde_json::Value>, _>("new_values") {
-            // This is a simplified extraction - in practice you'd parse the JSON to get actual amounts
-            return match operation_type {
-                "POOL_FUNDED" => ("0.00".to_string(), "inflow".to_string()),
-                "POOL_WITHDRAWN" => ("0.00".to_string(), "outflow".to_string()),
-                "POOL_MATCHED" => ("0.00".to_string(), "internal".to_string()),
-                _ => ("0.00".to_string(), "internal".to_string()),
-            };
-        }
-    }
-    ("0.00".to_string(), "internal".to_string())
-}
-
 async fn get_total_transaction_count(
     pool: &PgPool,
     query: &TransactionHistoryQuery,

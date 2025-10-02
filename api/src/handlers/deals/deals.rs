@@ -47,6 +47,10 @@ use arda_credit_db::{
     // get_marketplace_deal_stats, // was get_marketplace_loan_stats - TODO: implement if needed
     // get_user_deal_transfer_history, // was get_user_transfer_history (if exists) - TODO: implement if needed
 
+    // Enums for validation
+    DealNegotiationStatus,
+    DealPaymentStatus,
+
     // Transfer structs
     ExecuteTransferRequest,
     TransferValidationRequest,
@@ -59,18 +63,35 @@ use uuid::Uuid;
 
 /// Create new deal request (converted from CreateLoanRequest)
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "originator_id": "123e4567-e89b-12d3-a456-426614174000",
+    "investor_id": "123e4567-e89b-12d3-a456-426614174001",
+    "principal_amount": "50000",
+    "interest_rate_bps": 500,
+    "term_days": 365,
+    "loan_status": "originated",
+    "status": "draft"
+}))]
 pub struct CreateDealRequest {
     // was CreateLoanRequest
-    pub originator_id: String,               // was borrower_id
-    pub investor_id: String,                 // was lender_id
-    pub principal_amount: String,            // Amount in cents as string
-    pub interest_rate_bps: u16,              // Interest rate in basis points
-    pub term_days: Option<u32>,              // Optional deal term
-    pub loan_status: Option<String>, // Deal status: "originated", "active", "paid_off", "closed", "defaulted"
+    pub originator_id: String,    // was borrower_id
+    pub investor_id: String,      // was lender_id
+    pub principal_amount: String, // Amount in cents as string
+    pub interest_rate_bps: u16,   // Interest rate in basis points
+    pub term_days: Option<u32>,   // Optional deal term
+
+    /// Payment status. Valid values: originated, active, paid_off, closed, defaulted
+    #[schema(example = "originated")]
+    pub loan_status: Option<String>,
+
     pub metadata: Option<serde_json::Value>, // Optional additional data
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
-    pub status: Option<String>,         // Deal status: draft, active, closed, cancelled
-    pub industry: Option<String>,       // Industry sector for the deal
+
+    /// Negotiation status. Valid values: draft, under_review, negotiation, finalized, executed, funding_readiness, pending_funding, active, amendment, suspended, closed, cancelled
+    #[schema(example = "draft")]
+    pub status: Option<String>,
+
+    pub industry: Option<String>, // Industry sector for the deal
     pub document_ids: Option<Vec<String>>, // Array of document UUIDs associated with this deal
 
     // Marketplace-friendly fields
@@ -143,14 +164,26 @@ pub struct DealStatsResponse {
 
 /// Update deal request (converted from UpdateLoanRequest)
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "status": "under_review",
+    "loan_status": "active"
+}))]
 pub struct UpdateDealRequest {
     // was UpdateLoanRequest
     pub principal_amount: Option<String>, // Amount in cents as string
     pub outstanding_balance: Option<String>, // Outstanding balance in cents as string
     pub interest_rate_bps: Option<u16>,   // Interest rate in basis points
-    pub loan_status: Option<String>, // "originated", "active", "paid_off", "closed", "defaulted"
+
+    /// Payment status. Valid values: originated, active, paid_off, closed, defaulted
+    #[schema(example = "active")]
+    pub loan_status: Option<String>,
+
     pub maturity_date: Option<Option<String>>, // Optional maturity date (ISO 8601), Option<Option<T>> to handle NULL
     pub custom_deal_id: Option<Option<String>>, // Optional custom deal ID, Option<Option<T>> to handle NULL
+
+    /// Negotiation status. Valid values: draft, under_review, negotiation, finalized, executed, funding_readiness, pending_funding, active, amendment, suspended, closed, cancelled
+    #[schema(example = "under_review")]
+    pub status: Option<String>,
 
     // Marketplace-friendly fields
     pub title: Option<Option<String>>,
@@ -447,6 +480,26 @@ pub async fn create_deal_endpoint(
     } else {
         None
     };
+
+    // Validate loan_status if provided
+    if let Some(ref loan_status_str) = request.loan_status {
+        if DealPaymentStatus::from_db(loan_status_str).is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid loan_status '{}'. Valid values: originated, active, paid_off, closed, defaulted", loan_status_str),
+            ));
+        }
+    }
+
+    // Validate status (negotiation status) if provided
+    if let Some(ref status_str) = request.status {
+        if DealNegotiationStatus::from_db(status_str).is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid status '{}'. Valid values: draft, under_review, negotiation, finalized, executed, funding_readiness, pending_funding, active, amendment, suspended, closed, cancelled", status_str),
+            ));
+        }
+    }
 
     // Create deal in database
     let deal = create_deal(
@@ -951,6 +1004,26 @@ pub async fn update_deal_endpoint(
         None
     };
 
+    // Validate loan_status if provided
+    if let Some(ref loan_status_str) = request.loan_status {
+        if DealPaymentStatus::from_db(loan_status_str).is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid loan_status '{}'. Valid values: originated, active, paid_off, closed, defaulted", loan_status_str),
+            ));
+        }
+    }
+
+    // Validate status (negotiation status) if provided
+    if let Some(ref status_str) = request.status {
+        if DealNegotiationStatus::from_db(status_str).is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid status '{}'. Valid values: draft, under_review, negotiation, finalized, executed, funding_readiness, pending_funding, active, amendment, suspended, closed, cancelled", status_str),
+            ));
+        }
+    }
+
     // Update the deal in the database
     let updated_deal = update_deal(
         // was update_loan
@@ -962,6 +1035,7 @@ pub async fn update_deal_endpoint(
         request.loan_status.as_deref(),
         maturity_date,
         request.custom_deal_id.as_ref().map(|opt| opt.as_deref()),
+        request.status.as_deref(), // Deal negotiation status
         request.title.as_ref().map(|opt| opt.as_deref()),
         request.description.as_ref().map(|opt| opt.as_deref()),
         request.risk_level.as_ref().map(|opt| opt.as_deref()),
@@ -999,6 +1073,9 @@ pub async fn update_deal_endpoint(
             }
             if request.custom_deal_id.is_some() {
                 updated_fields.push("custom_deal_id".to_string());
+            }
+            if request.status.is_some() {
+                updated_fields.push("status".to_string());
             }
 
             // Convert document IDs from JSON to Vec<String> for response
