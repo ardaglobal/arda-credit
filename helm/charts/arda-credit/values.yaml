@@ -94,6 +94,9 @@ postgresql:
 server:
   enabled: true
   
+  # Server environment (local, staging, sandbox, production)
+  environment: "staging"
+  
   image:
     registry: ghcr.io/ardaglobal
     repository: arda-credit
@@ -287,6 +290,11 @@ ingress:
     - host: app.stag.aws.arda.xyz
       paths:
         - path: /api
+          pathType: Prefix
+          service:
+            name: server
+            port: 8080
+        - path: /api-docs
           pathType: Prefix
           service:
             name: server
@@ -782,6 +790,67 @@ dataPopulator:
       cpu: 100m
       memory: 256Mi
   
+  # Node scheduling (inherits from global if not specified)
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Anvil - Local Ethereum devnet (for local/staging environments)
+anvil:
+  # Enable Anvil service (default: true for local/staging, set to false for production)
+  enabled: true
+
+  # Anvil image configuration
+  image:
+    repository: ghcr.io/foundry-rs/foundry
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # Replica count
+  replicaCount: 1
+
+  # Anvil configuration
+  chainId: "31337"
+  blockTime: "2"
+
+  # State persistence configuration
+  state:
+    enabled: true
+    path: "/anvil-state"
+    file: "state.json"
+    interval: "10"
+    persistence:
+      enabled: true
+      size: "1Gi"
+      accessMode: "ReadWriteOnce"
+      storageClass: "gp2"  # Use gp2 for EKS, leave empty for cluster default
+
+  # Service configuration
+  service:
+    type: NodePort
+    port: 8545
+    nodePort: 30005
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Security context
+  podSecurityContext: {}
+    # fsGroup: 2000
+  securityContext: {}
+    # runAsNonRoot: true
+    # runAsUser: 1000
+
+  # Resource requirements for Anvil
+  # Anvil is lightweight - typical usage: 100-200MB RAM, minimal CPU
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
   # Node scheduling (inherits from global if not specified)
   nodeSelector: {}
   tolerations: []

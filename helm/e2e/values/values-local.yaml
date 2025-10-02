@@ -72,6 +72,9 @@ postgresql:
 server:
   enabled: true
   
+  # Server environment for local development
+  environment: "local"
+  
   # Local registry configuration - use local registry
   image:
     registry: "kind-registry:5000"  # Local container registry (internal network name)
@@ -198,11 +201,15 @@ secrets:
   # Reference the external secret created by setup script
   existingSecret: "arda-credit-secrets-external"
 
+  # Secret keys configuration
+  # Note: ethereumRpcUrl will be templated to point to the Anvil service
+  # ethereumWalletPrivateKey should be set in the external secret
+  # For local development, use Anvil's default test account private key
   secretKeys:
     sindriApiKey: "sindri-api-key"
-    ethereumRpcUrl: "ethereum-rpc-url"
+    ethereumRpcUrl: "ethereum-rpc-url"  # Will be set from external secret
     ethereumContractAddress: "ethereum-contract-address"
-    ethereumWalletPrivateKey: "ethereum-wallet-private-key"
+    ethereumWalletPrivateKey: "ethereum-wallet-private-key"  # Must be set in external secret (use Anvil test key: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80)
     ethereumDeployerAddress: "ethereum-deployer-address"
     signozIngestionKey: "signoz-ingestion-key"
     awsAccessKeyId: "aws-access-key-id"
@@ -482,3 +489,16 @@ dataPopulator:
     requests:
       cpu: 50m
       memory: 128Mi
+
+# Anvil - Local Ethereum devnet (enabled for local development)
+anvil:
+  enabled: true
+
+  # Use ephemeral storage for faster testing
+  state:
+    persistence:
+      enabled: false
+
+  # Expose via NodePort for direct access
+  service:
+    nodePort: 30005

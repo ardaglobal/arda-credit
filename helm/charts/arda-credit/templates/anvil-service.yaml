@@ -1,0 +1,21 @@
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-anvil
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: anvil
+spec:
+  type: {{ .Values.anvil.service.type }}
+  ports:
+    - port: {{ .Values.anvil.service.port }}
+      targetPort: rpc
+      protocol: TCP
+      name: rpc
+      {{- if eq .Values.anvil.service.type "NodePort" }}
+      nodePort: {{ .Values.anvil.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "arda-credit.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: anvil

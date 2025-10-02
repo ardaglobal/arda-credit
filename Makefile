@@ -789,6 +789,18 @@ kind-setup:
 	@command -v kind >/dev/null 2>&1 || { echo "❌ kind not found. Run 'make install' to install dependencies."; exit 1; }
 	@command -v kubectl >/dev/null 2>&1 || { echo "❌ kubectl not found. Run 'make install' to install dependencies."; exit 1; }
 	@command -v helm >/dev/null 2>&1 || { echo "❌ helm not found. Run 'make install' to install dependencies."; exit 1; }
+	@KIND_VERSION=$$(kind --version 2>/dev/null | awk '{print $$3}' | sed 's/v//'); \
+	REQUIRED_VERSION="0.30.0"; \
+	if [ -z "$$KIND_VERSION" ]; then \
+		echo "❌ Unable to determine Kind version"; \
+		exit 1; \
+	fi; \
+	if [ "$$(printf '%s\n' "$$REQUIRED_VERSION" "$$KIND_VERSION" | sort -V | head -n1)" != "$$REQUIRED_VERSION" ]; then \
+		echo "❌ Kind version $$KIND_VERSION is too old. Required: >=$$REQUIRED_VERSION"; \
+		echo "💡 Run 'brew upgrade kind' to upgrade Kind"; \
+		exit 1; \
+	fi; \
+	echo "✅ Kind version $$KIND_VERSION meets requirement (>=$$REQUIRED_VERSION)"
 	cd helm/e2e && ./scripts/setup-cluster.sh
 	@echo ""
 	@echo "✅ Kind cluster setup complete!"

@@ -1,0 +1,19 @@
+
+{{- if and .Values.anvil.enabled .Values.anvil.state.enabled .Values.anvil.state.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-anvil-pvc
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: anvil
+spec:
+  accessModes:
+    - {{ .Values.anvil.state.persistence.accessMode | default "ReadWriteOnce" }}
+  resources:
+    requests:
+      storage: {{ .Values.anvil.state.persistence.size | default "1Gi" }}
+  {{- if .Values.anvil.state.persistence.storageClass }}
+  storageClassName: {{ .Values.anvil.state.persistence.storageClass }}
+  {{- end }}
+{{- end }}

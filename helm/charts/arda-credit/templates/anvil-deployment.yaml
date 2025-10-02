@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "arda-credit.fullname" . }}-anvil
+  labels:
+    {{- include "arda-credit.labels" . | nindent 4 }}
+    app.kubernetes.io/component: anvil
+spec:
+  {{- if not .Values.anvil.enabled }}
+  replicas: 0
+  {{- else }}
+  replicas: {{ .Values.anvil.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "arda-credit.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: anvil
+  template:
+    metadata:
+      labels:
+        {{- include "arda-credit.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: anvil
+      {{- with .Values.anvil.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "arda-credit.fullname" . }}
+      securityContext:
+        {{- toYaml .Values.anvil.podSecurityContext | nindent 8 }}
+      containers:
+        - name: anvil
+          securityContext:
+            {{- toYaml .Values.anvil.securityContext | nindent 12 }}
+          image: "{{ .Values.anvil.image.repository }}:{{ .Values.anvil.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.anvil.image.pullPolicy }}
+          command:
+            - anvil
+            - --host
+            - 0.0.0.0
+            - --chain-id
+            - "{{ .Values.anvil.chainId }}"
+            - --block-time
+            - "{{ .Values.anvil.blockTime }}"
+            {{- if .Values.anvil.state.enabled }}
+            - --state
+            - {{ .Values.anvil.state.path }}/{{ .Values.anvil.state.file }}
+            - --state-interval
+            - "{{ .Values.anvil.state.interval }}"
+            {{- end }}
+          ports:
+            - name: rpc
+              containerPort: 8545
+              protocol: TCP
+          livenessProbe:
+            tcpSocket:
+              port: rpc
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: rpc
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+          resources:
+            {{- toYaml .Values.anvil.resources | nindent 12 }}
+          {{- if .Values.anvil.state.enabled }}
+          volumeMounts:
+            - name: anvil-state
+              mountPath: {{ .Values.anvil.state.path }}
+          {{- end }}
+      {{- if .Values.anvil.state.enabled }}
+      volumes:
+        - name: anvil-state
+          {{- if .Values.anvil.state.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "arda-credit.fullname" . }}-anvil-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- end }}
+      {{- with .Values.anvil.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.anvil.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.anvil.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
