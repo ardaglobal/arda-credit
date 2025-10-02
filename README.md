@@ -50,7 +50,6 @@ Public Data (Verifiable):
 
 ### System Components
 - **`program/`** - SP1 zkVM program for loan transaction processing
-- **`cli/`** - Complete loan workflow interface + trustless verification
 - **`api/`** - Production server with KYC, loan processing, and ZK proof generation
 - **`db/`** - PostgreSQL with users, loans, KYC data, and Merkle tree state
 - **`contracts/`** - Solidity contracts for on-chain loan state verification
@@ -68,7 +67,7 @@ Public Data (Verifiable):
 
 **🚀 Complete Setup**: See [`docs/deployment/development-setup.md`](docs/deployment/development-setup.md) for detailed setup instructions.
 
-**💡 Test the Complete Workflow**: See [`AGENTS.md#loan-workflow-examples`](AGENTS.md#loan-workflow-examples) for comprehensive CLI workflow examples.
+**💡 Test the Complete Workflow**: See [`AGENTS.md#deal-workflow-examples`](AGENTS.md#deal-workflow-examples) for comprehensive API workflow examples.
 
 **🔧 Development Commands**:
 ```bash
@@ -169,7 +168,6 @@ Perfect for testing the borough percentage system, credit line requests, and poo
 
 ### 🏗️ Component Documentation
 - **[`api/src/README.md`](./api/src/README.md)** - API server architecture and standards
-- **[`cli/README.md`](./cli/README.md)** - CLI tool structure and conventions
 - **[`db/README.md`](./db/README.md)** - Database layer and ADS integration
 - **[`contracts/README.md`](./contracts/README.md)** - Smart contract deployment and testing
 

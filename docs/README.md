@@ -79,7 +79,6 @@ For detailed implementation details, refer to these component READMEs:
 
 ### System Components
 - **[`api/src/README.md`](../api/src/README.md)** - API server architecture and endpoints
-- **[`cli/README.md`](../cli/README.md)** - CLI structure, commands, and development standards
 - **[`contracts/README.md`](../contracts/README.md)** - Smart contract deployment and testing
 - **[`db/README.md`](../db/README.md)** - Database schema and operations
 - **[`lib/`](../lib/)** - Shared computation logic and ZKVM compatibility
@@ -142,7 +141,7 @@ Before committing documentation changes:
 1. **Project Overview** - Start with [`../README.md`](../README.md) for project overview and quick start
 2. **Development Setup** - Follow [`docs/deployment/development-setup.md`](deployment/development-setup.md) for environment setup
 3. **System Architecture** - Read [`docs/architecture/three-component-overview.md`](architecture/three-component-overview.md)
-4. **CLI Workflows** - Review [`../AGENTS.md`](../AGENTS.md) for comprehensive CLI commands and examples
+4. **API Workflows** - Review [`../AGENTS.md`](../AGENTS.md) for comprehensive API examples and workflows
 
 ## 📞 Support and Resources
 
