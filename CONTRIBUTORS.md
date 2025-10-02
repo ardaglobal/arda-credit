@@ -31,8 +31,9 @@ make run                           # Fast local SP1 development (~3.5s Core proo
 make up                            # Start database + server (uses pre-built image)
 make down                          # Stop all services
 make server                        # Start API server locally (debug mode with verbose logging)
-make cli ARGS="health-check"       # CLI client commands
 ```
+
+**API Testing** - Use curl or Swagger UI at http://localhost:8080/swagger-ui/
 
 #### Code Quality & Testing
 ```bash
@@ -78,7 +79,6 @@ make setup-hooks                    # Configures automatic linting and formattin
 arda-credit/
 ├── program/                        # SP1 zkVM program (RISC-V)
 ├── script/                         # Local SP1 testing and utilities
-├── cli/                           # Unified CLI tool
 ├── api/                           # Production server with ZK proof generation
 ├── db/                            # PostgreSQL with Merkle tree state management
 ├── contracts/                     # Solidity proof verification contracts
@@ -87,20 +87,9 @@ arda-credit/
 └── helm/                          # Kubernetes deployment charts
 ```
 
-#### CLI Module Organization
+#### API Module Organization
 
-**Single-File Modules** (under 1000 lines):
-```
-cli/src/
-├── lib.rs                         # Main exports and module declarations
-├── cli.rs                         # Core CLI setup and middleware
-├── balance.rs                     # Balance and wallet operations
-├── batch.rs                       # Batch processing and proof operations
-├── pools.rs                       # Liquidity pool operations
-├── user.rs                        # User management and KYC operations
-```
-
-**Directory Modules** (when functionality exceeds 1000 lines):
+**API Route Organization**:
 ```
 ├── loans/                         # Credit and loan operations
 │   ├── mod.rs                     # Main module with command routing
@@ -194,7 +183,6 @@ All public functions must include:
 /// All user data is handled with privacy preservation in mind.
 ///
 /// # Arguments
-/// * `client` - API client for server communication
 /// * `user_type` - Type of user (investor, lender, etc.)
 /// * `email` - User's email address (validated)
 /// * `verbose` - Enable detailed output
@@ -202,12 +190,12 @@ All public functions must include:
 /// # Privacy Considerations
 /// User data is processed with ZK privacy guarantees
 pub async fn create_user(
-    client: &BatchApiClient,
     user_type: &str,
     email: &str,
     verbose: bool,
-) -> Result<()> {
-    // Implementation with comprehensive error handling
+) -> Result<UserResponse> {
+    // Makes API request to create user
+    // Returns structured response with user data
 }
 ```
 
@@ -306,7 +294,7 @@ Arda Credit consists of three interconnected components requiring coordinated ve
 - **Versioning**: Independent semantic versioning (`program-vX.Y.Z`)
 
 #### 3. Web Server Application (Main Repository)
-- **Location**: Root workspace (`api/`, `db/`, `cli/`, etc.)
+- **Location**: Root workspace (`api/`, `db/`, `contracts/`, etc.)
 - **Dependencies**: Both smart contracts and ZKVM program
 - **Deployment Target**: Kubernetes via Helm charts
 - **Versioning**: Main repository version referencing specific component versions
@@ -379,7 +367,7 @@ Arda Credit consists of three interconnected components requiring coordinated ve
 The ZK program circuit depends on changes in these directories:
 - **`program/`**: Core ZKVM program logic
 - **`lib/`**: Business logic, transaction processing, ADS operations
-- **`script/`**: CLI tools and testing infrastructure
+- **`script/`**: Testing infrastructure and local proof generation
 - **`api/`**: Proof generation/verification (affects integration)
 - **`ethereum-client/`**: On-chain proof submission
 - **`db/`**: Proof storage and verification tracking
@@ -646,8 +634,7 @@ helm upgrade --install arda-credit ./helm/charts/arda-credit \
 **Clean separation of concerns:**
 - **`program/`** - RISC-V program for SP1 zkVM loan transaction processing
 - **`script/`** - Local SP1 testing with fast Core proofs (development)
-- **`cli/`** - Unified CLI for loan operations + local verification tool
-- **`api/`** - Production server with loan processing, ZK proof generation via Sindri
+- **`api/`** - Production server with loan processing, ZK proof generation via Sindri, REST API endpoints
 - **`db/`** - PostgreSQL with loan tables, KYC data, and Merkle tree state management
 - **`contracts/`** - Solidity proof verification with loan state management
 - **`lib/`** - Shared computation logic (zkVM compatible)
@@ -752,12 +739,6 @@ struct LoanBatchPublicValues {
 
 ### Key Components Integration
 
-**Unified CLI Tool**: Single binary for complete loan workflow:
-- User registration and KYC submission
-- Loan origination, payments, and closeouts
-- Local verification of transaction inclusion proofs
-- Environment configuration via `ARDA_CREDIT_API_URL`
-
 **API Server** (`api/src/bin/server.rs`):
 - Loan transaction processing and batching
 - KYC verification and user management
@@ -838,13 +819,13 @@ struct LoanTransaction {
 #### Adding New Loan Operations
 1. Add transaction type to `TransactionType` enum in `lib/src/loan_types.rs`
 2. Implement handler in `api/src/loan_handlers.rs`
-3. Add CLI command in `cli/src/bin/cli.rs`
+3. Add API endpoint route in `api/src/api/routes.rs`
 4. Add database migration if needed
-5. Test with `cargo run --bin cli -- your-loan-command`
+5. Test with curl or Swagger UI at http://localhost:8080/swagger-ui/
 
 #### KYC Integration
 1. KYC status tracked in `users` table
-2. KYC verification can be mocked via CLI/API
+2. KYC verification can be mocked via API for testing
 3. Transaction validation checks KYC status for restricted operations
 4. Users can prove KYC status inclusion in batches
 

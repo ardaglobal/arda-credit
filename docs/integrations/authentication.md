@@ -488,89 +488,58 @@ const ProtectedRoute = ({ children }) => {
 export default ProtectedRoute;
 ```
 
-#### 6. API Client for Authenticated Requests
+#### 6. Making Authenticated API Requests
+
+Use the `authenticatedFetch` method from the AuthService directly for API calls:
 
 ```javascript
 import authService from './authService';
 
-class ApiClient {
-    constructor(baseUrl = '/api') {
-        this.baseUrl = baseUrl;
+// Example: Get user details
+async function getUserDetails(userId) {
+    const response = await authService.authenticatedFetch(`/api/ccr/user/${userId}`);
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
     }
-
-    async get(endpoint) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`);
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async post(endpoint, data) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async put(endpoint, data) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async delete(endpoint) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'DELETE',
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return response.status === 204 ? null : await response.json();
-    }
-
-    // Specific API methods
-    async getUserDetails(userId) {
-        return this.get(`/ccr/user/${userId}`);
-    }
-
-    async createLoan(loanData) {
-        return this.post('/ccr/loans', loanData);
-    }
-
-    async getLoans() {
-        return this.get('/ccr/loans');
-    }
-
-    async getBatches() {
-        return this.get('/state/batches');
-    }
+    return await response.json();
 }
 
-const apiClient = new ApiClient();
-export default apiClient;
+// Example: Create deal
+async function createDeal(dealData) {
+    const response = await authService.authenticatedFetch('/api/v1/deal', {
+        method: 'POST',
+        body: JSON.stringify(dealData),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return await response.json();
+}
+
+// Example: Get deals
+async function getDeals() {
+    const response = await authService.authenticatedFetch('/api/v1/deals');
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return await response.json();
+}
+
+// Example: Get batches
+async function getBatches() {
+    const response = await authService.authenticatedFetch('/api/state/batches');
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return await response.json();
+}
 ```
+
+**For complete API documentation, see the Swagger UI at http://localhost:8080/swagger-ui/**
 
 ## Environment Configuration
 

@@ -442,77 +442,63 @@ const ProtectedRoute = ({ children }) => {
 export default ProtectedRoute;
 ```
 
-### API Client
+### Making Authenticated API Requests
+
+Instead of creating a separate API Client class, use the `authenticatedFetch` method from the AuthService directly for API calls:
 
 ```javascript
 import authService from './authService';
 
-class ApiClient {
-    constructor(baseUrl = '/api') {
-        this.baseUrl = baseUrl;
+// Example: Get batches
+async function getBatches() {
+    const response = await authService.authenticatedFetch('/api/state/batches');
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
     }
-
-    async get(endpoint) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`);
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async post(endpoint, data) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async put(endpoint, data) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async delete(endpoint) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'DELETE',
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return response.status === 204 ? null : await response.json();
-    }
-
-
-    async getBatches() {
-        return this.get('/state/batches');
-    }
+    return await response.json();
 }
 
-const apiClient = new ApiClient();
-export default apiClient;
+// Example: Create deal
+async function createDeal(dealData) {
+    const response = await authService.authenticatedFetch('/api/v1/deal', {
+        method: 'POST',
+        body: JSON.stringify(dealData),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return await response.json();
+}
+
+// Example: Update deal
+async function updateDeal(dealId, updates) {
+    const response = await authService.authenticatedFetch(`/api/v1/deal/${dealId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return await response.json();
+}
+
+// Example: Delete deal
+async function deleteDeal(dealId) {
+    const response = await authService.authenticatedFetch(`/api/v1/deal/${dealId}`, {
+        method: 'DELETE',
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return response.status === 204 ? null : await response.json();
+}
 ```
+
+**For complete API documentation, see the Swagger UI at http://localhost:8080/swagger-ui/**
 
 ## Vue.js Integration
 

@@ -153,35 +153,54 @@ CREATE TABLE loan_transactions (
 - `POST /api/v1/batches` - Process batch of transactions
 - `GET /api/v1/batches/{batch_id}` - Get batch details
 
-## CLI Commands
+## API Usage Examples
 
 ### User Operations
 ```bash
 # Register users
-make cli ARGS="register-user --user-type lender --email alice@example.com"
-make cli ARGS="register-user --user-type investor --email bob@example.com"
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"email": "alice@example.com", "user_type": "lender"}' \
+  http://localhost:8080/api/v1/user
 
 # KYC operations
-make cli ARGS="submit-kyc --user-id <uuid>"
-make cli ARGS="verify-kyc --user-id <uuid>"  # Admin operation
-make cli ARGS="get-user --user-id <uuid>"
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "uuid"}' \
+  http://localhost:8080/api/v1/kyc/submit
+
+# Get user details
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8080/api/v1/user/uuid
 ```
 
 ### Loan Operations
 ```bash
 # Loan origination (requires KYC'd users)
-make cli ARGS="originate-loan --borrower-id <uuid> --lender-id <uuid> --amount 50000 --rate 0.075 --term-months 36"
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"borrower_id": "uuid", "lender_id": "uuid", "amount": 50000, "rate": 0.075, "term_months": 36}' \
+  http://localhost:8080/api/v1/loan
 
 # Loan payments
-make cli ARGS="make-payment --loan-id <uuid> --amount 2500"
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"loan_id": "uuid", "amount": 2500}' \
+  http://localhost:8080/api/v1/loan/payment
 
-# Loan closeout
-make cli ARGS="closeout-loan --loan-id <uuid>"
+# Get loan details
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://localhost:8080/api/v1/loan/uuid
 
-# Loan queries
-make cli ARGS="get-loan --loan-id <uuid>"
-make cli ARGS="list-loans --user-id <uuid>"
+# List loans for user
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  "http://localhost:8080/api/v1/loans?user_id=uuid"
 ```
+
+**For complete API documentation, see the Swagger UI at http://localhost:8080/swagger-ui/**
 
 ## Zero-Knowledge Properties
 

@@ -65,10 +65,10 @@ The ZKVM program component processes:
 ## Web Server Application (Main Repository)
 
 ### Location and Dependencies
-- **Location**: Root workspace with `api/`, `db/`, `cli/`, `script/`, `lib/`, etc.
+- **Location**: Root workspace with `api/`, `db/`, `script/`, `lib/`, etc.
 - **Dependencies**: Both smart contracts and ZKVM program components
 - **Deployment Target**: Kubernetes via Helm charts
-- **Build System**: Cargo workspace with multiple binaries
+- **Build System**: Cargo workspace with API server and supporting tools
 
 ### Purpose and Function
 The web server application component orchestrates:

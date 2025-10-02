@@ -50,7 +50,6 @@ Public Data (Verifiable):
 
 ### System Components
 - **`program/`** - SP1 zkVM program for loan transaction processing
-- **`cli/`** - Complete loan workflow interface + trustless verification
 - **`api/`** - Production server with KYC, loan processing, and ZK proof generation
 - **`db/`** - PostgreSQL with users, loans, KYC data, and Merkle tree state
 - **`contracts/`** - Solidity contracts for on-chain loan state verification
@@ -169,9 +168,9 @@ Perfect for testing the borough percentage system, credit line requests, and poo
 
 ### 🏗️ Component Documentation
 - **[`api/src/README.md`](./api/src/README.md)** - API server architecture and standards
-- **[`cli/README.md`](./cli/README.md)** - CLI tool structure and conventions
 - **[`db/README.md`](./db/README.md)** - Database layer and ADS integration
 - **[`contracts/README.md`](./contracts/README.md)** - Smart contract deployment and testing
+- **Swagger UI** - Interactive API documentation at http://localhost:8080/swagger-ui/
 
 ## Technology Stack
 
