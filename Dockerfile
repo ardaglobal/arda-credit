@@ -9,7 +9,6 @@ WORKDIR /app
 # Copy dependency manifests first (for better caching)
 COPY Cargo.toml Cargo.lock ./
 COPY api/Cargo.toml ./api/
-COPY cli/Cargo.toml ./cli/
 COPY db/Cargo.toml ./db/
 COPY lib/Cargo.toml ./lib/
 COPY program/Cargo.toml ./program/

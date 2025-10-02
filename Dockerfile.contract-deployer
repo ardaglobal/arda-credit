@@ -1,0 +1,27 @@
+# Contract Deployer Init Container
+# Used to deploy contracts to Anvil in local/staging Kubernetes environments
+
+FROM ghcr.io/foundry-rs/foundry:latest
+
+# Switch to root to install packages, then switch back
+USER root
+
+# Install jq for JSON parsing (foundry image is Ubuntu-based)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Switch back to foundry user
+USER foundry
+
+WORKDIR /contracts
+
+# Copy contract source files and deployment scripts
+COPY contracts/ .
+
+# Build contracts
+RUN forge build
+
+# Set the entrypoint to bash so the deployment script can be mounted and executed
+ENTRYPOINT ["/bin/bash"]
+

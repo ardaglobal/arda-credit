@@ -114,12 +114,44 @@ docker-push: docker-build
 	@echo "✅ Image pushed successfully!"
 	@echo "🚀 Published: $(REGISTRY)/$(OWNER)/$(IMAGE_NAME):$(DOCKER_TAG)"
 
+## docker-build-contract-deployer: Build contract deployer init container image
+.PHONY: docker-build-contract-deployer
+docker-build-contract-deployer:
+	@echo "Building Contract Deployer Docker image..."
+	@echo "Image: $(REGISTRY)/$(OWNER)/arda-credit-contract-deployer:$(DOCKER_TAG)"
+	@echo "Platform: $(PLATFORM)"
+	@echo ""
+	docker build --platform $(PLATFORM) -f Dockerfile.contract-deployer -t $(REGISTRY)/$(OWNER)/arda-credit-contract-deployer:$(DOCKER_TAG) .
+	@echo "✅ Contract Deployer image built successfully!"
+	@echo "🐳 Image: $(REGISTRY)/$(OWNER)/arda-credit-contract-deployer:$(DOCKER_TAG)"
+
+## docker-push-contract-deployer: Build and push contract deployer image
+.PHONY: docker-push-contract-deployer
+docker-push-contract-deployer: docker-build-contract-deployer
+	@echo "Pushing Contract Deployer image..."
+	@echo "Registry: $(REGISTRY)"
+	docker push $(REGISTRY)/$(OWNER)/arda-credit-contract-deployer:$(DOCKER_TAG)
+	@echo "✅ Contract Deployer image pushed successfully!"
+	@echo "🚀 Published: $(REGISTRY)/$(OWNER)/arda-credit-contract-deployer:$(DOCKER_TAG)"
+
+## docker-build-all: Build all Docker images (main + contract deployer)
+.PHONY: docker-build-all
+docker-build-all: docker-build docker-build-contract-deployer
+	@echo "✅ All Docker images built successfully!"
+
+## docker-push-all: Build and push all Docker images
+.PHONY: docker-push-all
+docker-push-all: docker-push docker-push-contract-deployer
+	@echo "✅ All Docker images pushed successfully!"
+
 ## docker-lint: Lint Dockerfiles using hadolint
 .PHONY: docker-lint
 docker-lint:
 	@echo "🔍 Linting Dockerfiles with hadolint..."
 	@command -v hadolint >/dev/null 2>&1 || { echo "❌ hadolint not found. Run 'make install' to install dependencies."; exit 1; }
 	hadolint Dockerfile
+	hadolint Dockerfile.contract-deployer
+	hadolint Dockerfile.data-populator
 	@echo "✅ Dockerfile linting completed"
 
 ## docker-lint-fix: Lint and show suggestions to fix Dockerfile issues

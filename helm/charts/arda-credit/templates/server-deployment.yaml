@@ -25,6 +25,34 @@ spec:
       serviceAccountName: {{ include "arda-credit.fullname" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
+      initContainers:
+        - name: contract-deployer
+          image: "{{ .Values.server.contractDeployer.image.registry }}/{{ .Values.server.contractDeployer.image.repository }}:{{ .Values.server.contractDeployer.image.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.server.contractDeployer.image.pullPolicy | default "Always" }}
+          command: ["/bin/bash", "/scripts/deploy-contracts.sh"]
+          env:
+            - name: ETHEREUM_RPC_URL
+              value: "http://{{ include "arda-credit.fullname" . }}-anvil:8545"
+            - name: ETHEREUM_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: ethereum-wallet-private-key
+          volumeMounts:
+            - name: deployment-script
+              mountPath: /scripts
+              readOnly: true
+            - name: contract-deployments
+              mountPath: /deployments
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 200m
+              memory: 256Mi
+      {{- end }}
       containers:
         - name: server
           securityContext:
@@ -130,17 +158,30 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
-          {{- if .Values.server.persistence.enabled }}
           volumeMounts:
+            {{- if .Values.server.persistence.enabled }}
             - name: server-data
               mountPath: {{ .Values.server.persistence.mountPath }}
-          {{- end }}
-      {{- if .Values.server.persistence.enabled }}
+            {{- end }}
+            {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
+            - name: contract-deployments
+              mountPath: /app/contracts/deployments
+              readOnly: true
+            {{- end }}
       volumes:
+        {{- if .Values.server.persistence.enabled }}
         - name: server-data
           persistentVolumeClaim:
             claimName: {{ include "arda-credit.fullname" . }}-server-data
-      {{- end }}
+        {{- end }}
+        {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
+        - name: deployment-script
+          configMap:
+            name: {{ include "arda-credit.fullname" . }}-contract-deployer
+            defaultMode: 0755
+        - name: contract-deployments
+          emptyDir: {}
+        {{- end }}
       {{- $nodeSelector := coalesce .Values.server.nodeSelector .Values.global.nodeSelector }}
       {{- with $nodeSelector }}
       nodeSelector:

@@ -103,6 +103,14 @@ server:
     tag: "latest"
     pullPolicy: Always
   
+  # Contract deployer init container (local/staging only)
+  contractDeployer:
+    image:
+      registry: ghcr.io/ardaglobal
+      repository: arda-credit-contract-deployer
+      tag: "latest"
+      pullPolicy: Always
+  
   replicaCount: 1
   
   # OpenTelemetry configuration (dynamic service discovery)
