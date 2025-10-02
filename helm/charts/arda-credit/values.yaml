@@ -25,7 +25,7 @@ postgresql:
   
   image:
     registry: docker.io
-    repository: bitnami/postgresql
+    repository: bitnamilegacy/postgresql
   
   # Configuration for bundled PostgreSQL
   auth:

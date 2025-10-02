@@ -23,7 +23,7 @@ maintainers:
 dependencies:
   - name: postgresql
     version: 15.5.38
-    repository: https://charts.bitnami.com/bitnami
+    repository: https://charts.bitnami.com/bitnamilegacy
     condition: postgresql.enabled
   - name: prometheus-postgres-exporter
     version: 7.1.1

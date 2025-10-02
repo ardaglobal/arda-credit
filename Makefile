@@ -170,7 +170,7 @@ helm-lint:
 	@echo "🔍 Linting Helm charts..."
 	@command -v helm >/dev/null 2>&1 || { echo "❌ helm not found. Run 'make install' to install dependencies."; exit 1; }
 	@# Add repositories and update index
-	helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true
+	helm repo add bitnamilegacy https://charts.bitnami.com/bitnamilegacy >/dev/null 2>&1 || true
 	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
 	helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null 2>&1 || true
 	helm repo update >/dev/null 2>&1
@@ -648,7 +648,7 @@ helm-deps:
 	@command -v helm >/dev/null 2>&1 || { echo "❌ helm not found. Please install Helm 3.8+"; exit 1; }
 	@if [ ! -f "helm/charts/arda-credit/Chart.lock" ] || [ "helm/charts/arda-credit/Chart.yaml" -nt "helm/charts/arda-credit/Chart.lock" ]; then \
 		echo "🔄 Chart.yaml newer than Chart.lock or Chart.lock missing, updating dependencies..."; \
-		helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true; \
+		helm repo add bitnamilegacy https://charts.bitnami.com/bitnamilegacy >/dev/null 2>&1 || true; \
 		helm repo update >/dev/null 2>&1; \
 		helm dependency update ./helm/charts/arda-credit; \
 		echo "✅ Helm dependencies updated successfully"; \

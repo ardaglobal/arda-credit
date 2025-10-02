@@ -369,8 +369,8 @@ update_helm_dependencies() {
     cd "${CHART_PATH}"
     
     # Add Bitnami repo if not already added
-    if ! helm repo list | grep -q bitnami; then
-        helm repo add bitnami https://charts.bitnami.com/bitnami
+    if ! helm repo list | grep -q bitnamilegacy; then
+        helm repo add bitnamilegacy https://charts.bitnami.com/bitnamilegacy
     fi
     
     helm repo update

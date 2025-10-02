@@ -23,8 +23,8 @@ This production-ready Helm chart deploys the Arda Credit application stack on Ku
 The chart includes PostgreSQL as a dependency for easy deployment:
 
 ```bash
-# Add Bitnami repository (for PostgreSQL dependency)
-helm repo add bitnami https://charts.bitnami.com/bitnami
+# Add Bitnami Legacy repository (for PostgreSQL dependency)
+helm repo add bitnamilegacy https://charts.bitnami.com/bitnamilegacy
 helm repo update
 
 # Update dependencies
