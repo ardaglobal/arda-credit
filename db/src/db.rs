@@ -4080,7 +4080,6 @@ pub async fn get_user_financial_transactions(
             currency: row.currency.expect("currency should not be null"),
             transaction_hash: row.transaction_hash,
             processed_at: row.processed_at.unwrap_or_else(|| chrono::Utc::now()),
-            pool_id: row.pool_id,
             credit_line_id: row.credit_line_id,
             description: row.description.unwrap_or_default(),
         })
@@ -4107,12 +4106,6 @@ pub async fn get_user_financial_summary(
         total_deposits: row.total_deposits.unwrap_or(rust_decimal::Decimal::ZERO),
         total_withdrawals: row.total_withdrawals.unwrap_or(rust_decimal::Decimal::ZERO),
         net_account_flow: row.net_account_flow.unwrap_or(rust_decimal::Decimal::ZERO),
-        total_pool_funding: row
-            .total_pool_funding
-            .unwrap_or(rust_decimal::Decimal::ZERO),
-        total_pool_withdrawals: row
-            .total_pool_withdrawals
-            .unwrap_or(rust_decimal::Decimal::ZERO),
         total_credit_line_payments: row
             .total_credit_line_payments
             .unwrap_or(rust_decimal::Decimal::ZERO),

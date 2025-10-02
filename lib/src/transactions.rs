@@ -64,16 +64,8 @@ pub enum TransactionType {
     UserWithdrawal = 8,
     // New pool operations
     InvestorRegistration = 9,
-    PoolCreation = 10,
     // Admin operations
     AdminRegistration = 11,
-    MerchantProfileUpdate = 12,
-    CreditLineRequest = 13,
-    CreditLineApproval = 14,
-    CreditLineRejection = 15,
-    CreditLineDrawdown = 16,
-    CreditLineRepayment = 17,
-    SubmitTurnover = 18,
     VerifyDocument = 19,
 }
 
@@ -87,13 +79,6 @@ impl TransactionType {
                 | Self::DealPayment   // was LoanPayment
                 | Self::DealCloseout  // was LoanCloseout
                 | Self::UserWithdrawal
-                | Self::PoolCreation
-                | Self::CreditLineRequest
-                | Self::CreditLineApproval
-                | Self::CreditLineRejection
-                | Self::CreditLineDrawdown
-                | Self::CreditLineRepayment
-                | Self::SubmitTurnover
                 | Self::VerifyDocument
         )
     }
@@ -110,7 +95,7 @@ impl TransactionType {
     /// Check if transaction type requires investor role
     #[must_use]
     pub const fn requires_investor_role(&self) -> bool {
-        matches!(self, Self::InvestorRegistration | Self::PoolCreation)
+        matches!(self, Self::InvestorRegistration)
     }
 }
 
@@ -160,15 +145,7 @@ impl std::fmt::Display for TransactionType {
             TransactionType::UserDeposit => write!(f, "user_deposit"),
             TransactionType::UserWithdrawal => write!(f, "user_withdrawal"),
             TransactionType::InvestorRegistration => write!(f, "investor_registration"),
-            TransactionType::PoolCreation => write!(f, "pool_creation"),
             TransactionType::AdminRegistration => write!(f, "admin_registration"),
-            TransactionType::MerchantProfileUpdate => write!(f, "merchant_profile_update"),
-            TransactionType::CreditLineRequest => write!(f, "credit_line_request"),
-            TransactionType::CreditLineApproval => write!(f, "credit_line_approval"),
-            TransactionType::CreditLineRejection => write!(f, "credit_line_rejection"),
-            TransactionType::CreditLineDrawdown => write!(f, "credit_line_drawdown"),
-            TransactionType::CreditLineRepayment => write!(f, "credit_line_repayment"),
-            TransactionType::SubmitTurnover => write!(f, "submit_turnover"),
             TransactionType::VerifyDocument => write!(f, "verify_document"),
         }
     }
@@ -192,15 +169,7 @@ impl std::str::FromStr for TransactionType {
             "user_deposit" => Ok(TransactionType::UserDeposit),
             "user_withdrawal" => Ok(TransactionType::UserWithdrawal),
             "investor_registration" => Ok(TransactionType::InvestorRegistration),
-            "pool_creation" => Ok(TransactionType::PoolCreation),
             "admin_registration" => Ok(TransactionType::AdminRegistration),
-            "merchant_profile_update" => Ok(TransactionType::MerchantProfileUpdate),
-            "credit_line_request" => Ok(TransactionType::CreditLineRequest),
-            "credit_line_approval" => Ok(TransactionType::CreditLineApproval),
-            "credit_line_rejection" => Ok(TransactionType::CreditLineRejection),
-            "credit_line_drawdown" => Ok(TransactionType::CreditLineDrawdown),
-            "credit_line_repayment" => Ok(TransactionType::CreditLineRepayment),
-            "submit_turnover" => Ok(TransactionType::SubmitTurnover),
             "verify_document" => Ok(TransactionType::VerifyDocument),
             _ => Err(format!("Unknown transaction type: {}", s)),
         }

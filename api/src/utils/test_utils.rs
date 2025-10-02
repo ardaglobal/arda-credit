@@ -108,9 +108,6 @@ impl TestDatabase {
         sqlx::query("DELETE FROM pool_transactions")
             .execute(&self.pool)
             .await?;
-        sqlx::query("DELETE FROM liquidity_pools")
-            .execute(&self.pool)
-            .await?;
         sqlx::query("DELETE FROM merchant_turnover")
             .execute(&self.pool)
             .await?;
@@ -411,36 +408,6 @@ impl TestDataFactory {
 
         Ok(())
     }
-
-    /// Create a test liquidity pool
-    pub async fn create_liquidity_pool(
-        &self,
-        investor_id: Uuid,
-        name: &str,
-        max_ltv_ratio: f64,
-        max_interest_rate: f64,
-    ) -> Result<Uuid, sqlx::Error> {
-        let pool_id = Uuid::new_v4();
-
-        sqlx::query(
-            r#"
-            INSERT INTO liquidity_pools (
-                id, investor_id, name, max_ltv_ratio, max_interest_rate,
-                repayment_period_days, status, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, 30, 'ACTIVE', NOW(), NOW())
-            "#,
-        )
-        .bind(pool_id)
-        .bind(investor_id)
-        .bind(name)
-        .bind(max_ltv_ratio)
-        .bind(max_interest_rate)
-        .execute(&self.db.pool)
-        .await?;
-
-        Ok(pool_id)
-    }
-
     /// Create a test merchant profile
     pub async fn create_merchant_profile(
         &self,

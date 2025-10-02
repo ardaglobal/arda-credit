@@ -27,8 +27,6 @@ use alloy_sol_types::sol;
 
 // Separated modules for better maintainability
 pub mod balance;
-pub mod credit_evaluation;
-pub mod credit_line;
 pub mod document; // Document storage and management
 
 #[cfg(feature = "document_storage")]
@@ -38,8 +36,6 @@ pub mod deal;
 pub mod deal_processor;
 #[cfg(feature = "document_storage")]
 pub mod document_zkvm; // ZK proof integration for document operations
-pub mod merchant;
-pub mod pool;
 pub mod transactions;
 pub mod user;
 pub mod utils;
@@ -77,20 +73,7 @@ pub use balance::{
     BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType,
     UserBalance,
 };
-pub use credit_evaluation::{
-    calculate_30_day_average, evaluate_credit_request, get_required_documents_for_mcc,
-    is_restricted_mcc, validate_required_documents, CreditEvaluator, DailyTurnover,
-    DocumentVerification, MerchantProfile,
-};
-pub use credit_line::{
-    CreditLine, CreditLineError, CreditLineRequest, CreditLineRequestStatus, CreditLineState,
-    CreditLineStatus, CreditUtilization, CreditUtilizationType, EligibilityResult,
-    PoolMatchingResult,
-};
-pub use deal::{
-    Deal, DealError, LiquidityPool, LoanStatus, LoanTerms, PoolDeploymentTerms, PoolError,
-    PoolState, PoolStatus,
-};
+pub use deal::{Deal, DealError, LoanStatus, LoanTerms};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};
 pub use utils::{cents_to_decimal, decimal_to_cents, hash_uuid};
