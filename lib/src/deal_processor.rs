@@ -7,13 +7,10 @@
 #[cfg(test)]
 use crate::balance::BalanceUpdateType;
 use crate::balance::{BalanceError, BalanceState, BalanceUpdate};
-use crate::credit_line::{CreditLineError, CreditLineState};
 use crate::deal::LoanTerms; // Keep LoanTerms name for compatibility
 use crate::deal::{Deal, DealError}; // was Loan, LoanError
-use crate::merchant::{MerchantError, MerchantState};
-use crate::pool::{Pool, PoolConfig, PoolState};
 use crate::transactions::{LoanBatch, LoanTransaction, TransactionType};
-use crate::user::{User, UserError, UserState, UserType};
+use crate::user::{User, UserError, UserState};
 use crate::LoanStatus;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -30,12 +27,6 @@ pub enum ProcessingError {
 
     #[error("Balance error: {0}")]
     BalanceError(#[from] BalanceError),
-
-    #[error("Merchant error: {0}")]
-    MerchantError(#[from] MerchantError),
-
-    #[error("Credit line error: {0}")]
-    CreditLineError(#[from] CreditLineError),
 
     #[error("Invalid transaction type for operation")]
     InvalidTransactionType,
@@ -60,7 +51,7 @@ pub enum ProcessingError {
     InvalidTransactionData,
 }
 
-/// Global state for loan processing (maintains user, loan, and pool state)
+/// Global state for loan processing (maintains user and loan state)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalLoanState {
     /// All users in the system
@@ -68,15 +59,6 @@ pub struct GlobalLoanState {
 
     /// All loans in the system
     pub loans: HashMap<[u8; 32], Deal>, // Keep loans field name for compatibility, but use Deal type
-
-    /// All liquidity pools in the system
-    pub pools: PoolState,
-
-    /// Merchant state tracking
-    pub merchant_state: MerchantState,
-
-    /// Credit line state tracking
-    pub credit_line_state: CreditLineState,
 
     /// User balance tracking state
     pub balance_state: BalanceState,
@@ -96,9 +78,6 @@ impl Default for GlobalLoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
-            pools: PoolState::new(),
-            merchant_state: MerchantState::new(),
-            credit_line_state: CreditLineState::new(),
             balance_state: BalanceState::new(),
             loan_terms: LoanTerms::default(),
             transaction_count: 0,
@@ -120,10 +99,7 @@ impl GlobalLoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
-            pools: PoolState::new(),
-            merchant_state: MerchantState::new(),
             balance_state: BalanceState::new(),
-            credit_line_state: CreditLineState::new(),
             loan_terms,
             transaction_count: 0,
             last_updated: 0,
@@ -283,54 +259,6 @@ impl GlobalLoanState {
                     return Err(ProcessingError::UserNotFound);
                 }
             }
-            TransactionType::PoolCreation => {
-                // Process pool creation transaction
-                // Metadata format: [max_ltv_ratio(8)] + [max_interest_rate(8)] + [repayment_period_days(4)] + [remaining_44_bytes_unused]
-                let metadata = transaction.metadata.as_bytes();
-
-                let max_ltv_ratio = u64::from_le_bytes([
-                    metadata[0],
-                    metadata[1],
-                    metadata[2],
-                    metadata[3],
-                    metadata[4],
-                    metadata[5],
-                    metadata[6],
-                    metadata[7],
-                ]);
-                let max_interest_rate = u64::from_le_bytes([
-                    metadata[8],
-                    metadata[9],
-                    metadata[10],
-                    metadata[11],
-                    metadata[12],
-                    metadata[13],
-                    metadata[14],
-                    metadata[15],
-                ]);
-                let repayment_period_days =
-                    u32::from_le_bytes([metadata[16], metadata[17], metadata[18], metadata[19]]);
-
-                let pool_config = PoolConfig {
-                    max_ltv_ratio,
-                    max_interest_rate,
-                    repayment_period_days,
-                };
-
-                // Create new pool using loan_id as pool_id
-                let pool = Pool::new(
-                    transaction.deal_id, // was loan_id, now deal_id // Using loan_id field as pool_id
-                    transaction.user_id, // investor_id
-                    pool_config,
-                    transaction.created_at,
-                )
-                .map_err(|_| ProcessingError::InvalidTransactionData)?;
-
-                // Add pool to state
-                self.pools
-                    .add_pool(pool)
-                    .map_err(|_| ProcessingError::InvalidTransactionData)?;
-            }
             TransactionType::AdminRegistration => {
                 // Process merchant registration in both user and merchant state
                 let mut user_state = UserState {
@@ -338,214 +266,8 @@ impl GlobalLoanState {
                 };
                 user_state.process_admin_registration(transaction)?;
                 self.users = user_state.users;
-
-                // Also register in merchant state
-                self.merchant_state
-                    .process_merchant_registration(transaction)?;
             }
-            TransactionType::MerchantProfileUpdate => {
-                // Process merchant profile update in merchant state
-                self.merchant_state.process_profile_update(transaction)?;
-            }
-            TransactionType::CreditLineRequest => {
-                // Process credit line request from merchants
-                // This requires KYC approval and will be used for automatic matching with liquidity pools
-                let user =
-                    self.users
-                        .get(&transaction.user_id)
-                        .ok_or(ProcessingError::UserError(UserError::UserNotFound {
-                            user_id: transaction.user_id,
-                        }))?;
-
-                // Ensure user is an admin
-                if !matches!(user.user_type, UserType::Admin) {
-                    return Err(ProcessingError::UserError(UserError::InvalidUserType {
-                        expected: UserType::Admin,
-                        actual: user.user_type,
-                    }));
-                }
-
-                // Ensure admin is KYC approved for credit line requests
-                if !user.is_kyc_approved() {
-                    return Err(ProcessingError::UserError(UserError::UserNotKycApproved {
-                        user_id: transaction.user_id,
-                    }));
-                }
-
-                // Create credit line request
-                // Metadata contains: [requested_amount(8)] + [requested_rate_apr(8)] + [requested_tenor_days(4)] + [remaining_44_bytes_unused]
-                let metadata = transaction.metadata.as_bytes();
-                let requested_amount = u64::from_le_bytes([
-                    metadata[0],
-                    metadata[1],
-                    metadata[2],
-                    metadata[3],
-                    metadata[4],
-                    metadata[5],
-                    metadata[6],
-                    metadata[7],
-                ]);
-                let requested_rate_apr = u64::from_le_bytes([
-                    metadata[8],
-                    metadata[9],
-                    metadata[10],
-                    metadata[11],
-                    metadata[12],
-                    metadata[13],
-                    metadata[14],
-                    metadata[15],
-                ]);
-                let requested_tenor_days =
-                    u32::from_le_bytes([metadata[16], metadata[17], metadata[18], metadata[19]]);
-
-                // Create credit line request
-                let request = crate::credit_line::CreditLineRequest::new(
-                    transaction.transaction_id,
-                    transaction.user_id,
-                    requested_amount,
-                    if requested_rate_apr > 0 {
-                        Some(requested_rate_apr)
-                    } else {
-                        None
-                    },
-                    requested_tenor_days,
-                    transaction.created_at,
-                );
-
-                self.credit_line_state.add_request(request);
-            }
-            TransactionType::CreditLineApproval => {
-                // Process credit line approval
-                // Metadata contains: [request_id(32)] + [approved_amount(8)] + [approved_rate(8)] + [pool_id(32)] + [repayment_days(4)] + [remaining_unused]
-                let metadata = transaction.metadata.as_bytes();
-                let mut request_id = [0u8; 32];
-                request_id.copy_from_slice(&metadata[0..32]);
-
-                let approved_amount = u64::from_le_bytes([
-                    metadata[32],
-                    metadata[33],
-                    metadata[34],
-                    metadata[35],
-                    metadata[36],
-                    metadata[37],
-                    metadata[38],
-                    metadata[39],
-                ]);
-                let approved_rate = u64::from_le_bytes([
-                    metadata[40],
-                    metadata[41],
-                    metadata[42],
-                    metadata[43],
-                    metadata[44],
-                    metadata[45],
-                    metadata[46],
-                    metadata[47],
-                ]);
-                let mut pool_id = [0u8; 32];
-                pool_id.copy_from_slice(&metadata[48..80]);
-                let repayment_window_days =
-                    u32::from_le_bytes([metadata[80], metadata[81], metadata[82], metadata[83]]);
-
-                // Approve the credit line request and create active credit line
-                self.credit_line_state.approve_request(
-                    request_id,
-                    transaction.transaction_id, // Use transaction ID as credit line ID
-                    approved_amount,
-                    approved_rate,
-                    pool_id,
-                    repayment_window_days,
-                    transaction.created_at,
-                )?;
-            }
-            TransactionType::CreditLineRejection => {
-                // Process credit line rejection
-                // Metadata contains: [request_id(32)] + [rejection_reason...] (remaining bytes as string)
-                let metadata = transaction.metadata.as_bytes();
-                let mut request_id = [0u8; 32];
-                request_id.copy_from_slice(&metadata[0..32]);
-
-                // Extract rejection reason from remaining metadata
-                let reason_bytes = &metadata[32..];
-                let reason_end = reason_bytes
-                    .iter()
-                    .position(|&b| b == 0)
-                    .unwrap_or(reason_bytes.len());
-                let rejection_reason =
-                    String::from_utf8_lossy(&reason_bytes[..reason_end]).into_owned();
-
-                // Reject the credit line request
-                self.credit_line_state.reject_request(
-                    request_id,
-                    rejection_reason,
-                    transaction.created_at,
-                )?;
-            }
-            TransactionType::CreditLineDrawdown => {
-                // Process credit line drawdown (utilizing available credit)
-                // Metadata contains: [credit_line_id(32)] + [recipient_address(32)]
-                let metadata = transaction.metadata.as_bytes();
-                let mut credit_line_id = [0u8; 32];
-                credit_line_id.copy_from_slice(&metadata[0..32]);
-                let mut recipient_address = [0u8; 32];
-                recipient_address.copy_from_slice(&metadata[32..64]);
-
-                // Process drawdown in credit line state
-                self.credit_line_state.process_drawdown(
-                    credit_line_id,
-                    transaction.amount,
-                    recipient_address,
-                    transaction.created_at,
-                )?;
-
-                // Create corresponding balance update for the drawdown
-                let balance_update = self.balance_state.create_credit_drawdown_update(
-                    transaction.transaction_id,
-                    transaction.user_id,
-                    recipient_address,
-                    u128::from(transaction.amount),
-                    transaction.created_at,
-                )?;
-
-                // Apply balance update to state
-                self.balance_state.apply_update(balance_update)?;
-            }
-            TransactionType::CreditLineRepayment => {
-                // Process credit line repayment
-                // Metadata contains: [credit_line_id(32)] + [payment_type(1)] + [remaining_31_bytes_unused]
-                let metadata = transaction.metadata.as_bytes();
-                let mut credit_line_id = [0u8; 32];
-                credit_line_id.copy_from_slice(&metadata[0..32]);
-                let payment_type = metadata[32]; // 0 = principal, 1 = interest, 2 = both
-
-                // Process repayment in credit line state
-                self.credit_line_state.process_repayment(
-                    credit_line_id,
-                    transaction.amount,
-                    payment_type,
-                    transaction.created_at,
-                )?;
-
-                // Create corresponding balance update for the repayment
-                let balance_update = self.balance_state.create_credit_repayment_update(
-                    transaction.transaction_id,
-                    transaction.user_id,
-                    u128::from(transaction.amount),
-                    transaction.created_at,
-                )?;
-
-                // Apply balance update to state
-                self.balance_state.apply_update(balance_update)?;
-            }
-            TransactionType::SubmitTurnover => {
-                // Process turnover submission in merchant state
-                self.merchant_state
-                    .process_turnover_submission(transaction)?;
-            }
-            TransactionType::VerifyDocument => {
-                // Process document verification in merchant state
-                self.merchant_state
-                    .process_document_verification(transaction)?;
-            }
+            TransactionType::VerifyDocument => todo!(),
         }
 
         // Update global state
@@ -695,19 +417,13 @@ pub fn validate_transaction(transaction: &LoanTransaction) -> Result<(), Process
         | TransactionType::UserWithdrawal
         | TransactionType::InvestorRegistration
         | TransactionType::AdminRegistration
-        | TransactionType::MerchantProfileUpdate
-        | TransactionType::CreditLineRequest
-        | TransactionType::CreditLineApproval
-        | TransactionType::CreditLineRejection
-        | TransactionType::SubmitTurnover
         | TransactionType::VerifyDocument => {
             if transaction.deal_id != zero_deal_id {
                 // was loan_id, now deal_id, zero_loan_id
                 return Err(ProcessingError::InvalidTransactionType);
             }
         }
-        // PoolCreation uses loan_id field as the pool_id, so it can be non-zero
-        TransactionType::PoolCreation => {}
+
         _ => {}
     }
 
@@ -2272,90 +1988,5 @@ mod tests {
             created_at: timestamp,
             metadata: MetadataArray::from_bytes(&metadata_bytes),
         }
-    }
-
-    #[test]
-    fn test_pool_creation() {
-        let mut state = GlobalLoanState::new();
-        let investor_id = [1u8; 32];
-        let pool_id = [10u8; 32];
-
-        // Register investor first
-        let investor_registration = create_test_user_registration(investor_id, 1);
-        state.process_transaction(&investor_registration).unwrap();
-
-        // Create investor registration transaction
-        let investor_reg = LoanTransaction {
-            transaction_id: [20u8; 32],
-            user_id: investor_id,
-            deal_id: [0u8; 32], // Keep deal_id field name // Zero for non-loan transactions
-            transaction_type: TransactionType::InvestorRegistration,
-            amount: 0,
-            created_at: 1_640_995_300,
-            metadata: MetadataArray::empty(),
-        };
-
-        // Process investor registration
-        state.process_transaction(&investor_reg).unwrap();
-
-        // Add KYC verification (required for pool creation)
-        let mut kyc_metadata = vec![0u8; 64];
-        kyc_metadata[0] = 1; // 1 = approval, 0 = rejection
-
-        let kyc_verification = LoanTransaction {
-            transaction_id: [25u8; 32],
-            user_id: investor_id,
-            deal_id: [0u8; 32], // Keep deal_id field name // Zero for non-loan transactions
-            transaction_type: TransactionType::KycVerification,
-            amount: 0,
-            created_at: 1_640_995_350,
-            metadata: MetadataArray::from_bytes(&kyc_metadata),
-        };
-
-        state.process_transaction(&kyc_verification).unwrap();
-
-        // Verify user type updated to investor and KYC approved
-        let user = state.users.get(&investor_id).unwrap();
-        assert_eq!(user.user_type, crate::user::UserType::Investor);
-        assert_eq!(user.kyc_status, crate::user::KycStatus::Approved);
-
-        // Create pool creation transaction
-        let mut pool_metadata = vec![0u8; 64];
-        // Pack pool configuration: max_ltv_ratio (8000 = 80%), max_interest_rate (1200 = 12%), repayment_period_days (365)
-        let max_ltv_ratio = 8000u64;
-        let max_interest_rate = 1200u64;
-        let repayment_period_days = 365u32;
-
-        pool_metadata[0..8].copy_from_slice(&max_ltv_ratio.to_le_bytes());
-        pool_metadata[8..16].copy_from_slice(&max_interest_rate.to_le_bytes());
-        pool_metadata[16..20].copy_from_slice(&repayment_period_days.to_le_bytes());
-
-        let pool_creation = LoanTransaction {
-            transaction_id: [30u8; 32],
-            user_id: investor_id,
-            deal_id: pool_id, // Using deal_id field as pool_id
-            transaction_type: TransactionType::PoolCreation,
-            amount: 0,
-            created_at: 1_640_995_400,
-            metadata: MetadataArray::from_bytes(&pool_metadata),
-        };
-
-        // Process pool creation
-        state.process_transaction(&pool_creation).unwrap();
-
-        // Verify pool was created
-        let pool = state.pools.get_pool(&pool_id).unwrap();
-        assert_eq!(pool.investor_id, investor_id);
-        assert_eq!(pool.max_ltv_ratio, 8000);
-        assert_eq!(pool.max_interest_rate, 1200);
-        assert_eq!(pool.repayment_period_days, 365);
-        assert_eq!(pool.status, crate::pool::PoolStatus::Pending);
-
-        // Verify pool state integrity
-        assert_eq!(state.pools.total_pools(), 1);
-        assert_eq!(state.pools.active_pools(), 0); // Still pending
-
-        // Verify transaction counter was incremented
-        assert_eq!(state.transaction_count, 4); // 1 user registration + 1 investor registration + 1 kyc verification + 1 pool creation
     }
 }

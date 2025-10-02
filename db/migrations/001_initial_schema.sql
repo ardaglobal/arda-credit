@@ -5317,220 +5317,9 @@ CREATE TRIGGER trigger_initial_withdrawal_history
     FOR EACH ROW
     EXECUTE FUNCTION create_initial_withdrawal_history();
 
-COMMIT;-- Create liquidity pools for investor auto-deployment terms
--- This migration adds liquidity pool management for automatic merchant credit line matching
+COMMIT;
 
--- ============================================================================
--- LIQUIDITY POOLS TABLE
--- ============================================================================
-
--- Table for investor-created liquidity pools with auto-deployment parameters
-CREATE TABLE liquidity_pools (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    investor_id UUID NOT NULL REFERENCES identities(id) ON DELETE RESTRICT,
-    name VARCHAR(255) NOT NULL,
-    total_deposits DECIMAL(20, 6) NOT NULL DEFAULT 0 CHECK (total_deposits >= 0),
-    available_liquidity DECIMAL(20, 6) NOT NULL DEFAULT 0 CHECK (available_liquidity >= 0),
-    utilized_liquidity DECIMAL(20, 6) NOT NULL DEFAULT 0 CHECK (utilized_liquidity >= 0),
-    
-    -- Auto-deployment terms
-    max_ltv_ratio DECIMAL(5, 4) NOT NULL CHECK (max_ltv_ratio >= 0.1000 AND max_ltv_ratio <= 0.9500), -- 10% to 95%
-    max_interest_rate DECIMAL(7, 4) NOT NULL CHECK (max_interest_rate >= 0.0100 AND max_interest_rate <= 0.5000), -- 1% to 50%
-    repayment_period_days INTEGER NOT NULL CHECK (repayment_period_days >= 7 AND repayment_period_days <= 365), -- 7 days to 1 year
-    
-    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'PAUSED', 'CLOSED')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- ============================================================================
--- LIQUIDITY POOL AUDIT TABLE
--- ============================================================================
-
--- Audit trail for all pool operations
-CREATE TABLE liquidity_pool_audit (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pool_id UUID NOT NULL REFERENCES liquidity_pools(id) ON DELETE CASCADE,
-    operation_type VARCHAR(30) NOT NULL CHECK (operation_type IN ('POOL_CREATED', 'POOL_UPDATED', 'POOL_FUNDED', 'POOL_WITHDRAWN', 'POOL_MATCHED', 'POOL_STATUS_CHANGED')),
-    old_values JSONB,
-    new_values JSONB,
-    operator_id UUID REFERENCES identities(id),
-    metadata JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- ============================================================================
--- CONSTRAINTS AND VALIDATIONS
--- ============================================================================
-
--- Ensure available + utilized = total deposits
-ALTER TABLE liquidity_pools ADD CONSTRAINT liquidity_balance_consistency 
-    CHECK (available_liquidity + utilized_liquidity = total_deposits);
-
--- Ensure pool name is unique per investor
-CREATE UNIQUE INDEX idx_liquidity_pools_investor_name ON liquidity_pools(investor_id, name) WHERE status != 'CLOSED';
-
--- Note: Investor validation will be enforced at the application layer
--- PostgreSQL doesn't support subqueries in CHECK constraints
-
--- ============================================================================
--- INDEXES FOR PERFORMANCE
--- ============================================================================
-
--- Primary access patterns
-CREATE INDEX idx_liquidity_pools_investor_id ON liquidity_pools(investor_id);
-CREATE INDEX idx_liquidity_pools_status ON liquidity_pools(status);
-CREATE INDEX idx_liquidity_pools_created_at ON liquidity_pools(created_at);
-CREATE INDEX idx_liquidity_pools_available_liquidity ON liquidity_pools(available_liquidity) WHERE available_liquidity > 0;
-
--- Auto-deployment matching indexes
-CREATE INDEX idx_liquidity_pools_ltv_ratio ON liquidity_pools(max_ltv_ratio) WHERE status = 'ACTIVE';
-CREATE INDEX idx_liquidity_pools_interest_rate ON liquidity_pools(max_interest_rate) WHERE status = 'ACTIVE';
-CREATE INDEX idx_liquidity_pools_repayment_period ON liquidity_pools(repayment_period_days) WHERE status = 'ACTIVE';
-
--- Composite index for active pool filtering
-CREATE INDEX idx_liquidity_pools_active_params ON liquidity_pools(status, available_liquidity, max_ltv_ratio, max_interest_rate, repayment_period_days) 
-    WHERE status = 'ACTIVE' AND available_liquidity > 0;
-
--- Audit table indexes
-CREATE INDEX idx_liquidity_pool_audit_pool_id ON liquidity_pool_audit(pool_id);
-CREATE INDEX idx_liquidity_pool_audit_operation_type ON liquidity_pool_audit(operation_type);
-CREATE INDEX idx_liquidity_pool_audit_created_at ON liquidity_pool_audit(created_at);
-
--- ============================================================================
--- TRIGGERS FOR AUTOMATIC UPDATES
--- ============================================================================
-
--- Trigger for updating updated_at timestamp
-CREATE TRIGGER update_liquidity_pools_updated_at 
-    BEFORE UPDATE ON liquidity_pools 
-    FOR EACH ROW 
-    EXECUTE FUNCTION update_updated_at_column();
-
--- Function to create audit records for pool operations
-CREATE OR REPLACE FUNCTION create_pool_audit_record()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF TG_OP = 'INSERT' THEN
-        INSERT INTO liquidity_pool_audit (pool_id, operation_type, new_values, operator_id)
-        VALUES (NEW.id, 'POOL_CREATED', to_jsonb(NEW), NEW.investor_id);
-        RETURN NEW;
-    ELSIF TG_OP = 'UPDATE' THEN
-        -- Check what changed and create appropriate audit record
-        IF OLD.status != NEW.status THEN
-            INSERT INTO liquidity_pool_audit (pool_id, operation_type, old_values, new_values, operator_id)
-            VALUES (NEW.id, 'POOL_STATUS_CHANGED', 
-                    jsonb_build_object('status', OLD.status), 
-                    jsonb_build_object('status', NEW.status), 
-                    NEW.investor_id);
-        ELSE
-            INSERT INTO liquidity_pool_audit (pool_id, operation_type, old_values, new_values, operator_id)
-            VALUES (NEW.id, 'POOL_UPDATED', to_jsonb(OLD), to_jsonb(NEW), NEW.investor_id);
-        END IF;
-        RETURN NEW;
-    END IF;
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- Trigger to automatically create audit records
-CREATE TRIGGER pool_audit_trigger
-    AFTER INSERT OR UPDATE ON liquidity_pools
-    FOR EACH ROW
-    EXECUTE FUNCTION create_pool_audit_record();
-
--- ============================================================================
--- HELPER FUNCTIONS FOR POOL MANAGEMENT
--- ============================================================================
-
--- Function to get active pools for auto-deployment matching
-CREATE OR REPLACE FUNCTION get_matching_pools(
-    required_liquidity DECIMAL(20, 6),
-    max_ltv DECIMAL(5, 4),
-    max_rate DECIMAL(7, 4),
-    min_repayment_days INTEGER
-)
-RETURNS TABLE(
-    pool_id UUID,
-    investor_id UUID,
-    pool_name VARCHAR(255),
-    available_liquidity DECIMAL(20, 6),
-    max_ltv_ratio DECIMAL(5, 4),
-    max_interest_rate DECIMAL(7, 4),
-    repayment_period_days INTEGER
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        lp.id,
-        lp.investor_id,
-        lp.name,
-        lp.available_liquidity,
-        lp.max_ltv_ratio,
-        lp.max_interest_rate,
-        lp.repayment_period_days
-    FROM liquidity_pools lp
-    WHERE lp.status = 'ACTIVE'
-        AND lp.available_liquidity >= required_liquidity
-        AND lp.max_ltv_ratio >= max_ltv
-        AND lp.max_interest_rate >= max_rate
-        AND lp.repayment_period_days >= min_repayment_days
-    ORDER BY lp.max_interest_rate ASC, lp.available_liquidity DESC; -- Prefer lower rates, higher liquidity
-END;
-$$ LANGUAGE plpgsql;
-
--- Function to validate pool parameters
-CREATE OR REPLACE FUNCTION validate_pool_parameters(
-    ltv_ratio DECIMAL(5, 4),
-    interest_rate DECIMAL(7, 4),
-    repayment_days INTEGER
-)
-RETURNS BOOLEAN AS $$
-BEGIN
-    RETURN (
-        ltv_ratio >= 0.1000 AND ltv_ratio <= 0.9500 AND
-        interest_rate >= 0.0100 AND interest_rate <= 0.5000 AND
-        repayment_days >= 7 AND repayment_days <= 365
-    );
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
--- INTEGRATION WITH LOAN TRANSACTIONS
--- ============================================================================
-
--- Add pool_id to loan_transactions for tracking pool-originated loans
-ALTER TABLE loan_transactions ADD COLUMN pool_id UUID REFERENCES liquidity_pools(id);
-CREATE INDEX idx_loan_transactions_pool_id ON loan_transactions(pool_id) WHERE pool_id IS NOT NULL;
-
--- Function to link loan transactions with originating pools
-CREATE OR REPLACE FUNCTION link_loan_to_pool(
-    transaction_id UUID,
-    originating_pool_id UUID
-)
-RETURNS BOOLEAN AS $$
-BEGIN
-    UPDATE loan_transactions 
-    SET pool_id = originating_pool_id
-    WHERE id = transaction_id;
-    
-    RETURN FOUND;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
--- TABLE COMMENTS
--- ============================================================================
-
-COMMENT ON TABLE liquidity_pools IS 'Investor-created liquidity pools with auto-deployment parameters for merchant credit line matching';
-COMMENT ON TABLE liquidity_pool_audit IS 'Audit trail for all liquidity pool operations and state changes';
-
-COMMENT ON COLUMN liquidity_pools.max_ltv_ratio IS 'Maximum loan-to-value ratio (decimal: 0.8000 = 80%)';
-COMMENT ON COLUMN liquidity_pools.max_interest_rate IS 'Maximum interest rate (decimal: 0.1200 = 12%)';
-COMMENT ON COLUMN liquidity_pools.repayment_period_days IS 'Repayment period in days (7-365 days allowed)';
-COMMENT ON COLUMN liquidity_pools.total_deposits IS 'Total funds deposited into the pool';
-COMMENT ON COLUMN liquidity_pools.available_liquidity IS 'Available funds for new deployments';
-COMMENT ON COLUMN liquidity_pools.utilized_liquidity IS 'Currently deployed funds in active loans';-- Create investor profiles table for enhanced investor account functionality
+-- Create investor profiles table for enhanced investor account functionality
 -- This migration adds investor-specific profile management and accredited investor tracking
 
 -- ============================================================================
@@ -5722,58 +5511,6 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================================
--- INTEGRATION WITH EXISTING LIQUIDITY POOLS
--- ============================================================================
-
--- Update liquidity pools to reference investor profiles for enhanced validation
--- (The existing liquidity_pools table already references identities.id as investor_id)
--- Add index to improve joins between investor profiles and liquidity pools
-CREATE INDEX idx_liquidity_pools_investor_profile_join ON liquidity_pools(investor_id);
-
--- Function to get investor pools with profile information
-CREATE OR REPLACE FUNCTION get_investor_pools_with_profile(
-    profile_user_id UUID
-)
-RETURNS TABLE(
-    pool_id UUID,
-    pool_name VARCHAR(255),
-    total_deposits DECIMAL(20, 6),
-    available_liquidity DECIMAL(20, 6),
-    utilized_liquidity DECIMAL(20, 6),
-    max_ltv_ratio DECIMAL(5, 4),
-    max_interest_rate DECIMAL(7, 4),
-    repayment_period_days INTEGER,
-    pool_status VARCHAR(20),
-    pool_created_at TIMESTAMP WITH TIME ZONE,
-    pool_updated_at TIMESTAMP WITH TIME ZONE,
-    accredited_investor BOOLEAN,
-    investment_capacity DECIMAL(20, 6),
-    regulatory_jurisdiction VARCHAR(10)
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        lp.id,
-        lp.name,
-        lp.total_deposits,
-        lp.available_liquidity,
-        lp.utilized_liquidity,
-        lp.max_ltv_ratio,
-        lp.max_interest_rate,
-        lp.repayment_period_days,
-        lp.status,
-        lp.created_at,
-        lp.updated_at,
-        ip.accredited_investor,
-        ip.investment_capacity,
-        ip.regulatory_jurisdiction
-    FROM liquidity_pools lp
-    JOIN investor_profiles ip ON lp.investor_id = ip.user_id
-    WHERE ip.user_id = profile_user_id;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
 -- TABLE COMMENTS
 -- ============================================================================
 
@@ -5821,7 +5558,6 @@ CREATE INDEX idx_identities_investor_kyc_status_type ON identities(user_type, ky
 
 -- Drop existing functions that will have return type changes
 DROP FUNCTION IF EXISTS get_investor_profile_with_identity(UUID);
-DROP FUNCTION IF EXISTS get_investor_pools_with_profile(UUID);
 
 -- ============================================================================
 -- UPDATE FUNCTIONS AND CONSTRAINTS
@@ -5959,172 +5695,13 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ============================================================================
--- UPDATE INVESTOR POOLS FUNCTION
--- ============================================================================
-
--- Update investor pools function to include KYC investor type
-CREATE OR REPLACE FUNCTION get_investor_pools_with_profile(
-    profile_user_id UUID
-)
-RETURNS TABLE(
-    pool_id UUID,
-    pool_name VARCHAR(255),
-    total_deposits DECIMAL(20, 6),
-    available_liquidity DECIMAL(20, 6),
-    utilized_liquidity DECIMAL(20, 6),
-    max_ltv_ratio DECIMAL(5, 4),
-    max_interest_rate DECIMAL(7, 4),
-    repayment_period_days INTEGER,
-    pool_status VARCHAR(20),
-    pool_created_at TIMESTAMP WITH TIME ZONE,
-    pool_updated_at TIMESTAMP WITH TIME ZONE,
-    kyc_investor_type kyc_investor_type,
-    accredited_investor BOOLEAN,
-    investment_capacity DECIMAL(20, 6),
-    regulatory_jurisdiction VARCHAR(10)
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        lp.id,
-        lp.name,
-        lp.total_deposits,
-        lp.available_liquidity,
-        lp.utilized_liquidity,
-        lp.max_ltv_ratio,
-        lp.max_interest_rate,
-        lp.repayment_period_days,
-        lp.status,
-        lp.created_at,
-        lp.updated_at,
-        i.kyc_investor_type,
-        ip.accredited_investor,
-        ip.investment_capacity,
-        ip.regulatory_jurisdiction
-    FROM liquidity_pools lp
-    JOIN investor_profiles ip ON lp.investor_id = ip.user_id
-    JOIN identities i ON ip.user_id = i.id
-    WHERE ip.user_id = profile_user_id
-        AND i.deleted_at IS NULL;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
 -- TABLE COMMENTS
 -- ============================================================================
 
 COMMENT ON TYPE kyc_investor_type IS 'KYC investor type classifications for regulatory compliance: QIB (Qualified Institutional Buyer), QP (Qualified Purchaser), AI (Accredited Investor)';
-COMMENT ON COLUMN identities.kyc_investor_type IS 'KYC investor type classification (QIB, QP, AI) - required for approved investor accounts';-- Add database indexes for liquidity pool query optimization
--- This migration adds performance indexes for frequent pool query patterns
+COMMENT ON COLUMN identities.kyc_investor_type IS 'KYC investor type classification (QIB, QP, AI) - required for approved investor accounts';
 
--- ============================================================================
--- LIQUIDITY POOL QUERY INDEXES
--- ============================================================================
-
--- Index for filtering pools by investor and status (most common query pattern)
-CREATE INDEX IF NOT EXISTS idx_pools_investor_status ON liquidity_pools(investor_id, status);
-
--- Index for ordering pools by creation date
-CREATE INDEX IF NOT EXISTS idx_pools_created_at ON liquidity_pools(created_at DESC);
-
--- Index for ordering pools by updated date
-CREATE INDEX IF NOT EXISTS idx_pools_updated_at ON liquidity_pools(updated_at DESC);
-
--- Index for ordering pools by total deposits (dashboard analytics)
-CREATE INDEX IF NOT EXISTS idx_pools_total_deposits ON liquidity_pools(total_deposits DESC);
-
--- Index for calculating utilization rates (analytics queries)
-CREATE INDEX IF NOT EXISTS idx_pools_utilization ON liquidity_pools(
-    (utilized_liquidity::float / NULLIF(total_deposits::float, 0)) DESC
-);
-
--- Index for active pools market overview
-CREATE INDEX IF NOT EXISTS idx_pools_active_status ON liquidity_pools(status) 
-WHERE status = 'active';
-
--- ============================================================================
--- LIQUIDITY POOL AUDIT INDEXES
--- ============================================================================
-
--- Index for pool transaction history queries
-CREATE INDEX IF NOT EXISTS idx_pool_audit_pool_id_created ON liquidity_pool_audit(pool_id, created_at DESC);
-
--- Index for operation type filtering
-CREATE INDEX IF NOT EXISTS idx_pool_audit_operation_type ON liquidity_pool_audit(operation_type);
-
--- ============================================================================
--- COMPOSITE INDEXES FOR COMPLEX QUERIES
--- ============================================================================
-
--- Index for investor dashboard aggregations
-CREATE INDEX IF NOT EXISTS idx_pools_investor_aggregation ON liquidity_pools(
-    investor_id, 
-    status, 
-    total_deposits, 
-    available_liquidity, 
-    utilized_liquidity
-);
-
--- Index for market overview calculations
-CREATE INDEX IF NOT EXISTS idx_pools_market_overview ON liquidity_pools(
-    status, 
-    total_deposits, 
-    available_liquidity, 
-    utilized_liquidity,
-    max_ltv_ratio,
-    max_interest_rate
-) WHERE status = 'active';
-
--- ============================================================================
--- PARTIAL INDEXES FOR SPECIFIC USE CASES
--- ============================================================================
-
--- Index for finding available pools (non-zero liquidity)
-CREATE INDEX IF NOT EXISTS idx_pools_available_liquidity ON liquidity_pools(
-    available_liquidity DESC, 
-    max_ltv_ratio,
-    max_interest_rate
-) WHERE available_liquidity > 0 AND status = 'active';
-
--- Index for high-utilization pools monitoring
-CREATE INDEX IF NOT EXISTS idx_pools_high_utilization ON liquidity_pools(
-    (utilized_liquidity::float / NULLIF(total_deposits::float, 0)) DESC,
-    updated_at
-) WHERE total_deposits > 0;
-
--- ============================================================================
--- COMMENTS
--- ============================================================================
-
-COMMENT ON INDEX idx_pools_investor_status IS 'Optimizes pool queries filtered by investor and status';
-COMMENT ON INDEX idx_pools_created_at IS 'Optimizes pool listing ordered by creation date';
-COMMENT ON INDEX idx_pools_total_deposits IS 'Optimizes dashboard queries showing pools by size';
-COMMENT ON INDEX idx_pools_utilization IS 'Optimizes utilization rate calculations and ordering';
-COMMENT ON INDEX idx_pool_audit_pool_id_created IS 'Optimizes pool transaction history queries';
-COMMENT ON INDEX idx_pools_investor_aggregation IS 'Optimizes investor dashboard metric calculations';
-COMMENT ON INDEX idx_pools_market_overview IS 'Optimizes platform-wide analytics queries';-- Add new pool transaction types to loan_transactions table
--- This migration extends the existing CHECK constraint to support pool operations
-
--- Drop existing constraint
-ALTER TABLE loan_transactions DROP CONSTRAINT loan_transactions_transaction_type_check;
-
--- Add new constraint with pool transaction types
-ALTER TABLE loan_transactions ADD CONSTRAINT loan_transactions_transaction_type_check 
-    CHECK (transaction_type IN (
-        'user_registration', 
-        'kyc_submission', 
-        'kyc_verification', 
-        'loan_origination', 
-        'loan_payment', 
-        'loan_closeout',
-        'user_deposit',
-        'user_withdrawal',
-        'investor_registration',
-        'pool_creation'
-    ));
-
--- Table comment update
-COMMENT ON COLUMN loan_transactions.transaction_type IS 'Transaction type: user_registration, kyc_submission, kyc_verification, loan_origination, loan_payment, loan_closeout, user_deposit, user_withdrawal, investor_registration, pool_creation';-- Create merchant registration and profile tables
+-- Create merchant registration and profile tables
 -- Enables merchants to onboard, create profiles, and request credit lines
 
 -- ============================================================================
@@ -6442,7 +6019,6 @@ VALUES
 INSERT INTO merchant_documents (merchant_id, document_type, document_url, status)
 VALUES ((SELECT id FROM merchants LIMIT 1), 'BANK_STATEMENT', '/uploads/bank_statement_202501.pdf', 'PENDING');
 */-- Create credit line request and approval system
--- Enables merchants to request credit lines with automated evaluation and pool matching
 
 -- ============================================================================
 -- CREATE CREDIT LINE REQUESTS TABLE
@@ -6457,7 +6033,6 @@ CREATE TABLE credit_line_requests (
     collateral_basis DECIMAL(20,6), -- Calculated from turnover
     ltv_ratio DECIMAL(5,4), -- Calculated LTV (e.g., 0.8000 = 80%)
     status VARCHAR(20) DEFAULT 'SUBMITTED',
-    matched_pool_id UUID REFERENCES liquidity_pools(id),
     approved_amount DECIMAL(20,6), -- May be less than requested
     approved_rate_apr DECIMAL(5,4),
     evaluation_notes JSONB,
@@ -6469,7 +6044,6 @@ CREATE TABLE credit_line_requests (
 -- Add indexes for performance
 CREATE INDEX idx_credit_line_requests_merchant_id ON credit_line_requests(merchant_id);
 CREATE INDEX idx_credit_line_requests_status ON credit_line_requests(status);
-CREATE INDEX idx_credit_line_requests_pool_id ON credit_line_requests(matched_pool_id);
 CREATE INDEX idx_credit_line_requests_created_at ON credit_line_requests(created_at DESC);
 
 -- ============================================================================
@@ -6480,7 +6054,6 @@ CREATE TABLE credit_lines (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id UUID NOT NULL REFERENCES credit_line_requests(id),
     merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-    pool_id UUID NOT NULL REFERENCES liquidity_pools(id),
     credit_limit DECIMAL(20,6) NOT NULL,
     available_credit DECIMAL(20,6) NOT NULL,
     utilized_amount DECIMAL(20,6) DEFAULT 0,
@@ -6496,7 +6069,6 @@ CREATE TABLE credit_lines (
 
 -- Add indexes for performance
 CREATE INDEX idx_credit_lines_merchant_id ON credit_lines(merchant_id);
-CREATE INDEX idx_credit_lines_pool_id ON credit_lines(pool_id);
 CREATE INDEX idx_credit_lines_status ON credit_lines(status);
 CREATE INDEX idx_credit_lines_request_id ON credit_lines(request_id);
 CREATE INDEX idx_credit_lines_expires_at ON credit_lines(expires_at);
@@ -6590,9 +6162,6 @@ SELECT
     clr.ltv_ratio,
     clr.status,
     clr.rejection_reason,
-    lp.name as pool_name,
-    lp.max_ltv_ratio as pool_max_ltv,
-    lp.max_interest_rate as pool_max_rate,
     clr.created_at as requested_at,
     -- Calculate approval rate
     CASE WHEN clr.status = 'APPROVED' THEN 1.0 ELSE 0.0 END as approval_indicator,
@@ -6605,18 +6174,15 @@ SELECT
     mta.data_quality_score
 FROM credit_line_requests clr
 JOIN merchants m ON clr.merchant_id = m.id
-LEFT JOIN liquidity_pools lp ON clr.matched_pool_id = lp.id
 LEFT JOIN merchant_profile_completion mpc ON m.id = mpc.merchant_id
 LEFT JOIN merchant_turnover_analytics mta ON m.id = mta.merchant_id;
 
 -- View for active credit line portfolio
 CREATE VIEW active_credit_lines_portfolio AS
-SELECT 
+SELECT
     cl.id as credit_line_id,
     cl.merchant_id,
     m.legal_name as merchant_name,
-    cl.pool_id,
-    lp.name as pool_name,
     cl.credit_limit,
     cl.available_credit,
     cl.utilized_amount,
@@ -6625,23 +6191,19 @@ SELECT
     cl.opened_at,
     cl.expires_at,
     -- Calculate utilization percentage
-    CASE WHEN cl.credit_limit > 0 
-         THEN (cl.utilized_amount / cl.credit_limit * 100)::DECIMAL(5,2) 
+    CASE WHEN cl.credit_limit > 0
+         THEN (cl.utilized_amount / cl.credit_limit * 100)::DECIMAL(5,2)
          ELSE 0 END as utilization_percentage,
     -- Days until expiration
-    CASE WHEN cl.expires_at IS NOT NULL 
+    CASE WHEN cl.expires_at IS NOT NULL
          THEN EXTRACT(DAY FROM (cl.expires_at - NOW()))::INTEGER
          ELSE NULL END as days_until_expiration,
     -- Risk indicators
     CASE WHEN cl.utilized_amount / cl.credit_limit > 0.9 THEN 'HIGH'
          WHEN cl.utilized_amount / cl.credit_limit > 0.7 THEN 'MEDIUM'
-         ELSE 'LOW' END as utilization_risk,
-    -- Pool impact
-    cl.credit_limit as pool_commitment,
-    lp.total_deposits as pool_total_capacity
+         ELSE 'LOW' END as utilization_risk
 FROM credit_lines cl
 JOIN merchants m ON cl.merchant_id = m.id
-JOIN liquidity_pools lp ON cl.pool_id = lp.id
 WHERE cl.status IN ('ACTIVE', 'SUSPENDED');
 
 -- ============================================================================
@@ -6674,67 +6236,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to find matching pools for a credit request
-CREATE OR REPLACE FUNCTION find_matching_pools_for_request(
-    p_requested_amount DECIMAL,
-    p_ltv_ratio DECIMAL,
-    p_max_rate DECIMAL DEFAULT NULL
-)
-RETURNS TABLE(
-    pool_id UUID,
-    pool_name VARCHAR,
-    max_ltv_ratio DECIMAL,
-    max_interest_rate DECIMAL,
-    available_liquidity DECIMAL,
-    match_score INTEGER
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT 
-        lp.id,
-        lp.name,
-        lp.max_ltv_ratio,
-        lp.max_interest_rate,
-        lp.available_liquidity,
-        -- Calculate match score (higher is better)
-        (
-            (CASE WHEN lp.available_liquidity >= p_requested_amount THEN 40 ELSE 0 END) +
-            (CASE WHEN lp.max_ltv_ratio >= p_ltv_ratio THEN 30 ELSE 0 END) +
-            (CASE WHEN p_max_rate IS NULL OR lp.max_interest_rate <= p_max_rate THEN 30 ELSE 0 END)
-        )::INTEGER as match_score
-    FROM liquidity_pools lp
-    WHERE lp.status = 'ACTIVE'
-      AND lp.available_liquidity >= p_requested_amount
-      AND lp.max_ltv_ratio >= p_ltv_ratio
-      AND (p_max_rate IS NULL OR lp.max_interest_rate <= p_max_rate)
-    ORDER BY match_score DESC, lp.max_interest_rate ASC, lp.available_liquidity DESC;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
--- SAMPLE DATA FOR TESTING (COMMENTED OUT)
--- ============================================================================
-
-/*
--- Test credit line request (requires existing merchant)
-INSERT INTO credit_line_requests (merchant_id, requested_amount, requested_rate_apr, requested_tenor_days)
-VALUES (
-    (SELECT id FROM merchants LIMIT 1),
-    50000.00,
-    0.1200,
-    90
-);
-
--- Test collateral basis calculation
-SELECT calculate_merchant_collateral_basis(
-    (SELECT id FROM merchants LIMIT 1),
-    30,
-    20.0
-) as calculated_collateral_basis;
-
--- Test pool matching
-SELECT * FROM find_matching_pools_for_request(50000.00, 0.75, 0.15);
-*/-- Add 'merchant' to the user_type constraint to support merchant registration
+-- Add 'merchant' to the user_type constraint to support merchant registration
 -- Expanding from 'user', 'investor', 'lender', 'originator', 'admin' to include 'merchant'
 
 -- ============================================================================
@@ -6853,30 +6355,6 @@ CREATE TABLE account_financial_transactions (
 );
 
 -- ============================================================================
--- POOL FINANCIAL TRANSACTIONS
--- ============================================================================
-
--- Track financial movements in/out of liquidity pools
-CREATE TABLE pool_financial_transactions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pool_id UUID NOT NULL REFERENCES liquidity_pools(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
-    transaction_type VARCHAR(20) NOT NULL, -- FUND, WITHDRAW, INTEREST, RETURN
-    amount DECIMAL(20,6) NOT NULL,
-    currency VARCHAR(10) DEFAULT 'USDC',
-    -- Link to state transaction if applicable
-    state_transaction_id UUID, -- Can reference state_transactions(id) if this was triggered by a state change
-    transaction_hash VARCHAR(66), -- Blockchain transaction hash if applicable
-    description TEXT,
-    processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-    CONSTRAINT valid_pool_transaction_type CHECK (
-        transaction_type IN ('FUND', 'WITHDRAW', 'INTEREST', 'RETURN')
-    ),
-    CONSTRAINT positive_amount CHECK (amount > 0)
-);
-
--- ============================================================================
 -- CREDIT LINE FINANCIAL TRANSACTIONS
 -- ============================================================================
 
@@ -6910,12 +6388,6 @@ CREATE INDEX idx_account_financial_transactions_type ON account_financial_transa
 CREATE INDEX idx_account_financial_transactions_hash ON account_financial_transactions(transaction_hash);
 CREATE INDEX idx_account_financial_transactions_processed_at ON account_financial_transactions(processed_at DESC);
 
--- Pool financial transactions indexes
-CREATE INDEX idx_pool_financial_transactions_pool_id ON pool_financial_transactions(pool_id);
-CREATE INDEX idx_pool_financial_transactions_user_id ON pool_financial_transactions(user_id);
-CREATE INDEX idx_pool_financial_transactions_type ON pool_financial_transactions(transaction_type);
-CREATE INDEX idx_pool_financial_transactions_processed_at ON pool_financial_transactions(processed_at DESC);
-
 -- Credit line financial transactions indexes
 CREATE INDEX idx_credit_line_financial_transactions_credit_line_id ON credit_line_financial_transactions(credit_line_id);
 CREATE INDEX idx_credit_line_financial_transactions_merchant_id ON credit_line_financial_transactions(merchant_id);
@@ -6928,11 +6400,6 @@ CREATE INDEX idx_credit_line_financial_transactions_processed_at ON credit_line_
 
 -- Add financial transaction tracking to user_balances
 ALTER TABLE user_balances
-ADD COLUMN IF NOT EXISTS last_financial_transaction_at TIMESTAMP WITH TIME ZONE;
-
--- Add financial transaction tracking to liquidity_pools
-ALTER TABLE liquidity_pools
-ADD COLUMN IF NOT EXISTS total_financial_volume DECIMAL(20,6) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS last_financial_transaction_at TIMESTAMP WITH TIME ZONE;
 
 -- Add financial transaction tracking to credit_lines
@@ -6955,26 +6422,9 @@ SELECT
     aft.currency,
     aft.transaction_hash,
     aft.processed_at,
-    NULL::uuid as pool_id,
     NULL::uuid as credit_line_id,
     ('Smart contract ' || LOWER(aft.transaction_type))::text as description
 FROM account_financial_transactions aft
-
-UNION ALL
-
-SELECT
-    'POOL'::text as transaction_category,
-    pft.id,
-    pft.user_id,
-    pft.transaction_type,
-    pft.amount,
-    pft.currency,
-    pft.transaction_hash,
-    pft.processed_at,
-    pft.pool_id,
-    NULL::uuid as credit_line_id,
-    COALESCE(pft.description, 'Pool ' || LOWER(pft.transaction_type))::text as description
-FROM pool_financial_transactions pft
 
 UNION ALL
 
@@ -6987,7 +6437,6 @@ SELECT
     clft.currency,
     clft.transaction_hash,
     clft.processed_at,
-    NULL::uuid as pool_id,
     clft.credit_line_id,
     COALESCE(clft.description, 'Credit line ' || LOWER(clft.transaction_type))::text as description
 FROM credit_line_financial_transactions clft;
@@ -7010,10 +6459,6 @@ CREATE TRIGGER update_account_financial_transactions_updated_at
     BEFORE UPDATE ON account_financial_transactions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_pool_financial_transactions_updated_at
-    BEFORE UPDATE ON pool_financial_transactions
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
 CREATE TRIGGER update_credit_line_financial_transactions_updated_at
     BEFORE UPDATE ON credit_line_financial_transactions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -7028,8 +6473,6 @@ RETURNS TABLE(
     total_deposits DECIMAL(20,6),
     total_withdrawals DECIMAL(20,6),
     net_account_flow DECIMAL(20,6),
-    total_pool_funding DECIMAL(20,6),
-    total_pool_withdrawals DECIMAL(20,6),
     total_credit_line_payments DECIMAL(20,6),
     total_credit_line_draws DECIMAL(20,6)
 ) AS $$
@@ -7040,13 +6483,10 @@ BEGIN
         COALESCE(SUM(CASE WHEN aft.transaction_type = 'WITHDRAWAL' THEN aft.amount ELSE 0 END), 0) as total_withdrawals,
         COALESCE(SUM(CASE WHEN aft.transaction_type = 'DEPOSIT' THEN aft.amount
                          WHEN aft.transaction_type = 'WITHDRAWAL' THEN -aft.amount ELSE 0 END), 0) as net_account_flow,
-        COALESCE(SUM(CASE WHEN pft.transaction_type = 'FUND' THEN pft.amount ELSE 0 END), 0) as total_pool_funding,
-        COALESCE(SUM(CASE WHEN pft.transaction_type = 'WITHDRAW' THEN pft.amount ELSE 0 END), 0) as total_pool_withdrawals,
         COALESCE(SUM(CASE WHEN clft.transaction_type = 'PAYMENT' THEN clft.amount ELSE 0 END), 0) as total_credit_line_payments,
         COALESCE(SUM(CASE WHEN clft.transaction_type = 'DRAW' THEN clft.amount ELSE 0 END), 0) as total_credit_line_draws
     FROM identities i
     LEFT JOIN account_financial_transactions aft ON aft.user_id = i.id
-    LEFT JOIN pool_financial_transactions pft ON pft.user_id = i.id
     LEFT JOIN merchants m ON m.user_id = i.id
     LEFT JOIN credit_line_financial_transactions clft ON clft.merchant_id = m.id
     WHERE i.id = p_user_id;
@@ -7061,210 +6501,12 @@ COMMIT;
 
 -- This migration creates the financial transaction system with:
 -- 1. account_financial_transactions - Track smart contract deposits/withdrawals
--- 2. pool_financial_transactions - Track pool funding/withdrawals
--- 3. credit_line_financial_transactions - Track credit line draws/payments
--- 4. user_financial_transactions view - Unified view of all financial activity
--- 5. Helper functions for financial summaries
--- 6. Indexes for performance
--- 7. Triggers for automatic timestamp updates
--- Add pool borough percentage limits for geographic lending restrictions
--- This migration adds borough-based lending limits tied to total pool deposits
--- rather than just available liquidity
-
--- ============================================================================
--- POOL BOROUGH LIMITS TABLE
--- ============================================================================
-
--- Table for defining maximum percentage limits per borough/region for each pool
-CREATE TABLE pool_borough_limits (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pool_id UUID NOT NULL REFERENCES liquidity_pools(id) ON DELETE CASCADE,
-    borough VARCHAR(100) NOT NULL,  -- Geographic region (e.g., "Manhattan", "Brooklyn", "Queens", etc.)
-    max_percentage DECIMAL(5,4) NOT NULL CHECK (max_percentage > 0 AND max_percentage <= 1.0000), -- 0.1000 = 10%
-    current_allocated DECIMAL(20,6) NOT NULL DEFAULT 0 CHECK (current_allocated >= 0), -- Currently allocated amount
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-    -- Ensure one limit per borough per pool
-    UNIQUE(pool_id, borough)
-);
-
--- ============================================================================
--- ADD BOROUGH FIELD TO MERCHANTS
--- ============================================================================
-
--- Add borough field to merchants table to track borrower location
-ALTER TABLE merchants ADD COLUMN IF NOT EXISTS borough VARCHAR(100);
-
--- Create index for borough-based queries
-CREATE INDEX IF NOT EXISTS idx_merchants_borough ON merchants(borough) WHERE borough IS NOT NULL;
-
--- ============================================================================
--- BOROUGH VALIDATION FUNCTION
--- ============================================================================
-
--- Function to validate if a loan request would exceed borough percentage limits
-CREATE OR REPLACE FUNCTION validate_borough_borrowing_limit(
-    p_pool_id UUID,
-    p_borough VARCHAR(100),
-    p_requested_amount DECIMAL(20,6)
-)
-RETURNS TABLE(
-    is_valid BOOLEAN,
-    current_allocated DECIMAL(20,6),
-    max_allowed DECIMAL(20,6),
-    total_pool_deposits DECIMAL(20,6),
-    percentage_after_loan DECIMAL(5,4),
-    max_percentage DECIMAL(5,4)
-) AS $$
-DECLARE
-    v_pool_total_deposits DECIMAL(20,6);
-    v_current_borough_allocated DECIMAL(20,6);
-    v_max_percentage DECIMAL(5,4);
-    v_max_allowed_amount DECIMAL(20,6);
-    v_percentage_after DECIMAL(5,4);
-BEGIN
-    -- Get pool's total deposits
-    SELECT lp.total_deposits INTO v_pool_total_deposits
-    FROM liquidity_pools lp
-    WHERE lp.id = p_pool_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Pool with ID % not found', p_pool_id;
-    END IF;
-
-    -- Get current allocation for this borough (default to 0 if no limit set)
-    SELECT
-        COALESCE(pbl.current_allocated, 0),
-        COALESCE(pbl.max_percentage, 1.0000)  -- Default to 100% if no limit
-    INTO v_current_borough_allocated, v_max_percentage
-    FROM pool_borough_limits pbl
-    WHERE pbl.pool_id = p_pool_id AND pbl.borough = p_borough;
-
-    -- Handle case where no borough limit exists (allow all)
-    IF NOT FOUND THEN
-        v_current_borough_allocated := 0;
-        v_max_percentage := 1.0000;  -- 100% - no limit
-    END IF;
-
-    -- Calculate maximum allowed amount for this borough
-    v_max_allowed_amount := v_pool_total_deposits * v_max_percentage;
-
-    -- Calculate what percentage this would be after the loan
-    IF v_pool_total_deposits > 0 THEN
-        v_percentage_after := (v_current_borough_allocated + p_requested_amount) / v_pool_total_deposits;
-    ELSE
-        v_percentage_after := 0;
-    END IF;
-
-    RETURN QUERY SELECT
-        (v_current_borough_allocated + p_requested_amount) <= v_max_allowed_amount,
-        v_current_borough_allocated,
-        v_max_allowed_amount,
-        v_pool_total_deposits,
-        v_percentage_after,
-        v_max_percentage;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
--- BOROUGH ALLOCATION UPDATE FUNCTION
--- ============================================================================
-
--- Function to update borough allocation when loans are originated or repaid
-CREATE OR REPLACE FUNCTION update_borough_allocation(
-    p_pool_id UUID,
-    p_borough VARCHAR(100),
-    p_amount_change DECIMAL(20,6)  -- Positive for new loans, negative for repayments
-)
-RETURNS VOID AS $$
-BEGIN
-    -- Insert or update the borough allocation
-    INSERT INTO pool_borough_limits (pool_id, borough, current_allocated, max_percentage)
-    VALUES (p_pool_id, p_borough, GREATEST(0, p_amount_change), 1.0000)  -- Default to no limit
-    ON CONFLICT (pool_id, borough)
-    DO UPDATE SET
-        current_allocated = GREATEST(0, pool_borough_limits.current_allocated + p_amount_change),
-        updated_at = NOW();
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
--- GET BOROUGH SUMMARY FUNCTION
--- ============================================================================
-
--- Function to get borough allocation summary for a pool
-CREATE OR REPLACE FUNCTION get_pool_borough_summary(p_pool_id UUID)
-RETURNS TABLE(
-    borough VARCHAR(100),
-    current_allocated DECIMAL(20,6),
-    max_percentage DECIMAL(5,4),
-    max_allowed DECIMAL(20,6),
-    remaining_capacity DECIMAL(20,6),
-    utilization_percentage DECIMAL(5,4)
-) AS $$
-DECLARE
-    v_total_deposits DECIMAL(20,6);
-BEGIN
-    -- Get pool's total deposits
-    SELECT lp.total_deposits INTO v_total_deposits
-    FROM liquidity_pools lp
-    WHERE lp.id = p_pool_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Pool with ID % not found', p_pool_id;
-    END IF;
-
-    RETURN QUERY
-    SELECT
-        pbl.borough,
-        pbl.current_allocated,
-        pbl.max_percentage,
-        (v_total_deposits * pbl.max_percentage) as max_allowed,
-        GREATEST(0, (v_total_deposits * pbl.max_percentage) - pbl.current_allocated) as remaining_capacity,
-        CASE
-            WHEN v_total_deposits > 0 THEN pbl.current_allocated / v_total_deposits
-            ELSE 0
-        END as utilization_percentage
-    FROM pool_borough_limits pbl
-    WHERE pbl.pool_id = p_pool_id
-    ORDER BY pbl.current_allocated DESC;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================================================
--- INDEXES FOR PERFORMANCE
--- ============================================================================
-
--- Primary access patterns for borough limits
-CREATE INDEX idx_pool_borough_limits_pool_id ON pool_borough_limits(pool_id);
-CREATE INDEX idx_pool_borough_limits_borough ON pool_borough_limits(borough);
-CREATE INDEX idx_pool_borough_limits_pool_borough ON pool_borough_limits(pool_id, borough);
-
--- Index for current allocation queries
-CREATE INDEX idx_pool_borough_limits_allocation ON pool_borough_limits(current_allocated) WHERE current_allocated > 0;
-
--- ============================================================================
--- TRIGGERS
--- ============================================================================
-
--- Trigger for updating updated_at timestamp
-CREATE TRIGGER update_pool_borough_limits_updated_at
-    BEFORE UPDATE ON pool_borough_limits
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
--- ============================================================================
--- TABLE COMMENTS
--- ============================================================================
-
-COMMENT ON TABLE pool_borough_limits IS 'Geographic lending limits for liquidity pools based on total deposits';
-COMMENT ON COLUMN pool_borough_limits.max_percentage IS 'Maximum percentage of total_deposits that can be allocated to this borough (0.1000 = 10%)';
-COMMENT ON COLUMN pool_borough_limits.current_allocated IS 'Currently allocated amount to borrowers in this borough';
-COMMENT ON COLUMN pool_borough_limits.borough IS 'Geographic region identifier (e.g., Manhattan, Brooklyn, etc.)';
-
--- Add comment to merchants table for the new borough column
-COMMENT ON COLUMN merchants.borough IS 'Geographic region where merchant operates (for borough percentage limits)';-- Fix withdrawal state constraint to include 'approved' state
+-- 2. credit_line_financial_transactions - Track credit line draws/payments
+-- 3. user_financial_transactions view - Unified view of all financial activity
+-- 4. Helper functions for financial summaries
+-- 5. Indexes for performance
+-- 6. Triggers for automatic timestamp updates
+-- Fix withdrawal state constraint to include 'approved' state
 -- This addresses the constraint violation when approving withdrawals
 
 -- Drop the existing constraint
@@ -8584,7 +7826,7 @@ CREATE TABLE deal_transactions (
         -- Existing transaction types (keep for backward compatibility)
         'user_registration', 'kyc_submission', 'kyc_verification',
         'user_deposit', 'user_withdrawal',
-        'investor_registration', 'pool_creation',
+        'investor_registration',
         -- New deal transaction types
         'deal_origination', 'deal_payment', 'deal_closeout'
     )),

@@ -239,12 +239,6 @@ async fn get_transaction_history_internal(
         transactions.extend(withdrawal_txs);
     }
 
-    // Get pool transactions (funding, withdrawals)
-    if should_include_transaction_type(&query.transaction_type, "pool") {
-        let pool_txs = get_pool_transactions_data(pool, &query, limit, offset).await?;
-        transactions.extend(pool_txs);
-    }
-
     // Sort all transactions by created_at descending
     transactions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
@@ -530,97 +524,6 @@ async fn get_withdrawal_transactions(
                 "USDC Withdrawal - {:.6} USDC to {}",
                 amount_usdc,
                 row.get::<String, _>("recipient_address")
-            ),
-            metadata: None,
-        });
-    }
-
-    Ok(transactions)
-}
-
-async fn get_pool_transactions_data(
-    pool: &PgPool,
-    query: &TransactionHistoryQuery,
-    limit: i32,
-    offset: i32,
-) -> Result<Vec<TransactionHistoryItem>, sqlx::Error> {
-    let mut query_builder = sqlx::QueryBuilder::new(
-        r#"
-        SELECT
-            lpa.id,
-            lpa.pool_id,
-            lpa.operation_type,
-            lpa.old_values,
-            lpa.new_values,
-            lpa.created_at,
-            lp.name as pool_name,
-            lp.investor_id,
-            i.email as investor_email
-        FROM liquidity_pool_audit lpa
-        LEFT JOIN liquidity_pools lp ON lpa.pool_id = lp.id
-        LEFT JOIN identities i ON lp.investor_id = i.id
-        WHERE lpa.operation_type IN ('POOL_FUNDED', 'POOL_WITHDRAWN', 'POOL_MATCHED')
-        "#,
-    );
-
-    // Apply filters
-    if let Some(pool_id) = &query.pool_id {
-        query_builder.push(" AND lpa.pool_id = ");
-        query_builder.push_bind(pool_id);
-    }
-
-    if let Some(user_id) = &query.user_id {
-        query_builder.push(" AND lp.investor_id = ");
-        query_builder.push_bind(user_id);
-    }
-
-    if let Some(start_date) = &query.start_date {
-        query_builder.push(" AND lpa.created_at >= ");
-        query_builder.push_bind(start_date);
-    }
-
-    if let Some(end_date) = &query.end_date {
-        query_builder.push(" AND lpa.created_at <= ");
-        query_builder.push_bind(end_date);
-    }
-
-    query_builder.push(" ORDER BY lpa.created_at DESC LIMIT ");
-    query_builder.push_bind(limit);
-    query_builder.push(" OFFSET ");
-    query_builder.push_bind(offset);
-
-    let rows = query_builder.build().fetch_all(pool).await?;
-
-    let mut transactions = Vec::new();
-    for row in rows {
-        let operation_type: String = row.get("operation_type");
-        let pool_name: Option<String> = row.get("pool_name");
-
-        // Calculate amount from old/new values if available
-        let (amount, direction) = extract_amount_from_pool_audit(&row, &operation_type);
-
-        let created_at: DateTime<Utc> = row.get("created_at");
-        transactions.push(TransactionHistoryItem {
-            id: row.get::<Uuid, _>("id").to_string(),
-            transaction_type: operation_type.to_lowercase(),
-            category: "pool_operation".to_string(),
-            amount,
-            amount_wei: "0".to_string(), // Pool operations don't have wei amounts
-            direction,
-            status: "processed".to_string(),
-            created_at,
-            processed_at: Some(created_at),
-            user_address: None,
-            user_id: row.get::<Option<Uuid>, _>("investor_id"),
-            pool_id: row.get::<Option<Uuid>, _>("pool_id"),
-            loan_id: None,
-            credit_line_id: None,
-            block_number: None,
-            transaction_hash: None,
-            description: format!(
-                "{} - {}",
-                operation_type.replace("POOL_", "Pool "),
-                pool_name.unwrap_or("Unknown Pool".to_string())
             ),
             metadata: None,
         });

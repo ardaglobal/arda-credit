@@ -20,21 +20,11 @@
       },
       {
         "ordinal": 3,
-        "name": "total_pool_funding",
-        "type_info": "Numeric"
-      },
-      {
-        "ordinal": 4,
-        "name": "total_pool_withdrawals",
-        "type_info": "Numeric"
-      },
-      {
-        "ordinal": 5,
         "name": "total_credit_line_payments",
         "type_info": "Numeric"
       },
       {
-        "ordinal": 6,
+        "ordinal": 4,
         "name": "total_credit_line_draws",
         "type_info": "Numeric"
       }
@@ -45,8 +35,6 @@
       ]
     },
     "nullable": [
-      null,
-      null,
       null,
       null,
       null,

@@ -45,16 +45,11 @@
       },
       {
         "ordinal": 8,
-        "name": "pool_id",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 9,
         "name": "credit_line_id",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 10,
+        "ordinal": 9,
         "name": "description",
         "type_info": "Text"
       }
@@ -67,7 +62,6 @@
       ]
     },
     "nullable": [
-      true,
       true,
       true,
       true,

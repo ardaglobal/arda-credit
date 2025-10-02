@@ -159,8 +159,6 @@ pub struct UnifiedFinancialTransactionResponse {
     pub currency: String,
     pub transaction_hash: Option<String>,
     pub processed_at: chrono::DateTime<chrono::Utc>,
-    pub pool_id: Option<String>,
-    pub credit_line_id: Option<String>,
     pub description: String,
 }
 
@@ -170,10 +168,6 @@ pub struct FinancialSummaryResponse {
     pub total_deposits_usdc: String,
     pub total_withdrawals_usdc: String,
     pub net_account_flow_usdc: String,
-    pub total_pool_funding_usdc: String,
-    pub total_pool_withdrawals_usdc: String,
-    pub total_credit_line_payments_usdc: String,
-    pub total_credit_line_draws_usdc: String,
 }
 
 /// Paginated response wrapper
@@ -578,8 +572,6 @@ pub async fn get_user_financial_transactions(
                     currency: t.currency,
                     transaction_hash: t.transaction_hash,
                     processed_at: t.processed_at,
-                    pool_id: t.pool_id.map(|id| id.to_string()),
-                    credit_line_id: t.credit_line_id.map(|id| id.to_string()),
                     description: t.description,
                 })
                 .collect();
@@ -649,10 +641,6 @@ pub async fn get_user_financial_summary(
                 total_deposits_usdc: summary.total_deposits.to_string(),
                 total_withdrawals_usdc: summary.total_withdrawals.to_string(),
                 net_account_flow_usdc: summary.net_account_flow.to_string(),
-                total_pool_funding_usdc: summary.total_pool_funding.to_string(),
-                total_pool_withdrawals_usdc: summary.total_pool_withdrawals.to_string(),
-                total_credit_line_payments_usdc: summary.total_credit_line_payments.to_string(),
-                total_credit_line_draws_usdc: summary.total_credit_line_draws.to_string(),
             };
 
             Ok(Json(response))
