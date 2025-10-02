@@ -79,20 +79,11 @@ pub async fn create_deal_listing(
     let listing_id = Uuid::new_v4();
     let now = Utc::now();
 
-    // First update the deal marketplace status to 'for_sale'
-    sqlx::query!(
-        r#"
-        UPDATE deals
-        SET status = 'for_sale', updated_at = NOW()
-        WHERE id = $1 AND investor_id = $2
-        "#,
-        deal_id,
-        seller_id
-    )
-    .execute(pool)
-    .await?;
+    // Note: We don't change the deal's negotiation status when listing for sale.
+    // The listing status is tracked in the deal_listings table.
+    // The deal's negotiation status remains independent (e.g., "active", "finalized", etc.)
 
-    // Then create the listing
+    // Create the listing
     sqlx::query!(
         r#"
         INSERT INTO deal_listings (listing_id, deal_id, seller_id, asking_price, description, listed_at, expires_at, created_at, updated_at)
@@ -216,15 +207,10 @@ pub async fn remove_deal_listing(
     // 2. Update listing status to 'delisted' (this will also set delisted_at via trigger)
     update_deal_listing_status(&mut tx, deal_id, "delisted").await?; // was update_listing_status, loan_id
 
-    // 3. Update deal marketplace status back to 'active' (remove 'for_sale' status)
-    sqlx::query!(
-        "UPDATE deals SET status = 'active', updated_at = NOW() WHERE id = $1", // was loans
-        deal_id
-    )
-    .execute(&mut *tx)
-    .await?;
+    // Note: We don't change the deal's negotiation status when removing from sale.
+    // The deal's negotiation status remains independent from its marketplace listing status.
 
-    // 4. Commit transaction
+    // 3. Commit transaction
     tx.commit().await?;
 
     Ok(true)
@@ -302,19 +288,20 @@ pub async fn browse_marketplace_deals(
 ///
 /// Worker B extends this but needs the basic structure from the foundation.
 /// Note: Excludes 'delisted' listings since they are not available for transfer.
+/// A deal can be transferred if it has an active marketplace listing, regardless of its negotiation status.
 pub async fn validate_deal_for_transfer(
     // was validate_loan_for_transfer
     pool: &PgPool,
     deal_id: Uuid, // was loan_id, now deal_id
 ) -> Result<Option<(Uuid, Decimal)>, sqlx::Error> {
     // Return (current_owner_id, asking_price) if deal can be transferred
+    // Check only if there's an active listing - deal's negotiation status is independent
     let result = sqlx::query!(
         r#"
         SELECT d.investor_id, dl.asking_price  -- was lender_id, loan_listings
         FROM deals d                          -- was loans
         JOIN deal_listings dl ON d.id = dl.deal_id  -- was loan_listings, loan_id
         WHERE d.id = $1
-          AND d.status = 'for_sale'
           AND dl.status = 'active'  -- Only active listings can be transferred
         "#,
         deal_id

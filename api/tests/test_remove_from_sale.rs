@@ -88,13 +88,16 @@ async fn test_remove_deal_listing_functionality() {
     println!("✅ Deal listing created with ID: {}", listing.listing_id);
     assert_eq!(listing.status, "active");
 
-    // Verify deal status changed to 'for_sale'
+    // Verify deal negotiation status remains unchanged (marketplace listing is independent)
     let deal_status = sqlx::query!("SELECT status FROM deals WHERE id = $1", test_deal_id)
         .fetch_one(&pool)
         .await
         .unwrap();
-    println!("📊 Deal status after listing: {:?}", deal_status.status);
-    assert_eq!(deal_status.status, Some("for_sale".to_string()));
+    println!(
+        "📊 Deal negotiation status after listing: {:?}",
+        deal_status.status
+    );
+    assert_eq!(deal_status.status, Some("active".to_string())); // Negotiation status unchanged
 
     // Test 2: Verify we can retrieve the active listing
     println!("🔍 Verifying listing exists...");
@@ -135,16 +138,16 @@ async fn test_remove_deal_listing_functionality() {
     assert_eq!(updated_listing.status, "delisted");
     assert!(updated_listing.delisted_at.is_some()); // Should have delisted_at timestamp
 
-    // Test 5: Verify deal status changed back to 'active'
+    // Test 5: Verify deal negotiation status remains unchanged (marketplace is independent)
     let updated_deal_status = sqlx::query!("SELECT status FROM deals WHERE id = $1", test_deal_id)
         .fetch_one(&pool)
         .await
         .unwrap();
     println!(
-        "📊 Deal status after removal: {:?}",
+        "📊 Deal negotiation status after removal: {:?}",
         updated_deal_status.status
     );
-    assert_eq!(updated_deal_status.status, Some("active".to_string()));
+    assert_eq!(updated_deal_status.status, Some("active".to_string())); // Still active as before
 
     // Test 6: Verify listing no longer appears in marketplace browse
     println!("🏪 Verifying listing doesn't appear in marketplace...");
