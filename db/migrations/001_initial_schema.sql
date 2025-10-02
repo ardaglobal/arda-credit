@@ -8952,7 +8952,44 @@ UPDATE deals SET document_ids = NULL WHERE document_ids IS NULL;
 -- Add comments to document the purpose of these columns
 COMMENT ON COLUMN deals.status IS 'Deal lifecycle status: draft, active, closed, cancelled (separate from loan_status)';
 COMMENT ON COLUMN deals.industry IS 'Industry sector classification for the deal';
-COMMENT ON COLUMN deals.document_ids IS 'JSON array of document UUIDs associated with the deal';-- Remove Duplicate Users Table
+COMMENT ON COLUMN deals.document_ids IS 'JSON array of document UUIDs associated with the deal';
+
+-- ============================================================================
+-- DEAL NEGOTIATION LIFECYCLE STATES
+-- ============================================================================
+-- Add comprehensive deal negotiation states that track the deal through
+-- the interactive data room and negotiation process
+
+-- Drop existing constraint if it exists
+ALTER TABLE deals DROP CONSTRAINT IF EXISTS deals_status_check;
+
+-- Add constraint with complete negotiation lifecycle states
+ALTER TABLE deals ADD CONSTRAINT deals_status_check CHECK (status IN (
+    -- Pre-execution negotiation states
+    'draft',                    -- Initial state: deal being drafted
+    'under_review',             -- Deal under internal review
+    'negotiation',              -- Active negotiation between parties
+    'finalized',                -- Terms finalized, pending execution
+
+    -- Execution and funding states
+    'executed',                 -- Deal documents executed
+    'funding_readiness',        -- CP (Conditions Precedent) complete, ready for funding
+    'pending_funding',          -- Awaiting funding transfer
+
+    -- Active deal states
+    'active',                   -- Deal funded and active
+    'amendment',                -- Deal being amended
+    'suspended',                -- Deal temporarily suspended
+
+    -- Terminal states
+    'closed',                   -- Deal closed/completed
+    'cancelled'                 -- Deal cancelled
+));
+
+-- Update comment to reflect full lifecycle
+COMMENT ON COLUMN deals.status IS 'Deal negotiation and lifecycle status through data room, execution, and funding phases (separate from deal_status which tracks payment status)';
+
+-- Remove Duplicate Users Table
 -- This migration removes the redundant users table that was created for API compatibility
 -- All functionality should use the identities table directly
 

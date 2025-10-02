@@ -197,7 +197,9 @@ pub use db::{
     // Investor profile types
     CreateInvestorProfileRequest,
     Deal,
+    DealNegotiationStatus,
     DealPayment,
+    DealPaymentStatus,
     DealTransactionDb,
     // CCR Domain types
     Identity,

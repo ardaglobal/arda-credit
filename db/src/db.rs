@@ -195,6 +195,163 @@ pub struct UpdateInvestorProfileRequest {
     pub regulatory_jurisdiction: Option<String>,
 }
 
+/// Deal payment/funding status
+///
+/// This tracks the payment and funding lifecycle of the deal,
+/// separate from `status` which tracks negotiation/execution status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DealPaymentStatus {
+    /// Deal has been originated but not yet active
+    Originated,
+    /// Deal is active and being serviced
+    Active,
+    /// Deal has been fully paid off
+    PaidOff,
+    /// Deal is closed
+    Closed,
+    /// Deal has defaulted
+    Defaulted,
+}
+
+impl DealPaymentStatus {
+    /// Convert from database string representation
+    pub fn from_db(s: &str) -> Option<Self> {
+        match s {
+            "originated" => Some(Self::Originated),
+            "active" => Some(Self::Active),
+            "paid_off" => Some(Self::PaidOff),
+            "closed" => Some(Self::Closed),
+            "defaulted" => Some(Self::Defaulted),
+            _ => None,
+        }
+    }
+
+    /// Convert to database string representation
+    pub fn to_db(&self) -> &'static str {
+        match self {
+            Self::Originated => "originated",
+            Self::Active => "active",
+            Self::PaidOff => "paid_off",
+            Self::Closed => "closed",
+            Self::Defaulted => "defaulted",
+        }
+    }
+
+    /// Check if deal is in an active payment state
+    pub fn is_active(&self) -> bool {
+        matches!(self, Self::Active)
+    }
+
+    /// Check if deal is in a terminal payment state
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::PaidOff | Self::Closed | Self::Defaulted)
+    }
+
+    /// Check if deal can accept payments
+    pub fn can_accept_payments(&self) -> bool {
+        matches!(self, Self::Originated | Self::Active)
+    }
+}
+
+/// Deal negotiation and lifecycle status
+///
+/// This tracks the deal through the interactive data room and negotiation process,
+/// separate from `deal_status` which tracks payment/funding status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DealNegotiationStatus {
+    /// Initial state: deal being drafted
+    Draft,
+    /// Deal under internal review
+    UnderReview,
+    /// Active negotiation between parties
+    Negotiation,
+    /// Terms finalized, pending execution
+    Finalized,
+    /// Deal documents executed
+    Executed,
+    /// CP (Conditions Precedent) complete, ready for funding
+    FundingReadiness,
+    /// Awaiting funding transfer
+    PendingFunding,
+    /// Deal funded and active
+    Active,
+    /// Deal being amended
+    Amendment,
+    /// Deal temporarily suspended
+    Suspended,
+    /// Deal closed/completed
+    Closed,
+    /// Deal cancelled
+    Cancelled,
+}
+
+impl DealNegotiationStatus {
+    /// Convert from database string representation
+    pub fn from_db(s: &str) -> Option<Self> {
+        match s {
+            "draft" => Some(Self::Draft),
+            "under_review" => Some(Self::UnderReview),
+            "negotiation" => Some(Self::Negotiation),
+            "finalized" => Some(Self::Finalized),
+            "executed" => Some(Self::Executed),
+            "funding_readiness" => Some(Self::FundingReadiness),
+            "pending_funding" => Some(Self::PendingFunding),
+            "active" => Some(Self::Active),
+            "amendment" => Some(Self::Amendment),
+            "suspended" => Some(Self::Suspended),
+            "closed" => Some(Self::Closed),
+            "cancelled" => Some(Self::Cancelled),
+            _ => None,
+        }
+    }
+
+    /// Convert to database string representation
+    pub fn to_db(&self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::UnderReview => "under_review",
+            Self::Negotiation => "negotiation",
+            Self::Finalized => "finalized",
+            Self::Executed => "executed",
+            Self::FundingReadiness => "funding_readiness",
+            Self::PendingFunding => "pending_funding",
+            Self::Active => "active",
+            Self::Amendment => "amendment",
+            Self::Suspended => "suspended",
+            Self::Closed => "closed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    /// Check if deal is in a pre-execution state
+    pub fn is_pre_execution(&self) -> bool {
+        matches!(
+            self,
+            Self::Draft | Self::UnderReview | Self::Negotiation | Self::Finalized
+        )
+    }
+
+    /// Check if deal is in execution/funding phase
+    pub fn is_execution_phase(&self) -> bool {
+        matches!(
+            self,
+            Self::Executed | Self::FundingReadiness | Self::PendingFunding
+        )
+    }
+
+    /// Check if deal is active
+    pub fn is_active(&self) -> bool {
+        matches!(self, Self::Active | Self::Amendment)
+    }
+
+    /// Check if deal is in a terminal state
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Closed | Self::Cancelled)
+    }
+}
+
 /// Deal record with originator/investor relationship (converted from Loan)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Deal {
@@ -211,8 +368,8 @@ pub struct Deal {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub custom_deal_id: Option<String>, // Optional user-defined identifier for external system mapping
-    pub status: String,                 // draft, active, closed, cancelled
-    pub industry: Option<String>,       // Industry sector for the deal
+    pub status: String, // Negotiation status: draft, under_review, negotiation, etc.
+    pub industry: Option<String>, // Industry sector for the deal
     pub document_ids: Option<serde_json::Value>, // JSON array of document UUIDs
 
     // Marketplace-friendly fields
@@ -222,6 +379,70 @@ pub struct Deal {
     pub asset_class: Option<String>,
     pub region: Option<String>,
     pub minimum_investment: Option<rust_decimal::Decimal>,
+}
+
+impl Deal {
+    /// Parse the negotiation status from the database string
+    pub fn negotiation_status(&self) -> Option<DealNegotiationStatus> {
+        DealNegotiationStatus::from_db(&self.status)
+    }
+
+    /// Check if deal is in negotiation phase (can edit terms)
+    pub fn can_negotiate(&self) -> bool {
+        self.negotiation_status()
+            .map(|s| s.is_pre_execution())
+            .unwrap_or(false)
+    }
+
+    /// Check if deal is ready for funding
+    pub fn is_ready_for_funding(&self) -> bool {
+        self.negotiation_status()
+            .map(|s| matches!(s, DealNegotiationStatus::FundingReadiness))
+            .unwrap_or(false)
+    }
+
+    /// Check if deal is in active state
+    pub fn is_negotiation_active(&self) -> bool {
+        self.negotiation_status()
+            .map(|s| s.is_active())
+            .unwrap_or(false)
+    }
+
+    /// Check if deal is in terminal state
+    pub fn is_negotiation_terminal(&self) -> bool {
+        self.negotiation_status()
+            .map(|s| s.is_terminal())
+            .unwrap_or(false)
+    }
+
+    /// Update the negotiation status
+    pub fn set_negotiation_status(&mut self, status: DealNegotiationStatus) {
+        self.status = status.to_db().to_string();
+    }
+
+    /// Parse the payment status from the database string
+    pub fn payment_status(&self) -> Option<DealPaymentStatus> {
+        DealPaymentStatus::from_db(&self.deal_status)
+    }
+
+    /// Check if deal can accept payments
+    pub fn can_accept_payments(&self) -> bool {
+        self.payment_status()
+            .map(|s| s.can_accept_payments())
+            .unwrap_or(false)
+    }
+
+    /// Check if deal payment is in terminal state
+    pub fn is_payment_terminal(&self) -> bool {
+        self.payment_status()
+            .map(|s| s.is_terminal())
+            .unwrap_or(false)
+    }
+
+    /// Update the payment status
+    pub fn set_payment_status(&mut self, status: DealPaymentStatus) {
+        self.deal_status = status.to_db().to_string();
+    }
 }
 
 /// Deal payment record (converted from Payment)
@@ -2030,6 +2251,7 @@ pub async fn update_deal(
     deal_status: Option<&str>,
     maturity_date: Option<Option<DateTime<Utc>>>, // Option<Option<T>> to handle setting to NULL
     custom_deal_id: Option<Option<&str>>,         // Option<Option<T>> to handle setting to NULL
+    status: Option<&str>,                         // Deal negotiation status
     title: Option<Option<&str>>,                  // Option<Option<T>> to handle setting to NULL
     description: Option<Option<&str>>,            // Option<Option<T>> to handle setting to NULL
     risk_level: Option<Option<&str>>,             // Option<Option<T>> to handle setting to NULL
@@ -2051,13 +2273,14 @@ pub async fn update_deal(
     let new_principal = principal_amount.unwrap_or(existing_deal.principal_amount);
     let new_outstanding = outstanding_balance.unwrap_or(existing_deal.outstanding_balance);
     let new_rate = interest_rate_bps.unwrap_or(existing_deal.interest_rate_bps);
-    let new_status = deal_status.unwrap_or(&existing_deal.deal_status);
+    let new_deal_status = deal_status.unwrap_or(&existing_deal.deal_status);
     let new_maturity = maturity_date.unwrap_or(existing_deal.maturity_date);
     let new_custom_deal_id = match custom_deal_id {
         Some(Some(value)) => Some(value.to_string()),
         Some(None) => None,
         None => existing_deal.custom_deal_id,
     };
+    let new_status = status.unwrap_or(&existing_deal.status);
     let new_title = match title {
         Some(Some(value)) => Some(value.to_string()),
         Some(None) => None,
@@ -2099,12 +2322,13 @@ pub async fn update_deal(
             deal_status = $5,
             maturity_date = $6,
             custom_deal_id = $8,
-            title = $9,
-            description = $10,
-            risk_level = $11,
-            asset_class = $12,
-            region = $13,
-            minimum_investment = $14,
+            status = $9,
+            title = $10,
+            description = $11,
+            risk_level = $12,
+            asset_class = $13,
+            region = $14,
+            minimum_investment = $15,
             updated_at = $7
         WHERE id = $1
         "#,
@@ -2112,10 +2336,11 @@ pub async fn update_deal(
         new_principal,
         new_outstanding,
         new_rate,
-        new_status,
+        new_deal_status,
         new_maturity,
         now,
         new_custom_deal_id,
+        new_status,
         new_title,
         new_description,
         new_risk_level,
