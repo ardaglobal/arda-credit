@@ -197,7 +197,7 @@ let ai_service = LlmService::new(LlmProvider::Azure)?;
 
 **Local Model**:
 ```rust
-let ai_service = LlmService::new(LlmProvider::Local("http://localhost:8080".to_string()))?;
+let ai_service = LlmService::new(LlmProvider::Local("http://0.0.0.0:8080".to_string()))?;
 ```
 
 ## Database Schema
@@ -433,7 +433,7 @@ Focus on practical advice that helps users make informed decisions.
 ```bash
 # Start with local AI model
 export AI_PROVIDER=local
-export LOCAL_AI_URL=http://localhost:8080
+export LOCAL_AI_URL=http://0.0.0.0:8080
 cargo run --bin server
 
 # Or use OpenAI for development

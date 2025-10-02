@@ -45,7 +45,7 @@ VERIFIER_CONTRACT_ADDRESS=0x0987654321098765432109876543210987654321
 ETHEREUM_NETWORK=sepolia
 ETHEREUM_WALLET_PRIVATE_KEY=your_private_key_for_write_operations
 ETHEREUM_DEPLOYER_ADDRESS=0xYourDeployerAddressHere
-DATABASE_URL=postgresql://user:pass@localhost:5432/ethereum_cache
+DATABASE_URL=postgresql://user:pass@0.0.0.0:5432/ethereum_cache
 ```
 
 ### 3. Usage
@@ -225,7 +225,7 @@ docker run -d \
   postgres:15
 
 # Set DATABASE_URL
-export DATABASE_URL=postgresql://postgres:password@localhost:5432/ethereum_cache
+export DATABASE_URL=postgresql://postgres:password@0.0.0.0:5432/ethereum_cache
 ```
 
 The database schema is automatically initialized on first run.

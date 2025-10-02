@@ -17,7 +17,7 @@ This directory contains scripts to populate the Arda Credit database with fake t
 docker-compose up postgres -d
 
 # Or start locally if you have PostgreSQL installed
-# Make sure it's running on localhost:5432
+# Make sure it's running on 0.0.0.0:5432
 ```
 
 ### 2. Set Environment Variables
@@ -103,10 +103,10 @@ cargo run --bin populate_test_data
    - mixed: 6
 
 🌐 API Testing URLs:
-GET http://localhost:8080/api/v1/ccr/identities
-GET http://localhost:8080/api/v1/ccr/loans
-GET http://localhost:8080/api/v1/ccr/loans/stats
-POST http://localhost:8080/api/v1/ccr/identities
+GET http://0.0.0.0:8080/api/v1/ccr/identities
+GET http://0.0.0.0:8080/api/v1/ccr/loans
+GET http://0.0.0.0:8080/api/v1/ccr/loans/stats
+POST http://0.0.0.0:8080/api/v1/ccr/identities
 ```
 
 ## Testing the API
@@ -118,12 +118,12 @@ After running the population script, you can test the API endpoints:
 cargo run -p api --bin server
 
 # Test endpoints
-curl http://localhost:8080/api/v1/ccr/identities
-curl http://localhost:8080/api/v1/ccr/loans
-curl http://localhost:8080/api/v1/ccr/loans/stats
+curl http://0.0.0.0:8080/api/v1/ccr/identities
+curl http://0.0.0.0:8080/api/v1/ccr/loans
+curl http://0.0.0.0:8080/api/v1/ccr/loans/stats
 
 # Register a new user
-curl -X POST http://localhost:8080/api/v1/ccr/identities \
+curl -X POST http://0.0.0.0:8080/api/v1/ccr/identities \
   -H "Content-Type: application/json" \
   -d '{
     "user_type": "investor",

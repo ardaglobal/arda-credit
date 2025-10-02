@@ -33,7 +33,7 @@ This guide explains how to set up OpenTelemetry tracing for the Arda Credit API 
 
 5. **Test the setup:**
    ```bash
-   curl http://localhost:8080/api/v1/health
+   curl http://0.0.0.0:8080/api/v1/health
    ```
 
 ## Architecture
@@ -73,9 +73,9 @@ This guide explains how to set up OpenTelemetry tracing for the Arda Credit API 
 
 ### URLs
 
-- **Application**: http://localhost:8080
+- **Application**: http://0.0.0.0:8080
 - **SigNoz Dashboard**: Your SigNoz Cloud URL
-- **Database**: localhost:5432
+- **Database**: 0.0.0.0:5432
 
 ## Configuration Files
 
@@ -118,14 +118,14 @@ Environment configuration:
 2. **Verify configuration**:
    ```bash
    # Check if tracing is enabled
-   curl http://localhost:8080/api/v1/health
+   curl http://0.0.0.0:8080/api/v1/health
    # Look for traces in your SigNoz Cloud dashboard
    ```
 
 3. **Test trace generation**:
    ```bash
    # Make several requests to generate spans
-   for i in {1..5}; do curl http://localhost:8080/api/v1/health; done
+   for i in {1..5}; do curl http://0.0.0.0:8080/api/v1/health; done
    ```
 
 ## Environment Variables Reference

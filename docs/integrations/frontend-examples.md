@@ -1,15 +1,71 @@
 # Frontend Integration Examples
 
-This document provides comprehensive frontend integration examples for the Arda Credit authentication system. All examples are extracted from the [authentication integration guide](../integrations/authentication.md) and organized by framework and component type.
+⚠️ **DEPRECATED**: This document previously contained examples for password-based authentication, which has been **completely replaced** with magic link authentication.
 
-## Overview
+## Current Authentication System
 
-### AuthService Class
+**Arda Credit now uses magic link authentication exclusively.** The previous password-based authentication examples and API client code in this file are deprecated.
+
+### Migration Guide
+
+For current integration instructions, see:
+- **[Magic Link Authentication Guide](./magic-link-authentication.md)** - Complete integration guide
+- **[API Documentation](./api-swagger.md)** - API testing with curl examples
+
+### Simple Authenticated Requests
+
+With magic link authentication, making API requests is simpler:
 
 ```javascript
-class AuthService {
-    constructor(apiBaseUrl = '/api') {
-        this.apiBaseUrl = apiBaseUrl;
+// Simple authenticated fetch wrapper
+async function authenticatedFetch(url, options = {}) {
+    const defaultOptions = {
+        ...options,
+        credentials: 'include', // Automatically includes session cookie
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
+    };
+
+    const response = await fetch(url, defaultOptions);
+
+    if (response.status === 401) {
+        window.location.href = '/login';
+        throw new Error('Authentication required');
+    }
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+
+    return response.status === 204 ? null : await response.json();
+}
+
+// Usage examples
+async function getUserDetails(userId) {
+    return authenticatedFetch(`/api/v1/user/${userId}`);
+}
+
+async function createDeal(dealData) {
+    return authenticatedFetch('/api/v1/deal', {
+        method: 'POST',
+        body: JSON.stringify(dealData),
+    });
+}
+```
+
+---
+
+## Deprecated Content Below
+
+⚠️ **WARNING**: The content below is from the deprecated password-based authentication system and API client. It is kept for reference only.
+
+<details>
+<summary>Click to view deprecated examples</summary>
+
+### Old AuthService Class (DEPRECATED)
         this.tokenKey = 'arda_access_token';
         this.userKey = 'arda_user_data';
     }
@@ -442,77 +498,63 @@ const ProtectedRoute = ({ children }) => {
 export default ProtectedRoute;
 ```
 
-### API Client
+### Making Authenticated API Requests
+
+Instead of creating a separate API Client class, use the `authenticatedFetch` method from the AuthService directly for API calls:
 
 ```javascript
 import authService from './authService';
 
-class ApiClient {
-    constructor(baseUrl = '/api') {
-        this.baseUrl = baseUrl;
+// Example: Get batches
+async function getBatches() {
+    const response = await authService.authenticatedFetch('/api/state/batches');
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
     }
-
-    async get(endpoint) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`);
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async post(endpoint, data) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async put(endpoint, data) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async delete(endpoint) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'DELETE',
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return response.status === 204 ? null : await response.json();
-    }
-
-
-    async getBatches() {
-        return this.get('/state/batches');
-    }
+    return await response.json();
 }
 
-const apiClient = new ApiClient();
-export default apiClient;
+// Example: Create deal
+async function createDeal(dealData) {
+    const response = await authService.authenticatedFetch('/api/v1/deal', {
+        method: 'POST',
+        body: JSON.stringify(dealData),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return await response.json();
+}
+
+// Example: Update deal
+async function updateDeal(dealId, updates) {
+    const response = await authService.authenticatedFetch(`/api/v1/deal/${dealId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return await response.json();
+}
+
+// Example: Delete deal
+async function deleteDeal(dealId) {
+    const response = await authService.authenticatedFetch(`/api/v1/deal/${dealId}`, {
+        method: 'DELETE',
+    });
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
+    }
+    return response.status === 204 ? null : await response.json();
+}
 ```
+
+**For complete API documentation, see the Swagger UI at http://0.0.0.0:8080/swagger-ui/**
 
 ## Vue.js Integration
 
@@ -646,3 +688,4 @@ function App() {
 - [Authentication Integration Guide](../integrations/authentication.md) - Complete authentication system details
 - [API Documentation](../../api/src/README.md) - Backend API endpoints and specifications
 - [Development Setup](../deployment/development-setup.md) - Setting up your development environment
+</details>

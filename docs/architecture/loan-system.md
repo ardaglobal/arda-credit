@@ -153,35 +153,49 @@ CREATE TABLE loan_transactions (
 - `POST /api/v1/batches` - Process batch of transactions
 - `GET /api/v1/batches/{batch_id}` - Get batch details
 
-## CLI Commands
+## API Testing Examples
+
+For complete API documentation, see the Swagger UI at `http://0.0.0.0:8080/swagger-ui/`
 
 ### User Operations
 ```bash
 # Register users
-make cli ARGS="register-user --user-type lender --email alice@example.com"
-make cli ARGS="register-user --user-type investor --email bob@example.com"
+curl -X POST http://0.0.0.0:8080/api/v1/user \
+  -H "Content-Type: application/json" \
+  -d '{"email":"alice@example.com","user_type":"investor"}'
 
 # KYC operations
-make cli ARGS="submit-kyc --user-id <uuid>"
-make cli ARGS="verify-kyc --user-id <uuid>"  # Admin operation
-make cli ARGS="get-user --user-id <uuid>"
+curl -X POST http://0.0.0.0:8080/api/v1/user/{uuid}/kyc \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Get user details
+curl http://0.0.0.0:8080/api/v1/user/{uuid} \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-### Loan Operations
+### Loan/Deal Operations
 ```bash
-# Loan origination (requires KYC'd users)
-make cli ARGS="originate-loan --borrower-id <uuid> --lender-id <uuid> --amount 50000 --rate 0.075 --term-months 36"
+# Loan/Deal origination (requires KYC'd users)
+curl -X POST http://0.0.0.0:8080/api/v1/deal \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"originator_id":"<uuid>","investor_id":"<uuid>","amount":50000,"rate":0.075,"term_months":36}'
 
 # Loan payments
-make cli ARGS="make-payment --loan-id <uuid> --amount 2500"
-
-# Loan closeout
-make cli ARGS="closeout-loan --loan-id <uuid>"
+curl -X POST http://0.0.0.0:8080/api/v1/deal/{uuid}/payment \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"amount":2500}'
 
 # Loan queries
-make cli ARGS="get-loan --loan-id <uuid>"
-make cli ARGS="list-loans --user-id <uuid>"
+curl http://0.0.0.0:8080/api/v1/deal/{uuid} \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+curl "http://0.0.0.0:8080/api/v1/deals?user_id={uuid}" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
+
+**For complete API documentation, see the Swagger UI at http://0.0.0.0:8080/swagger-ui/**
 
 ## Zero-Knowledge Properties
 

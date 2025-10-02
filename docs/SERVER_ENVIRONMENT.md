@@ -157,8 +157,9 @@ export SERVER_ENVIRONMENT=local
 # Start the API server
 make server
 
-# In another terminal, trigger a batch
-make cli ARGS="batch trigger --verbose"
+# In another terminal, trigger a batch via API
+curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### Via Script (Direct)
@@ -181,8 +182,9 @@ export SINDRI_API_KEY=your_api_key_here
 # Start the API server
 make server
 
-# In another terminal, trigger a batch
-make cli ARGS="batch trigger --verbose"
+# In another terminal, trigger a batch via API
+curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### Via Script (Direct)
@@ -211,26 +213,25 @@ make bench-zk NUM_PROOFS=10 NUM_TRANSACTIONS=100
 
 ### Changed Behavior
 
-1. **CLI `submit-transaction` command removed**: Transactions are now only created through proper API operations (user registration, deal operations, etc.)
+1. **Transaction creation**: Transactions are now only created through proper API operations (user registration, deal operations, etc.)
 
-2. **Automatic proof method selection**: No need to pass `--sindri` flag; environment variable determines the method
+2. **Automatic proof method selection**: Environment variable determines the proof generation method (local vs. Sindri)
 
 3. **script/src/bin/main.rs updated**: Now uses `SERVER_ENVIRONMENT` instead of compile-time `--features sindri` flag
 
 4. **Makefile benchmarks updated**: `make bench-zk` no longer uses `--features sindri`, uses `SERVER_ENVIRONMENT` instead
 
-### Breaking Changes
+### Key Changes
 
-- ❌ **Removed**: `cli batch submit-transaction` command
-- ❌ **Removed**: `BatchApiClient::submit_transaction()` method
 - ✅ **Added**: `SERVER_ENVIRONMENT` variable for proof method selection
 - ✅ **Added**: Local SP1 proof generation for fast development
+- ✅ **Improved**: Direct API usage via Swagger UI for testing
 
 ## Environment Variable Reference
 
 ```bash
 # Required for all environments
-DATABASE_URL=postgresql://user:pass@localhost:5432/arda_credit_db
+DATABASE_URL=postgresql://user:pass@0.0.0.0:5432/arda_credit_db
 
 # Proof generation configuration
 SERVER_ENVIRONMENT=local  # local, staging, sandbox, or production
@@ -288,5 +289,6 @@ export SERVER_ENVIRONMENT=production # For production
 - `lib/src/proof.rs` - Proof generation logic with environment routing
 - `api/src/config/types.rs` - `ServerEnvironment` enum definition
 - `api/src/services/batch_processor.rs` - Batch processing service
-- `cli/src/batch.rs` - CLI batch commands (submit-transaction removed)
-- `AGENTS.md` - Full environment variable documentation
+- `api/src/api/routes.rs` - API endpoint routes
+- `AGENTS.md` - Full environment variable documentation and API usage examples
+- **Swagger UI** - Interactive API documentation at http://0.0.0.0:8080/swagger-ui/

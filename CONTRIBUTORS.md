@@ -31,8 +31,9 @@ make run                           # Fast local SP1 development (~3.5s Core proo
 make up                            # Start database + server (uses pre-built image)
 make down                          # Stop all services
 make server                        # Start API server locally (debug mode with verbose logging)
-make cli ARGS="health-check"       # CLI client commands
 ```
+
+**API Testing** - Use curl or Swagger UI at http://0.0.0.0:8080/swagger-ui/
 
 #### Code Quality & Testing
 ```bash
@@ -78,7 +79,6 @@ make setup-hooks                    # Configures automatic linting and formattin
 arda-credit/
 ├── program/                        # SP1 zkVM program (RISC-V)
 ├── script/                         # Local SP1 testing and utilities
-├── cli/                           # Unified CLI tool
 ├── api/                           # Production server with ZK proof generation
 ├── db/                            # PostgreSQL with Merkle tree state management
 ├── contracts/                     # Solidity proof verification contracts
@@ -87,20 +87,9 @@ arda-credit/
 └── helm/                          # Kubernetes deployment charts
 ```
 
-#### CLI Module Organization
+#### API Module Organization
 
-**Single-File Modules** (under 1000 lines):
-```
-cli/src/
-├── lib.rs                         # Main exports and module declarations
-├── cli.rs                         # Core CLI setup and middleware
-├── balance.rs                     # Balance and wallet operations
-├── batch.rs                       # Batch processing and proof operations
-├── pools.rs                       # Liquidity pool operations
-├── user.rs                        # User management and KYC operations
-```
-
-**Directory Modules** (when functionality exceeds 1000 lines):
+**API Route Organization**:
 ```
 ├── loans/                         # Credit and loan operations
 │   ├── mod.rs                     # Main module with command routing
@@ -160,9 +149,9 @@ pub async fn handle_loan_command(/* ... */) -> Result<()> {
 
 ### Coding Standards
 
-#### Command Documentation
+#### API Endpoint Documentation
 
-All CLI commands must have comprehensive documentation:
+All API endpoints must have comprehensive documentation:
 
 ```rust
 /// Create a new user account
@@ -194,7 +183,6 @@ All public functions must include:
 /// All user data is handled with privacy preservation in mind.
 ///
 /// # Arguments
-/// * `client` - API client for server communication
 /// * `user_type` - Type of user (investor, lender, etc.)
 /// * `email` - User's email address (validated)
 /// * `verbose` - Enable detailed output
@@ -202,12 +190,12 @@ All public functions must include:
 /// # Privacy Considerations
 /// User data is processed with ZK privacy guarantees
 pub async fn create_user(
-    client: &BatchApiClient,
     user_type: &str,
     email: &str,
     verbose: bool,
-) -> Result<()> {
-    // Implementation with comprehensive error handling
+) -> Result<UserResponse> {
+    // Makes API request to create user
+    // Returns structured response with user data
 }
 ```
 
@@ -306,7 +294,7 @@ Arda Credit consists of three interconnected components requiring coordinated ve
 - **Versioning**: Independent semantic versioning (`program-vX.Y.Z`)
 
 #### 3. Web Server Application (Main Repository)
-- **Location**: Root workspace (`api/`, `db/`, `cli/`, etc.)
+- **Location**: Root workspace (`api/`, `db/`, `contracts/`, etc.)
 - **Dependencies**: Both smart contracts and ZKVM program
 - **Deployment Target**: Kubernetes via Helm charts
 - **Versioning**: Main repository version referencing specific component versions
@@ -379,7 +367,7 @@ Arda Credit consists of three interconnected components requiring coordinated ve
 The ZK program circuit depends on changes in these directories:
 - **`program/`**: Core ZKVM program logic
 - **`lib/`**: Business logic, transaction processing, ADS operations
-- **`script/`**: CLI tools and testing infrastructure
+- **`script/`**: Testing infrastructure and local proof generation
 - **`api/`**: Proof generation/verification (affects integration)
 - **`ethereum-client/`**: On-chain proof submission
 - **`db/`**: Proof storage and verification tracking
@@ -646,8 +634,7 @@ helm upgrade --install arda-credit ./helm/charts/arda-credit \
 **Clean separation of concerns:**
 - **`program/`** - RISC-V program for SP1 zkVM loan transaction processing
 - **`script/`** - Local SP1 testing with fast Core proofs (development)
-- **`cli/`** - Unified CLI for loan operations + local verification tool
-- **`api/`** - Production server with loan processing, ZK proof generation via Sindri
+- **`api/`** - Production server with loan processing, ZK proof generation via Sindri, REST API endpoints
 - **`db/`** - PostgreSQL with loan tables, KYC data, and Merkle tree state management
 - **`contracts/`** - Solidity proof verification with loan state management
 - **`lib/`** - Shared computation logic (zkVM compatible)
@@ -671,49 +658,66 @@ make up                             # Start database + server (uses pre-built im
 make down                           # Stop all services
 ```
 
-### CLI Commands (Primary Interface)
+### API Testing (Primary Interface)
+
+For comprehensive API documentation and testing, use the Swagger UI at `http://0.0.0.0:8080/swagger-ui/`
+
 ```bash
 # Health check
-cargo run --bin cli -- health-check
+curl http://0.0.0.0:8080/api/v1/health
 
 # Liquidity Pool Management
-cargo run --bin cli -- create-pool --name "My Pool" --max-ltv-ratio 0.8 --max-interest-rate 0.12 --repayment-period-days 365
-cargo run --bin cli -- list-pools --verbose
-cargo run --bin cli -- get-pool --pool-id <pool-id> --verbose
+curl -X POST http://0.0.0.0:8080/api/v1/pool \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"name":"My Pool","max_ltv_ratio":0.8,"max_interest_rate":0.12,"repayment_period_days":365}'
+
+curl "http://0.0.0.0:8080/api/v1/pools" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # User & KYC Management
-cargo run --bin cli -- register-user --user-type investor --email user@example.com
-cargo run --bin cli -- submit-kyc --user-id 123
-cargo run --bin cli -- get-user --user-id 123
+curl -X POST http://0.0.0.0:8080/api/v1/user \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","user_type":"investor"}'
+
+curl -X POST http://0.0.0.0:8080/api/v1/user/123/kyc \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # USDC Balance Management
-cargo run --bin cli -- get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
-cargo run --bin cli -- get-user-balance-by-id --user-id 123
-cargo run --bin cli -- link-wallet --user-id 123 --wallet-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+curl "http://0.0.0.0:8080/api/v1/balance/0x742E4C1D5B5B8Ac5dC12345678901234567890aB" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # USDC Withdrawal Management
-cargo run --bin cli -- get-available-balance --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
-cargo run --bin cli -- initiate-withdrawal --user-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB --recipient-address 0x123... --amount 100.50
-cargo run --bin cli -- get-withdrawal-status --request-id 1
-cargo run --bin cli -- get-withdrawal-history --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB
+curl -X POST http://0.0.0.0:8080/api/v1/withdrawal \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"user_address":"0x742E...","recipient_address":"0x123...","amount":"100.50"}'
 
-# Loan Operations
-cargo run --bin cli -- originate-loan --borrower-id 123 --lender-id 456 --amount 10000
-cargo run --bin cli -- make-payment --loan-id 789 --amount 1000
-cargo run --bin cli -- closeout-loan --loan-id 789
+curl "http://0.0.0.0:8080/api/v1/withdrawal/1" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# Loan/Deal Operations
+curl -X POST http://0.0.0.0:8080/api/v1/deal \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"originator_id":"123","investor_id":"456","amount":10000}'
+
+curl -X POST http://0.0.0.0:8080/api/v1/deal/789/payment \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"amount":1000}'
 
 # Batch management
-cargo run --bin cli -- view-pending          # View unbatched transactions
-cargo run --bin cli -- trigger-batch --verbose  # Create batch + trigger ZK proof
-cargo run --bin cli -- list-batches         # List all batches
-cargo run --bin cli -- get-batch --batch-id 1  # Get batch details
+curl "http://0.0.0.0:8080/api/v1/transactions/pending" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-# Transaction Inclusion Proofs
-cargo run --bin cli -- download-proof --batch-id 1  # Download proof data
-cargo run --bin cli -- verify-transaction-inclusion \
-  --proof-file proof_batch_1.json \
-  --transaction-id abc123 \
-  --transaction-type loan_payment
+curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+curl "http://0.0.0.0:8080/api/v1/batches" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# For complete documentation, see: http://0.0.0.0:8080/swagger-ui/
 ```
 
 ### Testing
@@ -751,12 +755,6 @@ struct LoanBatchPublicValues {
 - Users can prove their specific transaction was included without revealing others
 
 ### Key Components Integration
-
-**Unified CLI Tool**: Single binary for complete loan workflow:
-- User registration and KYC submission
-- Loan origination, payments, and closeouts
-- Local verification of transaction inclusion proofs
-- Environment configuration via `ARDA_CREDIT_API_URL`
 
 **API Server** (`api/src/bin/server.rs`):
 - Loan transaction processing and batching
@@ -838,13 +836,13 @@ struct LoanTransaction {
 #### Adding New Loan Operations
 1. Add transaction type to `TransactionType` enum in `lib/src/loan_types.rs`
 2. Implement handler in `api/src/loan_handlers.rs`
-3. Add CLI command in `cli/src/bin/cli.rs`
+3. Add API endpoint route in `api/src/routes.rs`
 4. Add database migration if needed
-5. Test with `cargo run --bin cli -- your-loan-command`
+5. Test with curl or Swagger UI at `http://0.0.0.0:8080/swagger-ui/`
 
 #### KYC Integration
 1. KYC status tracked in `users` table
-2. KYC verification can be mocked via CLI/API
+2. KYC verification can be managed via API endpoints
 3. Transaction validation checks KYC status for restricted operations
 4. Users can prove KYC status inclusion in batches
 
@@ -882,10 +880,10 @@ cargo check --workspace     # Works without PostgreSQL
 - **Contract deployment fails**: Check all Ethereum environment variables are set
 
 #### Service URLs
-- Database: `localhost:5432`
-- API Server: `http://localhost:8080`
-- Health Check: `http://localhost:8080/api/v1/health`
-- GraphQL Playground: `http://localhost:8080/playground` (dev only)
+- Database: `0.0.0.0:5432`
+- API Server: `http://0.0.0.0:8080`
+- Health Check: `http://0.0.0.0:8080/api/v1/health`
+- GraphQL Playground: `http://0.0.0.0:8080/playground` (dev only)
 
 ---
 

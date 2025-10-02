@@ -428,9 +428,11 @@ make faucet-request ADDRESS=0xYourAddress
 # 3. Verify balance
 make faucet-status ADDRESS=0xYourAddress
 
-# 4. Use Arda Credit normally
-make cli ARGS="register-user --user-type investor --email test@example.com"
-# ... normal deal operations ...
+# 4. Use Arda Credit normally via API (see Swagger UI at http://0.0.0.0:8080/swagger-ui/)
+curl -X POST http://0.0.0.0:8080/api/v1/user \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","user_type":"investor"}'
+# ... normal deal operations via API ...
 
 # 5. Clean up when done
 make down                        # Stop all services

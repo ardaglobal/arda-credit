@@ -488,89 +488,56 @@ const ProtectedRoute = ({ children }) => {
 export default ProtectedRoute;
 ```
 
-#### 6. API Client for Authenticated Requests
+#### 6. Making Authenticated API Requests
+
+For making API requests with magic link authentication, use the session cookie automatically:
 
 ```javascript
-import authService from './authService';
+// Simple authenticated fetch wrapper
+async function authenticatedFetch(url, options = {}) {
+    const defaultOptions = {
+        ...options,
+        credentials: 'include', // Important: includes session cookie
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
+    };
 
-class ApiClient {
-    constructor(baseUrl = '/api') {
-        this.baseUrl = baseUrl;
+    const response = await fetch(url, defaultOptions);
+
+    if (response.status === 401) {
+        // Redirect to login if unauthorized
+        window.location.href = '/login';
+        throw new Error('Authentication required');
     }
 
-    async get(endpoint) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`);
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || `HTTP ${response.status}`);
     }
 
-    async post(endpoint, data) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'POST',
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async put(endpoint, data) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'PUT',
-            body: JSON.stringify(data),
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return await response.json();
-    }
-
-    async delete(endpoint) {
-        const response = await authService.authenticatedFetch(`${this.baseUrl}${endpoint}`, {
-            method: 'DELETE',
-        });
-
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.message || `HTTP ${response.status}`);
-        }
-
-        return response.status === 204 ? null : await response.json();
-    }
-
-    // Specific API methods
-    async getUserDetails(userId) {
-        return this.get(`/ccr/user/${userId}`);
-    }
-
-    async createLoan(loanData) {
-        return this.post('/ccr/loans', loanData);
-    }
-
-    async getLoans() {
-        return this.get('/ccr/loans');
-    }
-
-    async getBatches() {
-        return this.get('/state/batches');
-    }
+    return response.status === 204 ? null : await response.json();
 }
 
-const apiClient = new ApiClient();
-export default apiClient;
+// Usage examples
+async function getUserDetails(userId) {
+    return authenticatedFetch(`/api/v1/user/${userId}`);
+}
+
+async function createDeal(dealData) {
+    return authenticatedFetch('/api/v1/deal', {
+        method: 'POST',
+        body: JSON.stringify(dealData),
+    });
+}
+
+async function getDeals() {
+    return authenticatedFetch('/api/v1/deals');
+}
 ```
+
+**Note**: The deprecated password-based authentication and its associated API client have been removed. Magic link authentication uses session cookies that are automatically included with `credentials: 'include'`.
 
 ## Environment Configuration
 

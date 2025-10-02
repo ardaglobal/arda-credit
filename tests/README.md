@@ -71,7 +71,7 @@ These are Rust-based integration tests that test the full stack:
 ### Script Tests (`scripts/`)
 
 Shell scripts for end-to-end testing and validation:
-- **test_cli_trading_workflow.sh** - CLI-based trading workflow
+- **test_cli_trading_workflow.sh** - API-based trading workflow test
 - **test_loan_trading_integration.sh** - Full deal trading integration test
 - **test_local_anvil_setup.sh** - Local Anvil devnet setup validation
 - **test_metrics.sh** - Metrics system validation

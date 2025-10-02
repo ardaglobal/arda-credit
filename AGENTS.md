@@ -50,7 +50,6 @@ For detailed architecture information, see [`docs/architecture/three-component-o
 **Component Structure:**
 - **`program/`** - SP1 zkVM program for privacy-preserving computations
 - **`script/`** - Local testing with fast SP1 Core proofs
-- **`cli/`** - Command-line interface for deal operations and verification
 - **`api/`** - REST/GraphQL API server with ZK proof generation
 - **`db/`** - PostgreSQL database with ADS (Authenticated Data Structures)
 - **`contracts/`** - Solidity contracts for on-chain proof verification
@@ -123,64 +122,40 @@ SERVER_ENVIRONMENT=sandbox make deploy-contracts    # Deploy to Sepolia testnet
 
 See [`docs/development/local-anvil-workflow.md`](docs/development/local-anvil-workflow.md) for complete details.
 
-### CLI Commands (Primary Interface)
+### API Server Usage
 
-**Make-based CLI usage:**
+The API server provides REST endpoints for all operations. Access the interactive API documentation at:
+
+**Swagger UI**: `http://0.0.0.0:8080/swagger-ui/`
+
+**Core API Testing Examples:**
+
 ```bash
-# Pattern: make cli ARGS="command arguments"
-make cli ARGS="health-check"
-make cli ARGS="register-user --user-type investor --email user@example.com"
-make cli ARGS="create-pool --name \"My Pool\" --max-ltv-ratio 0.8"
+# GET request - Health check
+curl http://0.0.0.0:8080/api/v1/health
+
+# POST request - Create user
+curl -X POST http://0.0.0.0:8080/api/v1/user \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user@example.com","user_type":"investor"}'
+
+# PUT request with authentication - Update user
+curl -X PUT http://0.0.0.0:8080/api/v1/user/{user_id} \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"kyc_status":"approved"}'
+
+# DELETE request with authentication - Remove listing
+curl -X DELETE http://0.0.0.0:8080/api/v1/deal/{deal_id}/remove-from-sale \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# GET request with query parameters
+curl "http://0.0.0.0:8080/api/v1/deals?status=active&limit=20"
 ```
 
-**Key CLI commands:**
-```bash
-# Health and user management
-make cli ARGS="health-check"
-make cli ARGS="register-user --user-type investor --email user@example.com"
-make cli ARGS="submit-kyc --user-id 123"
-make cli ARGS="get-user --user-id 123"
-
-# Liquidity pools
-make cli ARGS="create-pool --name \"My Pool\" --max-ltv-ratio 0.8 --max-interest-rate 0.12 --repayment-period-days 365"
-make cli ARGS="list-pools --verbose"
-make cli ARGS="get-pool --pool-id <pool-id> --verbose"
-
-# Deal operations (consolidated functionality)
-make cli ARGS="deal originate --originator-id 123 --investor-id 456 --amount 10000"
-make cli ARGS="deal payment --deal-id 789 --amount 1000"
-make cli ARGS="deal closeout --deal-id 789"
-make cli ARGS="deal list --status active --limit 20"
-make cli ARGS="deal get --deal-id 789"
-
-# Deal marketplace operations (consolidated into deal commands)
-make cli ARGS="deal list-for-sale --deal-id 789 --asking-price 9500 --seller-id 456"
-make cli ARGS="deal browse-marketplace --limit 10"
-make cli ARGS="deal remove-from-sale --deal-id 789"
-make cli ARGS="deal marketplace-stats"
-
-# Deal transfer operations (consolidated into deal commands)
-make cli ARGS="deal transfer --deal-id 789 --from-investor-id 456 --to-investor-id 101 --transfer-price 9500"
-make cli ARGS="deal transfer-history --deal-id 789"
-make cli ARGS="deal validate-transfer --deal-id 789 --current-investor-id 456"
-make cli ARGS="deal user-transfer-history --user-id 456"
-
-# USDC operations
-make cli ARGS="get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
-make cli ARGS="initiate-withdrawal --user-address 0x742E... --recipient-address 0x123... --amount 100.50"
-make cli ARGS="get-withdrawal-status --request-id 1"
-
-# Batch management
-make cli ARGS="view-pending"
-make cli ARGS="trigger-batch --verbose"
-make cli ARGS="list-batches"
-make cli ARGS="download-proof --batch-id 1"
-
-# Transaction verification
-make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id abc123 --transaction-type deal_payment"
-```
-
-**Complete command reference:** Run `make help` to see all available commands.
+**For complete API documentation and all available endpoints, see:**
+- Interactive documentation: `http://0.0.0.0:8080/swagger-ui/`
+- API documentation: [`docs/integrations/api-swagger.md`](docs/integrations/api-swagger.md)
 
 ### Testing & Building
 ```bash
@@ -437,13 +412,13 @@ struct UsdcDeposit {
 ### Adding New Deal Operations
 1. Add transaction type to `TransactionType` enum in `lib/src/transactions.rs`
 2. Implement handler in `api/src/deal_handlers.rs`
-3. Add CLI command in `cli/src/deals/mod.rs`
+3. Add API endpoint route in `api/src/routes.rs`
 4. Add database migration if needed
-5. Test with `make cli ARGS="deal your-new-command"`
+5. Test with curl or Swagger UI at `http://0.0.0.0:8080/swagger-ui/`
 
 ### KYC Integration
 1. KYC status tracked in `users` table
-2. KYC verification can be mocked via CLI/API
+2. KYC verification can be managed via API endpoints
 3. Transaction validation checks KYC status for restricted operations
 4. Users can prove KYC status inclusion in batches
 
@@ -468,140 +443,295 @@ struct UsdcDeposit {
 
 ### USDC Deposit Flow
 ```bash
-# 1. User deposits USDC to smart contract (triggers database update)
-# 2. Check deposit balance
-make cli ARGS="get-user-balance-by-address --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
+# 1. User deposits USDC to smart contract (triggers database update via monitor)
 
-# 3. Link wallet to user account
-make cli ARGS="link-wallet --user-id user-uuid --wallet-address 0x742E..."
+# 2. Check deposit balance via API
+curl "http://0.0.0.0:8080/api/v1/balance/0x742E4C1D5B5B8Ac5dC12345678901234567890aB" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-# 4. View deposit history (database queries)
-psql $DATABASE_URL -c "SELECT * FROM usdc_deposits WHERE user_address = '0x742E...';"
-psql $DATABASE_URL -c "SELECT * FROM user_deposit_balances WHERE user_address = '0x742E...';"
+# 3. Link wallet to user account via API
+curl -X POST http://0.0.0.0:8080/api/v1/user/link-wallet \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"user_id":"user-uuid","wallet_address":"0x742E..."}'
+
+# 4. View deposit history via API
+curl "http://0.0.0.0:8080/api/v1/deposits?address=0x742E..." \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
+
+**Note:** For complete API endpoint details, see the Swagger UI at http://0.0.0.0:8080/swagger-ui/
 
 ### Complete Deal Lifecycle
 ```bash
-# 1. Register users
-make cli ARGS="register-user --user-type originator --email originator@example.com"
-make cli ARGS="register-user --user-type investor --email investor@example.com"
+# 1. Register users via API
+curl -X POST http://0.0.0.0:8080/api/v1/user \
+  -H "Content-Type: application/json" \
+  -d '{"email":"originator@example.com","user_type":"originator"}'
+
+curl -X POST http://0.0.0.0:8080/api/v1/user \
+  -H "Content-Type: application/json" \
+  -d '{"email":"investor@example.com","user_type":"investor"}'
 
 # 2. Submit KYC (both users)
-make cli ARGS="submit-kyc --user-id originator-uuid"
-make cli ARGS="submit-kyc --user-id investor-uuid"
+curl -X POST http://0.0.0.0:8080/api/v1/user/{originator-uuid}/kyc \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+curl -X POST http://0.0.0.0:8080/api/v1/user/{investor-uuid}/kyc \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # 3. Originate deal (KYC required)
-make cli ARGS="deal originate --originator-id originator-uuid --investor-id investor-uuid --amount 50000"
+curl -X POST http://0.0.0.0:8080/api/v1/deal \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"originator_id":"originator-uuid","investor_id":"investor-uuid","amount":50000}'
 
 # 4. Make payments
-make cli ARGS="deal payment --deal-id deal-uuid --amount 5000"
-make cli ARGS="deal payment --deal-id deal-uuid --amount 5000"
+curl -X POST http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/payment \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"amount":5000}'
 
-# 5. Create batch and generate proofs
-make cli ARGS="trigger-batch --verbose"
+# 5. Trigger batch processing
+curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-# 6. Verify payment inclusion (trustless)
-make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id payment-uuid --transaction-type deal_payment"
+# 6. For all API endpoints, see Swagger UI at: http://0.0.0.0:8080/swagger-ui/
 ```
+
+**Note:** These are example API calls. See Swagger UI at http://0.0.0.0:8080/swagger-ui/ for exact endpoint paths and parameters.
 
 ### Complete Liquidity Pool Lifecycle
 ```bash
-# 1. Register as investor and get KYC approval
-make cli ARGS="register-user --user-type investor --email investor@example.com"
-make cli ARGS="submit-kyc --user-id <investor-uuid>"
+# 1. Create a new liquidity pool via API
+curl -X POST http://0.0.0.0:8080/api/v1/pool \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"name":"Conservative Credit Pool","max_ltv_ratio":0.75,"max_interest_rate":0.10,"repayment_period_days":180}'
 
-# 2. Create a new liquidity pool with deployment terms
-make cli ARGS="create-pool --name \"Conservative Credit Pool\" --max-ltv-ratio 0.75 --max-interest-rate 0.10 --repayment-period-days 180"
+# 2. List all pools (with status filter)
+curl "http://0.0.0.0:8080/api/v1/pools?status=active" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-# 3. List all pools (with status filter)
-make cli ARGS="list-pools --status ACTIVE --verbose"
+# 3. Check specific pool details
+curl "http://0.0.0.0:8080/api/v1/pool/{pool-uuid}" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-# 4. Check specific pool details
-make cli ARGS="get-pool --pool-id <pool-uuid> --verbose"
+# 4. Update pool status (pause/reactivate)
+curl -X PUT http://0.0.0.0:8080/api/v1/pool/{pool-uuid}/status \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"status":"paused"}'
 
-# 5. Update pool status (pause/reactivate)
-make cli ARGS="update-pool-status --pool-id <pool-uuid> --status PAUSED"
+# 5. Find matching pools for credit deployment
+curl "http://0.0.0.0:8080/api/v1/pools/match?required_liquidity=50000&max_ltv=0.80" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-# 6. Find matching pools for credit deployment
-make cli ARGS="find-matching-pools --required-liquidity 50000 --max-ltv 0.80 --max-rate 0.12 --min-repayment-days 90"
-
-# 7. Pool operations are included in batch processing for ZK proofs
-make cli ARGS="trigger-batch --verbose"
-
-# 8. Verify pool creation was included in ZK proof (trustless verification)
-make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id <pool-creation-uuid> --transaction-type pool_creation"
+# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
 ```
 
 ### Complete Deal Marketplace Lifecycle
 ```bash
-# 1. Create and fund a deal
-make cli ARGS="deal originate --originator-id originator-uuid --investor-id investor-uuid --amount 50000"
+# 1. Create and fund a deal via API
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"originator_id": "originator-uuid", "investor_id": "investor-uuid", "amount": 50000}' \
+  http://0.0.0.0:8080/api/v1/deal
 
-# 2. List deal for sale (by current investor)
-make cli ARGS="deal list-for-sale --deal-id deal-uuid --asking-price 47500 --seller-id investor-uuid --description \"Great investment opportunity\""
+# 2. List deal for sale (by current investor) via API
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"deal_id": "deal-uuid", "asking_price": 47500, "seller_id": "investor-uuid", "description": "Great investment opportunity"}' \
+  http://0.0.0.0:8080/api/v1/deal/deal-uuid/list-for-sale
 
-# 3. Browse marketplace
-make cli ARGS="deal browse-marketplace --limit 10 --verbose"
+# 3. Browse marketplace via API
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  "http://0.0.0.0:8080/api/v1/deals/for-sale?limit=10"
 
-# 4. Get marketplace statistics
-make cli ARGS="deal marketplace-stats --verbose"
+# 4. Get marketplace statistics via API
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://0.0.0.0:8080/api/v1/deals/marketplace/stats
 
-# 5. Remove from sale (if needed)
-make cli ARGS="deal remove-from-sale --deal-id deal-uuid"
+# 5. Remove from sale (if needed) via API
+curl -X DELETE \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://0.0.0.0:8080/api/v1/deal/deal-uuid/remove-from-sale
 
 # 6. All marketplace operations are included in batch processing for ZK proofs
-make cli ARGS="trigger-batch --verbose"
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://0.0.0.0:8080/api/v1/batch/trigger
 
-# 7. Verify deal listing was included in ZK proof (trustless verification)
-make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id <listing-uuid> --transaction-type deal_listing"
+# 7. Verify deal listing was included in ZK proof
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"transaction_id": "listing-uuid", "transaction_type": "deal_listing", "proof_file": "proof_batch_1.json"}' \
+  http://0.0.0.0:8080/api/v1/verify/inclusion
+# 1. List deal for sale (by current investor)
+curl -X POST http://0.0.0.0:8080/api/v1/deal/\{deal-uuid\}/list-for-sale \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"asking_price":47500,"description":"Great investment opportunity"}'
+
+# 2. Browse marketplace
+curl "http://0.0.0.0:8080/api/v1/deals/for-sale?limit=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# 3. Get marketplace statistics
+curl "http://0.0.0.0:8080/api/v1/deals/marketplace/stats" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# 4. Remove from sale (if needed)
+curl -X DELETE http://0.0.0.0:8080/api/v1/deal/\{deal-uuid\}/remove-from-sale \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
+# 1. List deal for sale (by current investor)
+curl -X POST http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/list-for-sale \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"asking_price":47500,"description":"Great investment opportunity"}'
+
+# 2. Browse marketplace
+curl "http://0.0.0.0:8080/api/v1/deals/for-sale?limit=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# 3. Get marketplace statistics
+curl "http://0.0.0.0:8080/api/v1/deals/marketplace/stats" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# 4. Remove from sale (if needed)
+curl -X DELETE http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/remove-from-sale \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
 ```
 
 ### Complete Deal Transfer Lifecycle
 ```bash
-# 1. Validate transfer is possible
-make cli ARGS="deal validate-transfer --deal-id deal-uuid --current-investor-id current-investor-uuid"
+# 1. Validate transfer is possible via API
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"deal_id": "deal-uuid", "current_investor_id": "current-investor-uuid"}' \
+  http://0.0.0.0:8080/api/v1/deal/deal-uuid/transfer/validate
 
-# 2. Execute deal ownership transfer
-make cli ARGS="deal transfer --deal-id deal-uuid --from-investor-id current-investor-uuid --to-investor-id new-investor-uuid --transfer-price 47500"
+# 2. Execute deal ownership transfer via API
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"deal_id": "deal-uuid", "from_investor_id": "current-investor-uuid", "to_investor_id": "new-investor-uuid", "transfer_price": 47500}' \
+  http://0.0.0.0:8080/api/v1/deal/deal-uuid/transfer
 
-# 3. Check transfer history for the deal
-make cli ARGS="deal transfer-history --deal-id deal-uuid --limit 5"
+# 3. Check transfer history for the deal via API
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  "http://0.0.0.0:8080/api/v1/deal/deal-uuid/transfers?limit=5"
 
-# 4. Check user's transfer history
-make cli ARGS="deal user-transfer-history --user-id current-investor-uuid --limit 10"
+# 4. Check user's transfer history via API
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  "http://0.0.0.0:8080/api/v1/user/current-investor-uuid/deal-transfers?limit=10"
 
 # 5. All transfer operations are included in batch processing for ZK proofs
-make cli ARGS="trigger-batch --verbose"
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://0.0.0.0:8080/api/v1/batch/trigger
 
-# 6. Verify transfer inclusion in ZK proof (trustless verification)
-make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id transfer-transaction-uuid --transaction-type deal_transfer"
+# 6. Verify transfer inclusion in ZK proof
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"transaction_id": "transfer-transaction-uuid", "transaction_type": "deal_transfer", "proof_file": "proof_batch_1.json"}' \
+  http://0.0.0.0:8080/api/v1/verify/inclusion
+# 1. Validate transfer is possible
+curl -X POST http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/transfer/validate \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"current_investor_id":"current-investor-uuid"}'
+
+# 2. Execute deal ownership transfer
+curl -X POST http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/transfer \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"from_investor_id":"current-investor-uuid","to_investor_id":"new-investor-uuid","transfer_price":47500}'
+
+# 3. Check transfer history for the deal
+curl "http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/transfers?limit=5" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# 4. Check user's transfer history
+curl "http://0.0.0.0:8080/api/v1/user/{user-uuid}/deal-transfers?limit=10" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+
+# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
 ```
 
-### Complete Withdrawal Lifecycle with ZK Proof Integration
+### Complete Withdrawal Lifecycle
 ```bash
+# 1. Check available balance for withdrawals via API
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  "http://0.0.0.0:8080/api/v1/user/balance?address=0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
+
+# 2. Initiate withdrawal (requires KYC approval + sufficient balance) via API
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_address": "0x742E4C1D5B5B8Ac5dC12345678901234567890aB", "recipient_address": "0x123456789012345678901234567890123456789", "amount": 100.50}' \
+  http://0.0.0.0:8080/api/v1/withdrawal/initiate
+
+# 3. Check withdrawal status via API
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  http://0.0.0.0:8080/api/v1/withdrawal/status/1
+
+# 4. View withdrawal history via API
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  "http://0.0.0.0:8080/api/v1/withdrawals?address=0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
+
+# 5. Cancel withdrawal (only if not yet submitted to blockchain) via API
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://0.0.0.0:8080/api/v1/withdrawal/1/cancel
+
+# 6. Admin: View pending withdrawals via API
+curl -H "Authorization: Bearer YOUR_TOKEN" \
+  "http://0.0.0.0:8080/api/v1/withdrawals/pending?limit=10"
+
+# 7. Create batch and generate ZK proof (includes withdrawal transactions) via API
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  http://0.0.0.0:8080/api/v1/batch/trigger
+
+# 8. Verify withdrawal inclusion in ZK proof via API
+curl -X POST \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"transaction_id": "withdrawal-transaction-uuid", "transaction_type": "user_withdrawal", "proof_file": "proof_batch_1.json"}' \
+  http://0.0.0.0:8080/api/v1/verify/inclusion
 # 1. Check available balance for withdrawals
-make cli ARGS="get-available-balance --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
+curl "http://0.0.0.0:8080/api/v1/balance/0x742E4C1D5B5B8Ac5dC12345678901234567890aB" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # 2. Initiate withdrawal (requires KYC approval + sufficient balance)
-make cli ARGS="initiate-withdrawal --user-address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB --recipient-address 0x123456789012345678901234567890123456789 --amount 100.50"
+curl -X POST http://0.0.0.0:8080/api/v1/withdrawal \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"user_address":"0x742E4C1D5B5B8Ac5dC12345678901234567890aB","recipient_address":"0x123456789012345678901234567890123456789","amount":"100.50"}'
 
 # 3. Check withdrawal status
-make cli ARGS="get-withdrawal-status --request-id 1"
+curl "http://0.0.0.0:8080/api/v1/withdrawal/1" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # 4. View withdrawal history
-make cli ARGS="get-withdrawal-history --address 0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
+curl "http://0.0.0.0:8080/api/v1/withdrawals?address=0x742E4C1D5B5B8Ac5dC12345678901234567890aB" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # 5. Cancel withdrawal (only if not yet submitted to blockchain)
-make cli ARGS="cancel-withdrawal --request-id 1"
+curl -X DELETE http://0.0.0.0:8080/api/v1/withdrawal/1 \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-# 6. Admin: View pending withdrawals
-make cli ARGS="get-pending-withdrawals --limit 10"
-
-# 7. Create batch and generate ZK proof (includes withdrawal transactions)
-make cli ARGS="trigger-batch --verbose"
-
-# 8. Verify withdrawal inclusion in ZK proof (trustless verification)
-make cli ARGS="verify-transaction-inclusion --proof-file proof_batch_1.json --transaction-id withdrawal-transaction-uuid --transaction-type user_withdrawal"
+# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
 ```
 
 ## Debugging Tips
@@ -616,19 +746,21 @@ cargo check --workspace     # Works without PostgreSQL
 ### Common Issues
 - **Proof generation fails**: Check `SINDRI_API_KEY` and circuit deployment
 - **Database connection errors**: Ensure PostgreSQL running via `make up`
-- **CLI errors**: Verify `ARDA_CREDIT_API_URL` environment variable
+- **API authentication errors**: Verify your Bearer token is valid and not expired
+- **KYC validation errors**: Check user KYC status before deal operations via API
+- **API connection errors**: Verify server is running on `http://0.0.0.0:8080`
 - **KYC validation errors**: Check user KYC status before deal operations
 - **Contract deployment fails**: Check all Ethereum environment variables are set
 
 ### Service URLs
-- Database: `localhost:5432`
-- API Server: `http://localhost:8080`
-- Health Check: `http://localhost:8080/api/v1/health`
-- GraphQL Playground: `http://localhost:8080/playground` (dev only)
-- **Swagger/OpenAPI Documentation**: `http://localhost:8080/swagger-ui/`
-- **AI Document Analysis**: `http://localhost:8080/api/v1/documents/{id}/analyze`
-- **AI Chat Interface**: `http://localhost:8080/api/v1/ai/chat`
-- **AI Analytics Dashboard**: `http://localhost:8080/api/v1/ai/analytics/dashboard`
+- Database: `0.0.0.0:5432`
+- API Server: `http://0.0.0.0:8080`
+- Health Check: `http://0.0.0.0:8080/api/v1/health`
+- GraphQL Playground: `http://0.0.0.0:8080/playground` (dev only)
+- **Swagger/OpenAPI Documentation**: `http://0.0.0.0:8080/swagger-ui/`
+- **AI Document Analysis**: `http://0.0.0.0:8080/api/v1/documents/{id}/analyze`
+- **AI Chat Interface**: `http://0.0.0.0:8080/api/v1/ai/chat`
+- **AI Analytics Dashboard**: `http://0.0.0.0:8080/api/v1/ai/analytics/dashboard`
 
 ### Key API Endpoints (Updated)
 - **Deal Management**:

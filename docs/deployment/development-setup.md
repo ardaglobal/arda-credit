@@ -36,13 +36,13 @@ make env    # Copies .env.example to .env
 make server    # Run API server with debug logging
 ```
 
-The server will start on http://localhost:8080
+The server will start on http://0.0.0.0:8080
 
 ### 4. Verify Setup
 
 Test the health endpoint:
 ```bash
-curl http://localhost:8080/api/v1/health
+curl http://0.0.0.0:8080/api/v1/health
 ```
 
 View traces in your SigNoz Cloud dashboard (if OpenTelemetry is enabled)
@@ -90,8 +90,8 @@ make initDB    # Runs migrations and generates SQLx cache
 
 | Service | Port | Purpose | URL |
 |---------|------|---------|-----|
-| Arda Credit API | 8080 | Main application | http://localhost:8080 |
-| PostgreSQL | 5432 | Database | localhost:5432 |
+| Arda Credit API | 8080 | Main application | http://0.0.0.0:8080 |
+| PostgreSQL | 5432 | Database | 0.0.0.0:5432 |
 | SigNoz Cloud | 443 | Trace visualization | Your SigNoz Cloud dashboard |
 
 ## Troubleshooting

@@ -140,7 +140,7 @@ cargo run --example withdrawal_monitor_example
 
 ```bash
 # Required
-DATABASE_URL=postgresql://user:pass@localhost:5432/arda_credit_db
+DATABASE_URL=postgresql://user:pass@0.0.0.0:5432/arda_credit_db
 ETHEREUM_RPC_URL=https://eth-mainnet.alchemyapi.io/v2/your-key
 LOAN_CONTRACT_ADDRESS=0x1234567890123456789012345678901234567890
 

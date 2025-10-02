@@ -23,7 +23,7 @@ This microagent works in coordination with specialized domain experts:
 Each specialist provides deep domain expertise while this microagent coordinates system-wide auditing and AI-native practices.
 
 **Repository Context**: Arda Credit is a privacy-preserving loan vApp built with:
-- **Rust** (141 files, ~77k LOC) - Core business logic, API, CLI, zkVM programs
+- **Rust** (141 files, ~77k LOC) - Core business logic, API server, zkVM programs
 - **Solidity** (441 files, ~116k LOC) - Smart contracts and dependencies  
 - **JavaScript/TypeScript** (155 files) - Frontend and tooling
 - **SP1 zkVM** - Zero-knowledge proof generation
@@ -38,7 +38,7 @@ Each specialist provides deep domain expertise while this microagent coordinates
 - Compare README.md content with actual implementation
 - Verify AGENTS.md/CLAUDE.md alignment with current codebase features
 - Cross-reference API endpoints in documentation vs `api/src/*_handlers.rs` files
-- Validate CLI commands in docs vs `cli/src/*.rs` implementations
+- Validate API examples against Swagger UI documentation
 - Check zkVM program documentation vs `program/src/main.rs` functionality
 - Ensure smart contract documentation matches `contracts/src/*.sol` files
 
