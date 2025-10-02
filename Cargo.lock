@@ -2508,33 +2508,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
 
 [[package]]
-name = "cli"
-version = "0.0.1"
-dependencies = [
- "alloy-primitives",
- "alloy-sol-types",
- "api",
- "chrono",
- "clap",
- "ethereum-client",
- "eyre",
- "hex",
- "lib",
- "reqwest",
- "rust_decimal",
- "serde",
- "serde_json",
- "sha2",
- "sp1-sdk",
- "sqlx",
- "thiserror 2.0.17",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "cmake"
 version = "0.1.54"
 source = "registry+https://github.com/rust-lang/crates.io-index"

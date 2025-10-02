@@ -275,11 +275,6 @@ bench-zk:
 	echo ""
 	NUM_PROOFS=$(NUM_PROOFS) NUM_TRANSACTIONS=$(NUM_TRANSACTIONS) cargo run --release --package arda-credit --features benchmark
 
-## cli: CLI client (requires API server running)
-.PHONY: cli
-cli:
-	@cargo run --bin cli -- $(ARGS)
-
 ## server: Start API server locally (in debug mode with verbose logging) with deposit monitor and withdrawal executor
 .PHONY: server
 server: up

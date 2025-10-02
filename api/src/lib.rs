@@ -35,7 +35,6 @@
 
 // Organized module structure
 pub mod api;
-pub mod client;
 pub mod config;
 pub mod handlers;
 pub mod middleware;
@@ -82,26 +81,6 @@ pub use services::{
     DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, LlmProvider, LlmRequest, LlmResponse,
     LlmService, NegotiationInsight, NotificationPriority, NotificationRecord, RiskFactor,
     UserNotificationPreferences, WebhookConfig,
-};
-
-// Re-export main API types for convenience
-pub use client::{
-    ApiClientError,
-    ArithmeticApiClient, // Keep old name for compatibility
-    BatchApiClient,
-    BatchInfo,
-    BatchListResponse,
-    ContractSubmissionData,
-    CreateBatchRequest,
-    CreateBatchResponse,
-    CurrentStateResponse,
-    DepositTransactionInfo,
-    HealthResponse,
-    PendingTransactionsResponse,
-    TransactionInfo,
-    TransactionStatusResponse,
-    UserBalanceResponse,
-    UserTransactionsResponse,
 };
 
 // Re-export handler modules for backward compatibility
