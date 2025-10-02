@@ -10,7 +10,7 @@ Create a `.env` file in your project root with the following configuration:
 # ============================================================================
 # DATABASE CONFIGURATION
 # ============================================================================
-DATABASE_URL=postgresql://username:password@localhost:5432/arda_credit
+DATABASE_URL=postgresql://username:password@0.0.0.0:5432/arda_credit
 
 # ============================================================================
 # SERVER CONFIGURATION  

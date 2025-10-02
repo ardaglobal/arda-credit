@@ -15,7 +15,7 @@ The `docs/` directory serves as the central navigation point for all Arda Credit
 
 ### 🚫 What This Documentation Doesn't Cover
 
-- **API reference** - See [`api/src/README.md`](../api/src/README.md) and Swagger documentation at http://localhost:8080/swagger-ui/
+- **API reference** - See [`api/src/README.md`](../api/src/README.md) and Swagger documentation at http://0.0.0.0:8080/swagger-ui/
 - **Component internals** - See individual component READMEs in their respective directories
 - **Code-level details** - See inline documentation and source code comments
 
@@ -141,7 +141,7 @@ Before committing documentation changes:
 1. **Project Overview** - Start with [`../README.md`](../README.md) for project overview and quick start
 2. **Development Setup** - Follow [`docs/deployment/development-setup.md`](deployment/development-setup.md) for environment setup
 3. **System Architecture** - Read [`docs/architecture/three-component-overview.md`](architecture/three-component-overview.md)
-4. **API Workflows** - Review [`../AGENTS.md`](../AGENTS.md) for comprehensive API usage examples and Swagger documentation
+4. **API Workflows** - Review [`../AGENTS.md`](../AGENTS.md) for comprehensive API examples and workflows
 
 ## 📞 Support and Resources
 

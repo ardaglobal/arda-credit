@@ -17,8 +17,8 @@ See [Magic Link Authentication Guide](./magic-link-authentication.md) for detail
 
 ### OpenAPI Specification
 
-- **Interactive Docs**: [http://localhost:8080/api-docs](http://localhost:8080/api-docs)
-- **JSON Spec**: [http://localhost:8080/api-docs/openapi.json](http://localhost:8080/api-docs/openapi.json)
+- **Interactive Docs**: [http://0.0.0.0:8080/api-docs](http://0.0.0.0:8080/api-docs)
+- **JSON Spec**: [http://0.0.0.0:8080/api-docs/openapi.json](http://0.0.0.0:8080/api-docs/openapi.json)
 
 ### Authentication Endpoints
 
@@ -52,12 +52,12 @@ The API is fully documented using OpenAPI 3.0 specifications with interactive Sw
 
 ### Interactive Documentation
 
-- **Swagger UI**: [http://localhost:8080/api-docs](http://localhost:8080/api-docs)
+- **Swagger UI**: [http://0.0.0.0:8080/api-docs](http://0.0.0.0:8080/api-docs)
   - Try endpoints directly in your browser
   - View request/response schemas
   - Test authentication flows
 
-- **OpenAPI JSON**: [http://localhost:8080/api-docs/openapi.json](http://localhost:8080/api-docs/openapi.json)
+- **OpenAPI JSON**: [http://0.0.0.0:8080/api-docs/openapi.json](http://0.0.0.0:8080/api-docs/openapi.json)
   - Import into Postman, Insomnia, or other API tools
   - Generate client SDKs for your preferred language
 
@@ -97,7 +97,7 @@ The OpenAPI specification supports automatic code generation for:
 ### Testing API Changes
 
 1. **Start the server**: `make server`
-2. **Open Swagger UI**: Visit `http://localhost:8080/api-docs`
+2. **Open Swagger UI**: Visit `http://0.0.0.0:8080/api-docs`
 3. **Test endpoints**: Use the "Try it out" buttons
 4. **Check schemas**: View request/response models
 
@@ -110,7 +110,74 @@ To test protected endpoints in Swagger UI:
 3. **Session cookie** will be set automatically
 4. **All subsequent requests** will include the session cookie
 
-## Common Integration Patterns
+## Testing the API with curl
+
+Here are common curl examples for testing the API. For complete endpoint documentation, see the Swagger UI at `http://0.0.0.0:8080/api-docs`.
+
+### GET Request (No Authentication)
+```bash
+# Health check
+curl http://0.0.0.0:8080/api/v1/health
+```
+
+### POST Request (Create Resource)
+```bash
+# Register a new user
+curl -X POST http://0.0.0.0:8080/api/v1/user \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "user_type": "investor"
+  }'
+```
+
+### GET Request with Authentication
+```bash
+# Get current user info
+curl http://0.0.0.0:8080/api/v1/auth/me \
+  -H "Cookie: session_token=your_session_token"
+```
+
+### PUT Request with Authentication
+```bash
+# Update user KYC status
+curl -X PUT http://0.0.0.0:8080/api/v1/user/{user_id} \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session_token=your_session_token" \
+  -d '{
+    "kyc_status": "approved"
+  }'
+```
+
+### DELETE Request with Authentication
+```bash
+# Remove deal from marketplace
+curl -X DELETE http://0.0.0.0:8080/api/v1/deal/{deal_id}/remove-from-sale \
+  -H "Cookie: session_token=your_session_token"
+```
+
+### GET Request with Query Parameters
+```bash
+# List deals with filters
+curl "http://0.0.0.0:8080/api/v1/deals?status=active&limit=20" \
+  -H "Cookie: session_token=your_session_token"
+```
+
+### POST Request with Complex Body
+```bash
+# Create a liquidity pool
+curl -X POST http://0.0.0.0:8080/api/v1/pool \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session_token=your_session_token" \
+  -d '{
+    "name": "Conservative Credit Pool",
+    "max_ltv_ratio": 0.75,
+    "max_interest_rate": 0.10,
+    "repayment_period_days": 180
+  }'
+```
+
+## Integration Patterns
 
 ### JavaScript/TypeScript
 
@@ -129,14 +196,6 @@ import requests
 # Include session cookie from previous auth
 cookies = {'session_token': 'your_session_token'}
 response = requests.get('/api/v1/auth/me', cookies=cookies)
-```
-
-### cURL
-
-```bash
-# Include session cookie
-curl -H "Cookie: session_token=your_session_token" \
-  http://localhost:8080/api/v1/auth/me
 ```
 
 ## Troubleshooting

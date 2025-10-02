@@ -490,56 +490,54 @@ export default ProtectedRoute;
 
 #### 6. Making Authenticated API Requests
 
-Use the `authenticatedFetch` method from the AuthService directly for API calls:
+For making API requests with magic link authentication, use the session cookie automatically:
 
 ```javascript
-import authService from './authService';
+// Simple authenticated fetch wrapper
+async function authenticatedFetch(url, options = {}) {
+    const defaultOptions = {
+        ...options,
+        credentials: 'include', // Important: includes session cookie
+        headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        },
+    };
 
-// Example: Get user details
-async function getUserDetails(userId) {
-    const response = await authService.authenticatedFetch(`/api/ccr/user/${userId}`);
+    const response = await fetch(url, defaultOptions);
+
+    if (response.status === 401) {
+        // Redirect to login if unauthorized
+        window.location.href = '/login';
+        throw new Error('Authentication required');
+    }
+
     if (!response.ok) {
         const error = await response.json();
         throw new Error(error.message || `HTTP ${response.status}`);
     }
-    return await response.json();
+
+    return response.status === 204 ? null : await response.json();
 }
 
-// Example: Create deal
+// Usage examples
+async function getUserDetails(userId) {
+    return authenticatedFetch(`/api/v1/user/${userId}`);
+}
+
 async function createDeal(dealData) {
-    const response = await authService.authenticatedFetch('/api/v1/deal', {
+    return authenticatedFetch('/api/v1/deal', {
         method: 'POST',
         body: JSON.stringify(dealData),
     });
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `HTTP ${response.status}`);
-    }
-    return await response.json();
 }
 
-// Example: Get deals
 async function getDeals() {
-    const response = await authService.authenticatedFetch('/api/v1/deals');
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `HTTP ${response.status}`);
-    }
-    return await response.json();
-}
-
-// Example: Get batches
-async function getBatches() {
-    const response = await authService.authenticatedFetch('/api/state/batches');
-    if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || `HTTP ${response.status}`);
-    }
-    return await response.json();
+    return authenticatedFetch('/api/v1/deals');
 }
 ```
 
-**For complete API documentation, see the Swagger UI at http://localhost:8080/swagger-ui/**
+**Note**: The deprecated password-based authentication and its associated API client have been removed. Magic link authentication uses session cookies that are automatically included with `credentials: 'include'`.
 
 ## Environment Configuration
 

@@ -158,9 +158,8 @@ export SERVER_ENVIRONMENT=local
 make server
 
 # In another terminal, trigger a batch via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/v1/batch/trigger
+curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### Via Script (Direct)
@@ -184,9 +183,8 @@ export SINDRI_API_KEY=your_api_key_here
 make server
 
 # In another terminal, trigger a batch via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/v1/batch/trigger
+curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### Via Script (Direct)
@@ -233,7 +231,7 @@ make bench-zk NUM_PROOFS=10 NUM_TRANSACTIONS=100
 
 ```bash
 # Required for all environments
-DATABASE_URL=postgresql://user:pass@localhost:5432/arda_credit_db
+DATABASE_URL=postgresql://user:pass@0.0.0.0:5432/arda_credit_db
 
 # Proof generation configuration
 SERVER_ENVIRONMENT=local  # local, staging, sandbox, or production
@@ -293,4 +291,4 @@ export SERVER_ENVIRONMENT=production # For production
 - `api/src/services/batch_processor.rs` - Batch processing service
 - `api/src/api/routes.rs` - API endpoint routes
 - `AGENTS.md` - Full environment variable documentation and API usage examples
-- **Swagger UI** - Interactive API documentation at http://localhost:8080/swagger-ui/
+- **Swagger UI** - Interactive API documentation at http://0.0.0.0:8080/swagger-ui/

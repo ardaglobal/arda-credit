@@ -37,7 +37,7 @@ The service uses three main tables:
 ```bash
 # Basic usage
 cargo run --bin deposit_monitor -- \
-  --database-url "postgresql://postgres:password@localhost:5432/arda_credit_db" \
+  --database-url "postgresql://postgres:password@0.0.0.0:5432/arda_credit_db" \
   --ethereum-rpc-url "https://eth-mainnet.alchemyapi.io/v2/your-key" \
   --contract-address "0x..." \
   --confirmations 12

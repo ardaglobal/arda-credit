@@ -55,11 +55,11 @@ Before running tests or operations:
      ```
    - **Database URL**: Set environment variable:
      ```bash
-     export DATABASE_URL="postgres://postgres:password@localhost:5432/arda_credit_db"
+     export DATABASE_URL="postgres://postgres:password@0.0.0.0:5432/arda_credit_db"
      ```
      Or use `.env` file:
      ```
-     DATABASE_URL=postgres://postgres:password@localhost:5432/arda_credit_db
+     DATABASE_URL=postgres://postgres:password@0.0.0.0:5432/arda_credit_db
      ```
 
 ## Testing
@@ -156,16 +156,14 @@ All functions return `Result<T, sqlx::Error>` for proper error handling. Common 
 
 #### 1. Test ADS Integration
 ```bash
-# Create transaction via API and trigger batch
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+# Submit transaction and trigger batch via API
+curl -X POST http://0.0.0.0:8080/api/v1/transaction \
   -H "Content-Type: application/json" \
-  -d '{"amount": 42}' \
-  http://localhost:8080/api/v1/transaction
-
-curl -X POST \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/v1/batches/trigger
+  -d '{"amount":42}'
+
+curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 #### 2. Debug Logging

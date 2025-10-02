@@ -153,54 +153,49 @@ CREATE TABLE loan_transactions (
 - `POST /api/v1/batches` - Process batch of transactions
 - `GET /api/v1/batches/{batch_id}` - Get batch details
 
-## API Usage Examples
+## API Testing Examples
+
+For complete API documentation, see the Swagger UI at `http://0.0.0.0:8080/swagger-ui/`
 
 ### User Operations
 ```bash
 # Register users
-curl -X POST \
+curl -X POST http://0.0.0.0:8080/api/v1/user \
   -H "Content-Type: application/json" \
-  -d '{"email": "alice@example.com", "user_type": "lender"}' \
-  http://localhost:8080/api/v1/user
+  -d '{"email":"alice@example.com","user_type":"investor"}'
 
 # KYC operations
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "uuid"}' \
-  http://localhost:8080/api/v1/kyc/submit
+curl -X POST http://0.0.0.0:8080/api/v1/user/{uuid}/kyc \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
 # Get user details
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/v1/user/uuid
+curl http://0.0.0.0:8080/api/v1/user/{uuid} \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-### Loan Operations
+### Loan/Deal Operations
 ```bash
-# Loan origination (requires KYC'd users)
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+# Loan/Deal origination (requires KYC'd users)
+curl -X POST http://0.0.0.0:8080/api/v1/deal \
   -H "Content-Type: application/json" \
-  -d '{"borrower_id": "uuid", "lender_id": "uuid", "amount": 50000, "rate": 0.075, "term_months": 36}' \
-  http://localhost:8080/api/v1/loan
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"originator_id":"<uuid>","investor_id":"<uuid>","amount":50000,"rate":0.075,"term_months":36}'
 
 # Loan payments
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X POST http://0.0.0.0:8080/api/v1/deal/{uuid}/payment \
   -H "Content-Type: application/json" \
-  -d '{"loan_id": "uuid", "amount": 2500}' \
-  http://localhost:8080/api/v1/loan/payment
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"amount":2500}'
 
-# Get loan details
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:8080/api/v1/loan/uuid
+# Loan queries
+curl http://0.0.0.0:8080/api/v1/deal/{uuid} \
+  -H "Authorization: Bearer YOUR_TOKEN"
 
-# List loans for user
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://localhost:8080/api/v1/loans?user_id=uuid"
+curl "http://0.0.0.0:8080/api/v1/deals?user_id={uuid}" \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-**For complete API documentation, see the Swagger UI at http://localhost:8080/swagger-ui/**
+**For complete API documentation, see the Swagger UI at http://0.0.0.0:8080/swagger-ui/**
 
 ## Zero-Knowledge Properties
 

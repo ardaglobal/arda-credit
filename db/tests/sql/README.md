@@ -11,7 +11,7 @@ This directory contains SQL test scripts that test database functions and proced
 
 2. **Database URL**: Set the DATABASE_URL environment variable:
    ```bash
-   export DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db"
+   export DATABASE_URL="postgresql://postgres:password@0.0.0.0:5432/arda_credit_db"
    ```
 
 3. **Migrations Applied**: Ensure all migrations are up to date:

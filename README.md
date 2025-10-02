@@ -67,7 +67,7 @@ Public Data (Verifiable):
 
 **🚀 Complete Setup**: See [`docs/deployment/development-setup.md`](docs/deployment/development-setup.md) for detailed setup instructions.
 
-**💡 Test the Complete Workflow**: See [`AGENTS.md#loan-workflow-examples`](AGENTS.md#loan-workflow-examples) for comprehensive CLI workflow examples.
+**💡 Test the Complete Workflow**: See [`AGENTS.md#deal-workflow-examples`](AGENTS.md#deal-workflow-examples) for comprehensive API workflow examples.
 
 **🔧 Development Commands**:
 ```bash
@@ -170,7 +170,7 @@ Perfect for testing the borough percentage system, credit line requests, and poo
 - **[`api/src/README.md`](./api/src/README.md)** - API server architecture and standards
 - **[`db/README.md`](./db/README.md)** - Database layer and ADS integration
 - **[`contracts/README.md`](./contracts/README.md)** - Smart contract deployment and testing
-- **Swagger UI** - Interactive API documentation at http://localhost:8080/swagger-ui/
+- **Swagger UI** - Interactive API documentation at http://0.0.0.0:8080/swagger-ui/
 
 ## Technology Stack
 
