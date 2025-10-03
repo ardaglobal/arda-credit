@@ -1,11 +1,8 @@
-use arda_credit_db::{
-    get_identity_by_id, get_user_available_balance, get_user_balance_by_id,
-    get_user_deposit_balance, DbResult,
-};
+use arda_credit_db::{get_user_available_balance, get_user_balance_by_id, DbResult};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use utoipa::ToSchema;
+// utoipa::ToSchema import removed - no longer used for AvailableBalance
 use uuid::Uuid;
 
 /// Balance verification service for withdrawal operations
@@ -24,20 +21,7 @@ pub struct BalanceVerificationResult {
     pub reason: Option<String>,
 }
 
-/// Available balance for withdrawals
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct AvailableBalance {
-    pub user_address: String,
-    #[schema(value_type = String, example = "5000000")]
-    pub available_balance: Decimal,
-    #[schema(value_type = String, example = "5.000000")]
-    pub available_balance_usdc: Decimal,
-    #[schema(value_type = String, example = "5000000")]
-    pub total_deposited: Decimal,
-    #[schema(value_type = String, example = "5.000000")]
-    pub total_deposited_usdc: Decimal,
-    pub deposit_count: i32,
-}
+// AvailableBalance struct removed - now using consolidated AddressBalance from balance handlers
 
 impl BalanceVerificationService {
     pub fn new(pool: PgPool) -> Self {
@@ -99,60 +83,10 @@ impl BalanceVerificationService {
         }
     }
 
-    /// Get available balance for withdrawals by wallet address
-    pub async fn get_available_balance(
-        &self,
-        wallet_address: &str,
-    ) -> DbResult<Option<AvailableBalance>> {
-        let balance_result = get_user_available_balance(&self.pool, wallet_address).await;
-
-        match balance_result {
-            Ok(Some(balance)) => {
-                // Get the original deposit balance to show total deposited
-                let original_deposit = get_user_deposit_balance(&self.pool, wallet_address).await?;
-                let total_deposited = original_deposit
-                    .as_ref()
-                    .map(|d| d.total_deposited)
-                    .unwrap_or(Decimal::ZERO);
-                let total_deposited_usdc = original_deposit
-                    .as_ref()
-                    .and_then(|d| d.total_deposited_usdc)
-                    .unwrap_or(Decimal::ZERO);
-
-                Ok(Some(AvailableBalance {
-                    user_address: balance.user_address.clone(),
-                    available_balance: balance.total_deposited, // This now represents available balance after subtracting pending withdrawals
-                    available_balance_usdc: balance.total_deposited_usdc.unwrap_or(Decimal::ZERO),
-                    total_deposited, // Original total deposited
-                    total_deposited_usdc,
-                    deposit_count: balance.deposit_count,
-                }))
-            }
-            Ok(None) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    /// Get available balance for withdrawals by user ID
-    pub async fn get_available_balance_by_user_id(
-        &self,
-        user_id: Uuid,
-    ) -> DbResult<Option<AvailableBalance>> {
-        // For user ID lookups, we need to get the deposit balance via wallet address
-        // First get the user's wallet address
-        let user_opt = get_identity_by_id(&self.pool, user_id).await?;
-
-        match user_opt {
-            Some(user) => {
-                if let Some(wallet_address) = user.wallet_address {
-                    self.get_available_balance(&wallet_address).await
-                } else {
-                    Ok(None) // User has no linked wallet
-                }
-            }
-            None => Ok(None), // User not found
-        }
-    }
+    // get_available_balance and get_available_balance_by_user_id methods removed
+    // Use the consolidated balance endpoints instead:
+    // - balance::get_balance_for_address()
+    // - balance::get_balances_for_user_id()
 
     /// Check if user has sufficient balance
     pub async fn has_sufficient_balance(

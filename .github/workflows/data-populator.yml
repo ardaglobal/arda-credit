@@ -11,15 +11,6 @@ on:
       - 'Cargo.lock'
       - 'Dockerfile.data-populator'
       - '.hadolint.yaml'
-  pull_request:
-    paths:
-      - 'db/src/bin/populate_fake_data.rs'
-      - 'db/Cargo.toml'
-      - 'lib/Cargo.toml'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - 'Dockerfile.data-populator'
-      - '.hadolint.yaml'
   release:
     types: [published]
 

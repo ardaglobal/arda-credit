@@ -20,6 +20,7 @@ use crate::api::openapi::ApiDoc;
 use crate::config::types::{ApiConfig, ApiState};
 use crate::middleware::middleware::{EmailRateLimiter, RateLimiter};
 use crate::services::batch_processor::{create_batch_processor_config, start_batch_processor};
+use crate::services::deployment_config::{get_deployment, is_deployment_available};
 use crate::services::email_service::EmailService;
 use crate::services::magic_link_service::{MagicLinkConfig, MagicLinkService};
 use crate::services::session_service::SessionService;
@@ -100,6 +101,31 @@ impl ApiServer {
         config: ApiServerConfig,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         info!("🚀 Initializing batch processing API server");
+
+        // Pre-load deployment configuration for local/staging environments
+        let environment =
+            std::env::var("SERVER_ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
+
+        if matches!(environment.as_str(), "local" | "staging") {
+            info!(
+                "📁 Pre-loading deployment configuration for environment: {}",
+                environment
+            );
+            match get_deployment() {
+                Ok(deployment) => {
+                    info!(
+                        "✅ Deployment configuration loaded: ARDA={}, Chain={}",
+                        deployment.config.arda, deployment.config.chain_id
+                    );
+                }
+                Err(e) => {
+                    warn!("⚠️  Failed to load deployment configuration: {}", e);
+                    warn!(
+                        "💡 Run 'make deploy-contracts' to deploy contracts for local development"
+                    );
+                }
+            }
+        }
 
         // Initialize database connection
         let pool = if let Some(url) = database_url {

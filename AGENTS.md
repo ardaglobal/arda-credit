@@ -101,8 +101,8 @@ make anvil-stop                     # Stop Anvil (preserves state)
 make anvil-logs                     # View Anvil logs
 make clean-anvil                    # Reset blockchain state
 
-# Faucet commands (get test USDC)
-make faucet-request ADDRESS=0x742d35Cc6...   # Request 1M USDC (1 hour cooldown)
+# Faucet commands (get test ETH + USDC)
+make faucet-request ADDRESS=0x742d35Cc6...   # Request 0.5 ETH + 1M USDC (1 hour cooldown)
 make faucet-status ADDRESS=0x742d35Cc6...    # Check balance and cooldown status
 make faucet-stats                            # View overall faucet statistics
 
@@ -116,7 +116,8 @@ SERVER_ENVIRONMENT=sandbox make deploy-contracts    # Deploy to Sepolia testnet
 - **Sandbox/Production**: ARDA only (to Sepolia/Mainnet with real USDC)
 
 **Faucet Configuration:**
-- Amount: 1,000,000 USDC per request
+- USDC: 1,000,000 USDC per request
+- ETH: 0.5 ETH per request (for gas fees)
 - Cooldown: 1 hour between requests
 - Initial balance: 100,000,000 USDC
 
@@ -234,8 +235,8 @@ make anvil-stop                     # Stop Anvil (preserves state)
 make anvil-logs                     # View Anvil logs
 make clean-anvil                    # Reset blockchain state
 
-# Faucet for test USDC (local/staging only)
-make faucet-request ADDRESS=0x...   # Request 1M USDC (1hr cooldown)
+# Faucet for test funds (local/staging only)
+make faucet-request ADDRESS=0x...   # Request 0.5 ETH + 1M USDC (1hr cooldown)
 make faucet-status ADDRESS=0x...    # Check balance and status
 make faucet-stats                   # View overall statistics
 ```

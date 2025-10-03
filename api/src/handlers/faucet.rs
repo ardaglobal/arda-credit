@@ -5,9 +5,10 @@
 
 use axum::{extract::Query, extract::State, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use tracing::{error, info, warn};
 use utoipa::ToSchema;
+
+use crate::services::deployment_config::{get_deployment, DeploymentError};
 
 /// Faucet information response
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -27,6 +28,9 @@ pub struct FaucetInfoResponse {
     /// Amount distributed per request (in USDC, not wei)
     pub amount_per_request: Option<String>,
 
+    /// ETH amount sent per request (for gas)
+    pub eth_amount_per_request: Option<String>,
+
     /// Cooldown period in seconds
     pub cooldown_seconds: Option<u64>,
 
@@ -38,6 +42,9 @@ pub struct FaucetInfoResponse {
 
     /// Suggested MetaMask network configuration
     pub network_config: Option<NetworkConfig>,
+
+    /// USDC token configuration for MetaMask import
+    pub token_config: Option<TokenConfig>,
 }
 
 /// MetaMask network configuration
@@ -48,6 +55,21 @@ pub struct NetworkConfig {
     pub chain_id: String,
     pub currency_symbol: String,
     pub block_explorer_url: Option<String>,
+}
+
+/// USDC token configuration for MetaMask import
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TokenConfig {
+    /// Token contract address
+    pub address: String,
+    /// Token symbol
+    pub symbol: String,
+    /// Token name
+    pub name: String,
+    /// Token decimals
+    pub decimals: u8,
+    /// MetaMask deep link for automatic token import
+    pub metamask_import_url: String,
 }
 
 /// Query parameters for checking user's faucet status
@@ -89,11 +111,17 @@ pub struct FaucetRequestResponse {
     /// Whether the request was successful
     pub success: bool,
 
-    /// Transaction hash (if successful)
-    pub transaction_hash: Option<String>,
+    /// USDC transaction hash (if successful)
+    pub usdc_transaction_hash: Option<String>,
 
-    /// Amount sent (in USDC)
-    pub amount: Option<String>,
+    /// ETH transaction hash (if successful)
+    pub eth_transaction_hash: Option<String>,
+
+    /// USDC amount sent (in USDC)
+    pub usdc_amount: Option<String>,
+
+    /// ETH amount sent (in ETH)
+    pub eth_amount: Option<String>,
 
     /// Error message (if failed)
     pub error: Option<String>,
@@ -134,25 +162,34 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
             faucet_address: None,
             usdc_address: None,
             amount_per_request: None,
+            eth_amount_per_request: None,
             cooldown_seconds: None,
             rpc_url: None,
             chain_id: None,
             network_config: None,
+            token_config: None,
         }));
     }
 
-    // Try to load deployment file for local/staging
-    let deployment_file = format!("contracts/deployments/{}-deployment.json", environment);
-    let deployment_data = match std::fs::read_to_string(&deployment_file) {
-        Ok(data) => data,
+    // Use centralized deployment service for local/staging
+    let deployment = match get_deployment() {
+        Ok(deployment) => deployment,
         Err(e) => {
-            warn!("Failed to read deployment file {}: {}", deployment_file, e);
+            match e {
+                DeploymentError::FileRead { ref file, .. } => {
+                    warn!("Failed to read deployment file {}: {}", file, e);
+                }
+                _ => {
+                    warn!("Deployment service error: {}", e);
+                }
+            }
             return Ok(Json(FaucetInfoResponse {
                 available: false,
                 environment,
                 faucet_address: None,
                 usdc_address: None,
                 amount_per_request: None,
+                eth_amount_per_request: None,
                 cooldown_seconds: None,
                 rpc_url: None,
                 chain_id: None,
@@ -163,28 +200,17 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
                     currency_symbol: "ETH".to_string(),
                     block_explorer_url: None,
                 }),
+                token_config: None,
             }));
         }
     };
 
-    // Parse deployment JSON
-    let deployment: serde_json::Value = match serde_json::from_str(&deployment_data) {
-        Ok(json) => json,
-        Err(e) => {
-            warn!("Failed to parse deployment JSON: {}", e);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    let faucet_address = deployment["faucet"].as_str().map(String::from);
-    let usdc_address = deployment["usdc"].as_str().map(String::from);
-    let chain_id = deployment["chainId"]
-        .as_u64()
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| "31337".to_string());
+    let faucet_address = Some(deployment.config.faucet.clone());
+    let usdc_address = Some(deployment.config.usdc.clone());
+    let chain_id = deployment.config.chain_id.to_string();
 
     info!(
-        "✅ Faucet info loaded: address={:?}, chain_id={}",
+        "✅ Faucet info loaded from deployment service: address={:?}, chain_id={}",
         faucet_address, chain_id
     );
 
@@ -225,12 +251,29 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
         _ => "Anvil Devnet",
     };
 
+    // Create USDC token config for MetaMask import
+    let token_config = if let Some(ref usdc_addr) = usdc_address {
+        Some(TokenConfig {
+            address: usdc_addr.clone(),
+            symbol: "USDC".to_string(),
+            name: "USD Coin".to_string(),
+            decimals: 6,
+            metamask_import_url: format!(
+                "https://metamask.app/add-token/?address={}&symbol=USDC&decimals=6&name=USD%20Coin",
+                usdc_addr
+            ),
+        })
+    } else {
+        None
+    };
+
     Ok(Json(FaucetInfoResponse {
         available: true,
         environment: environment.clone(),
         faucet_address: faucet_address.clone(),
         usdc_address: usdc_address.clone(),
         amount_per_request: Some("1000000".to_string()), // 1M USDC
+        eth_amount_per_request: Some("0.5".to_string()), // 0.5 ETH for gas
         cooldown_seconds: Some(3600),                    // 1 hour
         rpc_url: Some(rpc_url.clone()),
         chain_id: Some(chain_id.clone()),
@@ -241,6 +284,7 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
             currency_symbol: "ETH".to_string(),
             block_explorer_url: None,
         }),
+        token_config,
     }))
 }
 
@@ -286,26 +330,22 @@ pub async fn check_faucet_status(
         }));
     }
 
-    // Try to load deployment file
-    let deployment_file = format!("contracts/deployments/{}-deployment.json", environment);
-    let deployment_data = match std::fs::read_to_string(&deployment_file) {
-        Ok(data) => data,
+    // Use centralized deployment service
+    let _deployment = match get_deployment() {
+        Ok(deployment) => deployment,
         Err(e) => {
-            warn!("Failed to read deployment file: {}", e);
+            warn!("Deployment service error: {}", e);
             return Ok(Json(FaucetStatusResponse {
                 can_request_now: false,
                 time_until_next_request: 0,
                 user_balance: None,
                 faucet_balance: None,
                 error: Some(
-                    "Deployment file not found. Run 'make deploy-contracts' first.".to_string(),
+                    "Deployment not available. Run 'make deploy-contracts' first.".to_string(),
                 ),
             }));
         }
     };
-
-    let _deployment: serde_json::Value =
-        serde_json::from_str(&deployment_data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // For now, return basic info
     // TODO: Integrate with ethereum-client to query actual on-chain status
@@ -347,8 +387,10 @@ pub async fn request_faucet_funds(
         warn!("Invalid address format: {}", body.address);
         return Ok(Json(FaucetRequestResponse {
             success: false,
-            transaction_hash: None,
-            amount: None,
+            usdc_transaction_hash: None,
+            eth_transaction_hash: None,
+            usdc_amount: None,
+            eth_amount: None,
             error: Some("Invalid Ethereum address format".to_string()),
             message: "Please provide a valid Ethereum address (0x... format)".to_string(),
         }));
@@ -363,8 +405,10 @@ pub async fn request_faucet_funds(
         warn!("Faucet request denied - not in local/staging environment");
         return Ok(Json(FaucetRequestResponse {
             success: false,
-            transaction_hash: None,
-            amount: None,
+            usdc_transaction_hash: None,
+            eth_transaction_hash: None,
+            usdc_amount: None,
+            eth_amount: None,
             error: Some("Faucet only available in local/staging environments".to_string()),
             message: "This faucet is only available for development and testing".to_string(),
         }));
@@ -378,8 +422,10 @@ pub async fn request_faucet_funds(
             error!("Failed to read deployment file: {}", e);
             return Ok(Json(FaucetRequestResponse {
                 success: false,
-                transaction_hash: None,
-                amount: None,
+                usdc_transaction_hash: None,
+                eth_transaction_hash: None,
+                usdc_amount: None,
+                eth_amount: None,
                 error: Some("Faucet contract not deployed".to_string()),
                 message: "Please contact administrator to deploy faucet contract".to_string(),
             }));
@@ -414,13 +460,78 @@ pub async fn request_faucet_funds(
         })?;
 
     info!(
-        "📡 Calling faucet contract at {} for recipient {}",
-        faucet_address, body.address
+        "📡 Step 1: Sending 0.5 ETH to {} for gas fees",
+        body.address
     );
 
-    // Call cast send to execute the faucet request
+    // Step 1: Send ETH for gas (0.5 ETH should be plenty)
+    let eth_amount = "0.5ether"; // Using ether unit for clarity
+    let eth_output = std::process::Command::new("cast")
+        .args(&[
+            "send",
+            &body.address,
+            "--value",
+            eth_amount,
+            "--rpc-url",
+            &rpc_url,
+            "--private-key",
+            &private_key,
+            "--json",
+        ])
+        .output()
+        .map_err(|e| {
+            error!("Failed to execute cast command for ETH: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if !eth_output.status.success() {
+        let stderr = String::from_utf8_lossy(&eth_output.stderr);
+        error!("ETH transfer failed: {}", stderr);
+        return Ok(Json(FaucetRequestResponse {
+            success: false,
+            usdc_transaction_hash: None,
+            eth_transaction_hash: None,
+            usdc_amount: None,
+            eth_amount: None,
+            error: Some("Failed to send ETH for gas fees".to_string()),
+            message: format!("ETH transfer failed: {}", stderr),
+        }));
+    }
+
+    let eth_stdout = String::from_utf8_lossy(&eth_output.stdout);
+    let eth_tx_hash = if let Some(start_pos) = eth_stdout.rfind('{') {
+        let json_str = &eth_stdout[start_pos..];
+        match serde_json::from_str::<serde_json::Value>(json_str) {
+            Ok(tx_result) => tx_result["transactionHash"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+            Err(e) => {
+                warn!("Failed to parse ETH transaction receipt: {}", e);
+                String::new()
+            }
+        }
+    } else {
+        String::new()
+    };
+
+    info!(
+        "✅ Step 1 complete: Sent 0.5 ETH - tx: {}",
+        if eth_tx_hash.is_empty() {
+            "pending"
+        } else {
+            &eth_tx_hash
+        }
+    );
+
+    info!(
+        "📡 Step 2: Calling faucet contract at {} for USDC",
+        faucet_address
+    );
+
+    // Step 2: Send USDC via faucet contract
     // Using requestFundsImmediate which bypasses cooldown (owner only)
-    let output = std::process::Command::new("cast")
+    let usdc_output = std::process::Command::new("cast")
         .args(&[
             "send",
             faucet_address,
@@ -434,13 +545,13 @@ pub async fn request_faucet_funds(
         ])
         .output()
         .map_err(|e| {
-            error!("Failed to execute cast command: {}", e);
+            error!("Failed to execute cast command for USDC: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        error!("Cast command failed: {}", stderr);
+    if !usdc_output.status.success() {
+        let stderr = String::from_utf8_lossy(&usdc_output.stderr);
+        error!("USDC faucet call failed: {}", stderr);
 
         // Parse error message for user-friendly response
         let error_msg = if stderr.contains("CooldownNotElapsed") {
@@ -450,92 +561,66 @@ pub async fn request_faucet_funds(
         } else if stderr.contains("FaucetDisabled") {
             "Faucet is currently disabled".to_string()
         } else {
-            "Transaction failed. Please try again later".to_string()
+            "USDC transaction failed. Please try again later".to_string()
         };
 
+        // Note: User already received ETH, but USDC failed
         return Ok(Json(FaucetRequestResponse {
             success: false,
-            transaction_hash: None,
-            amount: None,
+            usdc_transaction_hash: None,
+            eth_transaction_hash: Some(eth_tx_hash),
+            usdc_amount: None,
+            eth_amount: Some("0.5".to_string()),
             error: Some(error_msg.clone()),
-            message: error_msg,
+            message: format!("⚠️ Sent 0.5 ETH but USDC failed: {}", error_msg),
         }));
     }
 
-    // Parse JSON output to get transaction hash
-    // cast send --json outputs the receipt as a single JSON object at the end
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Find the last JSON object in the output (the receipt)
-    let json_start = stdout.rfind('{');
-    let tx_hash = if let Some(start_pos) = json_start {
-        let json_str = &stdout[start_pos..];
+    let usdc_stdout = String::from_utf8_lossy(&usdc_output.stdout);
+    let usdc_tx_hash = if let Some(start_pos) = usdc_stdout.rfind('{') {
+        let json_str = &usdc_stdout[start_pos..];
         match serde_json::from_str::<serde_json::Value>(json_str) {
             Ok(tx_result) => tx_result["transactionHash"]
                 .as_str()
                 .unwrap_or("")
                 .to_string(),
             Err(e) => {
-                warn!("Failed to parse transaction receipt JSON: {}", e);
-                // Transaction succeeded but couldn't parse hash
+                warn!("Failed to parse USDC transaction receipt: {}", e);
                 String::new()
             }
         }
     } else {
-        warn!("No JSON receipt found in cast output");
         String::new()
     };
 
     info!(
-        "✅ Faucet funds sent successfully to {} - tx: {}",
-        body.address, tx_hash
+        "✅ Step 2 complete: Sent 1,000,000 USDC - tx: {}",
+        if usdc_tx_hash.is_empty() {
+            "pending"
+        } else {
+            &usdc_tx_hash
+        }
     );
 
     Ok(Json(FaucetRequestResponse {
         success: true,
-        transaction_hash: Some(tx_hash.clone()),
-        amount: Some("1000000".to_string()), // 1M USDC
+        usdc_transaction_hash: Some(usdc_tx_hash.clone()),
+        eth_transaction_hash: Some(eth_tx_hash.clone()),
+        usdc_amount: Some("1000000".to_string()), // 1M USDC
+        eth_amount: Some("0.5".to_string()),      // 0.5 ETH
         error: None,
         message: format!(
-            "✅ Successfully sent 1,000,000 USDC to {}. Transaction: {}",
-            body.address,
-            if tx_hash.is_empty() {
+            "✅ Successfully sent:\n• 0.5 ETH (for gas): {}\n• 1,000,000 USDC: {}",
+            if eth_tx_hash.is_empty() {
                 "pending"
             } else {
-                &tx_hash
+                &eth_tx_hash
+            },
+            if usdc_tx_hash.is_empty() {
+                "pending"
+            } else {
+                &usdc_tx_hash
             }
         ),
     }))
-}
-
-/// Faucet configuration endpoint
-///
-/// Returns complete faucet configuration for frontend integration.
-#[utoipa::path(
-    get,
-    path = "/api/v1/faucet/config",
-    tag = "Dev",
-    responses(
-        (status = 200, description = "Faucet configuration", body = HashMap<String, serde_json::Value>)
-    )
-)]
-pub async fn get_faucet_config() -> Json<HashMap<String, serde_json::Value>> {
-    let mut config = HashMap::new();
-
-    let environment = std::env::var("SERVER_ENVIRONMENT")
-        .unwrap_or_else(|_| "local".to_string())
-        .to_lowercase();
-
-    config.insert("environment".to_string(), environment.clone().into());
-    config.insert(
-        "faucet_enabled".to_string(),
-        matches!(environment.as_str(), "local" | "staging").into(),
-    );
-    config.insert(
-        "amount_per_request_usdc".to_string(),
-        "1000000".to_string().into(),
-    );
-    config.insert("cooldown_hours".to_string(), 1.into());
-
-    Json(config)
 }

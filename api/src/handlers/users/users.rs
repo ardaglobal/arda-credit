@@ -20,10 +20,10 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::config::types::{ApiState, UserType};
 use arda_credit_db::{
-    get_deposits_by_user_address, get_identity_by_id, get_invite_code_info,
-    get_user_balance_by_address, get_user_balance_by_id, register_or_reregister_user,
-    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code, Identity,
-    RegisterResult,
+    create_investor_profile, get_deposits_by_user_address, get_identity_by_id,
+    get_investor_profile_by_user_id, get_invite_code_info, register_or_reregister_user,
+    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code,
+    CreateInvestorProfileRequest, Identity, InvestorProfile, RegisterResult,
 };
 
 // ============================================================================
@@ -51,7 +51,27 @@ pub struct RegisterUserResponse {
     pub created_at: DateTime<Utc>,
 }
 
-/// User details response
+/// Investor profile data for nested response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct InvestorProfileData {
+    pub accredited_investor: bool,
+    #[schema(value_type = Option<String>, example = "1000000.000000")]
+    pub investment_capacity: Option<rust_decimal::Decimal>,
+    #[schema(example = "US")]
+    pub regulatory_jurisdiction: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Originator profile data for nested response (placeholder for future implementation)
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct OriginatorProfileData {
+    // TODO: Define originator profile fields when originator profiles table is created
+    #[schema(example = "Placeholder for future originator profile fields")]
+    pub placeholder: String,
+}
+
+/// User details response with nested profile information
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserDetailsResponse {
     pub user_id: String,
@@ -70,6 +90,10 @@ pub struct UserDetailsResponse {
     pub jurisdiction: Option<String>,
     #[schema(example = "0x742d35Cc6b5c0c25f2d0f1b5b3f5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5")]
     pub wallet_address: Option<String>,
+    /// Nested investor profile data (only present for investor user types)
+    pub investor_profile: Option<InvestorProfileData>,
+    /// Nested originator profile data (placeholder for future implementation)
+    pub originator_profile: Option<OriginatorProfileData>,
 }
 
 /// Update user profile request
@@ -148,14 +172,7 @@ pub struct UpdateKycStatusRequest {
     pub notes: Option<String>,
 }
 
-/// Response for user balance query
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UserBalanceResponse {
-    pub user_id: Option<String>,
-    pub wallet_address: String,
-    pub available_balance: String,
-    pub currency: String,
-}
+// UserBalanceResponse removed - now using consolidated balance response types from balance.rs
 
 /// Response for user transaction history
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -316,6 +333,23 @@ pub async fn register_user_endpoint(
                 }
             }
 
+            // Create profile based on user type
+            let user_type_parsed = identity.user_type.parse().unwrap_or(UserType::Investor);
+            if let Err(e) = ensure_user_profiles_exist(
+                &state.pool,
+                identity.id,
+                &user_type_parsed,
+                request.jurisdiction.as_deref(),
+            )
+            .await
+            {
+                error!(
+                    "❌ Failed to create profile for newly registered user {}: {}",
+                    identity.id, e
+                );
+                // Log error but don't fail registration - profile can be created later
+            }
+
             // Record function execution time
             let duration = start_time.elapsed();
             metrics::histogram!("function_execution_duration_seconds", "function" => "register_user")
@@ -349,6 +383,23 @@ pub async fn register_user_endpoint(
                     // Note: We don't fail the registration here since the user was already re-registered
                     // This is logged for monitoring but shouldn't block the successful re-registration
                 }
+            }
+
+            // Create profile based on user type for re-registered user
+            let user_type_parsed = identity.user_type.parse().unwrap_or(UserType::Investor);
+            if let Err(e) = ensure_user_profiles_exist(
+                &state.pool,
+                identity.id,
+                &user_type_parsed,
+                request.jurisdiction.as_deref(),
+            )
+            .await
+            {
+                error!(
+                    "❌ Failed to create profile for re-registered user {}: {}",
+                    identity.id, e
+                );
+                // Log error but don't fail registration - profile can be created later
             }
 
             // Record function execution time for re-registration
@@ -397,24 +448,30 @@ pub async fn get_user_details_endpoint(
     State(state): State<ApiState>,
     Path(user_id): Path<String>,
 ) -> Result<Json<UserDetailsResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting user details: user_id={}", user_id);
+    info!(
+        "🔍 API: Getting user details with profiles: user_id={}",
+        user_id
+    );
 
     let uuid = parse_user_id(&user_id)?;
 
-    match get_identity_by_id(&state.pool, uuid).await {
-        Ok(Some(identity)) => {
-            info!("✅ API: User details retrieved for ID: {}", identity.id);
-            Ok(Json(identity_to_user_details(identity)))
+    match get_user_details_with_profiles(&state.pool, uuid).await {
+        Ok(user_details) => {
+            info!(
+                "✅ API: User details with profiles retrieved for ID: {}",
+                uuid
+            );
+            Ok(Json(user_details))
         }
-        Ok(None) => {
+        Err(sqlx::Error::RowNotFound) => {
             warn!("❌ API: User not found: {}", user_id);
             Err((StatusCode::NOT_FOUND, "User not found".to_string()))
         }
         Err(e) => {
-            error!("❌ API: Database error retrieving user: {}", e);
+            error!("❌ API: Database error retrieving user details: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to retrieve user".to_string(),
+                "Failed to retrieve user details".to_string(),
             ))
         }
     }
@@ -441,10 +498,12 @@ pub async fn list_identities_endpoint(
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
 
-    // Basic identity listing using direct SQL (excludes soft deleted users)
+    // For better performance and to avoid complex LEFT JOIN type handling,
+    // fetch user identities first, then fetch profiles separately
     let identities_result = sqlx::query!(
         r#"
-        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
+        SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
+               created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
         FROM identities
         WHERE deleted_at IS NULL
         ORDER BY created_at DESC
@@ -458,12 +517,57 @@ pub async fn list_identities_endpoint(
 
     match identities_result {
         Ok(rows) => {
-            let identities = rows
-                .into_iter()
-                .map(|row| UserDetailsResponse {
+            let mut identities = Vec::new();
+
+            for row in rows {
+                let user_type_parsed = row.user_type.parse().unwrap_or(UserType::Investor);
+
+                // Fetch profile information based on user type
+                let (investor_profile, originator_profile) = match user_type_parsed {
+                    UserType::Investor => {
+                        // Fetch investor profile if exists
+                        match get_investor_profile_by_user_id(&state.pool, row.id).await {
+                            Ok(Some(profile)) => {
+                                let investor_data = InvestorProfileData {
+                                    accredited_investor: profile.accredited_investor,
+                                    investment_capacity: profile.investment_capacity,
+                                    regulatory_jurisdiction: profile.regulatory_jurisdiction,
+                                    created_at: profile.created_at,
+                                    updated_at: profile.updated_at,
+                                };
+                                (Some(investor_data), None)
+                            }
+                            Ok(None) => {
+                                // No investor profile exists yet
+                                (None, None)
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "⚠️ Failed to fetch investor profile for user {}: {}",
+                                    row.id, e
+                                );
+                                (None, None)
+                            }
+                        }
+                    }
+                    UserType::Originator => {
+                        // TODO: Implement originator profile fetching when originator profiles table is created
+                        info!(
+                            "🏗️ TODO: Originator profile should be included for user: {}",
+                            row.id
+                        );
+                        (None, None) // Will be: (None, Some(originator_data)) when implemented
+                    }
+                    UserType::Admin => {
+                        // Admin users don't have extended profiles
+                        (None, None)
+                    }
+                };
+
+                identities.push(UserDetailsResponse {
                     user_id: row.id.to_string(),
                     email: row.email,
-                    user_type: row.user_type.parse().unwrap_or(UserType::Investor),
+                    user_type: user_type_parsed,
                     kyc_status: row.kyc_status,
                     kyc_submitted_at: row.kyc_submitted_at,
                     kyc_verified_at: row.kyc_verified_at,
@@ -473,8 +577,10 @@ pub async fn list_identities_endpoint(
                     last_name: row.last_name,
                     jurisdiction: row.jurisdiction,
                     wallet_address: row.wallet_address,
-                })
-                .collect::<Vec<_>>();
+                    investor_profile,
+                    originator_profile,
+                });
+            }
 
             let total_count = identities.len() as u64;
 
@@ -571,6 +677,25 @@ pub async fn update_user_endpoint(
                 "✅ API: User profile updated successfully for ID: {}",
                 identity.id
             );
+
+            // If user type was updated, ensure appropriate profile exists
+            if let Some(ref new_user_type) = request.user_type {
+                if let Err(e) = ensure_user_profiles_exist(
+                    &state.pool,
+                    identity.id,
+                    new_user_type,
+                    request.jurisdiction.as_deref(),
+                )
+                .await
+                {
+                    error!(
+                        "❌ Failed to create profile for updated user {}: {}",
+                        identity.id, e
+                    );
+                    // Log error but don't fail the update - profile can be created later
+                }
+            }
+
             let response = UpdateUserResponse {
                 user_id: identity.id.to_string(),
                 updated_fields,
@@ -682,115 +807,10 @@ pub async fn delete_user_endpoint(
     Ok(Json(response))
 }
 
-/// Get user balance by address
-#[utoipa::path(
-    get,
-    path = "/api/v1/user/balance/{address}",
-    responses(
-        (status = 200, description = "User balance retrieved successfully", body = UserBalanceResponse),
-        (status =404, description = "User not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("address" = String, Path, description = "Wallet address")
-    ),
-    tag = "Users"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn get_user_balance_by_address_endpoint(
-    Path(address): Path<String>,
-    State(state): State<ApiState>,
-) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting user balance by address: {}", address);
-
-    match get_user_balance_by_address(&state.pool, &address).await {
-        Ok(Some(balance)) => {
-            let response = UserBalanceResponse {
-                user_id: None, // We don't have user_id when querying by address directly
-                wallet_address: address,
-                available_balance: balance.to_string(),
-                currency: "USDC".to_string(),
-            };
-            info!("✅ API: User balance retrieved successfully");
-            Ok(Json(response))
-        }
-        Ok(None) => {
-            warn!("⚠️ API: User not found for address: {}", address);
-            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to get user balance: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to retrieve user balance".to_string(),
-            ))
-        }
-    }
-}
-
-/// Get user balance by user ID
-#[utoipa::path(
-    get,
-    path = "/api/v1/user/{user_id}/balance",
-    responses(
-        (status = 200, description = "User balance retrieved successfully", body = UserBalanceResponse),
-        (status =404, description = "User not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("user_id" = String, Path, description = "User ID (UUID)")
-    ),
-    tag = "Users"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn get_user_balance_by_id_endpoint(
-    Path(user_id): Path<String>,
-    State(state): State<ApiState>,
-) -> Result<Json<UserBalanceResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting user balance by ID: {}", user_id);
-
-    let user_uuid = parse_user_id(&user_id)?;
-
-    // First get user details to get wallet address
-    match get_identity_by_id(&state.pool, user_uuid).await {
-        Ok(Some(identity)) => match get_user_balance_by_id(&state.pool, user_uuid).await {
-            Ok(Some(balance)) => {
-                let response = UserBalanceResponse {
-                    user_id: Some(user_id),
-                    wallet_address: identity
-                        .wallet_address
-                        .unwrap_or_else(|| "Not set".to_string()),
-                    available_balance: balance.to_string(),
-                    currency: "USDC".to_string(),
-                };
-                info!("✅ API: User balance retrieved successfully");
-                Ok(Json(response))
-            }
-            Ok(None) => {
-                warn!("⚠️ API: Balance not found for user ID: {}", user_id);
-                Err((StatusCode::NOT_FOUND, "Balance not found".to_string()))
-            }
-            Err(e) => {
-                error!("❌ API: Failed to get user balance: {}", e);
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Failed to retrieve user balance".to_string(),
-                ))
-            }
-        },
-        Ok(None) => {
-            warn!("⚠️ API: User not found: {}", user_id);
-            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to get user identity: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to retrieve user".to_string(),
-            ))
-        }
-    }
-}
+// DEPRECATED: Old balance endpoints removed - now using consolidated balance endpoints from balance.rs
+// New endpoints:
+// - GET /api/v1/user/{address}/balance -> balance::get_balance_by_address_endpoint
+// - GET /api/v1/user/{user_id}/balance -> balance::get_balance_by_user_id_endpoint
 
 /// Get user transactions by user ID
 #[utoipa::path(
@@ -888,8 +908,124 @@ fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
     })
 }
 
-/// Convert database Identity to API UserDetailsResponse
-fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
+/// Convert database InvestorProfile to API InvestorProfileData
+fn investor_profile_to_data(profile: InvestorProfile) -> InvestorProfileData {
+    InvestorProfileData {
+        accredited_investor: profile.accredited_investor,
+        investment_capacity: profile.investment_capacity,
+        regulatory_jurisdiction: profile.regulatory_jurisdiction,
+        created_at: profile.created_at,
+        updated_at: profile.updated_at,
+    }
+}
+
+/// Get user details with profile information based on user type
+async fn get_user_details_with_profiles(
+    pool: &sqlx::PgPool,
+    user_id: uuid::Uuid,
+) -> Result<UserDetailsResponse, sqlx::Error> {
+    // Get basic user identity
+    let identity = get_identity_by_id(pool, user_id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?;
+
+    let user_type_parsed = identity.user_type.parse().unwrap_or(UserType::Investor);
+
+    // Fetch profile information based on user type
+    let (investor_profile, originator_profile) = match user_type_parsed {
+        UserType::Investor => {
+            // Fetch investor profile
+            let profile = get_investor_profile_by_user_id(pool, user_id).await?;
+            let investor_data = profile.map(investor_profile_to_data);
+            (investor_data, None)
+        }
+        UserType::Originator => {
+            // TODO: Implement originator profile fetching when originator profiles table is created
+            info!("🏗️ Originator profile requested but originator profiles not yet implemented for user: {}", user_id);
+            (None, None) // Will be: (None, Some(originator_data)) when implemented
+        }
+        UserType::Admin => {
+            // Admin users don't have extended profiles
+            (None, None)
+        }
+    };
+
+    Ok(UserDetailsResponse {
+        user_id: identity.id.to_string(),
+        email: identity.email,
+        user_type: user_type_parsed,
+        kyc_status: identity.kyc_status,
+        kyc_submitted_at: identity.kyc_submitted_at,
+        kyc_verified_at: identity.kyc_verified_at,
+        created_at: identity.created_at,
+        updated_at: Some(identity.updated_at),
+        first_name: identity.first_name,
+        last_name: identity.last_name,
+        jurisdiction: identity.jurisdiction,
+        wallet_address: identity.wallet_address,
+        investor_profile,
+        originator_profile,
+    })
+}
+
+/// Create user type-specific profiles after user creation/update
+async fn ensure_user_profiles_exist(
+    pool: &sqlx::PgPool,
+    user_id: uuid::Uuid,
+    user_type: &UserType,
+    jurisdiction: Option<&str>,
+) -> Result<(), sqlx::Error> {
+    match user_type {
+        UserType::Investor => {
+            // Check if investor profile already exists
+            let existing_profile = get_investor_profile_by_user_id(pool, user_id).await?;
+            if existing_profile.is_none() {
+                info!("🏗️ Creating investor profile for user: {}", user_id);
+                let profile_request = CreateInvestorProfileRequest {
+                    accredited_investor: Some(false), // Default to false, can be updated later
+                    investment_capacity: None,        // Can be set later through profile updates
+                    regulatory_jurisdiction: Some(jurisdiction.unwrap_or("US").to_string()),
+                };
+
+                match create_investor_profile(pool, user_id, &profile_request).await {
+                    Ok(profile) => {
+                        info!(
+                            "✅ Created investor profile for user: {} with profile ID: {}",
+                            user_id, profile.id
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            "❌ Failed to create investor profile for user {}: {}",
+                            user_id, e
+                        );
+                        return Err(e);
+                    }
+                }
+            }
+        }
+        UserType::Originator => {
+            // TODO: Implement originator profile creation when originator profiles table is created
+            info!(
+                "🏗️ TODO: Originator profile creation needed but not yet implemented for user: {}",
+                user_id
+            );
+        }
+        UserType::Admin => {
+            // Admin users don't need extended profiles
+            info!(
+                "👑 Admin user registered, no extended profile needed: {}",
+                user_id
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Convert database Identity to API UserDetailsResponse (legacy function for backward compatibility)  
+/// This function now delegates to get_user_details_with_profiles for consistency
+pub fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
     UserDetailsResponse {
         user_id: identity.id.to_string(),
         email: identity.email,
@@ -903,6 +1039,10 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
         last_name: identity.last_name,
         jurisdiction: identity.jurisdiction,
         wallet_address: identity.wallet_address,
+        // Profile fields will be None in legacy conversion
+        // Use get_user_details_with_profiles for full profile data
+        investor_profile: None,
+        originator_profile: None,
     }
 }
 
@@ -1009,6 +1149,26 @@ pub async fn update_kyc_status_endpoint(
                 "✅ API: KYC status updated successfully for user: {}",
                 identity.id
             );
+
+            // If KYC was approved, ensure user profiles exist
+            if request.status.to_lowercase() == "approved" {
+                let user_type_parsed = identity.user_type.parse().unwrap_or(UserType::Investor);
+                if let Err(e) = ensure_user_profiles_exist(
+                    &state.pool,
+                    identity.id,
+                    &user_type_parsed,
+                    identity.jurisdiction.as_deref(),
+                )
+                .await
+                {
+                    error!(
+                        "❌ Failed to create profile for KYC-approved user {}: {}",
+                        identity.id, e
+                    );
+                    // Log error but don't fail the KYC update - profile can be created later
+                }
+            }
+
             Ok(Json(identity_to_user_details(identity)))
         }
         Err(e) => {

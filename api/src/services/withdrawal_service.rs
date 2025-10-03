@@ -127,14 +127,15 @@ impl WithdrawalTransactionService {
             .await
             .unwrap_or_else(|_| "unknown".to_string());
 
-        // Get current available balance for logging
-        let available_balance = self
+        // Get current available balance for logging - using simple verification approach
+        let available_balance = match self
             .balance_service
-            .get_available_balance(&request.user_address)
+            .verify_balance_for_withdrawal_by_address(&request.user_address, Decimal::ZERO)
             .await
-            .unwrap_or_default()
-            .map(|b| b.available_balance)
-            .unwrap_or_default();
+        {
+            Ok(result) => result.available_balance,
+            Err(_) => Decimal::ZERO,
+        };
 
         // Create initial withdrawal request
         let withdrawal_request = create_withdrawal_request(

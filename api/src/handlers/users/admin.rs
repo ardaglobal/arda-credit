@@ -28,7 +28,7 @@ pub use crate::api::openapi::*;
 use crate::config::types::ApiState;
 // Re-export explicitly to avoid glob conflict
 pub use crate::config::types::UserType;
-pub use crate::handlers::users::users::UserDetailsResponse;
+pub use crate::handlers::users::users::{identity_to_user_details, UserDetailsResponse};
 use arda_credit_db::{get_kyc_statistics, list_pending_kyc_applications, update_kyc_status};
 
 // ============================================================================
@@ -175,20 +175,7 @@ pub async fn list_pending_kyc_endpoint(
 
             let application_responses: Vec<UserDetailsResponse> = applications
                 .into_iter()
-                .map(|identity| UserDetailsResponse {
-                    user_id: identity.id.to_string(),
-                    email: identity.email,
-                    user_type: identity.user_type.parse().unwrap_or(UserType::Investor),
-                    kyc_status: identity.kyc_status,
-                    kyc_submitted_at: identity.kyc_submitted_at,
-                    kyc_verified_at: identity.kyc_verified_at,
-                    created_at: identity.created_at,
-                    updated_at: Some(identity.updated_at),
-                    first_name: identity.first_name,
-                    last_name: identity.last_name,
-                    jurisdiction: identity.jurisdiction,
-                    wallet_address: identity.wallet_address,
-                })
+                .map(identity_to_user_details)
                 .collect();
 
             let response = ListPendingKycResponse {

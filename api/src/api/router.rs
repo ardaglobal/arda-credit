@@ -59,7 +59,7 @@ pub struct AuthenticatedUser {
     pub user_type: String,
 }
 
-/// Convert database Identity to API UserDetailsResponse
+/// Convert database Identity to API UserDetailsResponse (legacy - prefer users::identity_to_user_details)
 #[allow(dead_code)]
 fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
     UserDetailsResponse {
@@ -75,6 +75,9 @@ fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
         last_name: identity.last_name,
         jurisdiction: identity.jurisdiction,
         wallet_address: identity.wallet_address,
+        // Profile fields will be None in legacy conversion
+        investor_profile: None,
+        originator_profile: None,
     }
 }
 
@@ -257,14 +260,14 @@ pub fn create_router(state: ApiState) -> Router {
             get(crate::handlers::companies::companies::get_investor_profile_endpoint)
                 .put(crate::handlers::companies::companies::update_investor_profile_endpoint),
         )
-        // User Balance & Transaction endpoints
+        // User Balance & Transaction endpoints (consolidated)
         .route(
             paths::USER_BALANCE_BY_ADDRESS,
-            get(crate::handlers::users::users::get_user_balance_by_address_endpoint),
+            get(crate::handlers::users::balance::get_balance_by_address_endpoint),
         )
         .route(
             paths::USER_BALANCE_BY_ID,
-            get(crate::handlers::users::users::get_user_balance_by_id_endpoint),
+            get(crate::handlers::users::balance::get_balance_by_user_id_endpoint),
         )
         .route(
             paths::USER_TRANSACTIONS_BY_ID,
@@ -280,10 +283,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::WITHDRAWAL_BY_ID,
             get(crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint),
-        )
-        .route(
-            paths::USER_AVAILABLE_BALANCE,
-            get(crate::handlers::finance::withdrawals::get_user_available_balance_endpoint),
         )
         .route(
             paths::USER_WITHDRAWALS,
@@ -517,10 +516,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::FAUCET_STATUS,
             get(crate::handlers::faucet::check_faucet_status),
-        )
-        .route(
-            paths::FAUCET_CONFIG,
-            get(crate::handlers::faucet::get_faucet_config),
         )
         .route(
             paths::FAUCET_REQUEST,

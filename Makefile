@@ -333,6 +333,9 @@ server: up
 		export FAUCET_CONTRACT_ADDRESS=$$(cat $$DEPLOYMENT_FILE | jq -r '.faucet'); \
 		echo "✅ Using ARDA contract: $$ETHEREUM_CONTRACT_ADDRESS"; \
 		echo "✅ Using Faucet contract: $$FAUCET_CONTRACT_ADDRESS"; \
+		echo "✅ Using USDC contract: $$USDC_CONTRACT_ADDRESS"; \
+		echo "✅ Using Verifier contract: $$VERIFIER_CONTRACT_ADDRESS"; \
+		echo "✅ Using Deployer contract: $$ETHEREUM_DEPLOYER_ADDRESS"; \
 		echo ""; \
 	fi
 	@echo "Running database migrations..."
@@ -581,6 +584,44 @@ faucet-stats:
 	echo ""; \
 	cast call $$FAUCET_ADDR "getStats()(uint256,uint256,uint256)" --rpc-url http://127.0.0.1:8545
 
+## metamask-setup: Show MetaMask network and USDC token import details
+.PHONY: metamask-setup
+metamask-setup:
+	@echo "🦊 MetaMask Setup for Local Anvil Development"
+	@echo "=========================================="
+	@echo ""
+	@echo "📡 Network Configuration:"
+	@echo "  Network Name: Local Anvil Devnet"
+	@echo "  RPC URL: http://127.0.0.1:8545"
+	@echo "  Chain ID: 31337"
+	@echo "  Currency Symbol: ETH"
+	@echo ""
+	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
+	DEPLOYMENT_FILE="contracts/deployments/$$SERVER_ENV-deployment.json"; \
+	if [ ! -f "$$DEPLOYMENT_FILE" ]; then \
+		echo "❌ Deployment file not found. Run 'make deploy-contracts' first."; \
+		exit 1; \
+	fi; \
+	USDC_ADDR=$$(cat $$DEPLOYMENT_FILE | jq -r '.usdc'); \
+	ARDA_ADDR=$$(cat $$DEPLOYMENT_FILE | jq -r '.arda'); \
+	echo "🪙 USDC Token Import Details:"; \
+	echo "  Contract Address: $$USDC_ADDR"; \
+	echo "  Token Symbol: USDC"; \
+	echo "  Token Name: USD Coin"; \
+	echo "  Decimals: 6"; \
+	echo ""; \
+	echo "🏦 ARDA Contract Address: $$ARDA_ADDR"; \
+	echo ""; \
+	echo "📋 To add USDC token to MetaMask:"; \
+	echo "  1. Connect MetaMask to Local Anvil network (details above)"; \
+	echo "  2. Click 'Import tokens' in MetaMask"; \
+	echo "  3. Use 'Token Contract Address': $$USDC_ADDR"; \
+	echo "  4. Symbol and decimals should auto-fill as USDC/6"; \
+	echo ""; \
+	echo "💡 Or use this direct import link:"; \
+	echo "  https://metamask.app/add-token/?address=$$USDC_ADDR&symbol=USDC&decimals=6&name=USD%20Coin"; \
+	echo ""
+
 ## deploy-contract-help: Show deployment command usage
 .PHONY: deploy-contract-help
 deploy-contract-help:
@@ -620,6 +661,8 @@ clean-anvil:
 	@echo "🧹 Cleaning Anvil state..."
 	@docker compose down anvil -v
 	@docker volume rm arda-credit_anvil_data 2>/dev/null || true
+	@rm contracts/deployments/local-deployment.json 2>/dev/null || true
+	@rm contracts/deployments/staging-deployment.json 2>/dev/null || true
 	@echo "✅ Anvil state cleaned (blockchain reset)"
 	@echo "💡 Run 'make deploy-contracts' to redeploy contracts after reset"
 

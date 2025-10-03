@@ -16,6 +16,7 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
+// rust_decimal::Decimal import removed - no longer used
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tracing::{error, info, instrument, warn};
@@ -23,7 +24,6 @@ use utoipa::ToSchema;
 
 use crate::config::paths;
 use crate::config::types::{ApiState, ErrorResponse};
-use crate::services::balance_service::AvailableBalance;
 use crate::services::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
     WithdrawalStatusResponse,
@@ -107,40 +107,9 @@ pub async fn get_withdrawal_status_endpoint(
     }
 }
 
-/// Get user's available balance for withdrawals
-#[utoipa::path(
-    get,
-    path = "/api/v1/users/{address}/available-balance",
-    params(
-        ("address" = String, Path, description = "User's wallet address")
-    ),
-    responses(
-        (status = 200, description = "Available balance retrieved", body = AvailableBalance),
-        (status = 404, description = "User not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    tag = "Payments"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn get_user_available_balance_endpoint(
-    State(state): State<ApiState>,
-    Path(address): Path<String>,
-) -> Result<Json<AvailableBalance>, StatusCode> {
-    match state.balance_service.get_available_balance(&address).await {
-        Ok(Some(balance)) => {
-            info!("Retrieved available balance for address {}", address);
-            Ok(Json(balance))
-        }
-        Ok(None) => {
-            info!("No balance found for address {}", address);
-            Err(StatusCode::NOT_FOUND)
-        }
-        Err(e) => {
-            error!("Failed to get available balance: {:?}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
-}
+// DEPRECATED: Old available balance endpoint removed - now using consolidated balance endpoints:
+// - GET /api/v1/user/{address}/balance -> balance::get_balance_by_address_endpoint
+// - GET /api/v1/user/{user_id}/balance -> balance::get_balance_by_user_id_endpoint
 
 /// Get user's withdrawal history
 #[utoipa::path(
@@ -543,15 +512,10 @@ pub fn withdrawal_routes() -> Vec<axum::Router<ApiState>> {
                 paths::WITHDRAWAL_CANCEL,
                 axum::routing::post(cancel_withdrawal_endpoint),
             ),
-        axum::Router::new()
-            .route(
-                paths::USER_AVAILABLE_BALANCE,
-                axum::routing::get(get_user_available_balance_endpoint),
-            )
-            .route(
-                paths::USER_WITHDRAWALS,
-                axum::routing::get(get_user_withdrawal_history_endpoint),
-            ),
+        axum::Router::new().route(
+            paths::USER_WITHDRAWALS,
+            axum::routing::get(get_user_withdrawal_history_endpoint),
+        ),
         axum::Router::new().route(
             paths::ADMIN_PENDING_WITHDRAWALS,
             axum::routing::get(get_pending_withdrawals_endpoint),
