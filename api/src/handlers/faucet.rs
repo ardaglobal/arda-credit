@@ -156,19 +156,19 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
 
     if !is_local_env {
         info!("🌍 Faucet not available in {} environment", environment);
-            return Ok(Json(FaucetInfoResponse {
-                available: false,
-                environment,
-                faucet_address: None,
-                usdc_address: None,
-                amount_per_request: None,
-                eth_amount_per_request: None,
-                cooldown_seconds: None,
-                rpc_url: None,
-                chain_id: None,
-                network_config: None,
-                token_config: None,
-            }));
+        return Ok(Json(FaucetInfoResponse {
+            available: false,
+            environment,
+            faucet_address: None,
+            usdc_address: None,
+            amount_per_request: None,
+            eth_amount_per_request: None,
+            cooldown_seconds: None,
+            rpc_url: None,
+            chain_id: None,
+            network_config: None,
+            token_config: None,
+        }));
     }
 
     // Use centralized deployment service for local/staging
@@ -183,25 +183,25 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
                     warn!("Deployment service error: {}", e);
                 }
             }
-        return Ok(Json(FaucetInfoResponse {
-            available: false,
-            environment,
-            faucet_address: None,
-            usdc_address: None,
-            amount_per_request: None,
-            eth_amount_per_request: None,
-            cooldown_seconds: None,
-            rpc_url: None,
-            chain_id: None,
-            network_config: Some(NetworkConfig {
-                network_name: "Local Anvil Devnet".to_string(),
-                rpc_url: "http://127.0.0.1:8545".to_string(),
-                chain_id: "31337".to_string(),
-                currency_symbol: "ETH".to_string(),
-                block_explorer_url: None,
-            }),
-            token_config: None,
-        }));
+            return Ok(Json(FaucetInfoResponse {
+                available: false,
+                environment,
+                faucet_address: None,
+                usdc_address: None,
+                amount_per_request: None,
+                eth_amount_per_request: None,
+                cooldown_seconds: None,
+                rpc_url: None,
+                chain_id: None,
+                network_config: Some(NetworkConfig {
+                    network_name: "Local Anvil Devnet".to_string(),
+                    rpc_url: "http://127.0.0.1:8545".to_string(),
+                    chain_id: "31337".to_string(),
+                    currency_symbol: "ETH".to_string(),
+                    block_explorer_url: None,
+                }),
+                token_config: None,
+            }));
         }
     };
 
