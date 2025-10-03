@@ -50,10 +50,10 @@ The `make server` command now automatically:
 - Loads contract addresses from deployment file
 - Starts deposit monitor, withdrawal executor, and API server
 
-### 2. Request Test USDC
+### 2. Request Test Funds (ETH + USDC)
 
 ```bash
-# Request 1M USDC from faucet
+# Request 0.5 ETH + 1M USDC from faucet (single command)
 make faucet-request ADDRESS=0xYourWalletAddress
 
 # Check your balance and faucet status
@@ -63,12 +63,17 @@ make faucet-status ADDRESS=0xYourWalletAddress
 make faucet-stats
 ```
 
-### 3. Use USDC in Application
+**What you receive:**
+- ✅ **0.5 ETH** - For paying gas fees on transactions
+- ✅ **1,000,000 USDC** - Test tokens for deposits and deals
 
-Once you have USDC from the faucet, you can:
+### 3. Use Funds in Application
+
+Once you have ETH and USDC from the faucet, you can:
 
 ```bash
 # Deposit USDC to ARDA contract (via MetaMask UI or cast)
+# You now have ETH to pay for the gas!
 # The deposit monitor will detect it and update your database balance
 
 # Make deal payments, withdrawals, etc. - all using the local devnet!
@@ -78,10 +83,18 @@ Once you have USDC from the faucet, you can:
 
 ### Configuration
 
-- **Amount per request**: 1,000,000 USDC (1M)
-- **Cooldown period**: 1 hour
+- **USDC per request**: 1,000,000 USDC (1M)
+- **ETH per request**: 0.5 ETH (for gas fees)
+- **Cooldown period**: 1 hour (per address)
 - **Initial faucet balance**: 100,000,000 USDC (100M)
 - **Access**: Anyone can request (rate-limited by address)
+
+### Why Both ETH and USDC?
+
+The faucet sends both tokens because:
+- 🔸 **USDC** - Test tokens for deposits and deals
+- 🔸 **ETH** - Required to pay gas fees when depositing USDC to ARDA contract
+- Without ETH, users cannot submit transactions on the Anvil testnet
 
 ### Faucet Commands
 
@@ -95,6 +108,10 @@ make faucet-request ADDRESS=0x742d35Cc6...
 💰 Requesting faucet funds for 0x742d35Cc6...
 📋 Faucet contract: 0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9
 📋 USDC contract: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+📡 Step 1: Sending 0.5 ETH for gas fees
+✅ Step 1 complete: Sent 0.5 ETH
+📡 Step 2: Calling faucet contract for USDC
+✅ Step 2 complete: Sent 1,000,000 USDC
 ✅ Faucet request completed!
 ```
 

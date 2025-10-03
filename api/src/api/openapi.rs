@@ -260,7 +260,6 @@ fn default_limit() -> u32 {
         // Faucet endpoints (local/staging only)
         crate::handlers::faucet::get_faucet_info,
         crate::handlers::faucet::check_faucet_status,
-        crate::handlers::faucet::get_faucet_config,
         crate::handlers::faucet::request_faucet_funds,
 
         // Admin withdrawal endpoints

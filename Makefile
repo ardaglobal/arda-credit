@@ -333,6 +333,9 @@ server: up
 		export FAUCET_CONTRACT_ADDRESS=$$(cat $$DEPLOYMENT_FILE | jq -r '.faucet'); \
 		echo "✅ Using ARDA contract: $$ETHEREUM_CONTRACT_ADDRESS"; \
 		echo "✅ Using Faucet contract: $$FAUCET_CONTRACT_ADDRESS"; \
+		echo "✅ Using USDC contract: $$USDC_CONTRACT_ADDRESS"; \
+		echo "✅ Using Verifier contract: $$VERIFIER_CONTRACT_ADDRESS"; \
+		echo "✅ Using Deployer contract: $$ETHEREUM_DEPLOYER_ADDRESS"; \
 		echo ""; \
 	fi
 	@echo "Running database migrations..."
