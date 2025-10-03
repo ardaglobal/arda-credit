@@ -670,7 +670,7 @@ clean-builds:
 
 ## clean: Clean up all resources
 .PHONY: clean
-clean: clean-docker clean-sqlx clean-builds clean-anvil
+clean: clean-docker clean-sqlx clean-builds clean-anvil kind-docker-clean
 	@echo "✅ All resources cleaned up"
 
 ## helm-deps: Update Helm chart dependencies
@@ -848,6 +848,7 @@ kind-setup:
 kind-teardown:
 	@echo "🗑️  Tearing down Kind cluster..."
 	cd helm/e2e && ./scripts/teardown-cluster.sh
+    @$(MAKE) kind-docker-clean
 
 ## kind-status: Show Kind cluster status
 # Display current status of the local e2e environment
@@ -891,33 +892,6 @@ kind-logs-postgres:
 ## kind-logs: Show logs from all Kind cluster services
 .PHONY: kind-logs
 kind-logs: kind-logs-server kind-logs-app kind-logs-postgres
-
-## kind-restart: Restart Kind cluster services
-# Restart Arda Credit deployments (keeps cluster and data)
-.PHONY: kind-restart
-kind-restart:
-	@echo "🔄 Restarting Arda Credit services..."
-	@kubectl rollout restart deployment/arda-credit-server --context=kind-arda-credit-e2e -n arda-credit
-	@kubectl rollout restart deployment/arda-credit-app --context=kind-arda-credit-e2e -n arda-credit
-	@echo "⏳ Waiting for rollout to complete..."
-	@kubectl rollout status deployment/arda-credit-server --context=kind-arda-credit-e2e -n arda-credit --timeout=120s
-	@kubectl rollout status deployment/arda-credit-app --context=kind-arda-credit-e2e -n arda-credit --timeout=60s
-	@echo "✅ Services restarted successfully"
-
-## kind-rebuild: Rebuild images and restart Kind services
-# Rebuilds local images, loads them into Kind, and restarts services
-.PHONY: kind-rebuild
-kind-rebuild:
-	@echo "🔨 Rebuilding images and restarting services..."
-	@echo "Building new image..."
-	@docker build -t localhost/arda-credit:local-dev .
-	@echo "Loading image into Kind cluster..."
-	@kind load docker-image localhost/arda-credit:local-dev --name=arda-credit-e2e
-	@docker tag localhost/arda-credit:local-dev localhost/arda-credit-app:local-dev
-	@kind load docker-image localhost/arda-credit-app:local-dev --name=arda-credit-e2e
-	@echo "Restarting services..."
-	@$(MAKE) kind-restart
-	@echo "✅ Rebuild and restart complete!"
 
 ## kind-test: Run deployment validation tests
 # Test current Kind cluster deployment health
