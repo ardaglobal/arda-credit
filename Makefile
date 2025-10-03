@@ -651,7 +651,13 @@ kind-docker-clean:
 	@for network in $$(docker network ls --filter "name=kind" --format "{{.Name}}"); do \
 		echo "ℹ️  Preserving Kind network: $$network"; \
 	done
-	docker network prune -f --filter "name!=kind*"
+	@# Remove networks that don't start with "kind" and aren't default networks
+	@for network in $$(docker network ls --format "{{.Name}}" | grep -v -E '^(bridge|host|none|kind)'); do \
+		if [ "$$network" != "bridge" ] && [ "$$network" != "host" ] && [ "$$network" != "none" ]; then \
+			echo "🗑️  Removing network: $$network"; \
+			docker network rm "$$network" 2>/dev/null || true; \
+		fi \
+	done
 	@echo "✅ Docker resources safely cleaned up (Kind clusters preserved)"
 
 ## clean-sqlx: Clean up SQLx resources
