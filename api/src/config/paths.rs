@@ -148,6 +148,37 @@ pub const FAUCET_STATUS: &str = api_path!("/faucet/status");
 pub const FAUCET_REQUEST: &str = api_path!("/faucet/request");
 
 // ============================================================================
+// ACCOUNT MANAGEMENT PATHS
+// ============================================================================
+
+/// Account lookup (by address query parameter)
+pub const ACCOUNTS: &str = api_path!("/accounts");
+
+/// Get account by ID
+pub const ACCOUNT_BY_ID: &str = api_path!("/account/{account_id}");
+
+/// Account balance
+pub const ACCOUNT_BALANCE: &str = api_path!("/account/{account_id}/balance");
+
+/// Account deposits
+pub const ACCOUNT_DEPOSITS: &str = api_path!("/account/{account_id}/deposits");
+
+/// Account withdrawals
+pub const ACCOUNT_WITHDRAWALS: &str = api_path!("/account/{account_id}/withdrawals");
+
+/// Get user's accounts
+pub const USER_ACCOUNTS: &str = api_path!("/user/{user_id}/accounts");
+
+/// Get user's balances (across all accounts)
+pub const USER_BALANCES: &str = api_path!("/user/{user_id}/balances");
+
+/// Get org's accounts
+pub const ORG_ACCOUNTS: &str = api_path!("/org/{org_id}/accounts");
+
+/// Get org's balances
+pub const ORG_BALANCES: &str = api_path!("/org/{org_id}/balances");
+
+// ============================================================================
 // WITHDRAWAL MANAGEMENT PATHS
 // ============================================================================
 
@@ -344,53 +375,25 @@ pub const CREDIT_LINES_REQUEST_V2: &str = api_path!("/credit-lines/request-v2");
 pub const CREDIT_LINES_ACTIVE: &str = api_path!("/credit-lines/active");
 
 // ============================================================================
-// FINANCIAL TRANSACTION PATHS
+// DEPRECATED: FINANCIAL TRANSACTION PATHS (REMOVED IN ACCOUNT-CENTRIC MIGRATION)
 // ============================================================================
-
-/// Account financial transactions for user
-pub const USER_ACCOUNT_FINANCIAL: &str = api_path!("/user/{user_id}/financial/account");
-
-/// Account deposit recording
-pub const USER_ACCOUNT_FINANCIAL_DEPOSIT: &str =
-    api_path!("/user/{user_id}/financial/account/deposit");
-
-/// Account withdrawal recording
-pub const USER_ACCOUNT_FINANCIAL_WITHDRAWAL: &str =
-    api_path!("/user/{user_id}/financial/account/withdrawal");
-
-/// Pool funding recording
-pub const POOL_FINANCIAL_FUND: &str = api_path!("/pool/{pool_id}/financial/fund");
-
-/// Pool withdrawal recording
-pub const POOL_FINANCIAL_WITHDRAW: &str = api_path!("/pool/{pool_id}/financial/withdraw");
-
-/// Pool financial transactions
-pub const POOL_FINANCIAL_TRANSACTIONS: &str = api_path!("/pool/{pool_id}/financial/transactions");
-
-/// Credit line draw recording
-pub const CREDIT_LINE_FINANCIAL_DRAW: &str =
-    api_path!("/credit-line/{credit_line_id}/financial/draw");
-
-/// Credit line payment recording
-pub const CREDIT_LINE_FINANCIAL_PAYMENT: &str =
-    api_path!("/credit-line/{credit_line_id}/financial/payment");
-
-/// Credit line financial transactions
-pub const CREDIT_LINE_FINANCIAL_TRANSACTIONS: &str =
-    api_path!("/credit-line/{credit_line_id}/financial/transactions");
-
-/// User financial transactions (unified view)
-pub const USER_FINANCIAL_TRANSACTIONS: &str = api_path!("/user/{user_id}/financial/transactions");
-
-/// User financial summary
-pub const USER_FINANCIAL_SUMMARY: &str = api_path!("/user/{user_id}/financial/summary");
-
-/// User pool financial transactions
-pub const USER_POOL_FINANCIAL: &str = api_path!("/user/{user_id}/financial/pools");
-
-/// Merchant credit line financial transactions
-pub const MERCHANT_CREDIT_LINE_FINANCIAL: &str =
-    api_path!("/merchant/{merchant_id}/financial/credit-lines");
+// All /financial/* paths have been removed and replaced with account-centric endpoints.
+// See ACCOUNT_MIGRATION_README.md for migration guide.
+//
+// OLD (REMOVED):
+// - /user/{user_id}/financial/account/*
+// - /user/{user_id}/financial/transactions
+// - /user/{user_id}/financial/summary
+// - /pool/{pool_id}/financial/*
+// - /credit-line/{credit_line_id}/financial/*
+//
+// NEW (CURRENT):
+// - /api/v1/account/{account_id}/balance
+// - /api/v1/account/{account_id}/deposits
+// - /api/v1/account/{account_id}/withdrawals
+// - /api/v1/user/{user_id}/balances
+//
+// See: paths::ACCOUNT_BALANCE, paths::ACCOUNT_DEPOSITS, etc.
 
 // ============================================================================
 // STATE MANAGEMENT PATHS (transactions, batches, proofs)

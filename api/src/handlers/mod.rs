@@ -14,6 +14,7 @@
 //! - `finance`: Financial transactions and withdrawals
 //! - `ai`: AI-powered features
 
+pub mod accounts;
 pub mod ai;
 pub mod auth;
 pub mod companies;
@@ -24,6 +25,7 @@ pub mod finance;
 pub mod users;
 
 // Re-export all handler functions for backward compatibility
+pub use accounts::*;
 pub use ai::*;
 pub use auth::*;
 pub use companies::*;

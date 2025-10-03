@@ -1,8 +1,7 @@
-use arda_credit_db::{get_user_available_balance, get_user_balance_by_id, DbResult};
+use arda_credit_db::{get_account_by_address, get_available_balance, DbResult};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-// utoipa::ToSchema import removed - no longer used for AvailableBalance
 use uuid::Uuid;
 
 /// Balance verification service for withdrawal operations
@@ -21,93 +20,76 @@ pub struct BalanceVerificationResult {
     pub reason: Option<String>,
 }
 
-// AvailableBalance struct removed - now using consolidated AddressBalance from balance handlers
-
 impl BalanceVerificationService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
 
-    /// Verify if user has sufficient balance for withdrawal by user ID
+    /// Verify if account has sufficient balance for withdrawal by account ID
     pub async fn verify_balance_for_withdrawal(
         &self,
-        user_id: Uuid,
+        account_id: Uuid,
         withdrawal_amount: Decimal,
+        currency: &str,
     ) -> DbResult<BalanceVerificationResult> {
-        // Get user's available balance
-        let balance_result = get_user_balance_by_id(&self.pool, user_id).await;
+        // Get account's available balance
+        let available_balance = get_available_balance(&self.pool, account_id, currency).await?;
 
-        match balance_result {
-            Ok(Some(available_balance)) => {
-                self.create_balance_verification_result(available_balance, withdrawal_amount)
-            }
-            Ok(None) => {
-                // User has no deposit balance
-                Ok(BalanceVerificationResult {
-                    is_sufficient: false,
-                    available_balance: Decimal::ZERO,
-                    requested_amount: withdrawal_amount,
-                    shortfall: Some(withdrawal_amount),
-                    reason: Some("No deposit balance found for user".to_string()),
-                })
-            }
-            Err(e) => Err(e.into()),
-        }
+        self.create_balance_verification_result(available_balance, withdrawal_amount)
     }
 
-    /// Verify if user has sufficient balance for withdrawal by wallet address
+    /// Verify if account has sufficient balance for withdrawal by wallet address
+    /// This is a convenience method that looks up account first
     pub async fn verify_balance_for_withdrawal_by_address(
         &self,
         wallet_address: &str,
         withdrawal_amount: Decimal,
+        currency: &str,
     ) -> DbResult<BalanceVerificationResult> {
-        // Get user's available balance by address (after subtracting pending withdrawals)
-        let balance_result = get_user_available_balance(&self.pool, wallet_address).await;
+        // Look up account by address
+        let account = get_account_by_address(&self.pool, wallet_address).await?;
 
-        match balance_result {
-            Ok(Some(balance)) => {
-                let available_balance = balance.total_deposited;
+        match account {
+            Some(acc) => {
+                let available_balance =
+                    get_available_balance(&self.pool, acc.account_id, currency).await?;
                 self.create_balance_verification_result(available_balance, withdrawal_amount)
             }
-            Ok(None) => {
-                // User has no deposit history
+            None => {
+                // No account found for this address
                 Ok(BalanceVerificationResult {
                     is_sufficient: false,
                     available_balance: Decimal::ZERO,
                     requested_amount: withdrawal_amount,
                     shortfall: Some(withdrawal_amount),
-                    reason: Some("No deposit balance found for wallet address".to_string()),
+                    reason: Some(format!("No account found for address {}", wallet_address)),
                 })
             }
-            Err(e) => Err(e.into()),
         }
     }
 
-    // get_available_balance and get_available_balance_by_user_id methods removed
-    // Use the consolidated balance endpoints instead:
-    // - balance::get_balance_for_address()
-    // - balance::get_balances_for_user_id()
-
-    /// Check if user has sufficient balance
+    /// Check if account has sufficient balance (shorthand)
     pub async fn has_sufficient_balance(
         &self,
-        user_id: Uuid,
+        account_id: Uuid,
         withdrawal_amount: Decimal,
+        currency: &str,
     ) -> DbResult<bool> {
         let result = self
-            .verify_balance_for_withdrawal(user_id, withdrawal_amount)
+            .verify_balance_for_withdrawal(account_id, withdrawal_amount, currency)
             .await?;
         Ok(result.is_sufficient)
     }
 
-    /// Check if user has sufficient balance by wallet address
+    /// Check if account has sufficient balance by address (shorthand)
     pub async fn has_sufficient_balance_by_address(
         &self,
         wallet_address: &str,
         withdrawal_amount: Decimal,
+        currency: &str,
     ) -> DbResult<bool> {
         let result = self
-            .verify_balance_for_withdrawal_by_address(wallet_address, withdrawal_amount)
+            .verify_balance_for_withdrawal_by_address(wallet_address, withdrawal_amount, currency)
             .await?;
         Ok(result.is_sufficient)
     }
@@ -148,7 +130,10 @@ impl BalanceVerificationService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arda_credit_db::{create_usdc_deposit, init_db, register_or_reregister_user};
+    use arda_credit_db::{
+        create_deposit, get_account_by_address, init_db, register_or_reregister_user,
+        update_deposit_status,
+    };
     use chrono::Utc;
 
     #[tokio::test]
@@ -172,7 +157,7 @@ mod tests {
             arda_credit_db::RegisterResult::AlreadyExists => panic!("User should not exist"),
         };
 
-        // Link wallet address
+        // Link wallet address (triggers account auto-creation)
         sqlx::query("UPDATE identities SET wallet_address = $1 WHERE id = $2")
             .bind(&unique_wallet)
             .bind(user_id)
@@ -182,40 +167,44 @@ mod tests {
 
         // Test balance verification with no deposits
         let result = service
-            .verify_balance_for_withdrawal_by_address(&unique_wallet, Decimal::new(1000000, 0))
+            .verify_balance_for_withdrawal_by_address(
+                &unique_wallet,
+                Decimal::new(1000000, 0),
+                "USDC",
+            )
             .await
             .unwrap();
         assert!(!result.is_sufficient);
         assert_eq!(result.available_balance, Decimal::ZERO);
 
-        // Create a deposit
+        // Create a deposit (will auto-find account)
         let deposit_amount = Decimal::new(5000000, 0); // 5 USDC in wei
         let tx_hash = format!("0x{:064x}", timestamp);
         let event_tx_hash = format!("0x{:064x}", timestamp + 1);
-        create_usdc_deposit(
+        let deposit = create_deposit(
             &pool,
             &unique_wallet,
             deposit_amount,
+            "USDC",
             &tx_hash,
-            &event_tx_hash, // event_transaction_hash
+            &event_tx_hash,
+            12345678,
             Utc::now().timestamp(),
-            0,
-            (timestamp % 1000) as i64, // unique log_index
+            (timestamp % 1000) as i64,
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
         )
         .await
         .unwrap();
 
         // Update deposit status to confirmed to trigger balance update
-        sqlx::query("UPDATE usdc_deposits SET status = 'confirmed' WHERE transaction_hash = $1")
-            .bind(&tx_hash)
-            .execute(&pool)
+        update_deposit_status(&pool, deposit.id, "confirmed", 12, Some(Utc::now()))
             .await
             .unwrap();
 
         // Test balance verification with sufficient balance
         let withdrawal_amount = Decimal::new(3000000, 0); // 3 USDC
         let result = service
-            .verify_balance_for_withdrawal_by_address(&unique_wallet, withdrawal_amount)
+            .verify_balance_for_withdrawal_by_address(&unique_wallet, withdrawal_amount, "USDC")
             .await
             .unwrap();
         assert!(result.is_sufficient);
@@ -224,7 +213,7 @@ mod tests {
         // Test balance verification with insufficient balance
         let large_withdrawal = Decimal::new(10000000, 0); // 10 USDC
         let result = service
-            .verify_balance_for_withdrawal_by_address(&unique_wallet, large_withdrawal)
+            .verify_balance_for_withdrawal_by_address(&unique_wallet, large_withdrawal, "USDC")
             .await
             .unwrap();
         assert!(!result.is_sufficient);

@@ -469,16 +469,41 @@ pub struct KycStatistics {
     pub not_submitted_count: u64,
 }
 
-/// Account balance tracking
+/// Account entity - primary unit for managing funds
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Account {
+    pub account_id: uuid::Uuid,
+    pub org_id: Option<uuid::Uuid>,     // Owner organization
+    pub user_id: Option<uuid::Uuid>,    // For user-owned accounts (backward compatibility)
+    pub account_label: Option<String>,  // Human-friendly label
+    pub account_number: Option<String>, // Ethereum address (one-to-one)
+    pub account_type: Option<String>,   // OPERATING, RESERVE, ESCROW
+    pub currency: Option<String>,       // Primary currency
+    pub status: Option<String>,         // ACTIVE, INACTIVE, SUSPENDED
+    pub opened_at: Option<DateTime<Utc>>,
+    pub closed_at: Option<DateTime<Utc>>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// Account-centric balance tracking (supports multiple currencies)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Balance {
-    pub id: uuid::Uuid,
-    pub identity_id: uuid::Uuid,
-    pub balance_type: String, // available, locked, reserved
-    pub amount: rust_decimal::Decimal,
+    pub account_id: uuid::Uuid, // Foreign key to accounts table
     pub currency: String,
-    pub updated_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
+    pub available_balance: rust_decimal::Decimal, // In smallest unit (e.g., wei)
+    pub locked_balance: rust_decimal::Decimal,    // Funds locked in active deals
+    pub total_deposited: rust_decimal::Decimal,   // Lifetime deposits
+    pub total_withdrawn: rust_decimal::Decimal,   // Lifetime withdrawals
+    pub deposit_count: i32,
+    pub withdrawal_count: i32,
+    // Timestamps (optional for safety with SQLx)
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub first_deposit_at: Option<DateTime<Utc>>,
+    pub last_deposit_at: Option<DateTime<Utc>>,
+    pub first_withdrawal_at: Option<DateTime<Utc>>,
+    pub last_withdrawal_at: Option<DateTime<Utc>>,
 }
 
 /// Deal transaction for zkVM processing
@@ -513,13 +538,15 @@ pub struct StateSnapshot {
     pub created_at: DateTime<Utc>,
 }
 
-/// USDC deposit tracking from smart contract events
+/// Generic deposit tracking from smart contract events
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct UsdcDeposit {
+pub struct Deposit {
     pub id: i32,
-    pub user_address: String,
-    pub amount: rust_decimal::Decimal,
-    pub deposit_amount_usdc: Option<rust_decimal::Decimal>,
+    pub account_id: Option<uuid::Uuid>, // May be NULL during transition
+    pub address: String,                // Specific Ethereum address that received deposit
+    pub amount: rust_decimal::Decimal,  // Amount in smallest unit (e.g., wei for USDC)
+    pub currency: String,
+    // Smart contract event tracking
     pub transaction_hash: String,
     pub event_transaction_hash: String,
     pub block_number: i64,
@@ -527,109 +554,64 @@ pub struct UsdcDeposit {
     pub block_timestamp: Option<DateTime<Utc>>,
     pub log_index: i64,
     pub event_signature: String,
+    // Status tracking
     pub status: String, // pending, confirmed, processed, failed
     pub confirmation_count: i32,
     pub required_confirmations: i32,
+    pub error_message: Option<String>,
+    pub processing_details: Option<serde_json::Value>,
+    // Timestamps (optional for safety with SQLx)
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub processed_at: Option<DateTime<Utc>>,
 }
 
-/// User deposit balance aggregation
+/// Unified withdrawal tracking (request through confirmation)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct UserDepositBalance {
+pub struct Withdrawal {
     pub id: i32,
-    pub user_address: String,
-    pub total_deposited: rust_decimal::Decimal,
-    pub total_deposited_usdc: Option<rust_decimal::Decimal>,
-    pub deposit_count: i32,
-    pub first_deposit_at: Option<DateTime<Utc>>,
-    pub last_deposit_at: Option<DateTime<Utc>>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
-/// USDC withdrawal record from smart contract events
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct UsdcWithdrawal {
-    pub id: i32,
-    pub user_address: String,
-    pub recipient_address: String,
-    pub amount: rust_decimal::Decimal,
-    pub withdrawal_amount_usdc: Option<rust_decimal::Decimal>,
-    pub transaction_hash: String,
-    pub event_transaction_hash: String,
-    pub block_number: i64,
-    pub event_timestamp: i64,
-    pub block_timestamp: Option<DateTime<Utc>>,
-    pub log_index: i64,
-    pub event_signature: String,
-    pub status: String, // pending, confirmed, processed, failed
-    pub confirmation_count: i32,
-    pub required_confirmations: i32,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-    pub processed_at: Option<DateTime<Utc>>,
-}
-
-/// User withdrawal balance aggregation
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct UserWithdrawalBalance {
-    pub id: i32,
-    pub user_address: String,
-    pub total_withdrawn: rust_decimal::Decimal,
-    pub total_withdrawn_usdc: Option<rust_decimal::Decimal>,
-    pub withdrawal_count: i32,
-    pub first_withdrawal_at: Option<DateTime<Utc>>,
-    pub last_withdrawal_at: Option<DateTime<Utc>>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
-/// User-initiated withdrawal request (before smart contract execution)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct WithdrawalRequest {
-    pub id: i32,
-    pub user_id: uuid::Uuid,
-    pub user_address: String,
-    pub recipient_address: String,
-    pub amount: rust_decimal::Decimal,
-    pub amount_usdc: Option<rust_decimal::Decimal>,
-    pub state: String, // pending, validated, submitted, confirmed, failed, cancelled
+    pub account_id: Option<uuid::Uuid>, // May be NULL during transition
+    pub address: String,                // Specific address withdrawing from
+    pub recipient_address: String,      // Destination address
+    pub amount: rust_decimal::Decimal,  // Amount in smallest unit (e.g., wei for USDC)
+    pub currency: String,
+    // Request metadata (for UI-initiated withdrawals)
+    pub requested_by_user_id: Option<uuid::Uuid>,
+    pub request_source: String, // 'user' or 'contract'
+    // State tracking (unified lifecycle)
+    pub state: String, // pending, validated, approved, submitted, confirmed, failed, cancelled
+    // Validation results
     pub kyc_validated: bool,
     pub balance_validated: bool,
     pub kyc_status_at_request: Option<String>,
     pub available_balance_at_request: Option<rust_decimal::Decimal>,
+    pub validation_errors: Option<serde_json::Value>,
+    // Smart contract event tracking
     pub transaction_hash: Option<String>,
+    pub event_transaction_hash: Option<String>,
     pub block_number: Option<i64>,
+    pub event_timestamp: Option<i64>,
+    pub block_timestamp: Option<DateTime<Utc>>,
+    pub log_index: Option<i64>,
+    pub event_signature: Option<String>,
+    // Status tracking
     pub confirmation_count: i32,
     pub required_confirmations: i32,
     pub error_message: Option<String>,
-    pub validation_errors: Option<serde_json::Value>,
+    pub admin_notes: Option<String>,
+    pub rejection_reason: Option<String>,
+    // Processing history (JSONB array, replaces withdrawal_request_history table)
+    pub processing_history: Option<serde_json::Value>,
+    // Timestamps (all optional for safety with SQLx)
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub validated_at: Option<DateTime<Utc>>,
+    pub approved_at: Option<DateTime<Utc>>,
     pub submitted_at: Option<DateTime<Utc>>,
     pub confirmed_at: Option<DateTime<Utc>>,
+    pub processed_at: Option<DateTime<Utc>>,
     pub failed_at: Option<DateTime<Utc>>,
     pub cancelled_at: Option<DateTime<Utc>>,
-}
-
-/// Withdrawal request processing history
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct WithdrawalRequestHistory {
-    pub id: i32,
-    pub withdrawal_request_id: i32,
-    pub event_type: String, // kyc_validation, balance_validation, contract_submission, etc.
-    pub old_state: Option<String>,
-    pub new_state: Option<String>,
-    pub success: bool,
-    pub message: Option<String>,
-    pub details: Option<serde_json::Value>,
-    pub retry_count: i32,
-    pub next_retry_at: Option<DateTime<Utc>>,
-    pub created_at: Option<DateTime<Utc>>,
-    pub processing_duration_ms: Option<i32>,
 }
 
 // ============================================================================

@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            b.account_id, b.currency, b.available_balance, b.locked_balance,\n            b.total_deposited, b.total_withdrawn, b.deposit_count, b.withdrawal_count,\n            b.created_at, b.updated_at,\n            b.first_deposit_at, b.last_deposit_at, b.first_withdrawal_at, b.last_withdrawal_at\n        FROM balances b\n        JOIN accounts a ON b.account_id = a.account_id\n        WHERE a.org_id = $1\n        ORDER BY b.currency, a.created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "available_balance",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "locked_balance",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "total_deposited",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "total_withdrawn",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "deposit_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "withdrawal_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "first_deposit_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "last_deposit_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "first_withdrawal_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "last_withdrawal_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "6c286eab2890f40548a984f0f6ef3f07cc19ce6ea6932783972829a176b3201b"
+}

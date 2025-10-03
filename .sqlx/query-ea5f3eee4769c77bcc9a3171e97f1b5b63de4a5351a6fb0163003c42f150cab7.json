@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO accounts (account_label, account_number, account_type, currency, status)\n            VALUES ($1, $2, 'OPERATING', $3, 'ACTIVE')\n            RETURNING account_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ea5f3eee4769c77bcc9a3171e97f1b5b63de4a5351a6fb0163003c42f150cab7"
+}

@@ -19,15 +19,15 @@ use crate::handlers::{
     // Documents (companies module)
     documents as document_handlers,
     // Finance
-    get_account_financial_transactions,
+    // get_account_financial_transactions, // REMOVED - deprecated
     // Magic Link Auth
     get_current_user,
     get_transaction_history,
-    get_user_financial_summary,
-    get_user_financial_transactions,
+    // get_user_financial_summary, // REMOVED - deprecated
+    // get_user_financial_transactions, // REMOVED - deprecated
     logout_endpoint,
-    record_account_deposit,
-    record_account_withdrawal,
+    // record_account_deposit, // REMOVED - deprecated
+    // record_account_withdrawal, // REMOVED - deprecated
     request_magic_link,
     verify_magic_link,
     withdrawals as withdrawal_handlers,
@@ -143,6 +143,37 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::API_INFO,
             get(crate::handlers::core::health::api_info),
+        )
+        // ========================================================================
+        // ACCOUNT MANAGEMENT ENDPOINTS (NEW - Account-Centric Model)
+        // ========================================================================
+        .route(
+            paths::ACCOUNTS,
+            get(crate::handlers::accounts::lookup_account),
+        )
+        .route(
+            paths::ACCOUNT_BY_ID,
+            get(crate::handlers::accounts::get_account),
+        )
+        .route(
+            paths::ACCOUNT_BALANCE,
+            get(crate::handlers::accounts::get_account_balance_endpoint),
+        )
+        .route(
+            paths::ACCOUNT_DEPOSITS,
+            get(crate::handlers::accounts::get_account_deposits_endpoint),
+        )
+        .route(
+            paths::ACCOUNT_WITHDRAWALS,
+            get(crate::handlers::accounts::get_account_withdrawals_endpoint),
+        )
+        .route(
+            paths::USER_ACCOUNTS,
+            get(crate::handlers::accounts::get_user_accounts),
+        )
+        .route(
+            paths::USER_BALANCES,
+            get(crate::handlers::accounts::get_user_balances),
         )
         // Prometheus metrics endpoint
         .route("/metrics", get(metrics_handler))
@@ -297,30 +328,16 @@ pub fn create_router(state: ApiState) -> Router {
             get(crate::handlers::finance::withdrawals::get_pending_withdrawals_endpoint),
         )
         // ========================================================================
-        // FINANCIAL TRANSACTION ENDPOINTS
+        // DEPRECATED: FINANCIAL TRANSACTION ENDPOINTS REMOVED
         // ========================================================================
-        // Account Financial Transactions
-        .route(
-            paths::USER_ACCOUNT_FINANCIAL_DEPOSIT,
-            post(record_account_deposit),
-        )
-        .route(
-            paths::USER_ACCOUNT_FINANCIAL_WITHDRAWAL,
-            post(record_account_withdrawal),
-        )
-        .route(
-            paths::USER_ACCOUNT_FINANCIAL,
-            get(get_account_financial_transactions),
-        )
-        // Unified Financial Views
-        .route(
-            paths::USER_FINANCIAL_TRANSACTIONS,
-            get(get_user_financial_transactions),
-        )
-        .route(
-            paths::USER_FINANCIAL_SUMMARY,
-            get(get_user_financial_summary),
-        )
+        // All /financial/* endpoints have been removed in the account-centric migration.
+        // See ACCOUNT_MIGRATION_README.md for migration guide.
+        //
+        // Replaced with:
+        // - /api/v1/account/{account_id}/balance (above)
+        // - /api/v1/account/{account_id}/deposits (above)
+        // - /api/v1/account/{account_id}/withdrawals (above)
+        // - /api/v1/user/{user_id}/balances (above)
         // ========================================================================
         // TRANSACTION HISTORY ENDPOINTS
         // ========================================================================

@@ -60,6 +60,7 @@ pub mod business;
 pub mod processing;
 
 // Core infrastructure modules
+pub mod consolidated_balance_functions;
 pub mod db;
 pub mod error;
 pub mod telemetry;
@@ -78,12 +79,15 @@ pub use business::transfers::{
     TransferValidationRequest,
 };
 
+// Re-export consolidated balance functions (NEW)
+pub use consolidated_balance_functions::*;
+
 // Re-export batch processing types and functions
 pub use db::{
     approve_withdrawal_request,
     // Invite code functions
     check_invite_code,
-    // Financial transaction functions
+    // Financial transaction functions (DEPRECATED - to be removed)
     create_account_financial_transaction,
     // Batch functions
     create_batch,

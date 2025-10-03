@@ -1,9 +1,9 @@
 use crate::{BalanceVerificationService, KycValidationService};
 use arda_credit_db::{
-    create_withdrawal_request, get_pending_withdrawal_requests, get_withdrawal_request_by_id,
-    get_withdrawal_requests_by_user_address, update_withdrawal_request_confirmations,
-    update_withdrawal_request_state, update_withdrawal_request_submitted,
-    update_withdrawal_request_validation, WithdrawalRequest,
+    create_withdrawal_request, get_account_by_address, get_pending_withdrawals,
+    get_withdrawal_by_id, get_withdrawals_by_account_id, mark_withdrawal_submitted,
+    update_withdrawal_confirmations, update_withdrawal_state, update_withdrawal_validation,
+    Withdrawal,
 };
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -127,40 +127,36 @@ impl WithdrawalTransactionService {
             .await
             .unwrap_or_else(|_| "unknown".to_string());
 
-        // Get current available balance for logging - using simple verification approach
+        // Get current available balance for logging
         let available_balance = match self
             .balance_service
-            .verify_balance_for_withdrawal_by_address(&request.user_address, Decimal::ZERO)
+            .verify_balance_for_withdrawal_by_address(&request.user_address, Decimal::ZERO, "USDC")
             .await
         {
             Ok(result) => result.available_balance,
             Err(_) => Decimal::ZERO,
         };
 
-        // Create initial withdrawal request
-        let withdrawal_request = create_withdrawal_request(
+        // Create initial withdrawal request (will lookup account_id by address)
+        let withdrawal = create_withdrawal_request(
             &self.pool,
-            user_id,
             &request.user_address,
             &request.recipient_address,
             amount_wei,
+            "USDC",
+            user_id,
             &kyc_status,
             available_balance,
         )
         .await?;
 
-        info!(
-            request_id = withdrawal_request.id,
-            "Created withdrawal request"
-        );
+        info!(request_id = withdrawal.id, "Created withdrawal request");
 
         // Perform validation
-        let validation_result = self
-            .validate_withdrawal_request(withdrawal_request.id)
-            .await?;
+        let validation_result = self.validate_withdrawal_request(withdrawal.id).await?;
 
         Ok(InitiateWithdrawalResponse {
-            request_id: withdrawal_request.id,
+            request_id: withdrawal.id,
             state: validation_result.state.clone(),
             kyc_validated: validation_result.kyc_validated,
             balance_validated: validation_result.balance_validated,
@@ -175,21 +171,36 @@ impl WithdrawalTransactionService {
     pub async fn validate_withdrawal_request(
         &self,
         request_id: i32,
-    ) -> Result<WithdrawalRequest, WithdrawalServiceError> {
+    ) -> Result<Withdrawal, WithdrawalServiceError> {
         info!("Validating withdrawal request");
 
-        let request = get_withdrawal_request_by_id(&self.pool, request_id).await?;
+        let withdrawal = get_withdrawal_by_id(&self.pool, request_id).await?;
 
-        // Perform KYC validation
-        let kyc_result = self
-            .kyc_service
-            .validate_kyc_for_withdrawal(request.user_id)
-            .await?;
+        // Perform KYC validation (if user_id is available)
+        let kyc_result = if let Some(user_id) = withdrawal.requested_by_user_id {
+            self.kyc_service
+                .validate_kyc_for_withdrawal(user_id)
+                .await?
+        } else {
+            // For contract-initiated withdrawals, assume KYC valid
+            arda_credit_db::KycValidationResult {
+                is_valid: true,
+                user_id: uuid::Uuid::nil(),
+                kyc_status: "N/A".to_string(),
+                reason: None,
+            }
+        };
 
         // Perform balance validation
+        let account_id = withdrawal.account_id.ok_or_else(|| {
+            WithdrawalServiceError::Database(arda_credit_db::DbError::InvalidState(
+                "Withdrawal missing account_id".to_string(),
+            ))
+        })?;
+
         let balance_result = self
             .balance_service
-            .verify_balance_for_withdrawal(request.user_id, request.amount)
+            .verify_balance_for_withdrawal(account_id, withdrawal.amount, &withdrawal.currency)
             .await?;
 
         // Create validation errors if any
@@ -241,8 +252,8 @@ impl WithdrawalTransactionService {
             Some(serde_json::Value::Object(validation_errors))
         };
 
-        // Update the request with validation results
-        let updated_request = update_withdrawal_request_validation(
+        // Update withdrawal with validation results
+        let updated_withdrawal = update_withdrawal_validation(
             &self.pool,
             request_id,
             kyc_result.is_valid,
@@ -252,94 +263,103 @@ impl WithdrawalTransactionService {
         .await?;
 
         if kyc_result.is_valid && balance_result.is_sufficient {
-            info!(
-                request_id = request_id,
-                "Withdrawal request validated successfully"
-            );
+            info!(request_id = request_id, "Withdrawal validated successfully");
         } else {
             warn!(
                 request_id = request_id,
                 kyc_valid = kyc_result.is_valid,
                 balance_valid = balance_result.is_sufficient,
-                "Withdrawal request validation failed"
+                "Withdrawal validation failed"
             );
         }
 
-        Ok(updated_request)
+        Ok(updated_withdrawal)
     }
 
-    /// Get withdrawal request status
+    /// Get withdrawal status
     pub async fn get_withdrawal_status(
         &self,
         request_id: i32,
     ) -> Result<WithdrawalStatusResponse, WithdrawalServiceError> {
-        let request = get_withdrawal_request_by_id(&self.pool, request_id).await?;
+        let withdrawal = get_withdrawal_by_id(&self.pool, request_id).await?;
+
+        // Convert amount from wei to USDC
+        let amount_usdc = withdrawal.amount / Decimal::new(1_000_000, 0);
 
         Ok(WithdrawalStatusResponse {
-            request_id: request.id,
-            user_address: request.user_address,
-            recipient_address: request.recipient_address,
-            amount_usdc: request.amount_usdc.unwrap_or_default(),
-            state: request.state,
-            kyc_validated: request.kyc_validated,
-            balance_validated: request.balance_validated,
-            transaction_hash: request.transaction_hash,
-            confirmation_count: request.confirmation_count,
-            required_confirmations: request.required_confirmations,
-            error_message: request.error_message,
-            created_at: request.created_at,
-            validated_at: request.validated_at,
-            submitted_at: request.submitted_at,
-            confirmed_at: request.confirmed_at,
+            request_id: withdrawal.id,
+            user_address: withdrawal.address.clone(),
+            recipient_address: withdrawal.recipient_address.clone(),
+            amount_usdc,
+            state: withdrawal.state,
+            kyc_validated: withdrawal.kyc_validated,
+            balance_validated: withdrawal.balance_validated,
+            transaction_hash: withdrawal.transaction_hash,
+            confirmation_count: withdrawal.confirmation_count,
+            required_confirmations: withdrawal.required_confirmations,
+            error_message: withdrawal.error_message,
+            created_at: withdrawal.created_at,
+            validated_at: withdrawal.validated_at,
+            submitted_at: withdrawal.submitted_at,
+            confirmed_at: withdrawal.confirmed_at,
         })
     }
 
-    /// Get withdrawal history for a user by wallet address
+    /// Get withdrawal history for an account by address
     pub async fn get_user_withdrawal_history(
         &self,
         user_address: &str,
     ) -> Result<Vec<WithdrawalStatusResponse>, WithdrawalServiceError> {
-        let requests = get_withdrawal_requests_by_user_address(&self.pool, user_address).await?;
+        // Look up account by address
+        let account = get_account_by_address(&self.pool, user_address)
+            .await?
+            .ok_or_else(|| WithdrawalServiceError::UserNotFound(user_address.to_string()))?;
 
-        let responses = requests
+        let withdrawals =
+            get_withdrawals_by_account_id(&self.pool, account.account_id, None).await?;
+
+        let responses = withdrawals
             .into_iter()
-            .map(|req| WithdrawalStatusResponse {
-                request_id: req.id,
-                user_address: req.user_address,
-                recipient_address: req.recipient_address,
-                amount_usdc: req.amount_usdc.unwrap_or_default(),
-                state: req.state,
-                kyc_validated: req.kyc_validated,
-                balance_validated: req.balance_validated,
-                transaction_hash: req.transaction_hash,
-                confirmation_count: req.confirmation_count,
-                required_confirmations: req.required_confirmations,
-                error_message: req.error_message,
-                created_at: req.created_at,
-                validated_at: req.validated_at,
-                submitted_at: req.submitted_at,
-                confirmed_at: req.confirmed_at,
+            .map(|w| {
+                let amount_usdc = w.amount / Decimal::new(1_000_000, 0);
+                WithdrawalStatusResponse {
+                    request_id: w.id,
+                    user_address: w.address,
+                    recipient_address: w.recipient_address,
+                    amount_usdc,
+                    state: w.state,
+                    kyc_validated: w.kyc_validated,
+                    balance_validated: w.balance_validated,
+                    transaction_hash: w.transaction_hash,
+                    confirmation_count: w.confirmation_count,
+                    required_confirmations: w.required_confirmations,
+                    error_message: w.error_message,
+                    created_at: w.created_at,
+                    validated_at: w.validated_at,
+                    submitted_at: w.submitted_at,
+                    confirmed_at: w.confirmed_at,
+                }
             })
             .collect();
 
         Ok(responses)
     }
 
-    /// Cancel a withdrawal request (only if not yet submitted)
+    /// Cancel a withdrawal (only if not yet submitted)
     pub async fn cancel_withdrawal(
         &self,
         request_id: i32,
     ) -> Result<WithdrawalStatusResponse, WithdrawalServiceError> {
-        let request = get_withdrawal_request_by_id(&self.pool, request_id).await?;
+        let withdrawal = get_withdrawal_by_id(&self.pool, request_id).await?;
 
         // Can only cancel if not yet submitted
-        if matches!(request.state.as_str(), "submitted" | "confirmed") {
+        if matches!(withdrawal.state.as_str(), "submitted" | "confirmed") {
             return Err(WithdrawalServiceError::InvalidAmount(
                 "Cannot cancel withdrawal that has been submitted to blockchain".to_string(),
             ));
         }
 
-        let updated_request = update_withdrawal_request_state(
+        let updated = update_withdrawal_state(
             &self.pool,
             request_id,
             "cancelled",
@@ -347,131 +367,133 @@ impl WithdrawalTransactionService {
         )
         .await?;
 
-        info!(request_id = request_id, "Withdrawal request cancelled");
+        info!(request_id = request_id, "Withdrawal cancelled");
+
+        let amount_usdc = updated.amount / Decimal::new(1_000_000, 0);
 
         Ok(WithdrawalStatusResponse {
-            request_id: updated_request.id,
-            user_address: updated_request.user_address,
-            recipient_address: updated_request.recipient_address,
-            amount_usdc: updated_request.amount_usdc.unwrap_or_default(),
-            state: updated_request.state,
-            kyc_validated: updated_request.kyc_validated,
-            balance_validated: updated_request.balance_validated,
-            transaction_hash: updated_request.transaction_hash,
-            confirmation_count: updated_request.confirmation_count,
-            required_confirmations: updated_request.required_confirmations,
-            error_message: updated_request.error_message,
-            created_at: updated_request.created_at,
-            validated_at: updated_request.validated_at,
-            submitted_at: updated_request.submitted_at,
-            confirmed_at: updated_request.confirmed_at,
+            request_id: updated.id,
+            user_address: updated.address,
+            recipient_address: updated.recipient_address,
+            amount_usdc,
+            state: updated.state,
+            kyc_validated: updated.kyc_validated,
+            balance_validated: updated.balance_validated,
+            transaction_hash: updated.transaction_hash,
+            confirmation_count: updated.confirmation_count,
+            required_confirmations: updated.required_confirmations,
+            error_message: updated.error_message,
+            created_at: updated.created_at,
+            validated_at: updated.validated_at,
+            submitted_at: updated.submitted_at,
+            confirmed_at: updated.confirmed_at,
         })
     }
 
     /// Mark withdrawal as submitted to smart contract
-    /// This would be called by the smart contract integration service
     pub async fn mark_withdrawal_submitted(
         &self,
         request_id: i32,
         transaction_hash: String,
         block_number: Option<i64>,
     ) -> Result<WithdrawalStatusResponse, WithdrawalServiceError> {
-        let updated_request = update_withdrawal_request_submitted(
-            &self.pool,
-            request_id,
-            &transaction_hash,
-            block_number,
-        )
-        .await?;
+        let updated =
+            mark_withdrawal_submitted(&self.pool, request_id, &transaction_hash, block_number)
+                .await?;
 
         info!(
             request_id = request_id,
             transaction_hash = transaction_hash,
-            "Withdrawal request submitted to smart contract"
+            "Withdrawal submitted to smart contract"
         );
 
+        let amount_usdc = updated.amount / Decimal::new(1_000_000, 0);
+
         Ok(WithdrawalStatusResponse {
-            request_id: updated_request.id,
-            user_address: updated_request.user_address,
-            recipient_address: updated_request.recipient_address,
-            amount_usdc: updated_request.amount_usdc.unwrap_or_default(),
-            state: updated_request.state,
-            kyc_validated: updated_request.kyc_validated,
-            balance_validated: updated_request.balance_validated,
-            transaction_hash: updated_request.transaction_hash,
-            confirmation_count: updated_request.confirmation_count,
-            required_confirmations: updated_request.required_confirmations,
-            error_message: updated_request.error_message,
-            created_at: updated_request.created_at,
-            validated_at: updated_request.validated_at,
-            submitted_at: updated_request.submitted_at,
-            confirmed_at: updated_request.confirmed_at,
+            request_id: updated.id,
+            user_address: updated.address,
+            recipient_address: updated.recipient_address,
+            amount_usdc,
+            state: updated.state,
+            kyc_validated: updated.kyc_validated,
+            balance_validated: updated.balance_validated,
+            transaction_hash: updated.transaction_hash,
+            confirmation_count: updated.confirmation_count,
+            required_confirmations: updated.required_confirmations,
+            error_message: updated.error_message,
+            created_at: updated.created_at,
+            validated_at: updated.validated_at,
+            submitted_at: updated.submitted_at,
+            confirmed_at: updated.confirmed_at,
         })
     }
 
     /// Update confirmation count for a withdrawal
-    /// This would be called by the blockchain monitoring service
     pub async fn update_withdrawal_confirmations(
         &self,
         request_id: i32,
         confirmation_count: i32,
     ) -> Result<WithdrawalStatusResponse, WithdrawalServiceError> {
-        let updated_request =
-            update_withdrawal_request_confirmations(&self.pool, request_id, confirmation_count)
-                .await?;
+        let updated =
+            update_withdrawal_confirmations(&self.pool, request_id, confirmation_count).await?;
 
         if confirmation_count >= 12 {
             info!(
                 request_id = request_id,
                 confirmations = confirmation_count,
-                "Withdrawal request confirmed"
+                "Withdrawal confirmed"
             );
         }
 
+        let amount_usdc = updated.amount / Decimal::new(1_000_000, 0);
+
         Ok(WithdrawalStatusResponse {
-            request_id: updated_request.id,
-            user_address: updated_request.user_address,
-            recipient_address: updated_request.recipient_address,
-            amount_usdc: updated_request.amount_usdc.unwrap_or_default(),
-            state: updated_request.state,
-            kyc_validated: updated_request.kyc_validated,
-            balance_validated: updated_request.balance_validated,
-            transaction_hash: updated_request.transaction_hash,
-            confirmation_count: updated_request.confirmation_count,
-            required_confirmations: updated_request.required_confirmations,
-            error_message: updated_request.error_message,
-            created_at: updated_request.created_at,
-            validated_at: updated_request.validated_at,
-            submitted_at: updated_request.submitted_at,
-            confirmed_at: updated_request.confirmed_at,
+            request_id: updated.id,
+            user_address: updated.address,
+            recipient_address: updated.recipient_address,
+            amount_usdc,
+            state: updated.state,
+            kyc_validated: updated.kyc_validated,
+            balance_validated: updated.balance_validated,
+            transaction_hash: updated.transaction_hash,
+            confirmation_count: updated.confirmation_count,
+            required_confirmations: updated.required_confirmations,
+            error_message: updated.error_message,
+            created_at: updated.created_at,
+            validated_at: updated.validated_at,
+            submitted_at: updated.submitted_at,
+            confirmed_at: updated.confirmed_at,
         })
     }
 
-    /// Get all pending withdrawal requests that need processing
+    /// Get all pending withdrawals that need processing
     pub async fn get_pending_withdrawals(
         &self,
         limit: Option<i32>,
     ) -> Result<Vec<WithdrawalStatusResponse>, WithdrawalServiceError> {
-        let requests = get_pending_withdrawal_requests(&self.pool, limit).await?;
+        let withdrawals = get_pending_withdrawals(&self.pool, None, limit).await?;
 
-        let responses = requests
+        let responses = withdrawals
             .into_iter()
-            .map(|req| WithdrawalStatusResponse {
-                request_id: req.id,
-                user_address: req.user_address,
-                recipient_address: req.recipient_address,
-                amount_usdc: req.amount_usdc.unwrap_or_default(),
-                state: req.state,
-                kyc_validated: req.kyc_validated,
-                balance_validated: req.balance_validated,
-                transaction_hash: req.transaction_hash,
-                confirmation_count: req.confirmation_count,
-                required_confirmations: req.required_confirmations,
-                error_message: req.error_message,
-                created_at: req.created_at,
-                validated_at: req.validated_at,
-                submitted_at: req.submitted_at,
-                confirmed_at: req.confirmed_at,
+            .map(|w| {
+                let amount_usdc = w.amount / Decimal::new(1_000_000, 0);
+                WithdrawalStatusResponse {
+                    request_id: w.id,
+                    user_address: w.address,
+                    recipient_address: w.recipient_address,
+                    amount_usdc,
+                    state: w.state,
+                    kyc_validated: w.kyc_validated,
+                    balance_validated: w.balance_validated,
+                    transaction_hash: w.transaction_hash,
+                    confirmation_count: w.confirmation_count,
+                    required_confirmations: w.required_confirmations,
+                    error_message: w.error_message,
+                    created_at: w.created_at,
+                    validated_at: w.validated_at,
+                    submitted_at: w.submitted_at,
+                    confirmed_at: w.confirmed_at,
+                }
             })
             .collect();
 

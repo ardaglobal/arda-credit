@@ -269,7 +269,7 @@ impl DepositMonitor {
             r#"
             SELECT
                 id,
-                user_address,
+                address as user_address,
                 amount::TEXT as amount,
                 transaction_hash,
                 event_transaction_hash,
@@ -279,7 +279,7 @@ impl DepositMonitor {
                 status,
                 confirmation_count,
                 required_confirmations
-            FROM usdc_deposits
+            FROM deposits
             WHERE status = 'pending'
             ORDER BY block_number ASC
             LIMIT 100
@@ -319,7 +319,7 @@ impl DepositMonitor {
 
             // Update confirmation count
             sqlx::query(
-                "UPDATE usdc_deposits SET confirmation_count = $1, updated_at = NOW() WHERE id = $2"
+                "UPDATE deposits SET confirmation_count = $1, updated_at = NOW() WHERE id = $2",
             )
             .bind(confirmations as i32)
             .bind(deposit.id)
@@ -329,25 +329,13 @@ impl DepositMonitor {
 
             // If sufficient confirmations, mark as confirmed and update user balance
             if confirmations >= required_confirmations {
-                // Use our integrated balance update service
-                match Self::process_confirmed_deposit(db_pool, &deposit).await {
+                // Update deposit status to confirmed (balance updated via trigger)
+                match Self::confirm_deposit(db_pool, &deposit).await {
                     Ok(_) => {
-                        // Log the confirmation
-                        Self::log_deposit_processing(
-                            db_pool,
-                            deposit.id,
-                            "confirmation_check",
-                            "success",
-                            Some(&format!(
-                                "Deposit confirmed and balance updated with {confirmations} confirmations"
-                            )),
-                        )
-                        .await?;
-
                         info!(
-                            "Deposit {} confirmed and processed: user={}, amount={}, confirmations={}",
-                            deposit.id, deposit.user_address, deposit.amount, confirmations
-                        );
+                    "Deposit {} confirmed (balance updated via trigger): address={}, amount={}, confirmations={}",
+                    deposit.id, deposit.user_address, deposit.amount, confirmations
+                );
                     }
                     Err(e) => {
                         error!("Failed to process confirmed deposit {}: {}", deposit.id, e);
@@ -496,7 +484,7 @@ impl DepositMonitor {
             r#"
             SELECT
                 id,
-                user_address,
+                address as user_address,
                 amount::TEXT as amount,
                 transaction_hash,
                 event_transaction_hash,
@@ -506,7 +494,7 @@ impl DepositMonitor {
                 status,
                 confirmation_count,
                 required_confirmations
-            FROM usdc_deposits
+            FROM deposits
             WHERE id = $1
             "#,
         )
@@ -538,7 +526,7 @@ impl DepositMonitor {
 
             // Reprocess the deposit if it's confirmed but not processed
             if deposit.status == DepositStatus::Confirmed {
-                Self::process_confirmed_deposit(db_pool, &deposit).await?;
+                Self::confirm_deposit(db_pool, &deposit).await?;
             }
         }
 
@@ -547,44 +535,16 @@ impl DepositMonitor {
     }
 
     /// Synchronize user balance aggregations
-    async fn sync_user_balances(db_pool: &PgPool) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO user_deposit_balances (
-                user_address,
-                total_deposited,
-                deposit_count,
-                first_deposit_at,
-                last_deposit_at,
-                updated_at
-            )
-            SELECT
-                user_address,
-                SUM(amount::NUMERIC) as total_deposited,
-                COUNT(*) as deposit_count,
-                MIN(COALESCE(block_timestamp, created_at)) as first_deposit_at,
-                MAX(COALESCE(block_timestamp, created_at)) as last_deposit_at,
-                NOW() as updated_at
-            FROM usdc_deposits
-            WHERE status IN ('confirmed', 'processed')
-            GROUP BY user_address
-            ON CONFLICT (user_address) DO UPDATE SET
-                total_deposited = EXCLUDED.total_deposited,
-                deposit_count = EXCLUDED.deposit_count,
-                first_deposit_at = LEAST(user_deposit_balances.first_deposit_at, EXCLUDED.first_deposit_at),
-                last_deposit_at = GREATEST(user_deposit_balances.last_deposit_at, EXCLUDED.last_deposit_at),
-                updated_at = NOW()
-            "#
-        )
-        .execute(db_pool)
-        .await
-        .map_err(|e| EthereumError::Database(e.to_string()))?;
-
-        debug!("User deposit balances synchronized");
+    /// NOTE: This is now handled automatically by database triggers
+    /// Keeping function for backward compatibility but it's a no-op
+    async fn sync_user_balances(_db_pool: &PgPool) -> Result<()> {
+        // Balance aggregation now happens automatically via triggers
+        // when deposits.status changes to 'confirmed'
+        debug!("Balance sync skipped - handled by triggers");
         Ok(())
     }
 
-    /// Log deposit processing events
+    /// Log deposit processing events (now stored in deposit.processing_details)
     async fn log_deposit_processing(
         db_pool: &PgPool,
         deposit_id: i32,
@@ -592,8 +552,18 @@ impl DepositMonitor {
         status: &str,
         message: Option<&str>,
     ) -> Result<()> {
+        // Update processing_details JSONB field instead of separate table
         sqlx::query(
-            "INSERT INTO deposit_processing_log (deposit_id, event_type, status, message, created_at) VALUES ($1, $2, $3, $4, NOW())"
+            r#"
+            UPDATE deposits
+            SET processing_details = COALESCE(processing_details, '{}'::jsonb) || jsonb_build_object(
+                'event_type', $2,
+                'status', $3,
+                'message', $4,
+                'timestamp', NOW()
+            )::jsonb
+            WHERE id = $1
+            "#
         )
         .bind(deposit_id)
         .bind(event_type)
@@ -617,8 +587,8 @@ impl DepositMonitor {
                 COUNT(*) FILTER (WHERE status = 'processed') as processed_deposits,
                 COUNT(*) FILTER (WHERE status = 'failed') as failed_deposits,
                 COALESCE(SUM(amount::NUMERIC), 0) as total_amount,
-                COUNT(DISTINCT user_address) as unique_depositors
-            FROM usdc_deposits
+                COUNT(DISTINCT address) as unique_depositors
+            FROM deposits
             "#,
         )
         .fetch_one(&self.db_pool)
@@ -705,22 +675,64 @@ impl DepositEventHandler {
         let event_tx_hash_str = format!("0x{}", hex::encode(tx_hash.as_slice()));
 
         // Insert deposit record with idempotency check
+        // NOTE: create_deposit() auto-finds or creates account by address
         let deposit_id: i32 = sqlx::query_scalar(
             r#"
-            INSERT INTO usdc_deposits (
-                user_address,
+            WITH account_lookup AS (
+                SELECT account_id FROM accounts WHERE account_number = $1
+            ),
+            account_insert AS (
+                INSERT INTO accounts (account_label, account_number, account_type, currency, status)
+                SELECT 
+                    'Unlinked Account (' || substring($1, 1, 10) || '...)', 
+                    $1, 
+                    'OPERATING', 
+                    'USDC', 
+                    'ACTIVE'
+                WHERE NOT EXISTS (SELECT 1 FROM account_lookup)
+                RETURNING account_id
+            ),
+            final_account AS (
+                SELECT account_id FROM account_lookup
+                UNION ALL
+                SELECT account_id FROM account_insert
+            ),
+            balance_insert AS (
+                INSERT INTO balances (account_id, currency)
+                SELECT account_id, 'USDC' FROM final_account
+                ON CONFLICT (account_id, currency) DO NOTHING
+            )
+            INSERT INTO deposits (
+                account_id,
+                address,
                 amount,
+                currency,
                 transaction_hash,
                 event_transaction_hash,
                 block_number,
                 event_timestamp,
                 log_index,
+                event_signature,
                 status,
                 confirmation_count,
                 required_confirmations,
                 created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', 0, $8, NOW())
-            ON CONFLICT (event_transaction_hash, log_index)
+            ) SELECT
+                (SELECT account_id FROM final_account),
+                $1,
+                $2,
+                'USDC',
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+                'pending',
+                0,
+                $8,
+                NOW()
+            ON CONFLICT (transaction_hash, log_index)
             DO UPDATE SET updated_at = NOW()
             RETURNING id
             "#,

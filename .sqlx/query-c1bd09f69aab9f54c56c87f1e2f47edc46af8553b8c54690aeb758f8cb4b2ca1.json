@@ -1,0 +1,136 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                id, account_id, address, amount, currency, transaction_hash, event_transaction_hash,\n                block_number, event_timestamp, block_timestamp, log_index, event_signature,\n                status, confirmation_count, required_confirmations, error_message,\n                processing_details, created_at, updated_at, processed_at\n            FROM deposits\n            WHERE account_id = $1\n            ORDER BY created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "account_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "transaction_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "event_transaction_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "block_number",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "event_timestamp",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "block_timestamp",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "log_index",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 11,
+        "name": "event_signature",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "confirmation_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "required_confirmations",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 15,
+        "name": "error_message",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "processing_details",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 19,
+        "name": "processed_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "c1bd09f69aab9f54c56c87f1e2f47edc46af8553b8c54690aeb758f8cb4b2ca1"
+}

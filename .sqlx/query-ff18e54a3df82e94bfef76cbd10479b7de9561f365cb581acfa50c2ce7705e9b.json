@@ -1,0 +1,88 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            account_id, org_id, user_id, account_label, account_number,\n            account_type, currency, status, opened_at, closed_at,\n            created_at, updated_at\n        FROM accounts\n        WHERE account_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "account_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "org_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "account_label",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "account_number",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "account_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "opened_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "closed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ff18e54a3df82e94bfef76cbd10479b7de9561f365cb581acfa50c2ce7705e9b"
+}

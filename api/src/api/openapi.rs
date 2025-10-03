@@ -15,8 +15,15 @@ pub use crate::handlers::{
     request_magic_link,
     verify_magic_link,
 
+    // Account types (NEW)
+    AccountBalanceResponse,
+    AccountDepositsResponse,
+    AccountLookupQuery,
+    AccountLookupResponse,
+    AccountWithBalances,
+    AccountWithdrawalsResponse,
     // Finance types
-    AccountFinancialTransactionResponse,
+    // AccountFinancialTransactionResponse, // REMOVED - deprecated
     // Admin & User types
     AdminUserIdentity,
     AdminUserListResponse,
@@ -28,6 +35,7 @@ pub use crate::handlers::{
     AnalyzeDocumentQuery,
     ApiError as AiApiError,
     ApproveWithdrawalRequest,
+    BalanceInfo,
     BatchInfo,
     BatchListResponse,
     BatchProcessorStatsResponse,
@@ -52,9 +60,10 @@ pub use crate::handlers::{
     DealTransferResponse,
     DealTransferValidationResponse,
     DeleteDealResponse,
+    DepositInfo,
     DocumentActivity,
-    FinancialSummaryResponse,
-    FinancialTransactionQuery,
+    // FinancialSummaryResponse, // REMOVED - deprecated
+    // FinancialTransactionQuery, // REMOVED - deprecated
     // Auth types
     GenerateInviteCodeRequest,
     GenerateInviteCodeResponse,
@@ -105,10 +114,13 @@ pub use crate::handlers::{
     UpdateInvestorProfileRequest,
     UpdateKycStatusRequest,
     UpdateUserRequest,
+    UserAccountsResponse,
+    UserBalancesResponse,
     UserDetailsResponse,
     UserTransactionsResponse,
     ValidateDealTransferRequest,
     ValidateInviteCodeResponse,
+    WithdrawalInfo,
 };
 
 pub use crate::config::magic_link_types::{
@@ -268,12 +280,14 @@ fn default_limit() -> u32 {
         crate::handlers::finance::withdrawals::get_admin_withdrawal_dashboard,
         crate::handlers::finance::withdrawals::manual_execute_withdrawal,
 
-        // Financial Transaction endpoints
-        crate::handlers::finance::transactions::record_account_deposit,
-        crate::handlers::finance::transactions::record_account_withdrawal,
-        crate::handlers::finance::transactions::get_account_financial_transactions,
-        crate::handlers::finance::transactions::get_user_financial_transactions,
-        crate::handlers::finance::transactions::get_user_financial_summary,
+        // Account Management endpoints (NEW - Account-Centric Model)
+        crate::handlers::accounts::lookup_account,
+        crate::handlers::accounts::get_account,
+        crate::handlers::accounts::get_user_accounts,
+        crate::handlers::accounts::get_account_balance_endpoint,
+        crate::handlers::accounts::get_user_balances,
+        crate::handlers::accounts::get_account_deposits_endpoint,
+        crate::handlers::accounts::get_account_withdrawals_endpoint,
 
         // Transaction History endpoints
         crate::handlers::finance::transaction_history::get_transaction_history,
@@ -359,12 +373,26 @@ fn default_limit() -> u32 {
         ListPendingKycQuery,
         ListPendingKycResponse,
 
-        // Financial transaction types
-        FinancialTransactionQuery,
-        CreateAccountFinancialTransactionRequest,
-        AccountFinancialTransactionResponse,
-        UnifiedFinancialTransactionResponse,
-        FinancialSummaryResponse,
+        // Account types (NEW - Account-Centric Model)
+        crate::handlers::accounts::AccountLookupQuery,
+        crate::handlers::accounts::AccountLookupResponse,
+        crate::handlers::accounts::UserAccountsResponse,
+        crate::handlers::accounts::AccountBalanceResponse,
+        crate::handlers::accounts::BalanceInfo,
+        crate::handlers::accounts::UserBalancesResponse,
+        crate::handlers::accounts::AccountWithBalances,
+        crate::handlers::accounts::AccountDepositsResponse,
+        crate::handlers::accounts::DepositInfo,
+        crate::handlers::accounts::AccountWithdrawalsResponse,
+        crate::handlers::accounts::WithdrawalInfo,
+        crate::handlers::accounts::PaginationQuery,
+
+        // Financial transaction types (DEPRECATED - removed)
+        // FinancialTransactionQuery,
+        // CreateAccountFinancialTransactionRequest,
+        // AccountFinancialTransactionResponse,
+        // UnifiedFinancialTransactionResponse,
+        // FinancialSummaryResponse,
 
         // Deal types (consolidated - includes marketplace and transfer operations)
         CreateDealRequest,
