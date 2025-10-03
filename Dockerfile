@@ -48,7 +48,10 @@ COPY --from=builder /app/db/migrations ./migrations
 # Copy cast from Foundry for faucet functionality
 COPY --from=foundry /usr/local/bin/cast /usr/local/bin/cast
 
-RUN chown -R appuser:appuser /app
+# Ensure binaries are executable and set ownership
+RUN chmod +x /usr/local/bin/cast && \
+    chown -R appuser:appuser /app
+
 USER appuser
 
 EXPOSE 8080

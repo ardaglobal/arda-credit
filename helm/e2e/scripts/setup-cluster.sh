@@ -168,25 +168,28 @@ build_and_push_images() {
     # Registry URL
     local registry_url="localhost:${REGISTRY_PORT}"
     
-    # Check if main image already exists locally
-    if docker images localhost/arda-credit:local-dev --format "table {{.Repository}}:{{.Tag}}" | grep -q "localhost/arda-credit:local-dev"; then
-        log_info "Image localhost/arda-credit:local-dev already exists, skipping build..."
+    # Build the main image (use FORCE_REBUILD=1 to skip cache)
+    log_info "Building arda-credit:local-dev image..."
+    
+    # Login to GHCR if credentials are available
+    if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
+        log_info "Logging into GHCR for Docker build..."
+        echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
     else
-        # Login to GHCR if credentials are available
-        if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
-            log_info "Logging into GHCR for Docker build..."
-            echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
-        else
-            log_warning "No GHCR credentials found, build may fail if using private base images"
-        fi
-        
-        # Build the main Arda Credit image
-        log_info "Building arda-credit:local-dev image..."
-        if ! docker build -t localhost/arda-credit:local-dev .; then
-            log_error "Failed to build arda-credit image"
-            log_info "Check Docker build logs above for details"
-            exit 1
-        fi
+        log_warning "No GHCR credentials found, build may fail if using private base images"
+    fi
+    
+    # Build the main Arda Credit image
+    BUILD_FLAGS=""
+    if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+        log_info "FORCE_REBUILD=1, building with --no-cache..."
+        BUILD_FLAGS="--no-cache"
+    fi
+    
+    if ! docker build $BUILD_FLAGS -t localhost/arda-credit:local-dev .; then
+        log_error "Failed to build arda-credit image"
+        log_info "Check Docker build logs above for details"
+        exit 1
     fi
     
     # Tag and push server image to local registry
@@ -199,7 +202,13 @@ build_and_push_images() {
     
     # Build contract deployer image (for init container)
     log_info "Building contract-deployer:local-dev image..."
-    if ! docker buildx build --platform linux/amd64 --provenance=false --sbom=false --no-cache --load -f Dockerfile.contract-deployer -t localhost/arda-credit-contract-deployer:local-dev .; then
+    DEPLOYER_BUILD_FLAGS="--platform linux/amd64 --provenance=false --sbom=false --load"
+    if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+        log_info "FORCE_REBUILD=1, building with --no-cache..."
+        DEPLOYER_BUILD_FLAGS="$DEPLOYER_BUILD_FLAGS --no-cache"
+    fi
+    
+    if ! docker buildx build $DEPLOYER_BUILD_FLAGS -f Dockerfile.contract-deployer -t localhost/arda-credit-contract-deployer:local-dev .; then
         log_error "Failed to build contract-deployer image"
         log_info "Check Docker build logs above for details"
         exit 1

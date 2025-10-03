@@ -814,6 +814,8 @@ deny:
 # This creates a local Kubernetes cluster with Arda Credit deployed
 # Uses locally built images for debugging and development
 # Requires GHCR_USERNAME and GHCR_TOKEN in .env for private image pulls
+# Use FORCE_REBUILD=1 to force rebuild Docker images without cache
+# Example: FORCE_REBUILD=1 make kind-setup
 .PHONY: kind-setup
 kind-setup:
 	@echo "🚀 Setting up Kind cluster for e2e testing..."

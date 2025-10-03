@@ -191,12 +191,12 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
     // Determine RPC URL based on environment and deployment context
     // Check for Kubernetes-specific env var to detect cluster environment
     let in_kubernetes = std::env::var("KUBERNETES_SERVICE_HOST").is_ok();
-    
+
     info!(
         "Faucet RPC URL detection - environment: {}, in_kubernetes: {}",
         environment, in_kubernetes
     );
-    
+
     // Get the Anvil RPC URL for the given environment
     // In k8s, check for custom env var first, then use defaults
     let rpc_url = if in_kubernetes {
