@@ -140,7 +140,7 @@ pub async fn validate_transfer_eligibility(
     }
 
     // 3. Check buyer is not current owner
-    if deal.investor_id != request.buyer_id {
+    if deal.investor_id != Some(request.buyer_id) {
         result.buyer_is_not_owner = true;
     } else {
         result
@@ -265,7 +265,13 @@ pub async fn execute_deal_transfer(
     .fetch_one(&mut *tx)
     .await?;
 
-    let seller_id = seller_info.seller_id;
+    // Ensure deal has an investor assigned (can't transfer draft deals)
+    let seller_id = seller_info.seller_id.ok_or_else(|| {
+        sqlx::Error::Protocol(
+            "Cannot transfer deal without assigned investor (draft deals cannot be sold)"
+                .to_string(),
+        )
+    })?;
     let _listing_id = seller_info.listing_id;
 
     // 3. Update deal marketplace status to transfer_pending (prevents concurrent transfers)

@@ -9,7 +9,7 @@
 //! - `auth`: Authentication and authorization
 //! - `users`: User management and admin operations
 //! - `deals`: Deal operations and marketplace
-//! - `merchants`: Company profiles and documents (investors)
+//! - `companies`: Originator and investor company profiles and documents
 //! - `credit`: Credit line management
 //! - `finance`: Financial transactions and withdrawals
 //! - `ai`: AI-powered features

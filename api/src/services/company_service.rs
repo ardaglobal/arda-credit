@@ -54,7 +54,7 @@ pub enum CompanyServiceError {
 }
 
 /// Company registration request
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct CompanyRegistrationRequest {
     #[validate(length(min = 2, max = 100))]
     pub company_name: String,
@@ -84,7 +84,7 @@ pub struct CompanyRegistrationRequest {
 }
 
 /// Company response DTO
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct CompanyResponseDto {
     pub id: Uuid,
     pub company_name: String,
@@ -105,7 +105,7 @@ pub struct CompanyResponseDto {
 }
 
 /// Team member invitation request
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct TeamInvitationRequest {
     #[validate(email)]
     pub email: String,
@@ -120,7 +120,7 @@ pub struct TeamInvitationRequest {
 }
 
 /// Team member permissions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TeamMemberPermissions {
     pub can_upload_documents: bool,
     pub can_download_documents: bool,
@@ -131,7 +131,7 @@ pub struct TeamMemberPermissions {
 }
 
 /// Team member response DTO
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TeamMemberResponseDto {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -152,7 +152,7 @@ pub struct TeamMemberResponseDto {
 }
 
 /// KYB submission request
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct KybSubmissionRequest {
     #[validate(length(min = 1, max = 100))]
     pub legal_entity_name: String,
@@ -174,7 +174,7 @@ pub struct KybSubmissionRequest {
 }
 
 /// Beneficial owner information
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct BeneficialOwnerInfo {
     #[validate(length(min = 1, max = 100))]
     pub full_name: String,
@@ -215,6 +215,15 @@ impl CompanyService {
                 user_id: Uuid::nil(),
             })?;
 
+        // Verify that the user exists in the identities table
+        let user_exists = sqlx::query!("SELECT id FROM identities WHERE id = $1", user_id)
+            .fetch_optional(&self.db_pool)
+            .await?;
+
+        if user_exists.is_none() {
+            return Err(CompanyServiceError::UserNotFound { user_id });
+        }
+
         // Check if user already has a company
         let existing_company =
             sqlx::query!("SELECT id FROM companies WHERE created_by = $1", user_id)
@@ -233,16 +242,17 @@ impl CompanyService {
         let company = sqlx::query(
             r#"
             INSERT INTO companies (
-                id, company_name, company_type, description, industry,
+                id, name, company_name, company_type, description, industry,
                 jurisdiction, registration_number, business_email, business_phone,
                 kyb_status, document_retention_days, created_by, created_at, updated_at
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW()
             ) RETURNING *
             "#,
         )
         .bind(company_id)
-        .bind(&request.company_name)
+        .bind(&request.company_name) // name (required field)
+        .bind(&request.company_name) // company_name (optional, same value)
         .bind(company_type.to_string())
         .bind(&request.description)
         .bind(&request.industry)

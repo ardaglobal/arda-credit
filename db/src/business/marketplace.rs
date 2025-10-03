@@ -49,8 +49,8 @@ pub struct MarketplaceDeal {
     pub status: String,
 
     // Deal data (from Deal struct)
-    pub originator_id: Uuid, // was borrower_id
-    pub investor_id: Uuid,   // was lender_id
+    pub originator_id: Uuid,       // was borrower_id
+    pub investor_id: Option<Uuid>, // was lender_id - optional for draft deals
     pub principal_amount: Decimal,
     pub outstanding_balance: Decimal,
     pub interest_rate_bps: i32,
@@ -303,13 +303,14 @@ pub async fn validate_deal_for_transfer(
         JOIN deal_listings dl ON d.id = dl.deal_id  -- was loan_listings, loan_id
         WHERE d.id = $1
           AND dl.status = 'active'  -- Only active listings can be transferred
+          AND d.investor_id IS NOT NULL  -- Can't transfer draft deals without investor
         "#,
         deal_id
     )
     .fetch_optional(pool)
     .await?;
 
-    Ok(result.map(|r| (r.investor_id, r.asking_price))) // was lender_id
+    Ok(result.and_then(|r| r.investor_id.map(|inv_id| (inv_id, r.asking_price))))
 }
 
 // ============================================================================
