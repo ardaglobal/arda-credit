@@ -23,18 +23,31 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "arda-credit.fullname" . }}
+      {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      {{- else }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
       {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
       initContainers:
         - name: contract-deployer
           image: "{{ .Values.server.contractDeployer.image.registry }}/{{ .Values.server.contractDeployer.image.repository }}:{{ .Values.server.contractDeployer.image.tag | default "latest" }}"
           imagePullPolicy: {{ .Values.server.contractDeployer.image.pullPolicy | default "Always" }}
           command: ["/bin/bash", "/scripts/deploy-contracts.sh"]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
           env:
+            - name: SERVER_ENVIRONMENT
+              value: "{{ .Values.server.environment }}"
             - name: ETHEREUM_RPC_URL
               value: "http://{{ include "arda-credit.fullname" . }}-anvil:8545"
-            - name: ETHEREUM_PRIVATE_KEY
+            - name: ETHEREUM_WALLET_PRIVATE_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "arda-credit.fullname" . }}-secrets
@@ -44,7 +57,7 @@ spec:
               mountPath: /scripts
               readOnly: true
             - name: contract-deployments
-              mountPath: /deployments
+              mountPath: /app/contracts/deployments
           resources:
             limits:
               cpu: 500m

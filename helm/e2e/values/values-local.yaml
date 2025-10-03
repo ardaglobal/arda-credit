@@ -82,6 +82,14 @@ server:
     tag: "local-dev"
     pullPolicy: Always  # Always pull to ensure latest image
   
+  # Contract deployer init container (local/staging only)
+  contractDeployer:
+    image:
+      registry: "kind-registry:5000"  # Local container registry (internal network name)
+      repository: "arda-credit-contract-deployer"
+      tag: "local-dev"
+      pullPolicy: Always
+  
   # OpenTelemetry tracing configuration
   env:
     ENABLE_OPENTELEMETRY: "true"

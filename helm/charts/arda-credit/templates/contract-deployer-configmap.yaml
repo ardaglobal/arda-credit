@@ -33,7 +33,7 @@ data:
     echo "✅ Anvil is ready!"
     
     # Check if contracts are already deployed
-    DEPLOYMENT_FILE="/deployments/{{ .Values.server.environment }}-deployment.json"
+    DEPLOYMENT_FILE="/app/contracts/deployments/{{ .Values.server.environment }}-deployment.json"
     if [ -f "$DEPLOYMENT_FILE" ]; then
       echo "📦 Found existing deployment file: $DEPLOYMENT_FILE"
       
@@ -90,7 +90,7 @@ data:
     echo "  ARDA:     $ARDA"
     
     # Create deployment JSON in the format expected by the application
-    mkdir -p /deployments
+    mkdir -p /app/contracts/deployments
     cat > "$DEPLOYMENT_FILE" <<EOF
     {
       "deployer": "$DEPLOYER",
@@ -107,8 +107,10 @@ data:
     echo "✅ Deployment file created: $DEPLOYMENT_FILE"
     cat "$DEPLOYMENT_FILE"
     
-    # Also create a symlink for backward compatibility
-    ln -sf "{{ .Values.server.environment }}-deployment.json" /deployments/local-deployment.json 2>/dev/null || true
+    # Also create a symlink for backward compatibility (only if environment is not "local")
+    {{- if ne .Values.server.environment "local" }}
+    ln -sf "{{ .Values.server.environment }}-deployment.json" /app/contracts/deployments/local-deployment.json 2>/dev/null || true
+    {{- end }}
     
     echo "🎉 Contract deployment complete!"
 {{- end }}

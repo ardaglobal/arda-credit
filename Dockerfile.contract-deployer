@@ -11,15 +11,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     && rm -rf /var/lib/apt/lists/*
 
-# Switch back to foundry user
-USER foundry
-
 WORKDIR /contracts
 
-# Copy contract source files and deployment scripts
+# Copy contract source files and deployment scripts (as root)
 COPY contracts/ .
 
-# Build contracts
+# Change ownership to foundry user
+RUN chown -R foundry:foundry /contracts
+
+# Switch to foundry user
+USER foundry
+
+# Build contracts (now foundry user has write permissions)
 RUN forge build
 
 # Set the entrypoint to bash so the deployment script can be mounted and executed

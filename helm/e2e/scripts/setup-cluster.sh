@@ -197,6 +197,19 @@ build_and_push_images() {
     docker push "${registry_url}/arda-credit:local-dev"
     log_success "Pushed server image to ${registry_url}/arda-credit:local-dev"
     
+    # Build contract deployer image (for init container)
+    log_info "Building contract-deployer:local-dev image..."
+    if ! docker buildx build --platform linux/amd64 --provenance=false --sbom=false --no-cache --load -f Dockerfile.contract-deployer -t localhost/arda-credit-contract-deployer:local-dev .; then
+        log_error "Failed to build contract-deployer image"
+        log_info "Check Docker build logs above for details"
+        exit 1
+    fi
+    
+    # Tag and push contract deployer image
+    docker tag localhost/arda-credit-contract-deployer:local-dev "${registry_url}/arda-credit-contract-deployer:local-dev"
+    docker push "${registry_url}/arda-credit-contract-deployer:local-dev"
+    log_success "Pushed contract-deployer image to ${registry_url}/arda-credit-contract-deployer:local-dev"
+    
     # Data-populator will use GHCR image, no need to build locally
     log_info "Data-populator will use production image from ghcr.io/ardaglobal/arda-credit-data-populator:latest"
     log_success "Local registry setup completed"

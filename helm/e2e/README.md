@@ -26,7 +26,7 @@ make kind-logs
 
 # Access the application
 open http://localhost:3000    # Frontend
-open http://0.0.0.0:8080    # API Server
+open http://localhost:8080    # API Server
 
 # Teardown when done
 make kind-teardown
@@ -54,8 +54,8 @@ make kind-teardown
 │   Host System   │    │  Local Registry     │    │   Kind Cluster  │
 │                 │    │  (localhost:5001)   │    │                 │
 │ localhost:3000  ├────┼─────────────────────┼────┤ App (NodePort)  │
-│ 0.0.0.0:8080  ├────┼─────────────────────┼────┤ Server          │
-│ 0.0.0.0:5432  ├────┼─────────────────────┼────┤ PostgreSQL      │
+│ localhost:8080  ├────┼─────────────────────┼────┤ Server          │
+│ 0.0.0.0:5432    ├────┼─────────────────────┼────┤ PostgreSQL      │
 │                 │    │                     │    │                 │
 │ Docker Build:   │    │ Registry Storage:   │    │ Image Sources:  │
 │ • Build image   ├────┤ • arda-credit:      ├────┤ • kind-registry │
@@ -97,7 +97,7 @@ make kind-logs
 ./helm/e2e/test-deployment.sh
 
 # Manual testing
-curl http://0.0.0.0:8080/api/v1/health
+curl http://localhost:8080/api/v1/health
 kubectl get pods --context=kind-arda-credit-e2e
 ```
 
@@ -122,7 +122,7 @@ make kind-teardown
 
 ### Direct Access (NodePort)
 - **Frontend**: http://localhost:3000
-- **API Server**: http://0.0.0.0:8080  
+- **API Server**: http://localhost:8080  
 - **PostgreSQL**: 0.0.0.0:5432
 
 ### Kubernetes Access
@@ -281,7 +281,7 @@ This setup can be easily integrated into GitHub Actions or other CI systems:
 - name: Run additional tests
   run: |
     # Add your e2e tests here
-    curl -f http://0.0.0.0:8080/api/v1/health
+    curl -f http://localhost:8080/api/v1/health
 
 - name: Cleanup
   run: make kind-teardown
