@@ -28,7 +28,7 @@ make kind-logs
 open http://localhost:3000    # Frontend
 open http://0.0.0.0:8080    # API Server
 
-# Teardown when done
+# Teardown when done or after code changes to setup cluster again
 make kind-teardown
 ```
 
@@ -69,29 +69,7 @@ make kind-teardown
                        Auto-configured as kind-registry:5000
 ```
 
-## Development Workflow
-
-### Initial Setup
-```bash
-# One-time setup (creates cluster and deploys)
-make kind-setup
-```
-
-### Code Development Cycle
-```bash
-# Make code changes...
-
-# Rebuild and restart (fast iteration)
-make kind-rebuild
-
-# Or just restart services (if no code changes)
-make kind-restart
-
-# View logs for debugging
-make kind-logs
-```
-
-### Testing and Validation
+## Testing and Validation
 ```bash
 # Run deployment tests
 ./helm/e2e/test-deployment.sh
@@ -99,12 +77,6 @@ make kind-logs
 # Manual testing
 curl http://0.0.0.0:8080/api/v1/health
 kubectl get pods --context=kind-arda-credit-e2e
-```
-
-### Cleanup
-```bash
-# Remove everything
-make kind-teardown
 ```
 
 ## Available Commands
@@ -115,8 +87,6 @@ make kind-teardown
 | `make kind-teardown` | Remove cluster and cleanup resources |
 | `make kind-status` | Show cluster status and running pods |
 | `make kind-logs` | Display logs from all services |
-| `make kind-restart` | Restart deployments (keep cluster/data) |
-| `make kind-rebuild` | Rebuild images, load into cluster, restart |
 
 ## Service Access
 
@@ -194,9 +164,6 @@ docker ps | grep registry
 # Check images in registry
 curl http://localhost:5001/v2/_catalog
 
-# Rebuild and push to registry
-make kind-rebuild
-
 # Check images in cluster nodes
 docker exec -it arda-credit-e2e-control-plane crictl images | grep arda-credit
 ```
@@ -246,8 +213,6 @@ kubectl get events --sort-by=.metadata.creationTimestamp
 ```bash
 # Complete cleanup and restart
 make kind-teardown
-docker stop kind-registry && docker rm kind-registry  # Clean up registry
-docker system prune -f
 make kind-setup
 ```
 
