@@ -848,7 +848,7 @@ kind-setup:
 kind-teardown:
 	@echo "🗑️  Tearing down Kind cluster..."
 	cd helm/e2e && ./scripts/teardown-cluster.sh
-    @$(MAKE) kind-docker-clean
+	$(MAKE) kind-docker-clean
 
 ## kind-status: Show Kind cluster status
 # Display current status of the local e2e environment
