@@ -71,10 +71,10 @@ pub const ADMIN_KYC_BULK_APPROVE: &str = api_path!("/admin/kyc/bulk-approve");
 /// Platform metrics (admin)
 pub const ADMIN_PLATFORM_METRICS: &str = api_path!("/admin/platform-metrics");
 
-/// User balance by wallet address
-pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/user/{user_id}/{address}/balance");
+/// Consolidated balance endpoint by wallet address
+pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/address/{address}/balance");
 
-/// User balance by user ID
+/// Consolidated balance endpoint by user ID  
 pub const USER_BALANCE_BY_ID: &str = api_path!("/user/{user_id}/balance");
 
 /// User transactions by user ID
@@ -160,8 +160,7 @@ pub const WITHDRAWALS: &str = api_path!("/withdrawals");
 /// Get withdrawal status by request ID
 pub const WITHDRAWAL_BY_ID: &str = api_path!("/withdrawals/{request_id}");
 
-/// Get user's available balance for withdrawals
-pub const USER_AVAILABLE_BALANCE: &str = api_path!("/users/{address}/available-balance");
+// USER_AVAILABLE_BALANCE path removed - now using consolidated balance endpoints
 
 /// Get user's withdrawal history by address
 pub const USER_WITHDRAWALS: &str = api_path!("/users/{address}/withdrawals");
@@ -699,9 +698,7 @@ pub fn withdrawal_path(request_id: &str) -> String {
 }
 
 /// Build user available balance path with address parameter
-pub fn user_available_balance_path(address: &str) -> String {
-    replace_param(USER_AVAILABLE_BALANCE, "address", address)
-}
+// user_available_balance_path helper removed - use consolidated balance endpoints
 
 /// Build user withdrawals path with address parameter
 pub fn user_withdrawals_path(address: &str) -> String {

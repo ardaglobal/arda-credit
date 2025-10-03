@@ -56,7 +56,7 @@ pub use config::types::{ApiConfig, ApiState, UserType};
 // Selectively re-export API items (ApiConfig and ApiState already exported above)
 pub use api::{create_router, ApiServer, ApiServerBuilder, ApiServerConfig};
 pub use services::{
-    AuthError, AuthService, AvailableBalance, BalanceVerificationResult,
+    AuthError, AuthService, BalanceVerificationResult,
     BalanceVerificationService, BatchCreationResult, BatchProcessorHandle, Claims, CompanyService,
     DocumentService, EmailService, KycValidationResult, KycValidationService, MagicLinkService,
     SessionService, UnifiedBatchService, WithdrawalTransactionService,

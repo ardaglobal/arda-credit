@@ -105,7 +105,6 @@ pub use crate::handlers::{
     UpdateInvestorProfileRequest,
     UpdateKycStatusRequest,
     UpdateUserRequest,
-    UserBalanceResponse,
     UserDetailsResponse,
     UserTransactionsResponse,
     ValidateDealTransferRequest,
@@ -121,7 +120,8 @@ pub use crate::services::ai_analysis_service::{
     AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
     DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
 };
-pub use crate::services::balance_service::AvailableBalance;
+pub use crate::handlers::users::balance::{AddressBalance, AddressBalanceResponse, UserBalanceResponse};
+// AvailableBalance removed - now using consolidated AddressBalance from balance handlers
 pub use crate::services::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
 };
@@ -190,8 +190,8 @@ fn default_limit() -> u32 {
         crate::handlers::users::users::list_identities_endpoint,
         crate::handlers::users::users::update_user_endpoint,
         crate::handlers::users::users::delete_user_endpoint,
-        crate::handlers::users::users::get_user_balance_by_address_endpoint,
-        crate::handlers::users::users::get_user_balance_by_id_endpoint,
+        crate::handlers::users::balance::get_balance_by_address_endpoint,
+        crate::handlers::users::balance::get_balance_by_user_id_endpoint,
         crate::handlers::users::users::get_user_transactions_endpoint,
         crate::handlers::users::users::submit_kyc_endpoint,
         crate::handlers::users::users::update_kyc_status_endpoint,
@@ -241,7 +241,6 @@ fn default_limit() -> u32 {
         // Withdrawal endpoints
         crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint,
-        crate::handlers::finance::withdrawals::get_user_available_balance_endpoint,
         crate::handlers::finance::withdrawals::get_user_withdrawal_history_endpoint,
         crate::handlers::finance::withdrawals::cancel_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_pending_withdrawals_endpoint,
@@ -321,6 +320,10 @@ fn default_limit() -> u32 {
         InvestorProfileResponse,
         UpdateInvestorProfileRequest,
         UserType,
+
+        // User profile types (nested profile data)
+        crate::handlers::users::users::InvestorProfileData,
+        crate::handlers::users::users::OriginatorProfileData,
 
         // Company types
         crate::services::company_service::CompanyRegistrationRequest,
@@ -408,15 +411,19 @@ fn default_limit() -> u32 {
         SubmitKycRequest,
         SubmitKycResponse,
         UpdateKycStatusRequest,
-        UserBalanceResponse,
         UserTransactionsResponse,
+        
+        // Consolidated Balance types
+        AddressBalance,
+        AddressBalanceResponse,
+        UserBalanceResponse,
 
         // Withdrawal types
         PaginationParams,
         InitiateWithdrawalRequest,
         InitiateWithdrawalResponse,
         WithdrawalStatusResponse,
-        AvailableBalance,
+        // AvailableBalance removed - replaced with consolidated AddressBalance,
         // Admin withdrawal types
         AdminWithdrawalDashboard,
         ApproveWithdrawalRequest,

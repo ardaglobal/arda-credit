@@ -38,6 +38,9 @@ pub struct FaucetInfoResponse {
 
     /// Suggested MetaMask network configuration
     pub network_config: Option<NetworkConfig>,
+
+    /// USDC token configuration for MetaMask import
+    pub token_config: Option<TokenConfig>,
 }
 
 /// MetaMask network configuration
@@ -48,6 +51,21 @@ pub struct NetworkConfig {
     pub chain_id: String,
     pub currency_symbol: String,
     pub block_explorer_url: Option<String>,
+}
+
+/// USDC token configuration for MetaMask import
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TokenConfig {
+    /// Token contract address
+    pub address: String,
+    /// Token symbol
+    pub symbol: String,
+    /// Token name
+    pub name: String,
+    /// Token decimals
+    pub decimals: u8,
+    /// MetaMask deep link for automatic token import
+    pub metamask_import_url: String,
 }
 
 /// Query parameters for checking user's faucet status
@@ -138,6 +156,7 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
             rpc_url: None,
             chain_id: None,
             network_config: None,
+            token_config: None,
         }));
     }
 
@@ -163,6 +182,7 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
                     currency_symbol: "ETH".to_string(),
                     block_explorer_url: None,
                 }),
+                token_config: None,
             }));
         }
     };
@@ -225,6 +245,22 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
         _ => "Anvil Devnet",
     };
 
+    // Create USDC token config for MetaMask import
+    let token_config = if let Some(ref usdc_addr) = usdc_address {
+        Some(TokenConfig {
+            address: usdc_addr.clone(),
+            symbol: "USDC".to_string(),
+            name: "USD Coin".to_string(),
+            decimals: 6,
+            metamask_import_url: format!(
+                "https://metamask.app/add-token/?address={}&symbol=USDC&decimals=6&name=USD%20Coin", 
+                usdc_addr
+            ),
+        })
+    } else {
+        None
+    };
+
     Ok(Json(FaucetInfoResponse {
         available: true,
         environment: environment.clone(),
@@ -241,6 +277,7 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
             currency_symbol: "ETH".to_string(),
             block_explorer_url: None,
         }),
+        token_config,
     }))
 }
 

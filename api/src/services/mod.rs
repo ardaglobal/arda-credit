@@ -32,7 +32,7 @@ pub mod withdrawal_service;
 // Re-export commonly used types (being specific to avoid conflicts)
 pub use auth::{AuthError, AuthService, Claims};
 pub use balance_service::{
-    AvailableBalance, BalanceVerificationResult, BalanceVerificationService,
+    BalanceVerificationResult, BalanceVerificationService,
 };
 pub use batch_processor::BatchProcessorHandle;
 pub use company_service::{
