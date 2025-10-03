@@ -157,6 +157,12 @@ spec:
             # Server environment configuration
             - name: SERVER_ENVIRONMENT
               value: "{{ .Values.server.environment | default "production" }}"
+            {{- if and (or (eq .Values.server.environment "local") (eq .Values.server.environment "staging")) .Values.server.anvilRpcUrl }}
+            # Anvil RPC URL for faucet (browser-accessible URL)
+            # Only set if explicitly configured in values
+            - name: ANVIL_RPC_URL
+              value: {{ .Values.server.anvilRpcUrl | quote }}
+            {{- end }}
             {{- range $key, $value := .Values.server.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}

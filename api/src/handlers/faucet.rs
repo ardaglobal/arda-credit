@@ -188,6 +188,43 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
         faucet_address, chain_id
     );
 
+    // Determine RPC URL based on environment and deployment context
+    // Check for Kubernetes-specific env var to detect cluster environment
+    let in_kubernetes = std::env::var("KUBERNETES_SERVICE_HOST").is_ok();
+    
+    info!(
+        "Faucet RPC URL detection - environment: {}, in_kubernetes: {}",
+        environment, in_kubernetes
+    );
+    
+    // Get the Anvil RPC URL for the given environment
+    // In k8s, check for custom env var first, then use defaults
+    let rpc_url = if in_kubernetes {
+        if environment == "staging" {
+            // For staging in k8s, ANVIL_RPC_URL must be set to an externally accessible URL
+            // (LoadBalancer IP, Ingress domain, or NodePort accessible from browser)
+            // Service name follows pattern: {release-name}-anvil:8545
+            let url = std::env::var("ANVIL_RPC_URL")
+                .unwrap_or_else(|_| {
+                    warn!("ANVIL_RPC_URL not set for staging k8s deployment. Using internal service DNS which won't work from browser. Set server.anvilRpcUrl in Helm values.");
+                    "http://arda-credit-anvil:8545".to_string()
+                });
+            url
+        } else {
+            // Local k8s - NodePort mapped to host 8545 for browser access
+            "http://localhost:8545".to_string()
+        }
+    } else {
+        // Running directly (not in k8s) - standard Anvil port
+        "http://127.0.0.1:8545".to_string()
+    };
+
+    let network_name = match environment.as_str() {
+        "local" => "Local Anvil Devnet",
+        "staging" => "Staging Anvil Devnet",
+        _ => "Anvil Devnet",
+    };
+
     Ok(Json(FaucetInfoResponse {
         available: true,
         environment: environment.clone(),
@@ -195,21 +232,11 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
         usdc_address: usdc_address.clone(),
         amount_per_request: Some("1000000".to_string()), // 1M USDC
         cooldown_seconds: Some(3600),                    // 1 hour
-        rpc_url: Some("http://127.0.0.1:8545".to_string()),
+        rpc_url: Some(rpc_url.clone()),
         chain_id: Some(chain_id.clone()),
         network_config: Some(NetworkConfig {
-            network_name: if environment == "local" {
-                "Local Anvil Devnet"
-            } else {
-                "Staging Anvil Devnet"
-            }
-            .to_string(),
-            rpc_url: if environment == "local" {
-                "http://127.0.0.1:8545"
-            } else {
-                "http://staging-anvil:8545" // TODO: Configure staging URL
-            }
-            .to_string(),
+            network_name: network_name.to_string(),
+            rpc_url,
             chain_id,
             currency_symbol: "ETH".to_string(),
             block_explorer_url: None,
