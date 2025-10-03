@@ -16,7 +16,7 @@ use crate::config::types::UserType;
 use crate::handlers::{
     // Deals
     companies as company_handlers,
-    // Documents (merchant module)
+    // Documents (companies module)
     documents as document_handlers,
     // Finance
     get_account_financial_transactions,

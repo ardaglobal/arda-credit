@@ -357,8 +357,8 @@ impl DealNegotiationStatus {
 pub struct Deal {
     // was Loan
     pub id: uuid::Uuid,
-    pub originator_id: uuid::Uuid, // was borrower_id
-    pub investor_id: uuid::Uuid,   // was lender_id
+    pub originator_id: uuid::Uuid,       // was borrower_id
+    pub investor_id: Option<uuid::Uuid>, // was lender_id - now optional for draft deals
     pub principal_amount: rust_decimal::Decimal,
     pub outstanding_balance: rust_decimal::Decimal,
     pub interest_rate_bps: i32, // Basis points
@@ -1928,8 +1928,8 @@ pub async fn delete_identity(pool: &PgPool, identity_id: uuid::Uuid) -> Result<b
 pub async fn create_deal(
     // was create_loan
     pool: &PgPool,
-    originator_id: uuid::Uuid, // was borrower_id
-    investor_id: uuid::Uuid,   // was lender_id
+    originator_id: uuid::Uuid,       // was borrower_id
+    investor_id: Option<uuid::Uuid>, // was lender_id - now optional for draft deals
     principal_amount: rust_decimal::Decimal,
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,

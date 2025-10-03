@@ -24,11 +24,14 @@ use uuid::Uuid;
 use validator::Validate;
 
 /// Helper function to create dummy claims until proper auth is implemented
+///
+/// IMPORTANT: This is a temporary workaround using chad@arda.xyz's actual user ID.
+/// For production, implement proper JWT authentication with Bearer tokens.
 fn create_dummy_claims() -> Claims {
     Claims {
-        sub: "dummy".to_string(),
-        email: "dummy@example.com".to_string(),
-        user_type: "investor".to_string(),
+        sub: "2e918cf4-3d02-4eba-970c-a9f2630ecbde".to_string(), // chad@arda.xyz
+        email: "chad@arda.xyz".to_string(),
+        user_type: "admin".to_string(),
         exp: 0,
         iat: 0,
         jti: "dummy".to_string(),
@@ -36,6 +39,18 @@ fn create_dummy_claims() -> Claims {
 }
 
 /// Register a new company
+#[utoipa::path(
+    post,
+    path = "/api/v1/companies/register",
+    request_body = CompanyRegistrationRequest,
+    responses(
+        (status = 201, description = "Company registered successfully", body = crate::services::company_service::CompanyResponseDto),
+        (status = 400, description = "Validation error"),
+        (status = 409, description = "Company already exists"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn register_company_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<CompanyRegistrationRequest>,
@@ -83,6 +98,20 @@ pub async fn register_company_endpoint(
 }
 
 /// Get company details
+#[utoipa::path(
+    get,
+    path = "/api/v1/companies/{company_id}",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    responses(
+        (status = 200, description = "Company details retrieved", body = crate::services::company_service::CompanyResponseDto),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Company not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn get_company_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
@@ -114,6 +143,22 @@ pub async fn get_company_endpoint(
 }
 
 /// Submit KYB documentation
+#[utoipa::path(
+    post,
+    path = "/api/v1/companies/{company_id}/kyb",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    request_body = KybSubmissionRequest,
+    responses(
+        (status = 200, description = "KYB submitted successfully", body = crate::services::company_service::CompanyResponseDto),
+        (status = 400, description = "Validation error"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Company not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn submit_kyb_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
@@ -158,7 +203,7 @@ pub async fn submit_kyb_endpoint(
 }
 
 /// Get KYB status
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct KybStatusResponse {
     pub company_id: Uuid,
     pub kyb_status: String,
@@ -166,6 +211,21 @@ pub struct KybStatusResponse {
     pub kyb_verified_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// Get KYB status
+#[utoipa::path(
+    get,
+    path = "/api/v1/companies/{company_id}/kyb/status",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    responses(
+        (status = 200, description = "KYB status retrieved", body = KybStatusResponse),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Company not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn get_kyb_status_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
@@ -203,6 +263,22 @@ pub async fn get_kyb_status_endpoint(
 }
 
 /// Invite team member
+#[utoipa::path(
+    post,
+    path = "/api/v1/companies/{company_id}/team/invite",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    request_body = TeamInvitationRequest,
+    responses(
+        (status = 201, description = "Team member invited", body = crate::services::company_service::TeamMemberResponseDto),
+        (status = 400, description = "Validation error"),
+        (status = 403, description = "Access denied"),
+        (status = 409, description = "Team member already exists"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn invite_team_member_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
@@ -249,6 +325,19 @@ pub async fn invite_team_member_endpoint(
 }
 
 /// List team members
+#[utoipa::path(
+    get,
+    path = "/api/v1/companies/{company_id}/team",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    responses(
+        (status = 200, description = "Team members list retrieved", body = Vec<crate::services::company_service::TeamMemberResponseDto>),
+        (status = 403, description = "Access denied"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn list_team_members_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
@@ -278,7 +367,7 @@ pub async fn list_team_members_endpoint(
 }
 
 /// Update team member role request
-#[derive(Debug, Deserialize, Validate)]
+#[derive(Debug, Deserialize, Validate, utoipa::ToSchema)]
 pub struct UpdateTeamMemberRoleRequest {
     #[validate(length(min = 1, max = 20))]
     pub role: String,
@@ -286,6 +375,23 @@ pub struct UpdateTeamMemberRoleRequest {
 }
 
 /// Update team member role
+#[utoipa::path(
+    put,
+    path = "/api/v1/companies/{company_id}/team/{user_id}/role",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID"),
+        ("user_id" = Uuid, Path, description = "User ID")
+    ),
+    request_body = UpdateTeamMemberRoleRequest,
+    responses(
+        (status = 200, description = "Team member role updated", body = crate::services::company_service::TeamMemberResponseDto),
+        (status = 400, description = "Validation error or cannot remove last admin"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Team member not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn update_team_member_role_endpoint(
     Path((company_id, user_id)): Path<(Uuid, Uuid)>,
     State(state): State<ApiState>,
@@ -350,6 +456,21 @@ pub async fn update_team_member_role_endpoint(
 }
 
 /// Remove team member
+#[utoipa::path(
+    delete,
+    path = "/api/v1/companies/{company_id}/team/{user_id}",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID"),
+        ("user_id" = Uuid, Path, description = "User ID")
+    ),
+    responses(
+        (status = 204, description = "Team member removed"),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Team member not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn remove_team_member_endpoint(
     Path((company_id, user_id)): Path<(Uuid, Uuid)>,
     State(state): State<ApiState>,
@@ -416,7 +537,7 @@ pub async fn remove_team_member_endpoint(
 }
 
 /// Company dashboard stats
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct CompanyDashboardResponse {
     pub company: crate::services::company_service::CompanyResponseDto,
     pub team_stats: TeamStats,
@@ -424,7 +545,7 @@ pub struct CompanyDashboardResponse {
     pub recent_activity: Vec<ActivityItem>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct TeamStats {
     pub total_members: i64,
     pub active_members: i64,
@@ -432,7 +553,7 @@ pub struct TeamStats {
     pub admin_count: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct DocumentStats {
     pub total_documents: i64,
     pub pending_approval: i64,
@@ -440,7 +561,7 @@ pub struct DocumentStats {
     pub storage_size_mb: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct ActivityItem {
     pub id: Uuid,
     pub activity_type: String,
@@ -450,6 +571,20 @@ pub struct ActivityItem {
 }
 
 /// Get company dashboard
+#[utoipa::path(
+    get,
+    path = "/api/v1/companies/{company_id}/dashboard",
+    params(
+        ("company_id" = Uuid, Path, description = "Company ID")
+    ),
+    responses(
+        (status = 200, description = "Company dashboard retrieved", body = CompanyDashboardResponse),
+        (status = 403, description = "Access denied"),
+        (status = 404, description = "Company not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Companies"
+)]
 pub async fn get_company_dashboard_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,

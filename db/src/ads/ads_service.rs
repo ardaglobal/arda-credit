@@ -1798,7 +1798,7 @@ impl IndexedMerkleTreeADS {
             loan_id: row.deal_id,
             payment_id: row.payment_id,
             borrower_id: Some(row.originator_id),
-            lender_id: Some(row.investor_id),
+            lender_id: row.investor_id, // Now already Option<Uuid>
             amount: Some(row.amount),
             deal_status: Some(row.deal_status),
             transaction_data: serde_json::json!({

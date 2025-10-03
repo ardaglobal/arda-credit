@@ -278,6 +278,20 @@ fn default_limit() -> u32 {
         // Transaction History endpoints
         crate::handlers::finance::transaction_history::get_transaction_history,
 
+        // Company Management endpoints
+        crate::handlers::companies::companies::register_company_endpoint,
+        crate::handlers::companies::companies::get_company_endpoint,
+        crate::handlers::companies::companies::get_company_dashboard_endpoint,
+        crate::handlers::companies::companies::submit_kyb_endpoint,
+        crate::handlers::companies::companies::get_kyb_status_endpoint,
+        crate::handlers::companies::companies::invite_team_member_endpoint,
+        crate::handlers::companies::companies::list_team_members_endpoint,
+        crate::handlers::companies::companies::update_team_member_role_endpoint,
+        crate::handlers::companies::companies::remove_team_member_endpoint,
+        crate::handlers::companies::companies::get_investor_profile_endpoint,
+        crate::handlers::companies::companies::update_investor_profile_endpoint,
+        crate::handlers::companies::companies::register_investor_endpoint,
+
         // Contract configuration endpoints
         crate::handlers::core::contract::get_contract_config,
         crate::handlers::core::contract::get_transaction_updates,
@@ -286,7 +300,7 @@ fn default_limit() -> u32 {
         // Primary API Groups (8 main groups + Dev)
         (name = "Auth", description = "Authentication, authorization, and invite code management"),
         (name = "Users", description = "User account management, KYC verification, balances, and transaction history"),
-        (name = "Companies", description = "Merchant and investor company profiles, documents, turnover tracking, and AI analysis"),
+        (name = "Companies", description = "Originator and investor company profiles, documents, turnover tracking, and AI analysis"),
         (name = "Deals", description = "Deal lifecycle management, marketplace operations, ownership transfers, and payment processing"),
         (name = "State", description = "Blockchain state management, batch processing, ZK proof generation, and contract integration"),
         (name = "Admin", description = "Administrative operations including KYC approval, withdrawal management, and platform oversight"),
@@ -307,6 +321,20 @@ fn default_limit() -> u32 {
         InvestorProfileResponse,
         UpdateInvestorProfileRequest,
         UserType,
+
+        // Company types
+        crate::services::company_service::CompanyRegistrationRequest,
+        crate::services::company_service::CompanyResponseDto,
+        crate::services::company_service::KybSubmissionRequest,
+        crate::services::company_service::TeamInvitationRequest,
+        crate::services::company_service::TeamMemberResponseDto,
+        crate::services::company_service::TeamMemberPermissions,
+        crate::handlers::companies::companies::KybStatusResponse,
+        crate::handlers::companies::companies::UpdateTeamMemberRoleRequest,
+        crate::handlers::companies::companies::CompanyDashboardResponse,
+        crate::handlers::companies::companies::TeamStats,
+        crate::handlers::companies::companies::DocumentStats,
+        crate::handlers::companies::companies::ActivityItem,
 
         // Document types
         crate::handlers::companies::documents::DocumentUploadResponse,

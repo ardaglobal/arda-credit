@@ -65,7 +65,7 @@ use uuid::Uuid;
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[schema(example = json!({
     "originator_id": "123e4567-e89b-12d3-a456-426614174000",
-    "investor_id": "123e4567-e89b-12d3-a456-426614174001",
+    "investor_id": null,
     "principal_amount": "50000",
     "interest_rate_bps": 500,
     "term_days": 365,
@@ -74,11 +74,11 @@ use uuid::Uuid;
 }))]
 pub struct CreateDealRequest {
     // was CreateLoanRequest
-    pub originator_id: String,    // was borrower_id
-    pub investor_id: String,      // was lender_id
-    pub principal_amount: String, // Amount in cents as string
-    pub interest_rate_bps: u16,   // Interest rate in basis points
-    pub term_days: Option<u32>,   // Optional deal term
+    pub originator_id: String,       // was borrower_id
+    pub investor_id: Option<String>, // was lender_id - now optional for draft deals
+    pub principal_amount: String,    // Amount in cents as string
+    pub interest_rate_bps: u16,      // Interest rate in basis points
+    pub term_days: Option<u32>,      // Optional deal term
 
     /// Payment status. Valid values: originated, active, paid_off, closed, defaulted
     #[schema(example = "originated")]
@@ -107,9 +107,9 @@ pub struct CreateDealRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DealDetailsResponse {
     // was LoanDetailsResponse
-    pub deal_id: String,       // was loan_id, now deal_id
-    pub originator_id: String, // was borrower_id
-    pub investor_id: String,   // was lender_id
+    pub deal_id: String,             // was loan_id, now deal_id
+    pub originator_id: String,       // was borrower_id
+    pub investor_id: Option<String>, // was lender_id - now optional for draft deals
     pub principal_amount: String,
     pub outstanding_balance: String,
     pub interest_rate_bps: u16,
@@ -311,8 +311,8 @@ pub struct MarketplaceDealResponse {
     pub listing_status: String,
 
     // Deal information
-    pub originator_id: uuid::Uuid, // was borrower_id
-    pub investor_id: uuid::Uuid,   // was lender_id
+    pub originator_id: uuid::Uuid,       // was borrower_id
+    pub investor_id: Option<uuid::Uuid>, // was lender_id - now optional for draft deals
     pub principal_amount: String,
     pub outstanding_balance: String,
     pub interest_rate_bps: u16,
@@ -410,7 +410,9 @@ pub async fn create_deal_endpoint(
 
     info!(
         "💰 API: Creating deal: originator={}, investor={}, amount={}", // updated log message
-        request.originator_id, request.investor_id, request.principal_amount
+        request.originator_id,
+        request.investor_id.as_deref().unwrap_or("none"),
+        request.principal_amount
     );
 
     // Parse UUIDs
@@ -421,13 +423,24 @@ pub async fn create_deal_endpoint(
             "Invalid originator ID format".to_string(), // was borrower ID
         )
     })?;
-    let investor_id = uuid::Uuid::parse_str(&request.investor_id).map_err(|_| {
-        // was lender_id
-        (
-            StatusCode::BAD_REQUEST,
-            "Invalid investor ID format".to_string(), // was lender ID
-        )
-    })?;
+
+    // Parse investor_id if provided (optional for draft deals)
+    let investor_id = if let Some(ref investor_id_str) = request.investor_id {
+        if investor_id_str.is_empty() {
+            // Empty string means no investor (draft deals)
+            None
+        } else {
+            Some(uuid::Uuid::parse_str(investor_id_str).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid investor ID format".to_string(),
+                )
+            })?)
+        }
+    } else {
+        // No investor provided (draft deals)
+        None
+    };
 
     // Parse principal amount
     let principal_amount = request
@@ -545,7 +558,7 @@ pub async fn create_deal_endpoint(
         // was LoanDetailsResponse
         deal_id: deal.id.to_string(), // was loan_id, now deal_id
         originator_id: deal.originator_id.to_string(), // was borrower_id
-        investor_id: deal.investor_id.to_string(), // was lender_id
+        investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
         principal_amount: deal.principal_amount.to_string(),
         outstanding_balance: deal.outstanding_balance.to_string(),
         interest_rate_bps: deal.interest_rate_bps as u16,
@@ -653,7 +666,7 @@ pub async fn list_deals_endpoint(
                 // was loan, LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: deal.originator_id.to_string(), // was borrower_id
-                investor_id: deal.investor_id.to_string(), // was lender_id
+                investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
@@ -742,7 +755,7 @@ pub async fn get_deals_by_user_id_endpoint(
         .map(|deal| DealDetailsResponse {
             deal_id: deal.id.to_string(),
             originator_id: deal.originator_id.to_string(),
-            investor_id: deal.investor_id.to_string(),
+            investor_id: deal.investor_id.map(|id| id.to_string()),
             principal_amount: deal.principal_amount.to_string(),
             outstanding_balance: deal.outstanding_balance.to_string(),
             interest_rate_bps: deal.interest_rate_bps as u16,
@@ -837,7 +850,7 @@ pub async fn get_deal_details_endpoint(
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: deal.originator_id.to_string(), // was borrower_id
-                investor_id: deal.investor_id.to_string(), // was lender_id
+                investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
@@ -1092,7 +1105,7 @@ pub async fn update_deal_endpoint(
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: deal.originator_id.to_string(), // was borrower_id
-                investor_id: deal.investor_id.to_string(), // was lender_id
+                investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
