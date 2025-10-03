@@ -54,8 +54,8 @@ make kind-teardown
 │   Host System   │    │  Local Registry     │    │   Kind Cluster  │
 │                 │    │  (localhost:5001)   │    │                 │
 │ localhost:3000  ├────┼─────────────────────┼────┤ App (NodePort)  │
-│ 0.0.0.0:8080  ├────┼─────────────────────┼────┤ Server          │
-│ 0.0.0.0:5432  ├────┼─────────────────────┼────┤ PostgreSQL      │
+│ 0.0.0.0:8080    ├────┼─────────────────────┼────┤ Server          │
+│ 0.0.0.0:5432    ├────┼─────────────────────┼────┤ PostgreSQL      │
 │                 │    │                     │    │                 │
 │ Docker Build:   │    │ Registry Storage:   │    │ Image Sources:  │
 │ • Build image   ├────┤ • arda-credit:      ├────┤ • kind-registry │

@@ -97,11 +97,25 @@ server:
   # Server environment (local, staging, sandbox, production)
   environment: "staging"
   
+  # Anvil RPC URL for browser access (used by faucet frontend)
+  # This should be the externally accessible URL
+  # Local k8s: http://localhost:8545 (NodePort)
+  # Staging k8s: http://<external-ip-or-domain>:8545 (LoadBalancer or Ingress)
+  anvilRpcUrl: ""  # Leave empty to use default: http://<release-name>-anvil:8545
+  
   image:
     registry: ghcr.io/ardaglobal
     repository: arda-credit
     tag: "latest"
     pullPolicy: Always
+  
+  # Contract deployer init container (local/staging only)
+  contractDeployer:
+    image:
+      registry: ghcr.io/ardaglobal
+      repository: arda-credit-contract-deployer
+      tag: "latest"
+      pullPolicy: Always
   
   replicaCount: 1
   

@@ -9,7 +9,6 @@ WORKDIR /app
 # Copy dependency manifests first (for better caching)
 COPY Cargo.toml Cargo.lock ./
 COPY api/Cargo.toml ./api/
-COPY cli/Cargo.toml ./cli/
 COPY db/Cargo.toml ./db/
 COPY lib/Cargo.toml ./lib/
 COPY program/Cargo.toml ./program/
@@ -28,7 +27,10 @@ ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin server && \
     cargo install --version 0.7.4 sqlx-cli --no-default-features --features postgres,rustls
 
-# Runtime stage - includes sqlx for migrations
+# Foundry stage - for copying cast binary
+FROM ghcr.io/foundry-rs/foundry:latest AS foundry
+
+# Runtime stage - includes sqlx for migrations and cast for faucet
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -43,8 +45,13 @@ WORKDIR /app
 COPY --from=builder /app/target/release/server ./server
 COPY --from=builder /usr/local/cargo/bin/sqlx ./sqlx
 COPY --from=builder /app/db/migrations ./migrations
+# Copy cast from Foundry for faucet functionality
+COPY --from=foundry /usr/local/bin/cast /usr/local/bin/cast
 
-RUN chown -R appuser:appuser /app
+# Ensure binaries are executable and set ownership
+RUN chmod +x /usr/local/bin/cast && \
+    chown -R appuser:appuser /app
+
 USER appuser
 
 EXPOSE 8080

@@ -23,8 +23,49 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       serviceAccountName: {{ include "arda-credit.fullname" . }}
+      {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
+      securityContext:
+        fsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      {{- else }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
+      initContainers:
+        - name: contract-deployer
+          image: "{{ .Values.server.contractDeployer.image.registry }}/{{ .Values.server.contractDeployer.image.repository }}:{{ .Values.server.contractDeployer.image.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.server.contractDeployer.image.pullPolicy | default "Always" }}
+          command: ["/bin/bash", "/scripts/deploy-contracts.sh"]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+          env:
+            - name: SERVER_ENVIRONMENT
+              value: "{{ .Values.server.environment }}"
+            - name: ETHEREUM_RPC_URL
+              value: "http://{{ include "arda-credit.fullname" . }}-anvil:8545"
+            - name: ETHEREUM_WALLET_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "arda-credit.fullname" . }}-secrets
+                  key: ethereum-wallet-private-key
+          volumeMounts:
+            - name: deployment-script
+              mountPath: /scripts
+              readOnly: true
+            - name: contract-deployments
+              mountPath: /app/contracts/deployments
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 200m
+              memory: 256Mi
+      {{- end }}
       containers:
         - name: server
           securityContext:
@@ -116,6 +157,12 @@ spec:
             # Server environment configuration
             - name: SERVER_ENVIRONMENT
               value: "{{ .Values.server.environment | default "production" }}"
+            {{- if and (or (eq .Values.server.environment "local") (eq .Values.server.environment "staging")) .Values.server.anvilRpcUrl }}
+            # Anvil RPC URL for faucet (browser-accessible URL)
+            # Only set if explicitly configured in values
+            - name: ANVIL_RPC_URL
+              value: {{ .Values.server.anvilRpcUrl | quote }}
+            {{- end }}
             {{- range $key, $value := .Values.server.env }}
             - name: {{ $key }}
               value: {{ $value | quote }}
@@ -130,17 +177,30 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.server.resources | nindent 12 }}
-          {{- if .Values.server.persistence.enabled }}
           volumeMounts:
+            {{- if .Values.server.persistence.enabled }}
             - name: server-data
               mountPath: {{ .Values.server.persistence.mountPath }}
-          {{- end }}
-      {{- if .Values.server.persistence.enabled }}
+            {{- end }}
+            {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
+            - name: contract-deployments
+              mountPath: /app/contracts/deployments
+              readOnly: true
+            {{- end }}
       volumes:
+        {{- if .Values.server.persistence.enabled }}
         - name: server-data
           persistentVolumeClaim:
             claimName: {{ include "arda-credit.fullname" . }}-server-data
-      {{- end }}
+        {{- end }}
+        {{- if or (eq .Values.server.environment "local") (eq .Values.server.environment "staging") }}
+        - name: deployment-script
+          configMap:
+            name: {{ include "arda-credit.fullname" . }}-contract-deployer
+            defaultMode: 0755
+        - name: contract-deployments
+          emptyDir: {}
+        {{- end }}
       {{- $nodeSelector := coalesce .Values.server.nodeSelector .Values.global.nodeSelector }}
       {{- with $nodeSelector }}
       nodeSelector:
