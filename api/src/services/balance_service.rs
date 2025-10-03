@@ -1,6 +1,4 @@
-use arda_credit_db::{
-    get_user_available_balance, get_user_balance_by_id, DbResult,
-};
+use arda_credit_db::{get_user_available_balance, get_user_balance_by_id, DbResult};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -87,7 +85,7 @@ impl BalanceVerificationService {
 
     // get_available_balance and get_available_balance_by_user_id methods removed
     // Use the consolidated balance endpoints instead:
-    // - balance::get_balance_for_address() 
+    // - balance::get_balance_for_address()
     // - balance::get_balances_for_user_id()
 
     /// Check if user has sufficient balance

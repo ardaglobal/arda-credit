@@ -28,7 +28,7 @@ pub use crate::api::openapi::*;
 use crate::config::types::ApiState;
 // Re-export explicitly to avoid glob conflict
 pub use crate::config::types::UserType;
-pub use crate::handlers::users::users::{UserDetailsResponse, identity_to_user_details};
+pub use crate::handlers::users::users::{identity_to_user_details, UserDetailsResponse};
 use arda_credit_db::{get_kyc_statistics, list_pending_kyc_applications, update_kyc_status};
 
 // ============================================================================

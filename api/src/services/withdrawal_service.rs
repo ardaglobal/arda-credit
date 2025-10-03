@@ -128,7 +128,8 @@ impl WithdrawalTransactionService {
             .unwrap_or_else(|_| "unknown".to_string());
 
         // Get current available balance for logging - using simple verification approach
-        let available_balance = match self.balance_service
+        let available_balance = match self
+            .balance_service
             .verify_balance_for_withdrawal_by_address(&request.user_address, Decimal::ZERO)
             .await
         {

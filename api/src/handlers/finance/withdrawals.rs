@@ -512,11 +512,10 @@ pub fn withdrawal_routes() -> Vec<axum::Router<ApiState>> {
                 paths::WITHDRAWAL_CANCEL,
                 axum::routing::post(cancel_withdrawal_endpoint),
             ),
-        axum::Router::new()
-            .route(
-                paths::USER_WITHDRAWALS,
-                axum::routing::get(get_user_withdrawal_history_endpoint),
-            ),
+        axum::Router::new().route(
+            paths::USER_WITHDRAWALS,
+            axum::routing::get(get_user_withdrawal_history_endpoint),
+        ),
         axum::Router::new().route(
             paths::ADMIN_PENDING_WITHDRAWALS,
             axum::routing::get(get_pending_withdrawals_endpoint),

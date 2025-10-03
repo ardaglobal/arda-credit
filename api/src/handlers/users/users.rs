@@ -20,11 +20,10 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::config::types::{ApiState, UserType};
 use arda_credit_db::{
-    get_deposits_by_user_address, get_identity_by_id, get_invite_code_info,
-    register_or_reregister_user, submit_kyc_data, update_identity_profile, 
-    update_kyc_status, use_invite_code, Identity, RegisterResult, 
-    get_investor_profile_by_user_id, create_investor_profile, 
-    CreateInvestorProfileRequest, InvestorProfile,
+    create_investor_profile, get_deposits_by_user_address, get_identity_by_id,
+    get_investor_profile_by_user_id, get_invite_code_info, register_or_reregister_user,
+    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code,
+    CreateInvestorProfileRequest, Identity, InvestorProfile, RegisterResult,
 };
 
 // ============================================================================
@@ -336,8 +335,18 @@ pub async fn register_user_endpoint(
 
             // Create profile based on user type
             let user_type_parsed = identity.user_type.parse().unwrap_or(UserType::Investor);
-            if let Err(e) = ensure_user_profiles_exist(&state.pool, identity.id, &user_type_parsed, request.jurisdiction.as_deref()).await {
-                error!("❌ Failed to create profile for newly registered user {}: {}", identity.id, e);
+            if let Err(e) = ensure_user_profiles_exist(
+                &state.pool,
+                identity.id,
+                &user_type_parsed,
+                request.jurisdiction.as_deref(),
+            )
+            .await
+            {
+                error!(
+                    "❌ Failed to create profile for newly registered user {}: {}",
+                    identity.id, e
+                );
                 // Log error but don't fail registration - profile can be created later
             }
 
@@ -378,8 +387,18 @@ pub async fn register_user_endpoint(
 
             // Create profile based on user type for re-registered user
             let user_type_parsed = identity.user_type.parse().unwrap_or(UserType::Investor);
-            if let Err(e) = ensure_user_profiles_exist(&state.pool, identity.id, &user_type_parsed, request.jurisdiction.as_deref()).await {
-                error!("❌ Failed to create profile for re-registered user {}: {}", identity.id, e);
+            if let Err(e) = ensure_user_profiles_exist(
+                &state.pool,
+                identity.id,
+                &user_type_parsed,
+                request.jurisdiction.as_deref(),
+            )
+            .await
+            {
+                error!(
+                    "❌ Failed to create profile for re-registered user {}: {}",
+                    identity.id, e
+                );
                 // Log error but don't fail registration - profile can be created later
             }
 
@@ -429,13 +448,19 @@ pub async fn get_user_details_endpoint(
     State(state): State<ApiState>,
     Path(user_id): Path<String>,
 ) -> Result<Json<UserDetailsResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting user details with profiles: user_id={}", user_id);
+    info!(
+        "🔍 API: Getting user details with profiles: user_id={}",
+        user_id
+    );
 
     let uuid = parse_user_id(&user_id)?;
 
     match get_user_details_with_profiles(&state.pool, uuid).await {
         Ok(user_details) => {
-            info!("✅ API: User details with profiles retrieved for ID: {}", uuid);
+            info!(
+                "✅ API: User details with profiles retrieved for ID: {}",
+                uuid
+            );
             Ok(Json(user_details))
         }
         Err(sqlx::Error::RowNotFound) => {
@@ -493,10 +518,10 @@ pub async fn list_identities_endpoint(
     match identities_result {
         Ok(rows) => {
             let mut identities = Vec::new();
-            
+
             for row in rows {
                 let user_type_parsed = row.user_type.parse().unwrap_or(UserType::Investor);
-                
+
                 // Fetch profile information based on user type
                 let (investor_profile, originator_profile) = match user_type_parsed {
                     UserType::Investor => {
@@ -517,16 +542,22 @@ pub async fn list_identities_endpoint(
                                 (None, None)
                             }
                             Err(e) => {
-                                warn!("⚠️ Failed to fetch investor profile for user {}: {}", row.id, e);
+                                warn!(
+                                    "⚠️ Failed to fetch investor profile for user {}: {}",
+                                    row.id, e
+                                );
                                 (None, None)
                             }
                         }
-                    },
+                    }
                     UserType::Originator => {
                         // TODO: Implement originator profile fetching when originator profiles table is created
-                        info!("🏗️ TODO: Originator profile should be included for user: {}", row.id);
+                        info!(
+                            "🏗️ TODO: Originator profile should be included for user: {}",
+                            row.id
+                        );
                         (None, None) // Will be: (None, Some(originator_data)) when implemented
-                    },
+                    }
                     UserType::Admin => {
                         // Admin users don't have extended profiles
                         (None, None)
@@ -649,8 +680,18 @@ pub async fn update_user_endpoint(
 
             // If user type was updated, ensure appropriate profile exists
             if let Some(ref new_user_type) = request.user_type {
-                if let Err(e) = ensure_user_profiles_exist(&state.pool, identity.id, new_user_type, request.jurisdiction.as_deref()).await {
-                    error!("❌ Failed to create profile for updated user {}: {}", identity.id, e);
+                if let Err(e) = ensure_user_profiles_exist(
+                    &state.pool,
+                    identity.id,
+                    new_user_type,
+                    request.jurisdiction.as_deref(),
+                )
+                .await
+                {
+                    error!(
+                        "❌ Failed to create profile for updated user {}: {}",
+                        identity.id, e
+                    );
                     // Log error but don't fail the update - profile can be created later
                 }
             }
@@ -889,7 +930,7 @@ async fn get_user_details_with_profiles(
         .ok_or(sqlx::Error::RowNotFound)?;
 
     let user_type_parsed = identity.user_type.parse().unwrap_or(UserType::Investor);
-    
+
     // Fetch profile information based on user type
     let (investor_profile, originator_profile) = match user_type_parsed {
         UserType::Investor => {
@@ -897,12 +938,12 @@ async fn get_user_details_with_profiles(
             let profile = get_investor_profile_by_user_id(pool, user_id).await?;
             let investor_data = profile.map(investor_profile_to_data);
             (investor_data, None)
-        },
+        }
         UserType::Originator => {
             // TODO: Implement originator profile fetching when originator profiles table is created
             info!("🏗️ Originator profile requested but originator profiles not yet implemented for user: {}", user_id);
             (None, None) // Will be: (None, Some(originator_data)) when implemented
-        },
+        }
         UserType::Admin => {
             // Admin users don't have extended profiles
             (None, None)
@@ -942,31 +983,43 @@ async fn ensure_user_profiles_exist(
                 info!("🏗️ Creating investor profile for user: {}", user_id);
                 let profile_request = CreateInvestorProfileRequest {
                     accredited_investor: Some(false), // Default to false, can be updated later
-                    investment_capacity: None, // Can be set later through profile updates
+                    investment_capacity: None,        // Can be set later through profile updates
                     regulatory_jurisdiction: Some(jurisdiction.unwrap_or("US").to_string()),
                 };
-                
+
                 match create_investor_profile(pool, user_id, &profile_request).await {
                     Ok(profile) => {
-                        info!("✅ Created investor profile for user: {} with profile ID: {}", user_id, profile.id);
+                        info!(
+                            "✅ Created investor profile for user: {} with profile ID: {}",
+                            user_id, profile.id
+                        );
                     }
                     Err(e) => {
-                        error!("❌ Failed to create investor profile for user {}: {}", user_id, e);
+                        error!(
+                            "❌ Failed to create investor profile for user {}: {}",
+                            user_id, e
+                        );
                         return Err(e);
                     }
                 }
             }
-        },
+        }
         UserType::Originator => {
             // TODO: Implement originator profile creation when originator profiles table is created
-            info!("🏗️ TODO: Originator profile creation needed but not yet implemented for user: {}", user_id);
-        },
+            info!(
+                "🏗️ TODO: Originator profile creation needed but not yet implemented for user: {}",
+                user_id
+            );
+        }
         UserType::Admin => {
             // Admin users don't need extended profiles
-            info!("👑 Admin user registered, no extended profile needed: {}", user_id);
+            info!(
+                "👑 Admin user registered, no extended profile needed: {}",
+                user_id
+            );
         }
     }
-    
+
     Ok(())
 }
 
@@ -1100,8 +1153,18 @@ pub async fn update_kyc_status_endpoint(
             // If KYC was approved, ensure user profiles exist
             if request.status.to_lowercase() == "approved" {
                 let user_type_parsed = identity.user_type.parse().unwrap_or(UserType::Investor);
-                if let Err(e) = ensure_user_profiles_exist(&state.pool, identity.id, &user_type_parsed, identity.jurisdiction.as_deref()).await {
-                    error!("❌ Failed to create profile for KYC-approved user {}: {}", identity.id, e);
+                if let Err(e) = ensure_user_profiles_exist(
+                    &state.pool,
+                    identity.id,
+                    &user_type_parsed,
+                    identity.jurisdiction.as_deref(),
+                )
+                .await
+                {
+                    error!(
+                        "❌ Failed to create profile for KYC-approved user {}: {}",
+                        identity.id, e
+                    );
                     // Log error but don't fail the KYC update - profile can be created later
                 }
             }

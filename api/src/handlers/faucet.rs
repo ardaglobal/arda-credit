@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use tracing::{error, info, warn};
 use utoipa::ToSchema;
 
+use crate::services::deployment_config::{get_deployment, DeploymentError};
+
 /// Faucet information response
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FaucetInfoResponse {
@@ -160,12 +162,18 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
         }));
     }
 
-    // Try to load deployment file for local/staging
-    let deployment_file = format!("contracts/deployments/{}-deployment.json", environment);
-    let deployment_data = match std::fs::read_to_string(&deployment_file) {
-        Ok(data) => data,
+    // Use centralized deployment service for local/staging
+    let deployment = match get_deployment() {
+        Ok(deployment) => deployment,
         Err(e) => {
-            warn!("Failed to read deployment file {}: {}", deployment_file, e);
+            match e {
+                DeploymentError::FileRead { ref file, .. } => {
+                    warn!("Failed to read deployment file {}: {}", file, e);
+                }
+                _ => {
+                    warn!("Deployment service error: {}", e);
+                }
+            }
             return Ok(Json(FaucetInfoResponse {
                 available: false,
                 environment,
@@ -187,24 +195,12 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
         }
     };
 
-    // Parse deployment JSON
-    let deployment: serde_json::Value = match serde_json::from_str(&deployment_data) {
-        Ok(json) => json,
-        Err(e) => {
-            warn!("Failed to parse deployment JSON: {}", e);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    let faucet_address = deployment["faucet"].as_str().map(String::from);
-    let usdc_address = deployment["usdc"].as_str().map(String::from);
-    let chain_id = deployment["chainId"]
-        .as_u64()
-        .map(|id| id.to_string())
-        .unwrap_or_else(|| "31337".to_string());
+    let faucet_address = Some(deployment.config.faucet.clone());
+    let usdc_address = Some(deployment.config.usdc.clone());
+    let chain_id = deployment.config.chain_id.to_string();
 
     info!(
-        "✅ Faucet info loaded: address={:?}, chain_id={}",
+        "✅ Faucet info loaded from deployment service: address={:?}, chain_id={}",
         faucet_address, chain_id
     );
 
@@ -253,7 +249,7 @@ pub async fn get_faucet_info() -> Result<Json<FaucetInfoResponse>, StatusCode> {
             name: "USD Coin".to_string(),
             decimals: 6,
             metamask_import_url: format!(
-                "https://metamask.app/add-token/?address={}&symbol=USDC&decimals=6&name=USD%20Coin", 
+                "https://metamask.app/add-token/?address={}&symbol=USDC&decimals=6&name=USD%20Coin",
                 usdc_addr
             ),
         })
@@ -323,26 +319,22 @@ pub async fn check_faucet_status(
         }));
     }
 
-    // Try to load deployment file
-    let deployment_file = format!("contracts/deployments/{}-deployment.json", environment);
-    let deployment_data = match std::fs::read_to_string(&deployment_file) {
-        Ok(data) => data,
+    // Use centralized deployment service
+    let _deployment = match get_deployment() {
+        Ok(deployment) => deployment,
         Err(e) => {
-            warn!("Failed to read deployment file: {}", e);
+            warn!("Deployment service error: {}", e);
             return Ok(Json(FaucetStatusResponse {
                 can_request_now: false,
                 time_until_next_request: 0,
                 user_balance: None,
                 faucet_balance: None,
                 error: Some(
-                    "Deployment file not found. Run 'make deploy-contracts' first.".to_string(),
+                    "Deployment not available. Run 'make deploy-contracts' first.".to_string(),
                 ),
             }));
         }
     };
-
-    let _deployment: serde_json::Value =
-        serde_json::from_str(&deployment_data).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // For now, return basic info
     // TODO: Integrate with ethereum-client to query actual on-chain status

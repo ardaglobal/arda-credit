@@ -15,6 +15,7 @@ use tracing::{error, info, instrument};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::api::router::ApiState;
+use crate::services::deployment_config::{get_deployment, DeploymentError};
 
 // ============================================================================
 // CONTRACT CONFIGURATION TYPES
@@ -114,31 +115,103 @@ pub async fn get_contract_config(
         params.network
     );
 
-    // Get configuration from environment variables
-    let contract_address = std::env::var("ETHEREUM_CONTRACT_ADDRESS").map_err(|_| {
-        error!("ETHEREUM_CONTRACT_ADDRESS not configured");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    // Get server environment to determine configuration source
+    let environment = std::env::var("SERVER_ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
 
-    let rpc_url = std::env::var("ETHEREUM_RPC_URL").map_err(|_| {
-        error!("ETHEREUM_RPC_URL not configured");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let (contract_address, rpc_url, chain_id, deployment_block) = match environment.as_str() {
+        // Local and staging environments: Use centralized deployment service
+        "local" | "staging" => {
+            info!(
+                "📁 Reading contract configuration from deployment service for environment: {}",
+                environment
+            );
 
-    // Determine chain ID and block explorer from RPC URL
-    let (chain_id, block_explorer_url, deployment_block) = if rpc_url.contains("mainnet") {
-        (1u64, "https://etherscan.io".to_string(), 18000000u64) // Mainnet
-    } else if rpc_url.contains("sepolia") {
-        (
-            11155111u64,
-            "https://sepolia.etherscan.io".to_string(),
-            4000000u64,
-        ) // Sepolia
-    } else if rpc_url.contains("goerli") {
-        (5u64, "https://goerli.etherscan.io".to_string(), 7500000u64) // Goerli
-    } else {
-        // Default to local development network
-        (31337u64, "http://localhost:8545".to_string(), 0u64) // Anvil/Hardhat
+            let deployment = get_deployment().map_err(|e| {
+                match e {
+                    DeploymentError::FileRead { ref file, .. } => {
+                        error!("Failed to read deployment file {}: {}", file, e);
+                        error!("💡 Run 'make deploy-contracts' to deploy contracts to Anvil");
+                    }
+                    _ => {
+                        error!("Deployment service error: {}", e);
+                    }
+                }
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            let contract_address = deployment.config.arda.clone();
+            let rpc_url = deployment.network.rpc_url.clone();
+            let chain_id = deployment.network.chain_id;
+            let deployment_block = deployment.network.deployment_block;
+
+            info!(
+                "✅ Contract config loaded from deployment service: address={}, chain_id={}",
+                contract_address, chain_id
+            );
+
+            (contract_address, rpc_url, chain_id, deployment_block)
+        }
+
+        // Sandbox and production environments: Use environment variables (real testnets/mainnet)
+        "sandbox" | "production" => {
+            info!(
+                "🔧 Reading contract configuration from environment variables for environment: {}",
+                environment
+            );
+
+            let contract_address = std::env::var("ETHEREUM_CONTRACT_ADDRESS").map_err(|_| {
+                error!(
+                    "ETHEREUM_CONTRACT_ADDRESS not configured for {} environment",
+                    environment
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            let rpc_url = std::env::var("ETHEREUM_RPC_URL").map_err(|_| {
+                error!(
+                    "ETHEREUM_RPC_URL not configured for {} environment",
+                    environment
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+            // Determine chain ID and deployment block from RPC URL
+            let (chain_id, deployment_block) = if rpc_url.contains("mainnet") {
+                (1u64, 18000000u64) // Mainnet
+            } else if rpc_url.contains("sepolia") {
+                (11155111u64, 4000000u64) // Sepolia
+            } else if rpc_url.contains("goerli") {
+                (5u64, 7500000u64) // Goerli
+            } else {
+                error!("Unsupported RPC URL format: {}", rpc_url);
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            };
+
+            info!(
+                "✅ Contract config loaded from environment: address={}, chain_id={}",
+                contract_address, chain_id
+            );
+
+            (contract_address, rpc_url, chain_id, deployment_block)
+        }
+
+        // Unknown environment
+        _ => {
+            error!("Unknown SERVER_ENVIRONMENT: {}", environment);
+            error!("💡 Valid environments: local, staging, sandbox, production");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
+    };
+
+    // Determine block explorer URL based on chain ID
+    let block_explorer_url = match chain_id {
+        1 => "https://etherscan.io".to_string(), // Mainnet
+        11155111 => "https://sepolia.etherscan.io".to_string(), // Sepolia
+        31337 => "http://localhost:8545".to_string(), // Anvil/local
+        _ => {
+            error!("Unsupported chain ID: {}", chain_id);
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        }
     };
 
     let config = ContractConfigResponse {

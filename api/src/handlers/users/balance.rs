@@ -20,7 +20,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::config::types::{ApiState, ErrorResponse};
-use arda_credit_db::{get_identity_by_id};
+use arda_credit_db::get_identity_by_id;
 
 // ============================================================================
 // RESPONSE STRUCTURES
@@ -175,7 +175,10 @@ pub async fn get_balance_by_address_endpoint(
 
     match get_balance_for_address(&state.pool, &address).await {
         Ok(Some(balance)) => {
-            info!("✅ API: Balance retrieved successfully for address: {}", address);
+            info!(
+                "✅ API: Balance retrieved successfully for address: {}",
+                address
+            );
             Ok(Json(AddressBalanceResponse {
                 balance,
                 currency: "USDC".to_string(),
@@ -193,7 +196,10 @@ pub async fn get_balance_by_address_endpoint(
             ))
         }
         Err(e) => {
-            error!("❌ API: Failed to get balance for address {}: {:?}", address, e);
+            error!(
+                "❌ API: Failed to get balance for address {}: {:?}",
+                address, e
+            );
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse::new(
@@ -249,18 +255,17 @@ pub async fn get_balance_by_user_id_endpoint(
             match get_balances_for_user_id(&state.pool, user_uuid).await {
                 Ok(balances) => {
                     // Calculate totals
-                    let total_available_balance: Decimal = balances
-                        .iter()
-                        .map(|b| b.available_balance)
-                        .sum();
-                    let total_available_balance_usdc: Decimal = balances
-                        .iter()
-                        .map(|b| b.available_balance_usdc)
-                        .sum();
+                    let total_available_balance: Decimal =
+                        balances.iter().map(|b| b.available_balance).sum();
+                    let total_available_balance_usdc: Decimal =
+                        balances.iter().map(|b| b.available_balance_usdc).sum();
 
-                    info!("✅ API: Balances retrieved successfully for user: {} ({} addresses)", 
-                          user_id, balances.len());
-                    
+                    info!(
+                        "✅ API: Balances retrieved successfully for user: {} ({} addresses)",
+                        user_id,
+                        balances.len()
+                    );
+
                     Ok(Json(UserBalanceResponse {
                         user_id,
                         balances,
@@ -270,7 +275,10 @@ pub async fn get_balance_by_user_id_endpoint(
                     }))
                 }
                 Err(e) => {
-                    error!("❌ API: Failed to get balances for user {}: {:?}", user_id, e);
+                    error!(
+                        "❌ API: Failed to get balances for user {}: {:?}",
+                        user_id, e
+                    );
                     Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(ErrorResponse::new(
@@ -289,7 +297,10 @@ pub async fn get_balance_by_user_id_endpoint(
             ))
         }
         Err(e) => {
-            error!("❌ API: Failed to check user existence: {}: {:?}", user_id, e);
+            error!(
+                "❌ API: Failed to check user existence: {}: {:?}",
+                user_id, e
+            );
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse::new(

@@ -18,6 +18,7 @@ pub mod auth;
 pub mod balance_service;
 pub mod batch_processor;
 pub mod company_service;
+pub mod deployment_config;
 pub mod document_service;
 pub mod email_service;
 pub mod kyc_service;
@@ -31,9 +32,7 @@ pub mod withdrawal_service;
 
 // Re-export commonly used types (being specific to avoid conflicts)
 pub use auth::{AuthError, AuthService, Claims};
-pub use balance_service::{
-    BalanceVerificationResult, BalanceVerificationService,
-};
+pub use balance_service::{BalanceVerificationResult, BalanceVerificationService};
 pub use batch_processor::BatchProcessorHandle;
 pub use company_service::{
     BeneficialOwnerInfo, CompanyRegistrationRequest, CompanyResponseDto, CompanyService,
@@ -49,6 +48,12 @@ pub use unified_batch_service::{BatchCreationResult, UnifiedBatchService};
 pub use withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,
     WithdrawalStatusResponse, WithdrawalTransactionService,
+};
+
+pub use deployment_config::{
+    get_contract_address, get_deployment, is_deployment_available, refresh_deployment,
+    ContractType, DeploymentConfig, DeploymentError, DeploymentInfo, DeploymentService,
+    NetworkConfig,
 };
 
 pub use ai_analysis_service::{

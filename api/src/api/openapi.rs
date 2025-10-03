@@ -116,11 +116,13 @@ pub use crate::config::magic_link_types::{
     VerifyMagicLinkResponse,
 };
 pub use crate::config::types::UserType;
+pub use crate::handlers::users::balance::{
+    AddressBalance, AddressBalanceResponse, UserBalanceResponse,
+};
 pub use crate::services::ai_analysis_service::{
     AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
     DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
 };
-pub use crate::handlers::users::balance::{AddressBalance, AddressBalanceResponse, UserBalanceResponse};
 // AvailableBalance removed - now using consolidated AddressBalance from balance handlers
 pub use crate::services::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
@@ -412,7 +414,7 @@ fn default_limit() -> u32 {
         SubmitKycResponse,
         UpdateKycStatusRequest,
         UserTransactionsResponse,
-        
+
         // Consolidated Balance types
         AddressBalance,
         AddressBalanceResponse,
