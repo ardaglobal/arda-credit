@@ -52,7 +52,6 @@
 //! - Borrower → Originator
 //! - Lender → Investor
 //! - All function names updated accordingly
-//! - Removed liquidity pool, merchant, and credit line functionality
 
 // Core modules organized by domain
 pub mod ads;

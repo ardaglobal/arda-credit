@@ -52,14 +52,19 @@ impl TestUser {
         }
     }
 
-    /// Create a new merchant test user
+    /// Create a new originator test user (replaced merchant concept)
     pub fn new_merchant() -> Self {
+        Self::new_originator()
+    }
+
+    /// Create a new originator test user
+    pub fn new_originator() -> Self {
         Self {
             id: Uuid::new_v4(),
-            email: format!("merchant_{}@test.com", Uuid::new_v4().simple()),
-            user_type: "merchant".to_string(),
+            email: format!("originator_{}@test.com", Uuid::new_v4().simple()),
+            user_type: "originator".to_string(),
             first_name: Some("Test".to_string()),
-            last_name: Some("Merchant".to_string()),
+            last_name: Some("Originator".to_string()),
             wallet_address: Some(format!("0x{}", hex::encode(rand::random::<[u8; 20]>()))),
         }
     }
@@ -408,43 +413,24 @@ impl TestDataFactory {
 
         Ok(())
     }
-    /// Create a test merchant profile
+    /// Create a test merchant profile (DEPRECATED - merchants removed, returns user_id)
+    /// This is a compatibility shim that just returns the user_id since merchants are removed
     pub async fn create_merchant_profile(
         &self,
         user_id: Uuid,
-        industry: &str,
-        monthly_revenue: f64,
+        _industry: &str,
+        _monthly_revenue: f64,
     ) -> Result<Uuid, sqlx::Error> {
-        let merchant_id = Uuid::new_v4();
+        // Merchant tables have been removed, so just return the user_id
+        // Tests using this function will treat user_id as the originator_id
+        Ok(user_id)
+    }
 
-        // First create merchant
-        sqlx::query(
-            r#"
-            INSERT INTO merchant (id, user_id, mcc, created_at, updated_at)
-            VALUES ($1, $2, '1234', NOW(), NOW())
-            "#,
-        )
-        .bind(merchant_id)
-        .bind(user_id)
-        .execute(&self.db.pool)
-        .await?;
-
-        // Then create merchant profile
-        sqlx::query(
-            r#"
-            INSERT INTO merchant_profiles (
-                merchant_id, industry, monthly_revenue_estimate, employee_count,
-                years_in_business, profile_completed, created_at, updated_at
-            ) VALUES ($1, $2, $3, 10, 5, true, NOW(), NOW())
-            "#,
-        )
-        .bind(merchant_id)
-        .bind(industry)
-        .bind(monthly_revenue)
-        .execute(&self.db.pool)
-        .await?;
-
-        Ok(merchant_id)
+    /// Create a test originator profile (replacement for merchant profile)
+    pub async fn create_originator_profile(&self, user_id: Uuid) -> Result<Uuid, sqlx::Error> {
+        // Originators are just users with user_type='originator'
+        // No separate profile table needed
+        Ok(user_id)
     }
 }
 

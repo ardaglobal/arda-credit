@@ -59,15 +59,11 @@ async fn test_create_deal_success() {
     let test_db = TestDatabase::new().await;
     let api_state = create_test_api_state(&test_db.pool).await;
 
-    // Create test originator (merchant)
-    let test_originator = TestUser::new_merchant();
+    // Create test originator
+    let test_originator = TestUser::new_originator();
     let factory = TestDataFactory::new().await;
     factory.create_user(&test_originator).await.unwrap();
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     // Create test liquidity pool
     let test_investor = TestUser::new_investor();
@@ -123,17 +119,13 @@ async fn test_get_deal_details_success() {
     let api_state = create_test_api_state(&test_db.pool).await;
 
     // Create test data
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     let factory = TestDataFactory::new().await;
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     // Create a test deal first
     let deal_id = factory.create_deal(
@@ -205,16 +197,12 @@ async fn test_list_deals_success() {
 
     // Create test data with multiple deals
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     // Create multiple deals
     for i in 0..3 {
@@ -306,16 +294,12 @@ async fn test_update_deal_success() {
 
     // Create test data
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     // Create a test deal first
     let deal_id = factory.create_deal(
@@ -397,16 +381,12 @@ async fn test_delete_deal_success() {
 
     // Create test data
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     // Create a test deal first
     let deal_id = factory.create_deal(
@@ -457,16 +437,12 @@ async fn test_record_deal_payment_success() {
 
     // Create test data
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     // Create a test deal first
     let deal_id = factory.create_deal(
@@ -551,16 +527,12 @@ async fn test_get_deal_payment_history_success() {
 
     // Create test data
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     // Create a test deal first
     let deal_id = factory.create_deal(
@@ -762,16 +734,12 @@ async fn test_browse_deals_for_sale_success() {
 
     // Create test data
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     // Create and list a deal for sale
     let deal_id = factory.create_deal(
@@ -830,16 +798,12 @@ async fn test_list_deal_for_sale_success() {
 
     // Create test data
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     let deal_id = factory.create_deal(
         originator_id,
@@ -890,16 +854,12 @@ async fn test_remove_deal_from_sale_success() {
 
     // Create test data and list deal for sale
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     let deal_id = factory.create_deal(
         originator_id,
@@ -997,18 +957,14 @@ async fn test_transfer_deal_ownership_success() {
 
     // Create test data
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_current_investor = TestUser::new_investor();
     let test_new_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_current_investor).await.unwrap();
     factory.create_user(&test_new_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     let deal_id = factory.create_deal(
         originator_id,
@@ -1059,18 +1015,14 @@ async fn test_get_deal_transfer_history_success() {
 
     // Create test data and transfer
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_current_investor = TestUser::new_investor();
     let test_new_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_current_investor).await.unwrap();
     factory.create_user(&test_new_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     let deal_id = factory.create_deal(
         originator_id,
@@ -1127,16 +1079,12 @@ async fn test_validate_deal_transfer_success() {
 
     // Create test data
     let factory = TestDataFactory::new().await;
-    let test_originator = TestUser::new_merchant();
+    let test_originator = TestUser::new_originator();
     let test_investor = TestUser::new_investor();
     factory.create_user(&test_originator).await.unwrap();
     factory.create_user(&test_investor).await.unwrap();
 
-    let originator_id = factory.create_merchant_profile(
-        test_originator.id,
-        "Retail",
-        50000.0
-    ).await.unwrap();
+    let originator_id = test_originator.id;
 
     let deal_id = factory.create_deal(
         originator_id,

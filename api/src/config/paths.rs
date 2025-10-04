@@ -90,9 +90,6 @@ pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
 /// Investor registration
 pub const REGISTER_INVESTOR: &str = api_path!("/auth/register/investor");
 
-/// Merchant registration
-pub const REGISTER_MERCHANT: &str = api_path!("/auth/register/merchant");
-
 /// Investor profile operations
 pub const INVESTOR_PROFILE: &str = api_path!("/investor/profile");
 
@@ -118,21 +115,6 @@ pub const AUTH_LOGOUT: &str = api_path!("/auth/logout");
 pub const AUTH_MAGIC_LINK: &str = api_path!("/auth/magic-link");
 pub const AUTH_VERIFY: &str = api_path!("/auth/verify");
 pub const AUTH_ME: &str = api_path!("/auth/me");
-
-/// Merchant profile operations
-pub const MERCHANT_PROFILE: &str = api_path!("/merchant/profile");
-
-/// Merchant turnover operations
-pub const MERCHANT_TURNOVER: &str = api_path!("/merchant/turnover");
-
-/// Merchant turnover by date
-pub const MERCHANT_TURNOVER_BY_DATE: &str = api_path!("/merchant/turnover/{date}");
-
-/// Merchant turnover analytics
-pub const MERCHANT_TURNOVER_ANALYTICS: &str = api_path!("/merchant/turnover/analytics");
-
-/// Merchant profile completion
-pub const MERCHANT_PROFILE_COMPLETION: &str = api_path!("/merchant/profile/completion");
 
 // ============================================================================
 // FAUCET MANAGEMENT PATHS (local/staging only)
@@ -387,10 +369,6 @@ pub const USER_FINANCIAL_SUMMARY: &str = api_path!("/user/{user_id}/financial/su
 
 /// User pool financial transactions
 pub const USER_POOL_FINANCIAL: &str = api_path!("/user/{user_id}/financial/pools");
-
-/// Merchant credit line financial transactions
-pub const MERCHANT_CREDIT_LINE_FINANCIAL: &str =
-    api_path!("/merchant/{merchant_id}/financial/credit-lines");
 
 // ============================================================================
 // STATE MANAGEMENT PATHS (transactions, batches, proofs)
@@ -821,11 +799,6 @@ pub fn user_pool_financial_path(user_id: &str) -> String {
     replace_param(USER_POOL_FINANCIAL, "user_id", user_id)
 }
 
-/// Build merchant credit line financial path with merchant_id parameter
-pub fn merchant_credit_line_financial_path(merchant_id: &str) -> String {
-    replace_param(MERCHANT_CREDIT_LINE_FINANCIAL, "merchant_id", merchant_id)
-}
-
 // ============================================================================
 // TRANSACTION HISTORY PATH HELPERS
 // ============================================================================
@@ -1168,11 +1141,6 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
             method: "GET".to_string(),
             path: CREDIT_LINE_FINANCIAL_TRANSACTIONS.to_string(),
             description: "Get credit line financial transactions".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: MERCHANT_CREDIT_LINE_FINANCIAL.to_string(),
-            description: "Get merchant's credit line financial transactions".to_string(),
         },
         crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),

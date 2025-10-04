@@ -139,9 +139,9 @@ cargo run -p db --bin populate_fake_data
 ```
 
 This creates:
-- **200 users**: 67 investors, 66 merchants across 9 boroughs, 67 lenders
+- **200 users**: 67 investors, 66 originators across 9 boroughs, 67 additional investors
 - **20 liquidity pools**: $1M-$10M each with borough percentage limits
-- **40 credit requests**: Revenue-based amounts from merchants in different boroughs
+- **40 credit requests**: Revenue-based amounts from originators in different boroughs
 - **Geographic distribution**: Manhattan, Brooklyn, Queens, Bronx, Staten Island, Long Island, Westchester, New Jersey, Connecticut
 - **Borough limits**: Realistic percentage thresholds for risk diversification testing
 

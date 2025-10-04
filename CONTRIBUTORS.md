@@ -91,12 +91,14 @@ arda-credit/
 
 **API Route Organization**:
 ```
-├── loans/                         # Credit and loan operations
-│   ├── mod.rs                     # Main module with command routing
-│   ├── investors.rs               # Investor registration and profiles
-│   ├── merchants.rs               # Merchant registration and turnover
-│   ├── credit.rs                  # Credit line eligibility and requests
-│   └── operations.rs              # Loan origination, payments, closeouts
+├── deals/                         # Deal operations
+│   ├── mod.rs                     # Main module with routing
+│   ├── deals.rs                   # Deal CRUD operations
+│   └── operations.rs              # Deal origination, payments, closeouts
+├── users/                         # User management
+│   ├── mod.rs                     # Main module
+│   ├── users.rs                   # User registration and profiles
+│   └── admin.rs                   # Admin operations
 ```
 
 **Feature-Gated Modules** (optional functionality):
@@ -120,32 +122,24 @@ arda-credit/
 When a module exceeds 1000 lines, follow this pattern:
 
 ```rust
-// loans/mod.rs - Main module with command routing
-pub mod investors;
-pub mod merchants;
-pub mod credit;
+// deals/mod.rs - Main module with routing
+pub mod deals;
 pub mod operations;
 
-pub use investors::*;
-pub use merchants::*;
-pub use credit::*;
+pub use deals::*;
 pub use operations::*;
 
-#[derive(Subcommand)]
-pub enum LoanCommands {
-    // All loan-related commands
-}
-
-pub async fn handle_loan_command(/* ... */) -> Result<()> {
-    // Route to appropriate sub-module
+// Deal handler functions
+pub async fn handle_deal_operation(/* ... */) -> Result<()> {
+    // Route to appropriate handler
 }
 ```
 
 **Sub-module organization by responsibility**:
-- `investors.rs` (343 lines) - Investor registration and profiles
-- `merchants.rs` (287 lines) - Merchant registration and turnover data
-- `credit.rs` (283 lines) - Credit line eligibility and requests
-- `operations.rs` (286 lines) - Loan origination, payments, closeouts
+- `deals.rs` - Deal CRUD operations, marketplace, and transfers
+- `operations.rs` - Deal origination, payments, closeouts
+- `users.rs` - User registration and profile management
+- `admin.rs` - Admin operations and KYC management
 
 ### Coding Standards
 

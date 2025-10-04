@@ -86,7 +86,7 @@ async fn test_update_user_profile() {
     let api_state = create_test_api_state(&test_db.pool).await;
 
     // Create test user
-    let test_user = TestUser::new_merchant();
+    let test_user = TestUser::new_originator();
     let factory = TestDataFactory::new().await;
     factory.create_user(&test_user).await.unwrap();
 
@@ -208,7 +208,7 @@ async fn test_get_user_transactions() {
     let api_state = create_test_api_state(&test_db.pool).await;
 
     // Create test user
-    let test_user = TestUser::new_merchant();
+    let test_user = TestUser::new_originator();
     let factory = TestDataFactory::new().await;
     factory.create_user(&test_user).await.unwrap();
 

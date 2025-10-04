@@ -20,7 +20,7 @@ use crate::api::openapi::ApiDoc;
 use crate::config::types::{ApiConfig, ApiState};
 use crate::middleware::middleware::{EmailRateLimiter, RateLimiter};
 use crate::services::batch_processor::{create_batch_processor_config, start_batch_processor};
-use crate::services::deployment_config::{get_deployment, is_deployment_available};
+use crate::services::deployment_config::get_deployment;
 use crate::services::email_service::EmailService;
 use crate::services::magic_link_service::{MagicLinkConfig, MagicLinkService};
 use crate::services::session_service::SessionService;
