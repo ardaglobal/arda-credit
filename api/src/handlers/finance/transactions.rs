@@ -85,25 +85,6 @@ pub struct CreatePoolFundingRequest {
     pub description: Option<String>,
 }
 
-/// Create credit line financial transaction request
-#[derive(Debug, Deserialize, Serialize, ToSchema)]
-pub struct CreateCreditLineFinancialTransactionRequest {
-    /// Credit line ID
-    pub credit_line_id: String,
-    /// Merchant ID
-    pub merchant_id: String,
-    /// Transaction type (DRAW, PAYMENT, INTEREST, FEE, PENALTY)
-    pub transaction_type: String,
-    /// Amount in USDC (human readable, e.g., "100.50")
-    pub amount_usdc: String,
-    /// State transaction ID (optional, if linked to state transaction)
-    pub state_transaction_id: Option<String>,
-    /// Blockchain transaction hash (optional)
-    pub transaction_hash: Option<String>,
-    /// Description of the transaction
-    pub description: Option<String>,
-}
-
 /// Account financial transaction response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AccountFinancialTransactionResponse {
@@ -133,20 +114,24 @@ pub struct PoolFinancialTransactionResponse {
     pub processed_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// Credit line financial transaction response
-#[derive(Debug, Serialize, ToSchema)]
-pub struct CreditLineFinancialTransactionResponse {
-    pub id: String,
-    pub credit_line_id: String,
-    pub merchant_id: String,
-    pub transaction_type: String,
-    pub amount_usdc: String,
-    pub currency: String,
-    pub state_transaction_id: Option<String>,
-    pub transaction_hash: Option<String>,
-    pub description: Option<String>,
-    pub processed_at: chrono::DateTime<chrono::Utc>,
-}
+// DEPRECATED: Credit line financial transactions are no longer supported
+// as the merchant concept has been removed from the system.
+// This struct is kept for backward compatibility but should not be used.
+//
+// /// Credit line financial transaction response
+// #[derive(Debug, Serialize, ToSchema)]
+// pub struct CreditLineFinancialTransactionResponse {
+//     pub id: String,
+//     pub credit_line_id: String,
+//     pub merchant_id: String,
+//     pub transaction_type: String,
+//     pub amount_usdc: String,
+//     pub currency: String,
+//     pub state_transaction_id: Option<String>,
+//     pub transaction_hash: Option<String>,
+//     pub description: Option<String>,
+//     pub processed_at: chrono::DateTime<chrono::Utc>,
+// }
 
 /// Unified financial transaction response
 #[derive(Debug, Serialize, ToSchema)]

@@ -121,7 +121,7 @@ test_user_type_constraints() {
     echo "   Testing invalid user types..."
 
     # Test invalid user types (should fail)
-    local invalid_types=("regular" "merchant" "lender" "user")
+    local invalid_types=("regular" "user" "admin")
     for user_type in "${invalid_types[@]}"; do
         local result=$(psql "${DATABASE_URL}" -t -c "
             INSERT INTO identities (id, user_type, email, created_at, updated_at, email_verified)

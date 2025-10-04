@@ -50,7 +50,6 @@ fn main() {
     println!("  POST /api/v1/credit-line/{credit_line_id}/financial/draw");
     println!("  POST /api/v1/credit-line/{credit_line_id}/financial/payment");
     println!("  GET  /api/v1/credit-line/{credit_line_id}/financial/transactions");
-    println!("  GET  /api/v1/merchant/{merchant_id}/financial/credit-lines");
 
     println!("\n📊 Unified Financial Views:");
     println!("  GET  /api/v1/user/{user_id}/financial/transactions");

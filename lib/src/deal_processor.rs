@@ -260,7 +260,7 @@ impl GlobalLoanState {
                 }
             }
             TransactionType::AdminRegistration => {
-                // Process merchant registration in both user and merchant state
+                // Process admin registration
                 let mut user_state = UserState {
                     users: self.users.clone(),
                 };
