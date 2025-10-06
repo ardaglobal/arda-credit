@@ -26,7 +26,7 @@ async fn test_remove_deal_listing_functionality() {
     // Insert test investor identity
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, email, kyc_status, user_type)
+        INSERT INTO users (id, email, kyc_status, user_type)
         VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -40,7 +40,7 @@ async fn test_remove_deal_listing_functionality() {
     // Insert test originator identity
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, email, kyc_status, user_type)
+        INSERT INTO users (id, email, kyc_status, user_type)
         VALUES ($1, $2, 'approved', 'originator')
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -54,17 +54,32 @@ async fn test_remove_deal_listing_functionality() {
     .await
     .unwrap();
 
-    // Insert test deal
+    // Create a test company (required for deals)
+    let test_company_id = uuid::Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO companies (id, name, description, status)
+        VALUES ($1, 'Test Company', 'Test company for deal listing tests', 'active')
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_company_id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Insert test deal (with required company_id)
     sqlx::query!(
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, status, originated_at)
-        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
+                          interest_rate_bps, status, originated_at, company_id)
+        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW(), $4)
         ON CONFLICT (id) DO NOTHING
         "#,
         test_deal_id,
         test_originator_id, // originator (different from investor)
-        test_investor_id
+        test_investor_id,
+        test_company_id
     )
     .execute(&pool)
     .await
@@ -185,39 +200,40 @@ async fn test_remove_deal_listing_functionality() {
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query!(
-        "DELETE FROM balances WHERE identity_id = $1",
-        test_investor_id
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query!(
-        "DELETE FROM balances WHERE identity_id = $1",
-        test_originator_id
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query!(
-        "DELETE FROM user_balances WHERE user_id = $1",
-        test_investor_id
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query!(
-        "DELETE FROM user_balances WHERE user_id = $1",
-        test_originator_id
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    sqlx::query!("DELETE FROM identities WHERE id = $1", test_investor_id)
+    sqlx::query!("DELETE FROM companies WHERE id = $1", test_company_id)
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query!("DELETE FROM identities WHERE id = $1", test_originator_id)
+    sqlx::query!("DELETE FROM balances WHERE user_id = $1", test_investor_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query!(
+        "DELETE FROM balances WHERE user_id = $1",
+        test_originator_id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query!(
+        "DELETE FROM user_balances WHERE user_id = $1",
+        test_investor_id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query!(
+        "DELETE FROM user_balances WHERE user_id = $1",
+        test_originator_id
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query!("DELETE FROM users WHERE id = $1", test_investor_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query!("DELETE FROM users WHERE id = $1", test_originator_id)
         .execute(&pool)
         .await
         .unwrap();

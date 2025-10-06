@@ -125,9 +125,7 @@ impl TestDatabase {
         sqlx::query("DELETE FROM investor_profiles")
             .execute(&self.pool)
             .await?;
-        sqlx::query("DELETE FROM identities")
-            .execute(&self.pool)
-            .await?;
+        sqlx::query("DELETE FROM users").execute(&self.pool).await?;
         sqlx::query("DELETE FROM batches")
             .execute(&self.pool)
             .await?;
@@ -277,7 +275,7 @@ pub async fn create_test_user(pool: &PgPool, email: &str, user_type: &str) -> Te
     let existing_user = sqlx::query!(
         r#"
         SELECT id, email, user_type, first_name, last_name, wallet_address
-        FROM identities
+        FROM users
         WHERE email = $1
         "#,
         email
@@ -302,7 +300,7 @@ pub async fn create_test_user(pool: &PgPool, email: &str, user_type: &str) -> Te
 
     sqlx::query(
         r#"
-        INSERT INTO identities (
+        INSERT INTO users (
             id, email, user_type, first_name, last_name, wallet_address,
             kyc_status, created_at, updated_at
         ) VALUES ($1, $2, $3, 'Test', 'User', NULL, 'not_submitted', NOW(), NOW())
@@ -396,7 +394,7 @@ impl TestDataFactory {
     pub async fn create_user(&self, user: &TestUser) -> Result<(), sqlx::Error> {
         sqlx::query(
             r#"
-            INSERT INTO identities (
+            INSERT INTO users (
                 id, email, user_type, first_name, last_name, wallet_address,
                 kyc_status, created_at, updated_at
             ) VALUES ($1, $2, $3, $4, $5, $6, 'not_submitted', NOW(), NOW())

@@ -107,7 +107,7 @@ async fn test_marketplace_crud_operations() {
 
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, email, kyc_status, user_type)
+        INSERT INTO users (id, email, kyc_status, user_type)
         VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -127,7 +127,7 @@ async fn test_marketplace_crud_operations() {
 
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, email, kyc_status, user_type)
+        INSERT INTO users (id, email, kyc_status, user_type)
         VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -138,17 +138,32 @@ async fn test_marketplace_crud_operations() {
     .await
     .expect("Should be able to create test borrower identity");
 
+    // Create a test company (required for deals)
+    let test_company_id = uuid::Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO companies (id, name, description, status)
+        VALUES ($1, 'Test Marketplace Company', 'Test company for marketplace tests', 'active')
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_company_id
+    )
+    .execute(&pool)
+    .await
+    .expect("Should be able to create test company");
+
     // Insert test loan that the listing can reference
     sqlx::query!(
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, deal_status, originated_at)
-        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
+                          interest_rate_bps, deal_status, originated_at, company_id)
+        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW(), $4)
         ON CONFLICT (id) DO NOTHING
         "#,
         test_loan_id,
         test_borrower_id,
-        test_lender_id
+        test_lender_id,
+        test_company_id
     )
     .execute(&pool)
     .await

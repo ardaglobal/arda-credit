@@ -48,7 +48,7 @@ pub async fn validate_user_kyc_approved(
     let kyc_check = sqlx::query!(
         r#"
         SELECT kyc_status
-        FROM identities
+        FROM users
         WHERE id = $1
         "#,
         user_id

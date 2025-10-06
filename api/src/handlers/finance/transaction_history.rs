@@ -283,7 +283,7 @@ async fn get_loan_transactions(
             lt.transaction_type,
             lt.amount,
             lt.created_at,
-            lt.identity_id as user_id,
+            lt.user_id as user_id,
             lt.loan_id,
             lt.pool_id,
             lt.included_in_batch_id,
@@ -295,7 +295,7 @@ async fn get_loan_transactions(
             p.processed_at
         FROM loan_transactions lt
         LEFT JOIN loans l ON lt.loan_id = l.id
-        LEFT JOIN identities i ON lt.identity_id = i.id
+        LEFT JOIN users i ON lt.user_id = i.id
         LEFT JOIN payments p ON lt.payment_id = p.id
         WHERE 1=1
         "#,
@@ -303,7 +303,7 @@ async fn get_loan_transactions(
 
     // Apply filters
     if let Some(user_id) = &query.user_id {
-        query_builder.push(" AND lt.identity_id = ");
+        query_builder.push(" AND lt.user_id = ");
         query_builder.push_bind(user_id);
     }
 

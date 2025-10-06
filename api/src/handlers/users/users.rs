@@ -23,7 +23,7 @@ use arda_credit_db::{
     create_investor_profile, get_deposits_by_user_address, get_identity_by_id,
     get_investor_profile_by_user_id, get_invite_code_info, register_or_reregister_user,
     submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code,
-    CreateInvestorProfileRequest, Identity, InvestorProfile, RegisterResult,
+    CreateInvestorProfileRequest, InvestorProfile, RegisterResult, User,
 };
 
 // ============================================================================
@@ -126,7 +126,7 @@ pub struct DeleteUserResponse {
     pub deleted_at: DateTime<Utc>,
 }
 
-/// List identities query parameters
+/// List users query parameters
 #[derive(Debug, Deserialize, ToSchema, IntoParams)]
 pub struct ListIdentitiesQuery {
     pub user_type: Option<UserType>,
@@ -135,10 +135,10 @@ pub struct ListIdentitiesQuery {
     pub offset: Option<i32>,
 }
 
-/// List identities response
+/// List users response
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct ListIdentitiesResponse {
-    pub identities: Vec<UserDetailsResponse>,
+    pub users: Vec<UserDetailsResponse>,
     pub total_count: usize,
     pub has_more: bool,
 }
@@ -203,8 +203,8 @@ pub struct DepositTransactionInfo {
 
 /// Helper function to parse UUID from string
 
-/// Convert database Identity to API RegisterUserResponse
-fn identity_to_register_response(identity: Identity) -> RegisterUserResponse {
+/// Convert database User to API RegisterUserResponse
+fn identity_to_register_response(identity: User) -> RegisterUserResponse {
     RegisterUserResponse {
         user_id: identity.id.to_string(),
         user_type: identity.user_type.parse().unwrap_or(UserType::Investor),
@@ -477,13 +477,13 @@ pub async fn get_user_details_endpoint(
     }
 }
 
-/// List user identities
+/// List user users
 #[utoipa::path(
     get,
     path = "/api/v1/users",
     params(ListIdentitiesQuery),
     responses(
-        (status = 200, description = "List of user identities", body = ListIdentitiesResponse),
+        (status = 200, description = "List of user users", body = ListIdentitiesResponse),
         (status = 500, description = "Internal server error")
     ),
     tag = "Users"
@@ -493,18 +493,18 @@ pub async fn list_identities_endpoint(
     State(state): State<ApiState>,
     Query(params): Query<ListIdentitiesQuery>,
 ) -> Result<Json<ListIdentitiesResponse>, (StatusCode, String)> {
-    info!("📋 API: Listing identities with filters");
+    info!("📋 API: Listing users with filters");
 
     let limit = params.limit.unwrap_or(50);
     let offset = params.offset.unwrap_or(0);
 
     // For better performance and to avoid complex LEFT JOIN type handling,
-    // fetch user identities first, then fetch profiles separately
+    // fetch user users first, then fetch profiles separately
     let identities_result = sqlx::query!(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, 
                created_at, updated_at, first_name, last_name, jurisdiction, wallet_address
-        FROM identities
+        FROM users
         WHERE deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -517,7 +517,7 @@ pub async fn list_identities_endpoint(
 
     match identities_result {
         Ok(rows) => {
-            let mut identities = Vec::new();
+            let mut users = Vec::new();
 
             for row in rows {
                 let user_type_parsed = row.user_type.parse().unwrap_or(UserType::Investor);
@@ -564,7 +564,7 @@ pub async fn list_identities_endpoint(
                     }
                 };
 
-                identities.push(UserDetailsResponse {
+                users.push(UserDetailsResponse {
                     user_id: row.id.to_string(),
                     email: row.email,
                     user_type: user_type_parsed,
@@ -582,22 +582,22 @@ pub async fn list_identities_endpoint(
                 });
             }
 
-            let total_count = identities.len() as u64;
+            let total_count = users.len() as u64;
 
             let response = ListIdentitiesResponse {
-                identities,
+                users,
                 total_count: total_count as usize,
                 has_more: total_count >= limit as u64,
             };
 
-            info!("✅ API: Listed {} identities", response.total_count);
+            info!("✅ API: Listed {} users", response.total_count);
             Ok(Json(response))
         }
         Err(e) => {
-            error!("❌ API: Failed to list identities: {}", e);
+            error!("❌ API: Failed to list users: {}", e);
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to list identities: {}", e),
+                format!("Failed to list users: {}", e),
             ))
         }
     }
@@ -749,19 +749,16 @@ pub async fn delete_user_endpoint(
     })?;
 
     // Check if user exists and is not already deleted
-    let existing_user = sqlx::query!(
-        "SELECT id, deleted_at FROM identities WHERE id = $1",
-        user_uuid
-    )
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| {
-        error!("Failed to check user existence: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to check user existence".to_string(),
-        )
-    })?;
+    let existing_user = sqlx::query!("SELECT id, deleted_at FROM users WHERE id = $1", user_uuid)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to check user existence: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to check user existence".to_string(),
+            )
+        })?;
 
     let _user = match existing_user {
         Some(user) if user.deleted_at.is_some() => {
@@ -776,7 +773,7 @@ pub async fn delete_user_endpoint(
     // Perform soft delete by setting deleted_at timestamp
     let deleted_at = Utc::now();
     let update_result = sqlx::query!(
-        "UPDATE identities SET deleted_at = $1, updated_at = $1 WHERE id = $2",
+        "UPDATE users SET deleted_at = $1, updated_at = $1 WHERE id = $2",
         deleted_at,
         user_uuid
     )
@@ -1023,9 +1020,9 @@ async fn ensure_user_profiles_exist(
     Ok(())
 }
 
-/// Convert database Identity to API UserDetailsResponse (legacy function for backward compatibility)  
+/// Convert database User to API UserDetailsResponse (legacy function for backward compatibility)  
 /// This function now delegates to get_user_details_with_profiles for consistency
-pub fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
+pub fn identity_to_user_details(identity: User) -> UserDetailsResponse {
     UserDetailsResponse {
         user_id: identity.id.to_string(),
         email: identity.email,

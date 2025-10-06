@@ -492,11 +492,11 @@ pub async fn remove_team_member_endpoint(
     // This is a simplified version - in a full implementation, you'd add proper validation
     match sqlx::query!(
         r#"
-        UPDATE team_members
-        SET status = 'inactive', updated_at = NOW()
+        UPDATE company_memberships
+        SET status = 'removed', updated_at = NOW()
         WHERE user_id = $1 AND company_id = $2
         AND EXISTS (
-            SELECT 1 FROM team_members tm
+            SELECT 1 FROM company_memberships tm
             WHERE tm.user_id = $3 AND tm.company_id = $2
             AND tm.status = 'active' AND tm.can_manage_team = true
         )
@@ -671,7 +671,7 @@ async fn get_team_stats(
             COUNT(*) FILTER (WHERE status = 'active') as active_members,
             COUNT(*) FILTER (WHERE status = 'invited') as pending_invitations,
             COUNT(*) FILTER (WHERE role = 'admin' AND status = 'active') as admin_count
-        FROM team_members
+        FROM company_memberships
         WHERE company_id = $1
         "#,
         company_id

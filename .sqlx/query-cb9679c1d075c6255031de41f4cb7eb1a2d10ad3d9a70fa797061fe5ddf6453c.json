@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO users (id, email, kyc_status, user_type)\n        VALUES ($1, $2, 'approved', 'investor')\n        ON CONFLICT (id) DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cb9679c1d075c6255031de41f4cb7eb1a2d10ad3d9a70fa797061fe5ddf6453c"
+}

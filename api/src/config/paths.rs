@@ -876,7 +876,7 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
         crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: USERS.to_string(),
-            description: "List user identities with filters".to_string(),
+            description: "List user users with filters".to_string(),
         },
         crate::handlers::core::health::EndpointInfo {
             method: "POST".to_string(),

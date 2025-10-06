@@ -81,7 +81,7 @@ impl DocumentTestConfig {
         // Create test user identity
         sqlx::query!(
             r#"
-            INSERT INTO identities (id, email, kyc_status, created_at, updated_at)
+            INSERT INTO users (id, email, kyc_status, created_at, updated_at)
             VALUES ($1, $2, $3, NOW(), NOW())
             ON CONFLICT (id) DO NOTHING
             "#,
@@ -159,7 +159,7 @@ impl DocumentTestConfig {
 
         // Delete test identity
         sqlx::query!(
-            "DELETE FROM identities WHERE id = $1",
+            "DELETE FROM users WHERE id = $1",
             self.test_user_id
         )
         .execute(&self.db_pool)

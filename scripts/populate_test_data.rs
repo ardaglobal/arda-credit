@@ -5,7 +5,7 @@
 //! Run with: cargo run --bin populate_test_data
 
 use chrono::Utc;
-use db::{create_identity, init_db_with_url, Identity};
+use db::{create_identity, init_db_with_url, User};
 use rust_decimal::Decimal;
 use std::env;
 use std::str::FromStr;
@@ -90,12 +90,12 @@ async fn clear_test_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
         .await?;
     sqlx::query!("DELETE FROM deals").execute(pool).await?;
     sqlx::query!("DELETE FROM balances").execute(pool).await?;
-    sqlx::query!("DELETE FROM identities").execute(pool).await?;
+    sqlx::query!("DELETE FROM users").execute(pool).await?;
     Ok(())
 }
 
 /// Create test identities with various KYC statuses
-async fn create_test_identities(pool: &sqlx::PgPool) -> Result<Vec<Identity>, sqlx::Error> {
+async fn create_test_identities(pool: &sqlx::PgPool) -> Result<Vec<User>, sqlx::Error> {
     let mut identities = Vec::new();
 
     // Test users with different types and KYC statuses
@@ -156,7 +156,7 @@ async fn create_test_identities(pool: &sqlx::PgPool) -> Result<Vec<Identity>, sq
             let now = Utc::now();
             sqlx::query!(
                 r#"
-                UPDATE identities 
+                UPDATE users 
                 SET kyc_status = $2,
                     updated_at = $3
                 WHERE id = $1
@@ -190,23 +190,23 @@ async fn create_test_identities(pool: &sqlx::PgPool) -> Result<Vec<Identity>, sq
 /// Create test loans between identities
 async fn create_test_loans(
     pool: &sqlx::PgPool,
-    identities: &[Identity],
+    identities: &[User],
 ) -> Result<Vec<Loan>, sqlx::Error> {
     let mut loans = Vec::new();
 
     // Filter approved identities for loan creation
-    let approved_identities: Vec<&Identity> = identities
+    let approved_identities: Vec<&User> = identities
         .iter()
         .filter(|i| i.kyc_status == "approved")
         .collect();
 
-    let investors: Vec<&Identity> = approved_identities
+    let investors: Vec<&User> = approved_identities
         .iter()
         .filter(|i| i.user_type == "investor")
         .copied()
         .collect();
 
-    let originators: Vec<&Identity> = approved_identities
+    let originators: Vec<&User> = approved_identities
         .iter()
         .filter(|i| i.user_type == "originator")
         .copied()
@@ -292,7 +292,7 @@ async fn create_test_loans(
 async fn create_test_payments(
     pool: &sqlx::PgPool,
     loans: &[Loan],
-    identities: &[Identity],
+    identities: &[User],
 ) -> Result<Vec<Payment>, sqlx::Error> {
     let mut payments = Vec::new();
 
@@ -370,11 +370,11 @@ async fn create_test_payments(
 }
 
 /// Print summary of created test data
-async fn print_summary(identities: &[Identity], loans: &[Loan], payments: &[Payment]) {
+async fn print_summary(identities: &[User], loans: &[Loan], payments: &[Payment]) {
     println!("\n📊 Test Data Summary:");
     println!("=====================");
 
-    // Identity summary
+    // User summary
     let mut kyc_counts = std::collections::HashMap::new();
     let mut type_counts = std::collections::HashMap::new();
 
