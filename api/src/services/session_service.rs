@@ -1,4 +1,4 @@
-use arda_credit_db::db::{Identity, Session};
+use arda_credit_db::db::{Session, User};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{Duration, Utc};
 use rand::Rng;
@@ -69,7 +69,7 @@ impl SessionService {
 
     /// Validate session token and return user identity
     #[instrument(skip(self, session_token), level = "debug")]
-    pub async fn validate_session(&self, session_token: &str) -> Result<Identity, SessionError> {
+    pub async fn validate_session(&self, session_token: &str) -> Result<User, SessionError> {
         // First update the session access time
         sqlx::query(
             r#"
@@ -83,10 +83,10 @@ impl SessionService {
         .await?;
 
         // Then get the user identity
-        let identity = sqlx::query_as::<_, Identity>(
+        let identity = sqlx::query_as::<_, User>(
             r#"
             SELECT i.*
-            FROM identities i
+            FROM users i
             JOIN sessions s ON s.user_id = i.id
             WHERE s.session_token = $1 AND s.expires_at > NOW()
             "#,

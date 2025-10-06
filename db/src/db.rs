@@ -83,9 +83,9 @@ pub struct ContractPrivateData {
 // CCR DOMAIN TYPES (Credit and Compliance Requirements)
 // ============================================================================
 
-/// Identity/User record with KYC status and authentication
+/// User/User record with KYC status and authentication
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
-pub struct Identity {
+pub struct User {
     pub id: uuid::Uuid,
     pub user_type: String, // investor, lender
     pub email: String,
@@ -473,7 +473,7 @@ pub struct KycStatistics {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Balance {
     pub id: uuid::Uuid,
-    pub identity_id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
     pub balance_type: String, // available, locked, reserved
     pub amount: rust_decimal::Decimal,
     pub currency: String,
@@ -490,7 +490,7 @@ pub struct DealTransactionDb {
     pub deal_id_hash: Option<Vec<u8>>,
     pub transaction_type: String,
     pub amount: rust_decimal::Decimal,
-    pub identity_id: Option<uuid::Uuid>,
+    pub user_id: Option<uuid::Uuid>,
     pub deal_id: Option<uuid::Uuid>,
     pub payment_id: Option<uuid::Uuid>,
     pub included_in_batch_id: Option<i32>,
@@ -1293,7 +1293,7 @@ pub async fn get_potential_stuck_batches(
 /// Create a new identity (user registration)
 #[instrument(skip(pool), fields(
     operation = "create_identity",
-    table = "identities",
+    table = "users",
     layer = "database",
     user_type = %user_type,
     email = %email
@@ -1302,13 +1302,13 @@ pub async fn create_identity(
     pool: &PgPool,
     user_type: &str,
     email: &str,
-) -> Result<Identity, sqlx::Error> {
+) -> Result<User, sqlx::Error> {
     let id = uuid::Uuid::new_v4();
     let now = chrono::Utc::now();
 
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, user_type, email, created_at, updated_at, email_verified)
+        INSERT INTO users (id, user_type, email, created_at, updated_at, email_verified)
         VALUES ($1, $2, $3, $4, $4, $5)
         "#,
         id,
@@ -1320,7 +1320,7 @@ pub async fn create_identity(
     .execute(pool)
     .await?;
 
-    let identity = Identity {
+    let identity = User {
         id,
         user_type: user_type.to_string(),
         email: email.to_string(),
@@ -1349,7 +1349,7 @@ pub async fn create_identity_with_password(
     _user_type: &str,
     _email: &str,
     _password_hash: &str,
-) -> Result<Identity, sqlx::Error> {
+) -> Result<User, sqlx::Error> {
     Err(sqlx::Error::Configuration(
         "Password authentication has been disabled. Use magic link authentication instead.".into(),
     ))
@@ -1365,12 +1365,9 @@ pub async fn register_or_reregister_user(
     email: &str,
 ) -> Result<RegisterResult, sqlx::Error> {
     // First, check if email already exists
-    let existing_user = sqlx::query!(
-        "SELECT id, deleted_at FROM identities WHERE email = $1",
-        email
-    )
-    .fetch_optional(pool)
-    .await?;
+    let existing_user = sqlx::query!("SELECT id, deleted_at FROM users WHERE email = $1", email)
+        .fetch_optional(pool)
+        .await?;
 
     match existing_user {
         Some(user) if user.deleted_at.is_some() => {
@@ -1378,7 +1375,7 @@ pub async fn register_or_reregister_user(
             let now = chrono::Utc::now();
             sqlx::query!(
                 r#"
-                UPDATE identities
+                UPDATE users
                 SET user_type = $1,
                     deleted_at = NULL,
                     updated_at = $2,
@@ -1402,7 +1399,7 @@ pub async fn register_or_reregister_user(
                        created_at as "created_at!", updated_at as "updated_at!",
                        last_login_at, email_verified, email_verification_token,
                        wallet_address, first_name, last_name, jurisdiction
-                FROM identities
+                FROM users
                 WHERE id = $1
                 "#,
                 user.id
@@ -1410,7 +1407,7 @@ pub async fn register_or_reregister_user(
             .fetch_one(pool)
             .await?;
 
-            let identity_struct = Identity {
+            let identity_struct = User {
                 id: identity.id,
                 user_type: identity.user_type,
                 email: identity.email,
@@ -1442,7 +1439,7 @@ pub async fn register_or_reregister_user(
 
             sqlx::query!(
                 r#"
-                INSERT INTO identities (id, user_type, email, created_at, updated_at, email_verified)
+                INSERT INTO users (id, user_type, email, created_at, updated_at, email_verified)
                 VALUES ($1, $2, $3, $4, $4, $5)
                 "#,
                 id,
@@ -1454,7 +1451,7 @@ pub async fn register_or_reregister_user(
             .execute(pool)
             .await?;
 
-            let identity = Identity {
+            let identity = User {
                 id,
                 user_type: user_type.to_string(),
                 email: email.to_string(),
@@ -1481,29 +1478,29 @@ pub async fn register_or_reregister_user(
 /// Result type for user registration operations
 #[derive(Debug)]
 pub enum RegisterResult {
-    Created(Identity),
-    Reregistered(Identity),
+    Created(User),
+    Reregistered(User),
     AlreadyExists,
 }
 
 /// Get identity by ID
 #[instrument(skip(pool), fields(
     operation = "get_identity_by_id",
-    table = "identities",
+    table = "users",
     layer = "database",
     user_id = %id
 ), level = "info")]
 pub async fn get_identity_by_id(
     pool: &PgPool,
     id: uuid::Uuid,
-) -> Result<Option<Identity>, sqlx::Error> {
+) -> Result<Option<User>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
                created_at as "created_at!", updated_at as "updated_at!",
                last_login_at, email_verified, email_verification_token,
                wallet_address, first_name, last_name, jurisdiction
-        FROM identities
+        FROM users
         WHERE id = $1 AND deleted_at IS NULL
         "#,
         id
@@ -1511,7 +1508,7 @@ pub async fn get_identity_by_id(
     .fetch_optional(pool)
     .await?;
 
-    let identity = row.map(|row| Identity {
+    let identity = row.map(|row| User {
         id: row.id,
         user_type: row.user_type,
         email: row.email,
@@ -1537,7 +1534,7 @@ pub async fn get_identity_by_id(
 pub async fn get_identity_by_email(
     pool: &PgPool,
     email: &str,
-) -> Result<Option<Identity>, sqlx::Error> {
+) -> Result<Option<User>, sqlx::Error> {
     let row = sqlx::query!(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
@@ -1545,7 +1542,7 @@ pub async fn get_identity_by_email(
                last_login_at, email_verified, email_verification_token,
                wallet_address,
                first_name, last_name, jurisdiction
-        FROM identities
+        FROM users
         WHERE email = $1 AND deleted_at IS NULL
         "#,
         email
@@ -1553,7 +1550,7 @@ pub async fn get_identity_by_email(
     .fetch_optional(pool)
     .await?;
 
-    let identity = row.map(|row| Identity {
+    let identity = row.map(|row| User {
         id: row.id,
         user_type: row.user_type,
         email: row.email,
@@ -1575,13 +1572,13 @@ pub async fn get_identity_by_email(
     Ok(identity)
 }
 
-/// List identities with optional filtering
+/// List users with optional filtering
 pub async fn list_identities(
     pool: &PgPool,
     limit: Option<i64>,
     offset: Option<i64>,
     _kyc_status: Option<&str>,
-) -> Result<Vec<Identity>, sqlx::Error> {
+) -> Result<Vec<User>, sqlx::Error> {
     // Simplified version - can add filtering later
     let rows = sqlx::query!(
         r#"
@@ -1590,7 +1587,7 @@ pub async fn list_identities(
                last_login_at, email_verified, email_verification_token,
                wallet_address,
                first_name, last_name, jurisdiction
-        FROM identities
+        FROM users
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
         "#,
@@ -1600,9 +1597,9 @@ pub async fn list_identities(
     .fetch_all(pool)
     .await?;
 
-    let identities = rows
+    let users = rows
         .into_iter()
-        .map(|row| Identity {
+        .map(|row| User {
             id: row.id,
             user_type: row.user_type,
             email: row.email,
@@ -1622,18 +1619,18 @@ pub async fn list_identities(
         })
         .collect();
 
-    Ok(identities)
+    Ok(users)
 }
 
 /// Submit KYC data for identity
 pub async fn submit_kyc_data(
     pool: &PgPool,
-    identity_id: uuid::Uuid,
+    user_id: uuid::Uuid,
     _document_type: &str,
     _document_hash: &str,
     _jurisdiction: Option<&str>,
     kyc_investor_type: Option<&str>,
-) -> Result<Identity, sqlx::Error> {
+) -> Result<User, sqlx::Error> {
     let now = Utc::now();
 
     // TODO: Replace this automatic approval with proper KYC validation service
@@ -1646,7 +1643,7 @@ pub async fn submit_kyc_data(
     // For now, we automatically approve all submissions for demo purposes
     sqlx::query!(
         r#"
-        UPDATE identities
+        UPDATE users
         SET kyc_status = 'approved',
             kyc_submitted_at = $2,
             kyc_verified_at = $2,
@@ -1654,7 +1651,7 @@ pub async fn submit_kyc_data(
             updated_at = $2
         WHERE id = $1
         "#,
-        identity_id,
+        user_id,
         now,
         kyc_investor_type as _
     )
@@ -1662,17 +1659,17 @@ pub async fn submit_kyc_data(
     .await?;
 
     // Fetch the updated identity
-    get_identity_by_id(pool, identity_id)
+    get_identity_by_id(pool, user_id)
         .await?
         .ok_or_else(|| sqlx::Error::RowNotFound)
 }
 
-/// List identities with pending KYC status for admin review
+/// List users with pending KYC status for admin review
 pub async fn list_pending_kyc_applications(
     pool: &PgPool,
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Vec<Identity>, sqlx::Error> {
+) -> Result<Vec<User>, sqlx::Error> {
     let rows = sqlx::query!(
         r#"
         SELECT id, user_type, email, kyc_status, kyc_submitted_at, kyc_verified_at, kyc_investor_type as "kyc_investor_type?: KycInvestorType",
@@ -1680,7 +1677,7 @@ pub async fn list_pending_kyc_applications(
                last_login_at, email_verified, email_verification_token,
                wallet_address,
                first_name, last_name, jurisdiction
-        FROM identities
+        FROM users
         WHERE kyc_status = 'pending'
         ORDER BY kyc_submitted_at ASC
         LIMIT $1 OFFSET $2
@@ -1691,9 +1688,9 @@ pub async fn list_pending_kyc_applications(
     .fetch_all(pool)
     .await?;
 
-    let identities = rows
+    let users = rows
         .into_iter()
-        .map(|row| Identity {
+        .map(|row| User {
             id: row.id,
             user_type: row.user_type,
             email: row.email,
@@ -1713,7 +1710,7 @@ pub async fn list_pending_kyc_applications(
         })
         .collect();
 
-    Ok(identities)
+    Ok(users)
 }
 
 /// Get KYC statistics for admin dashboard
@@ -1726,7 +1723,7 @@ pub async fn get_kyc_statistics(pool: &PgPool) -> Result<KycStatistics, sqlx::Er
             COUNT(CASE WHEN kyc_status = 'pending' THEN 1 END) as pending_count,
             COUNT(CASE WHEN kyc_status = 'rejected' THEN 1 END) as rejected_count,
             COUNT(CASE WHEN kyc_status = 'not_submitted' THEN 1 END) as not_submitted_count
-        FROM identities
+        FROM users
         "#,
     )
     .fetch_one(pool)
@@ -1744,10 +1741,10 @@ pub async fn get_kyc_statistics(pool: &PgPool) -> Result<KycStatistics, sqlx::Er
 /// Update KYC status (admin only)
 pub async fn update_kyc_status(
     pool: &PgPool,
-    identity_id: uuid::Uuid,
+    user_id: uuid::Uuid,
     status: &str,
     _notes: Option<&str>,
-) -> Result<Identity, sqlx::Error> {
+) -> Result<User, sqlx::Error> {
     let now = Utc::now();
 
     // If approving KYC, set verified timestamp
@@ -1759,13 +1756,13 @@ pub async fn update_kyc_status(
 
     sqlx::query!(
         r#"
-        UPDATE identities
+        UPDATE users
         SET kyc_status = $2,
             kyc_verified_at = $3,
             updated_at = $4
         WHERE id = $1
         "#,
-        identity_id,
+        user_id,
         status,
         verified_at,
         now
@@ -1774,7 +1771,7 @@ pub async fn update_kyc_status(
     .await?;
 
     // Fetch the updated identity
-    get_identity_by_id(pool, identity_id)
+    get_identity_by_id(pool, user_id)
         .await?
         .ok_or_else(|| sqlx::Error::RowNotFound)
 }
@@ -1782,14 +1779,14 @@ pub async fn update_kyc_status(
 /// Update identity profile information
 pub async fn update_identity_profile(
     pool: &PgPool,
-    identity_id: uuid::Uuid,
+    user_id: uuid::Uuid,
     email: Option<&str>,
     user_type: Option<&str>,
     jurisdiction: Option<&str>,
     first_name: Option<&str>,
     last_name: Option<&str>,
     wallet_address: Option<&str>,
-) -> Result<Identity, sqlx::Error> {
+) -> Result<User, sqlx::Error> {
     let now = Utc::now();
 
     // Update fields individually for simplicity
@@ -1798,12 +1795,12 @@ pub async fn update_identity_profile(
     if let Some(e) = email {
         sqlx::query!(
             r#"
-            UPDATE identities
+            UPDATE users
             SET email = $2,
                 updated_at = $3
             WHERE id = $1
             "#,
-            identity_id,
+            user_id,
             e,
             now
         )
@@ -1814,12 +1811,12 @@ pub async fn update_identity_profile(
     if let Some(ut) = user_type {
         sqlx::query!(
             r#"
-            UPDATE identities
+            UPDATE users
             SET user_type = $2,
                 updated_at = $3
             WHERE id = $1
             "#,
-            identity_id,
+            user_id,
             ut,
             now
         )
@@ -1830,12 +1827,12 @@ pub async fn update_identity_profile(
     // Always update jurisdiction since we want to allow clearing it
     sqlx::query!(
         r#"
-        UPDATE identities
+        UPDATE users
         SET jurisdiction = $2,
             updated_at = $3
         WHERE id = $1
         "#,
-        identity_id,
+        user_id,
         jurisdiction,
         now
     )
@@ -1845,12 +1842,12 @@ pub async fn update_identity_profile(
     if let Some(first_name_val) = first_name {
         sqlx::query!(
             r#"
-            UPDATE identities
+            UPDATE users
             SET first_name = $2,
                 updated_at = $3
             WHERE id = $1
             "#,
-            identity_id,
+            user_id,
             first_name_val,
             now
         )
@@ -1861,12 +1858,12 @@ pub async fn update_identity_profile(
     if let Some(last_name_val) = last_name {
         sqlx::query!(
             r#"
-            UPDATE identities
+            UPDATE users
             SET last_name = $2,
                 updated_at = $3
             WHERE id = $1
             "#,
-            identity_id,
+            user_id,
             last_name_val,
             now
         )
@@ -1877,12 +1874,12 @@ pub async fn update_identity_profile(
     if let Some(wa) = wallet_address {
         sqlx::query!(
             r#"
-            UPDATE identities
+            UPDATE users
             SET wallet_address = $2,
                 updated_at = $3
             WHERE id = $1
             "#,
-            identity_id,
+            user_id,
             wa,
             now
         )
@@ -1893,30 +1890,30 @@ pub async fn update_identity_profile(
     // Always update timestamp
     sqlx::query!(
         r#"
-        UPDATE identities
+        UPDATE users
         SET updated_at = $2
         WHERE id = $1
         "#,
-        identity_id,
+        user_id,
         now
     )
     .execute(pool)
     .await?;
 
     // Fetch the updated identity
-    get_identity_by_id(pool, identity_id)
+    get_identity_by_id(pool, user_id)
         .await?
         .ok_or_else(|| sqlx::Error::RowNotFound)
 }
 
 /// Delete identity by ID
-pub async fn delete_identity(pool: &PgPool, identity_id: uuid::Uuid) -> Result<bool, sqlx::Error> {
+pub async fn delete_identity(pool: &PgPool, user_id: uuid::Uuid) -> Result<bool, sqlx::Error> {
     let result = sqlx::query!(
         r#"
-        DELETE FROM identities
+        DELETE FROM users
         WHERE id = $1
         "#,
-        identity_id
+        user_id
     )
     .execute(pool)
     .await?;
@@ -2427,7 +2424,7 @@ pub async fn get_balance(
 /// Update balance - Simple implementation for now
 pub async fn update_balance(
     _pool: &PgPool,
-    identity_id: uuid::Uuid,
+    user_id: uuid::Uuid,
     balance_type: &str,
     currency: &str,
     new_amount: rust_decimal::Decimal,
@@ -2437,7 +2434,7 @@ pub async fn update_balance(
 
     let balance = Balance {
         id,
-        identity_id,
+        user_id,
         balance_type: balance_type.to_string(),
         amount: new_amount,
         currency: currency.to_string(),
@@ -2483,7 +2480,7 @@ pub async fn update_last_login(pool: &PgPool, user_id: uuid::Uuid) -> Result<(),
 
     sqlx::query!(
         r#"
-        UPDATE identities
+        UPDATE users
         SET last_login_at = $1, updated_at = $1
         WHERE id = $2
         "#,
@@ -2518,7 +2515,7 @@ pub async fn set_email_verification_token(
 
     sqlx::query!(
         r#"
-        UPDATE identities
+        UPDATE users
         SET email_verification_token = $1, updated_at = $2
         WHERE id = $3
         "#,
@@ -2538,7 +2535,7 @@ pub async fn verify_email_with_token(pool: &PgPool, token: &str) -> Result<bool,
 
     let result = sqlx::query!(
         r#"
-        UPDATE identities
+        UPDATE users
         SET email_verified = true, email_verification_token = NULL, updated_at = $1
         WHERE email_verification_token = $2
           AND created_at > $3  -- Token expires after 7 days
@@ -2581,7 +2578,7 @@ pub async fn reset_password_with_token(
 pub async fn get_identity_by_reset_token(
     _pool: &PgPool,
     _token: &str,
-) -> Result<Option<Identity>, sqlx::Error> {
+) -> Result<Option<User>, sqlx::Error> {
     // Password reset tokens are no longer valid - return None
     Ok(None)
 }
@@ -2944,7 +2941,7 @@ pub async fn get_user_balance_by_address(
         r#"
         SELECT ub.available_balance
         FROM user_balances ub
-        JOIN identities i ON ub.user_id = i.id
+        JOIN users i ON ub.user_id = i.id
         WHERE i.wallet_address = $1 AND ub.currency = 'USDC'
         "#,
         wallet_address
@@ -2986,7 +2983,7 @@ pub async fn get_user_id_by_wallet_address(
     let result = sqlx::query!(
         r#"
         SELECT id
-        FROM identities
+        FROM users
         WHERE wallet_address = $1
         "#,
         wallet_address
@@ -3926,7 +3923,7 @@ pub async fn get_investor_profile_by_user_id_or_email(
     pool: &PgPool,
     user_id: Option<uuid::Uuid>,
     email: Option<&str>,
-) -> Result<Option<(InvestorProfile, Identity)>, sqlx::Error> {
+) -> Result<Option<(InvestorProfile, User)>, sqlx::Error> {
     // Ensure exactly one parameter is provided
     match (user_id, email) {
         (Some(_), Some(_)) => return Err(sqlx::Error::RowNotFound),
@@ -3964,7 +3961,7 @@ pub async fn get_investor_profile_by_user_id_or_email(
                 updated_at: row.profile_updated_at,
             };
 
-            let identity = Identity {
+            let identity = User {
                 id: row.user_id,
                 user_type: row.user_type,
                 email: row.user_email,
@@ -4053,20 +4050,20 @@ pub async fn update_investor_profile(
 pub async fn get_investor_profile_with_identity(
     pool: &PgPool,
     user_id: uuid::Uuid,
-) -> Result<Option<(InvestorProfile, Identity)>, sqlx::Error> {
+) -> Result<Option<(InvestorProfile, User)>, sqlx::Error> {
     let result = sqlx::query!(
         r#"
         SELECT
             ip.id as profile_id, ip.user_id, ip.accredited_investor,
             ip.investment_capacity, ip.regulatory_jurisdiction,
             ip.created_at as "profile_created_at!", ip.updated_at as "profile_updated_at!",
-            i.id as identity_id, i.user_type, i.email, i.kyc_status,
+            i.user_type, i.email, i.kyc_status,
             i.kyc_submitted_at, i.kyc_verified_at, i.kyc_investor_type as "kyc_investor_type?: KycInvestorType",
             i.created_at as "identity_created_at!", i.updated_at as "identity_updated_at!",
             i.last_login_at, i.email_verified, i.email_verification_token,
             i.first_name, i.last_name, i.jurisdiction, i.wallet_address
         FROM investor_profiles ip
-        JOIN identities i ON ip.user_id = i.id
+        JOIN users i ON ip.user_id = i.id
         WHERE ip.user_id = $1 AND i.deleted_at IS NULL
         "#,
         user_id
@@ -4085,8 +4082,8 @@ pub async fn get_investor_profile_with_identity(
             updated_at: row.profile_updated_at,
         };
 
-        let identity = Identity {
-            id: row.identity_id,
+        let identity = User {
+            id: row.user_id,
             user_type: row.user_type,
             email: row.email,
             kyc_status: row.kyc_status,

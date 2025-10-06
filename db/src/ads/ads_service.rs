@@ -1764,7 +1764,7 @@ impl IndexedMerkleTreeADS {
 
         let loan_operation_data = sqlx::query!(
             r#"
-            SELECT dt.deal_id, dt.payment_id, dt.transaction_type, dt.amount, dt.identity_id,
+            SELECT dt.deal_id, dt.payment_id, dt.transaction_type, dt.amount, dt.user_id,
                    d.originator_id, d.investor_id, d.deal_status, dt.created_at
             FROM deal_transactions dt
             JOIN deals d ON dt.deal_id = d.id
@@ -1803,7 +1803,7 @@ impl IndexedMerkleTreeADS {
             deal_status: Some(row.deal_status),
             transaction_data: serde_json::json!({
                 "created_at": row.created_at,
-                "identity_id": row.identity_id
+                "user_id": row.user_id
             }),
             nullifier_prefix: None,
         };

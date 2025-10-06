@@ -1,4 +1,4 @@
-use arda_credit_db::db::{Identity, MagicLink, Session};
+use arda_credit_db::db::{MagicLink, Session, User};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{Duration, Utc};
 use rand::Rng;
@@ -235,9 +235,9 @@ impl MagicLinkService {
 
     /// Get user by email address
     #[instrument(skip(self), level = "debug")]
-    async fn get_user_by_email(&self, email: &str) -> Result<Identity, MagicLinkError> {
-        let user = sqlx::query_as::<_, Identity>(
-            "SELECT * FROM identities WHERE email = $1 AND deleted_at IS NULL",
+    async fn get_user_by_email(&self, email: &str) -> Result<User, MagicLinkError> {
+        let user = sqlx::query_as::<_, User>(
+            "SELECT * FROM users WHERE email = $1 AND deleted_at IS NULL",
         )
         .bind(email)
         .fetch_optional(&self.pool)
@@ -248,13 +248,12 @@ impl MagicLinkService {
 
     /// Get user by ID
     #[instrument(skip(self), level = "debug")]
-    async fn get_user_by_id(&self, user_id: Uuid) -> Result<Identity, MagicLinkError> {
-        let user = sqlx::query_as::<_, Identity>(
-            "SELECT * FROM identities WHERE id = $1 AND deleted_at IS NULL",
-        )
-        .bind(user_id)
-        .fetch_optional(&self.pool)
-        .await?;
+    async fn get_user_by_id(&self, user_id: Uuid) -> Result<User, MagicLinkError> {
+        let user =
+            sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL")
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         user.ok_or_else(|| MagicLinkError::UserNotFound(user_id.to_string()))
     }

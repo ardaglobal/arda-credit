@@ -23,7 +23,7 @@ pub mod database {
     /// # Example
     /// ```rust
     /// # use db::telemetry::database::instrument_query;
-    /// let _span = instrument_query("select", "identities").entered();
+    /// let _span = instrument_query("select", "users").entered();
     /// ```
     pub fn instrument_query(operation: &str, table: &str) -> Span {
         info_span!(
@@ -147,13 +147,13 @@ pub mod database {
 /// # use sqlx::PgPool;
 /// # use serde::{Deserialize, Serialize};
 /// # #[derive(Debug, Serialize, Deserialize)]
-/// # struct Identity { id: i32, email: String }
+/// # struct User { id: i32, email: String }
 /// # use db::instrument_db_fn;
 ///
-/// #[instrument_db_fn!("create_identity", "identities")]
-/// pub async fn create_identity(pool: &PgPool, email: String) -> Result<Identity, sqlx::Error> {
+/// #[instrument_db_fn!("create_identity", "users")]
+/// pub async fn create_identity(pool: &PgPool, email: String) -> Result<User, sqlx::Error> {
 ///     // function implementation would go here
-///     # Ok(Identity { id: 1, email })
+///     # Ok(User { id: 1, email })
 /// }
 /// ```
 #[macro_export]
@@ -181,13 +181,13 @@ macro_rules! instrument_db_fn {
 /// # use uuid::Uuid;
 /// # use serde::{Deserialize, Serialize};
 /// # #[derive(Debug, Serialize, Deserialize)]
-/// # struct Identity { id: i32, email: String }
+/// # struct User { id: i32, email: String }
 /// # use db::instrument_db_user_fn;
 ///
-/// #[instrument_db_user_fn!("get_identity_by_id", "identities", user_id)]
-/// async fn get_identity_by_id(pool: &PgPool, user_id: Uuid) -> Result<Option<Identity>, sqlx::Error> {
+/// #[instrument_db_user_fn!("get_identity_by_id", "users", user_id)]
+/// async fn get_identity_by_id(pool: &PgPool, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
 ///     // function implementation would go here
-///     # Ok(Some(Identity { id: 1, email: "test@example.com".to_string() }))
+///     # Ok(Some(User { id: 1, email: "test@example.com".to_string() }))
 /// }
 /// ```
 #[macro_export]

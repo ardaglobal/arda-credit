@@ -35,7 +35,7 @@ use arda_credit_db::{get_kyc_statistics, list_pending_kyc_applications, update_k
 // ADMIN-SPECIFIC TYPES
 // ============================================================================
 
-/// Admin view of user identity (wrapper around database Identity for OpenAPI)
+/// Admin view of user identity (wrapper around database User for OpenAPI)
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct AdminUserIdentity {
     pub id: String,

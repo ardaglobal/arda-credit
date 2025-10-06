@@ -361,7 +361,7 @@ pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Er
 
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, email, kyc_status, user_type)
+        INSERT INTO users (id, email, kyc_status, user_type)
         VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -381,7 +381,7 @@ pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Er
 
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, email, kyc_status, user_type)
+        INSERT INTO users (id, email, kyc_status, user_type)
         VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -391,18 +391,32 @@ pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Er
     .execute(pool)
     .await?;
 
+    // Create a test company (required for deals)
+    let test_company_id = Uuid::new_v4();
+    sqlx::query!(
+        r#"
+        INSERT INTO companies (id, name, description, status)
+        VALUES ($1, 'Test Schema Company', 'Test company for schema validation', 'active')
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_company_id
+    )
+    .execute(pool)
+    .await?;
+
     // Insert test deal that the listing can reference
     sqlx::query!(
         // was loans table
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, deal_status, originated_at)
-        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
+                          interest_rate_bps, deal_status, originated_at, company_id)
+        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW(), $4)
         ON CONFLICT (id) DO NOTHING
         "#,
         test_deal_id,       // was test_loan_id
         test_originator_id, // was test_borrower_id
-        test_investor_id    // was test_lender_id
+        test_investor_id,   // was test_lender_id
+        test_company_id
     )
     .execute(pool)
     .await?;

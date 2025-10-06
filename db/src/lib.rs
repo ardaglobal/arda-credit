@@ -200,8 +200,6 @@ pub use db::{
     DealPayment,
     DealPaymentStatus,
     DealTransactionDb,
-    // CCR Domain types
-    Identity,
     IncomingTransaction,
     InvestorProfile,
     InviteCodeInfo,
@@ -213,6 +211,8 @@ pub use db::{
     UpdateInvestorProfileRequest,
     UsdcDeposit,
     UsdcWithdrawal,
+    // CCR Domain types
+    User,
     UserDepositBalance,
     UserFinancialSummary,
     UserFinancialTransaction,

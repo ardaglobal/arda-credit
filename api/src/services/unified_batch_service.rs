@@ -830,8 +830,8 @@ impl UnifiedBatchService {
             operation_type: loan_transaction.transaction_type.clone(),
             loan_id: loan_transaction.deal_id,
             payment_id: loan_transaction.payment_id,
-            borrower_id: loan_transaction.identity_id, // Assuming identity is borrower
-            lender_id: None, // Would need to be populated from loan record
+            borrower_id: loan_transaction.user_id, // Assuming identity is borrower
+            lender_id: None,                       // Would need to be populated from loan record
             amount: Some(loan_transaction.amount),
             deal_status: Some("active".to_string()), // Would need to be determined from context
             transaction_data: serde_json::json!({

@@ -25,7 +25,7 @@ async fn test_remove_deal_listing_functionality() {
     // Insert test investor identity
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, email, kyc_status, user_type)
+        INSERT INTO users (id, email, kyc_status, user_type)
         VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -39,7 +39,7 @@ async fn test_remove_deal_listing_functionality() {
     // Insert test originator identity
     sqlx::query!(
         r#"
-        INSERT INTO identities (id, email, kyc_status, user_type)
+        INSERT INTO users (id, email, kyc_status, user_type)
         VALUES ($1, $2, 'approved', 'originator')
         ON CONFLICT (id) DO NOTHING
         "#,
@@ -164,11 +164,11 @@ async fn test_remove_deal_listing_functionality() {
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query!("DELETE FROM identities WHERE id = $1", test_investor_id)
+    sqlx::query!("DELETE FROM users WHERE id = $1", test_investor_id)
         .execute(&pool)
         .await
         .unwrap();
-    sqlx::query!("DELETE FROM identities WHERE id = $1", test_originator_id)
+    sqlx::query!("DELETE FROM users WHERE id = $1", test_originator_id)
         .execute(&pool)
         .await
         .unwrap();

@@ -400,13 +400,11 @@ mod integration_tests {
         ];
 
         for email in &emails {
-            let user_result = sqlx::query!(
-                "SELECT id, user_type FROM identities WHERE email = $1",
-                email
-            )
-            .fetch_optional(&pool)
-            .await
-            .expect(&format!("Failed to query user {}", email));
+            let user_result =
+                sqlx::query!("SELECT id, user_type FROM users WHERE email = $1", email)
+                    .fetch_optional(&pool)
+                    .await
+                    .expect(&format!("Failed to query user {}", email));
 
             if let Some(user) = user_result {
                 let expected_type = match email.as_ref() {
