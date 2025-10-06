@@ -462,7 +462,7 @@ dependencies = [
  "alloy-rlp",
  "alloy-serde",
  "derive_more 2.0.1",
- "jsonwebtoken",
+ "jsonwebtoken 9.3.1",
  "rand 0.8.5",
  "serde",
  "strum 0.27.2",
@@ -818,7 +818,7 @@ dependencies = [
  "hyper 1.7.0",
  "io-uring",
  "ipnetwork 0.21.1",
- "jsonwebtoken",
+ "jsonwebtoken 10.0.0",
  "lib",
  "metrics",
  "metrics-exporter-prometheus",
@@ -4713,6 +4713,22 @@ dependencies = [
  "ring",
  "serde",
  "serde_json",
+ "simple_asn1",
+]
+
+[[package]]
+name = "jsonwebtoken"
+version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1417155a38e99d7704ddb3ea7445fe57fdbd5d756d727740a9ed8b9ebaed6e1"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.2.16",
+ "js-sys",
+ "pem",
+ "serde",
+ "serde_json",
+ "signature 2.2.0",
  "simple_asn1",
 ]
 
