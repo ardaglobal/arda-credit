@@ -173,7 +173,7 @@ mod tests {
         };
 
         // Link wallet address
-        sqlx::query("UPDATE identities SET wallet_address = $1 WHERE id = $2")
+        sqlx::query("UPDATE users SET wallet_address = $1 WHERE id = $2")
             .bind(&unique_wallet)
             .bind(user_id)
             .execute(&pool)

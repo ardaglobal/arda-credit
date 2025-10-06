@@ -720,9 +720,9 @@ impl DocumentService {
         let team_member = sqlx::query!(
             r#"
             SELECT tm.*, c.kyb_status, i.kyc_status
-            FROM team_members tm
+            FROM company_memberships tm
             JOIN companies c ON tm.company_id = c.id
-            JOIN identities i ON tm.user_id = i.id
+            JOIN users i ON tm.user_id = i.id
             WHERE tm.user_id = $1 AND tm.company_id = $2 AND tm.status = 'active'
             "#,
             user_id,

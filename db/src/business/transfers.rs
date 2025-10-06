@@ -186,7 +186,7 @@ pub async fn validate_transfer_eligibility(
     let kyc_check = sqlx::query!(
         r#"
         SELECT kyc_status
-        FROM identities
+        FROM users
         WHERE id = $1
         "#,
         request.buyer_id
@@ -431,8 +431,8 @@ pub async fn get_deal_transfer_history(
             from_user.email as from_investor_email,
             to_user.email as to_investor_email
         FROM deal_transfers dt
-        JOIN identities from_user ON dt.from_investor_id = from_user.id
-        JOIN identities to_user ON dt.to_investor_id = to_user.id
+        JOIN users from_user ON dt.from_investor_id = from_user.id
+        JOIN users to_user ON dt.to_investor_id = to_user.id
         WHERE dt.deal_id = $1
         ORDER BY dt.transfer_date DESC
         "#,
@@ -470,8 +470,8 @@ pub async fn get_user_transfer_history(
             from_user.email as from_investor_email,
             to_user.email as to_investor_email
         FROM deal_transfers dt
-        JOIN identities from_user ON dt.from_investor_id = from_user.id
-        JOIN identities to_user ON dt.to_investor_id = to_user.id
+        JOIN users from_user ON dt.from_investor_id = from_user.id
+        JOIN users to_user ON dt.to_investor_id = to_user.id
         WHERE dt.from_investor_id = $1 OR dt.to_investor_id = $1
         ORDER BY dt.transfer_date DESC
         LIMIT $2 OFFSET $3

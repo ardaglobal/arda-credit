@@ -215,8 +215,8 @@ impl CompanyService {
                 user_id: Uuid::nil(),
             })?;
 
-        // Verify that the user exists in the identities table
-        let user_exists = sqlx::query!("SELECT id FROM identities WHERE id = $1", user_id)
+        // Verify that the user exists in the users table
+        let user_exists = sqlx::query!("SELECT id FROM users WHERE id = $1", user_id)
             .fetch_optional(&self.db_pool)
             .await?;
 
@@ -316,7 +316,7 @@ impl CompanyService {
 
         // Get team member count
         let member_count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM team_members WHERE company_id = $1 AND status = 'active'",
+            "SELECT COUNT(*) as count FROM company_memberships WHERE company_id = $1 AND status = 'active'",
             company_id
         )
         .fetch_one(&self.db_pool)
@@ -379,7 +379,7 @@ impl CompanyService {
 
         // Get team member count
         let member_count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM team_members WHERE company_id = $1 AND status = 'active'",
+            "SELECT COUNT(*) as count FROM company_memberships WHERE company_id = $1 AND status = 'active'",
             company_id
         )
         .fetch_one(&self.db_pool)
@@ -424,7 +424,7 @@ impl CompanyService {
 
         // Check if team member already exists
         let existing_member = sqlx::query!(
-            "SELECT id FROM team_members WHERE user_id = $1 AND company_id = $2",
+            "SELECT id FROM company_memberships WHERE user_id = $1 AND company_id = $2",
             invitee_id,
             company_id
         )
@@ -505,8 +505,8 @@ impl CompanyService {
         let team_members = sqlx::query(
             r#"
             SELECT tm.*, i.email
-            FROM team_members tm
-            JOIN identities i ON tm.user_id = i.id
+            FROM company_memberships tm
+            JOIN users i ON tm.user_id = i.id
             WHERE tm.company_id = $1
             ORDER BY tm.invited_at DESC
             "#,
@@ -549,7 +549,7 @@ impl CompanyService {
         if let Ok(current_member) = self.get_team_member(member_user_id, company_id).await {
             if current_member.role == TeamRole::Admin.to_string() && role != TeamRole::Admin {
                 let admin_count = sqlx::query!(
-                    "SELECT COUNT(*) as count FROM team_members WHERE company_id = $1 AND role = 'admin' AND status = 'active'",
+                    "SELECT COUNT(*) as count FROM company_memberships WHERE company_id = $1 AND role = 'admin' AND status = 'active'",
                     company_id
                 )
                 .fetch_one(&self.db_pool)
@@ -616,7 +616,7 @@ impl CompanyService {
         company_id: Uuid,
     ) -> Result<(), CompanyServiceError> {
         let member = sqlx::query!(
-            "SELECT id FROM team_members WHERE user_id = $1 AND company_id = $2 AND status = 'active'",
+            "SELECT id FROM company_memberships WHERE user_id = $1 AND company_id = $2 AND status = 'active'",
             user_id,
             company_id
         )
@@ -637,7 +637,7 @@ impl CompanyService {
         company_id: Uuid,
     ) -> Result<(), CompanyServiceError> {
         let member = sqlx::query!(
-            "SELECT role FROM team_members WHERE user_id = $1 AND company_id = $2 AND status = 'active'",
+            "SELECT role FROM company_memberships WHERE user_id = $1 AND company_id = $2 AND status = 'active'",
             user_id,
             company_id
         )
@@ -661,7 +661,7 @@ impl CompanyService {
         company_id: Uuid,
     ) -> Result<(), CompanyServiceError> {
         let member = sqlx::query!(
-            "SELECT can_manage_team FROM team_members WHERE user_id = $1 AND company_id = $2 AND status = 'active'",
+            "SELECT can_manage_team FROM company_memberships WHERE user_id = $1 AND company_id = $2 AND status = 'active'",
             user_id,
             company_id
         )
@@ -734,7 +734,7 @@ impl CompanyService {
     /// Get or create user by email
     async fn get_or_create_user_by_email(&self, email: &str) -> Result<Uuid, CompanyServiceError> {
         // First try to find existing user
-        if let Some(user) = sqlx::query!("SELECT id FROM identities WHERE email = $1", email)
+        if let Some(user) = sqlx::query!("SELECT id FROM users WHERE email = $1", email)
             .fetch_optional(&self.db_pool)
             .await?
         {
@@ -745,7 +745,7 @@ impl CompanyService {
         let user_id = Uuid::new_v4();
         sqlx::query!(
             r#"
-            INSERT INTO identities (id, email, user_type, kyc_status, created_at, updated_at)
+            INSERT INTO users (id, email, user_type, kyc_status, created_at, updated_at)
             VALUES ($1, $2, 'investor', 'not_submitted', NOW(), NOW())
             "#,
             user_id,
@@ -766,8 +766,8 @@ impl CompanyService {
         let member = sqlx::query(
             r#"
             SELECT tm.*, i.email
-            FROM team_members tm
-            JOIN identities i ON tm.user_id = i.id
+            FROM company_memberships tm
+            JOIN users i ON tm.user_id = i.id
             WHERE tm.user_id = $1 AND tm.company_id = $2
             "#,
         )
@@ -801,11 +801,11 @@ impl CompanyService {
 
         sqlx::query!(
             r#"
-            INSERT INTO team_members (
+            INSERT INTO company_memberships (
                 id, user_id, company_id, role, status,
                 can_upload_documents, can_download_documents, can_delete_documents,
                 can_approve_documents, can_manage_team, can_view_audit_logs,
-                invited_by, invited_at, joined_at
+                invited_by, invited_at, accepted_at
             ) VALUES (
                 $1, $2, $3, $4, 'active',
                 $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()

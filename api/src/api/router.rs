@@ -37,7 +37,7 @@ use crate::services::batch_processor::BatchProcessorHandle;
 use crate::services::document_service::DocumentService;
 use crate::services::session_service::SessionService;
 use crate::services::{BalanceVerificationService, WithdrawalTransactionService};
-use arda_credit_db::{Identity, IndexedMerkleTreeADS};
+use arda_credit_db::{IndexedMerkleTreeADS, User};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -59,9 +59,9 @@ pub struct AuthenticatedUser {
     pub user_type: String,
 }
 
-/// Convert database Identity to API UserDetailsResponse (legacy - prefer users::identity_to_user_details)
+/// Convert database User to API UserDetailsResponse (legacy - prefer users::identity_to_user_details)
 #[allow(dead_code)]
-fn identity_to_user_details(identity: Identity) -> UserDetailsResponse {
+fn identity_to_user_details(identity: User) -> UserDetailsResponse {
     UserDetailsResponse {
         user_id: identity.id.to_string(),
         email: identity.email,
