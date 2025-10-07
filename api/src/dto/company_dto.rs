@@ -7,16 +7,22 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
-/// Request to invite a user to a company with a specific profile type
+/// Request to invite a user to a company with a specific profile type via magic link
+///
+/// This request triggers a team invitation email with an embedded magic link.
+/// The invitee will receive a professional email and can sign in to accept the invitation.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct InviteMemberRequest {
+    /// Email address of the invitee (must be valid email format)
     #[validate(email)]
     #[schema(example = "user@example.com")]
     pub email: String,
 
+    /// Role: 'admin' (full permissions) or 'user' (limited permissions)
     #[schema(example = "admin")]
     pub role: String, // "admin" or "user"
 
+    /// Profile type: 'originator' (creates deals) or 'investor' (provides capital)
     #[schema(example = "originator")]
     pub profile_type: String, // "originator" or "investor"
 }
@@ -85,29 +91,53 @@ pub struct UpdateMembershipRequest {
     pub permissions: Option<serde_json::Value>,
 }
 
-/// Response for a company invitation
+/// Response for a company invitation with magic link
+///
+/// This response confirms that an invitation was created and a magic link email was sent.
+/// The invitation_token is used internally for accepting the invitation via magic link.
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct InvitationResponse {
+    /// Unique identifier for this invitation
     pub id: Uuid,
+
+    /// Company the user is invited to join
     pub company_id: Uuid,
+
+    /// Email address of the invitee
+    #[schema(example = "user@example.com")]
     pub email: String,
 
+    /// Role: 'admin' or 'user'
     #[schema(example = "admin")]
     pub role: String, // "admin" or "user"
 
+    /// Profile type: 'originator' or 'investor'
     #[schema(example = "originator")]
     pub profile_type: String, // "originator" or "investor"
 
+    /// User ID of the admin who sent the invitation
     pub invited_by: Uuid,
+
+    /// Invitation token (used internally in magic link for auto-acceptance)
     pub invitation_token: String,
 
+    /// Status: 'pending', 'accepted', 'rejected', 'expired', or 'cancelled'
     #[schema(example = "pending")]
     pub status: String, // "pending", "accepted", "rejected", "expired", "cancelled"
 
+    /// When the invitation expires (UTC timestamp)
     pub expires_at: DateTime<Utc>,
+
+    /// User ID who accepted the invitation (null if pending)
     pub accepted_by: Option<Uuid>,
+
+    /// Timestamp when invitation was accepted (null if pending)
     pub accepted_at: Option<DateTime<Utc>>,
+
+    /// Timestamp when invitation was created
     pub created_at: DateTime<Utc>,
+
+    /// Timestamp when invitation was last updated
     pub updated_at: DateTime<Utc>,
 }
 

@@ -175,12 +175,30 @@ pub async fn request_magic_link(
 // ============================================================================
 
 /// Verify a magic link token and create a session
+///
+/// This endpoint verifies a magic link token and creates an authenticated session.
+/// It also handles automatic team invitation acceptance if the magic link includes
+/// an invitation token in the redirect_uri.
+///
+/// ## Flow:
+/// 1. User clicks magic link in their email
+/// 2. Frontend calls this endpoint with token and state from URL
+/// 3. System verifies the magic link and creates a session
+/// 4. If redirect_uri contains an invitation token (e.g., `/invitation/accept?token=ABC123`):
+///    - System automatically accepts the team invitation
+///    - User is added to the company with the specified role and profile type
+/// 5. User is authenticated and can access the application
+///
+/// ## Team Invitation Integration:
+/// When this endpoint is called with a magic link from a team invitation email,
+/// the invitation is automatically accepted upon successful authentication.
+/// The frontend should check the redirect_uri to navigate the user appropriately.
 #[utoipa::path(
     post,
     path = "/api/v1/auth/verify",
     request_body = VerifyMagicLinkRequest,
     responses(
-        (status = 200, description = "Magic link verified successfully", body = VerifyMagicLinkResponse),
+        (status = 200, description = "Magic link verified successfully. If invitation token present, invitation is also accepted.", body = VerifyMagicLinkResponse),
         (status = 400, description = "Invalid token or state parameter"),
         (status = 404, description = "Magic link not found or expired"),
         (status = 410, description = "Magic link already used"),
@@ -236,6 +254,33 @@ pub async fn verify_magic_link(
                     ));
                 }
             };
+
+            // Check if this is a team invitation acceptance (invitation token in redirect_uri)
+            if let Some(ref redirect) = request.redirect_uri {
+                if let Some(invitation_token) = extract_invitation_token(redirect) {
+                    info!("🎫 Team invitation token found in redirect, accepting invitation");
+
+                    // Accept the invitation if TeamInvitationService is available
+                    if let Some(team_invitation_service) = &state.team_invitation_service {
+                        match team_invitation_service
+                            .accept_invitation(&invitation_token, user.id)
+                            .await
+                        {
+                            Ok(invitation) => {
+                                info!(
+                                    "✅ Team invitation accepted: user={}, company={}, role={}, profile={}",
+                                    user.email, invitation.company_id, invitation.role, invitation.profile_type
+                                );
+                            }
+                            Err(e) => {
+                                warn!("⚠️ Failed to accept team invitation: {}", e);
+                                // Don't fail the authentication, just log the error
+                                // The user can still sign in, but the invitation won't be accepted
+                            }
+                        }
+                    }
+                }
+            }
 
             // Create session cookie
             let session_cookie = create_session_cookie(session_token.clone(), 30, None); // 30 days
@@ -508,5 +553,22 @@ fn extract_session_token_from_headers(headers: &HeaderMap) -> Option<String> {
         }
     }
 
+    None
+}
+
+/// Extract invitation token from redirect URI
+/// Looks for patterns like "/invitation/accept?token=ABC123" or "?token=ABC123"
+fn extract_invitation_token(redirect_uri: &str) -> Option<String> {
+    // Parse the redirect URI to extract the token query parameter
+    if let Some(query_start) = redirect_uri.find('?') {
+        let query = &redirect_uri[query_start + 1..];
+        for param in query.split('&') {
+            if let Some((key, value)) = param.split_once('=') {
+                if key == "token" {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
     None
 }

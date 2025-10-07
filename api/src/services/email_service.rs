@@ -7,7 +7,9 @@ use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::config::email_config::{EmailConfig, EmailConfigError};
-use crate::config::email_templates::{EmailContent as TemplateContent, MagicLinkEmailData};
+use crate::config::email_templates::{
+    EmailContent as TemplateContent, MagicLinkEmailData, TeamInvitationEmailData,
+};
 
 /// Errors that can occur during email operations
 #[derive(Debug, thiserror::Error)]
@@ -124,6 +126,70 @@ impl EmailService {
 
         info!(
             "✅ Magic link email sent successfully (message_id: {})",
+            message_id
+        );
+        Ok(message_id)
+    }
+
+    /// Send a team invitation email
+    #[instrument(skip(self, magic_link_url), level = "info")]
+    pub async fn send_team_invitation_email(
+        &self,
+        invitee_email: &str,
+        company_name: String,
+        inviter_name: String,
+        role: String,
+        profile_type: String,
+        magic_link_url: String,
+        expiry_minutes: i64,
+    ) -> Result<String, EmailError> {
+        // Check if in debug mode - log the invitation instead of sending email
+        if self.config.debug_mode {
+            info!("🔗 DEBUG MODE: Team invitation for {}:", invitee_email);
+            info!("      Company: {}", company_name);
+            info!("      Inviter: {}", inviter_name);
+            info!("      Role: {}, Profile: {}", role, profile_type);
+            info!("      {}", magic_link_url);
+            info!("      Expires in {} minutes", expiry_minutes);
+            return Ok("debug-mode".to_string());
+        }
+
+        if !self.config.enabled {
+            warn!(
+                "📧 Email service disabled - would send invitation to {}",
+                invitee_email
+            );
+            return Ok("disabled".to_string());
+        }
+
+        info!("📧 Sending team invitation email to: {}", invitee_email);
+
+        // Validate email address format (basic check)
+        if !invitee_email.contains('@') || !invitee_email.contains('.') {
+            return Err(EmailError::InvalidEmail(invitee_email.to_string()));
+        }
+
+        // Create email template data
+        let template_data = TeamInvitationEmailData::new(
+            invitee_email.to_string(),
+            company_name,
+            inviter_name,
+            role,
+            profile_type,
+            magic_link_url,
+            expiry_minutes,
+        );
+
+        // Render email content
+        let email_content = TemplateContent::team_invitation_email(template_data)?;
+
+        // Send via SES
+        let message_id = self
+            .send_email_via_ses(invitee_email, email_content)
+            .await?;
+
+        info!(
+            "✅ Team invitation email sent successfully (message_id: {})",
             message_id
         );
         Ok(message_id)

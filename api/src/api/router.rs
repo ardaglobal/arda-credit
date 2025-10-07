@@ -94,6 +94,8 @@ pub struct ApiState {
     pub ads_service: Arc<RwLock<IndexedMerkleTreeADS>>,
     pub session_service: Arc<SessionService>,
     pub magic_link_service: Option<Arc<crate::services::magic_link_service::MagicLinkService>>,
+    pub team_invitation_service:
+        Option<Arc<crate::services::team_invitation_service::TeamInvitationService>>,
     pub withdrawal_service: WithdrawalTransactionService,
     pub balance_service: BalanceVerificationService,
     pub withdrawal_executor:
