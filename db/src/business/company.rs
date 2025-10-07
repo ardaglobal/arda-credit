@@ -124,6 +124,36 @@ impl std::str::FromStr for MembershipStatus {
     }
 }
 
+/// Profile type within a company
+/// A user can have both originator and investor profiles in the same company
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "VARCHAR", rename_all = "lowercase")]
+pub enum ProfileType {
+    Originator, // Creates and manages deals
+    Investor,   // Provides capital for deals
+}
+
+impl std::fmt::Display for ProfileType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Originator => write!(f, "originator"),
+            Self::Investor => write!(f, "investor"),
+        }
+    }
+}
+
+impl std::str::FromStr for ProfileType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "originator" => Ok(Self::Originator),
+            "investor" => Ok(Self::Investor),
+            _ => Err(format!("Invalid profile type: {}", s)),
+        }
+    }
+}
+
 /// Company membership linking users to companies with roles
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct CompanyMembership {
@@ -131,6 +161,7 @@ pub struct CompanyMembership {
     pub company_id: Uuid,
     pub user_id: Uuid,
     pub role: CompanyRole,
+    pub profile_type: ProfileType, // New field: originator or investor
     pub status: MembershipStatus,
     pub invited_by: Option<Uuid>,
     pub invited_at: DateTime<Utc>,
@@ -186,6 +217,7 @@ pub struct CompanyInvitation {
     pub company_id: Uuid,
     pub email: String,
     pub role: CompanyRole,
+    pub profile_type: ProfileType, // New field: originator or investor
     pub invited_by: Uuid,
     pub invitation_token: String,
     pub status: InvitationStatus,
@@ -239,6 +271,7 @@ pub struct UpdateCompanyRequest {
 pub struct InviteUserRequest {
     pub email: String,
     pub role: CompanyRole,
+    pub profile_type: ProfileType, // New field: originator or investor
     pub invited_by: Uuid,
 }
 
@@ -274,6 +307,7 @@ pub struct MembershipWithUser {
     pub company_id: Uuid,
     pub user_id: Uuid,
     pub role: CompanyRole,
+    pub profile_type: ProfileType, // New field: originator or investor
     pub status: MembershipStatus,
     pub invited_by: Option<Uuid>,
     pub invited_at: DateTime<Utc>,
@@ -296,6 +330,7 @@ impl MembershipWithUser {
             company_id: self.company_id,
             user_id: self.user_id,
             role: self.role,
+            profile_type: self.profile_type,
             status: self.status,
             invited_by: self.invited_by,
             invited_at: self.invited_at,
@@ -607,6 +642,7 @@ pub async fn create_membership(
     company_id: Uuid,
     user_id: Uuid,
     role: CompanyRole,
+    profile_type: ProfileType,
     invited_by: Option<Uuid>,
     permissions: Option<serde_json::Value>,
 ) -> DbResult<CompanyMembership> {
@@ -617,14 +653,15 @@ pub async fn create_membership(
 
     let membership = sqlx::query_as::<_, CompanyMembership>(
         r#"
-        INSERT INTO company_memberships (company_id, user_id, role, status, invited_by, permissions)
-        VALUES ($1, $2, $3, 'pending', $4, $5)
-        RETURNING id, company_id, user_id, role, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        INSERT INTO company_memberships (company_id, user_id, role, profile_type, status, invited_by, permissions)
+        VALUES ($1, $2, $3, $4, 'pending', $5, $6)
+        RETURNING id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
         "#,
     )
     .bind(company_id)
     .bind(user_id)
     .bind(role.to_string())
+    .bind(profile_type.to_string())
     .bind(invited_by)
     .bind(&permissions)
     .fetch_one(pool)
@@ -641,7 +678,7 @@ pub async fn get_membership_by_id(
 ) -> DbResult<CompanyMembership> {
     let membership = sqlx::query_as::<_, CompanyMembership>(
         r#"
-        SELECT id, company_id, user_id, role, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        SELECT id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
         FROM company_memberships
         WHERE id = $1
         "#,
@@ -654,26 +691,51 @@ pub async fn get_membership_by_id(
     Ok(membership)
 }
 
-/// Get user's membership in a company
+/// Get user's membership in a company by profile type
 pub async fn get_user_membership(
     pool: &PgPool,
     company_id: Uuid,
     user_id: Uuid,
+    profile_type: ProfileType,
 ) -> DbResult<CompanyMembership> {
     let membership = sqlx::query_as::<_, CompanyMembership>(
         r#"
-        SELECT id, company_id, user_id, role, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        SELECT id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
         FROM company_memberships
-        WHERE company_id = $1 AND user_id = $2
+        WHERE company_id = $1 AND user_id = $2 AND profile_type = $3
         "#,
     )
     .bind(company_id)
     .bind(user_id)
+    .bind(profile_type.to_string())
     .fetch_one(pool)
     .await
     .map_err(|e| DbError::NotFound(format!("Membership not found: {}", e)))?;
 
     Ok(membership)
+}
+
+/// Get all user memberships in a company (both originator and investor profiles)
+pub async fn get_user_memberships_in_company(
+    pool: &PgPool,
+    company_id: Uuid,
+    user_id: Uuid,
+) -> DbResult<Vec<CompanyMembership>> {
+    let memberships = sqlx::query_as::<_, CompanyMembership>(
+        r#"
+        SELECT id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        FROM company_memberships
+        WHERE company_id = $1 AND user_id = $2
+        ORDER BY profile_type
+        "#,
+    )
+    .bind(company_id)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| DbError::NotFound(format!("Memberships not found: {}", e)))?;
+
+    Ok(memberships)
 }
 
 /// List company members with optional filters
@@ -693,7 +755,7 @@ pub async fn list_company_members(
             sqlx::query_as::<_, MembershipWithUser>(
                 r#"
                 SELECT
-                    cm.id, cm.company_id, cm.user_id, cm.role, cm.status,
+                    cm.id, cm.company_id, cm.user_id, cm.role, cm.profile_type, cm.status,
                     cm.invited_by, cm.invited_at, cm.accepted_at, cm.permissions,
                     cm.created_at, cm.updated_at,
                     u.email as user_email, u.user_type, u.kyc_status
@@ -716,7 +778,7 @@ pub async fn list_company_members(
             sqlx::query_as::<_, MembershipWithUser>(
                 r#"
                 SELECT
-                    cm.id, cm.company_id, cm.user_id, cm.role, cm.status,
+                    cm.id, cm.company_id, cm.user_id, cm.role, cm.profile_type, cm.status,
                     cm.invited_by, cm.invited_at, cm.accepted_at, cm.permissions,
                     cm.created_at, cm.updated_at,
                     u.email as user_email, u.user_type, u.kyc_status
@@ -738,7 +800,7 @@ pub async fn list_company_members(
             sqlx::query_as::<_, MembershipWithUser>(
                 r#"
                 SELECT
-                    cm.id, cm.company_id, cm.user_id, cm.role, cm.status,
+                    cm.id, cm.company_id, cm.user_id, cm.role, cm.profile_type, cm.status,
                     cm.invited_by, cm.invited_at, cm.accepted_at, cm.permissions,
                     cm.created_at, cm.updated_at,
                     u.email as user_email, u.user_type, u.kyc_status
@@ -760,7 +822,7 @@ pub async fn list_company_members(
             sqlx::query_as::<_, MembershipWithUser>(
                 r#"
                 SELECT
-                    cm.id, cm.company_id, cm.user_id, cm.role, cm.status,
+                    cm.id, cm.company_id, cm.user_id, cm.role, cm.profile_type, cm.status,
                     cm.invited_by, cm.invited_at, cm.accepted_at, cm.permissions,
                     cm.created_at, cm.updated_at,
                     u.email as user_email, u.user_type, u.kyc_status
@@ -813,7 +875,7 @@ pub async fn update_membership(
         UPDATE company_memberships
         SET {}
         WHERE id = $1
-        RETURNING id, company_id, user_id, role, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        RETURNING id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
         "#,
         updates.join(", ")
     );
@@ -845,7 +907,7 @@ pub async fn accept_membership(pool: &PgPool, membership_id: Uuid) -> DbResult<C
         UPDATE company_memberships
         SET status = 'active', accepted_at = NOW()
         WHERE id = $1
-        RETURNING id, company_id, user_id, role, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        RETURNING id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
         "#,
     )
     .bind(membership_id)
@@ -887,14 +949,15 @@ pub async fn create_invitation(
 
     let invitation = sqlx::query_as::<_, CompanyInvitation>(
         r#"
-        INSERT INTO company_invitations (company_id, email, role, invited_by, invitation_token)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, company_id, email, role, invited_by, invitation_token, status, expires_at, accepted_by, accepted_at, created_at, updated_at
+        INSERT INTO company_invitations (company_id, email, role, profile_type, invited_by, invitation_token)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, company_id, email, role, profile_type, invited_by, invitation_token, status, expires_at, accepted_by, accepted_at, created_at, updated_at
         "#,
     )
     .bind(company_id)
     .bind(&request.email)
     .bind(request.role.to_string())
+    .bind(request.profile_type.to_string())
     .bind(request.invited_by)
     .bind(&invitation_token)
     .fetch_one(pool)
@@ -908,7 +971,7 @@ pub async fn create_invitation(
 pub async fn get_invitation_by_token(pool: &PgPool, token: &str) -> DbResult<CompanyInvitation> {
     let invitation = sqlx::query_as::<_, CompanyInvitation>(
         r#"
-        SELECT id, company_id, email, role, invited_by, invitation_token, status, expires_at, accepted_by, accepted_at, created_at, updated_at
+        SELECT id, company_id, email, role, profile_type, invited_by, invitation_token, status, expires_at, accepted_by, accepted_at, created_at, updated_at
         FROM company_invitations
         WHERE invitation_token = $1 AND status = 'pending' AND expires_at > NOW()
         "#,
@@ -931,7 +994,7 @@ pub async fn list_company_invitations(
         Some(status) => {
             sqlx::query_as::<_, CompanyInvitation>(
                 r#"
-                SELECT id, company_id, email, role, invited_by, invitation_token, status, expires_at, accepted_by, accepted_at, created_at, updated_at
+                SELECT id, company_id, email, role, profile_type, invited_by, invitation_token, status, expires_at, accepted_by, accepted_at, created_at, updated_at
                 FROM company_invitations
                 WHERE company_id = $1 AND status = $2
                 ORDER BY created_at DESC
@@ -945,7 +1008,7 @@ pub async fn list_company_invitations(
         None => {
             sqlx::query_as::<_, CompanyInvitation>(
                 r#"
-                SELECT id, company_id, email, role, invited_by, invitation_token, status, expires_at, accepted_by, accepted_at, created_at, updated_at
+                SELECT id, company_id, email, role, profile_type, invited_by, invitation_token, status, expires_at, accepted_by, accepted_at, created_at, updated_at
                 FROM company_invitations
                 WHERE company_id = $1
                 ORDER BY created_at DESC
@@ -996,16 +1059,17 @@ pub async fn accept_invitation(
 
     let membership = sqlx::query_as::<_, CompanyMembership>(
         r#"
-        INSERT INTO company_memberships (company_id, user_id, role, status, invited_by, accepted_at, permissions)
-        VALUES ($1, $2, $3, 'active', $4, NOW(), $5)
-        ON CONFLICT (company_id, user_id)
+        INSERT INTO company_memberships (company_id, user_id, role, profile_type, status, invited_by, accepted_at, permissions)
+        VALUES ($1, $2, $3, $4, 'active', $5, NOW(), $6)
+        ON CONFLICT (company_id, user_id, profile_type)
         DO UPDATE SET status = 'active', accepted_at = NOW(), role = EXCLUDED.role, permissions = EXCLUDED.permissions
-        RETURNING id, company_id, user_id, role, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        RETURNING id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
         "#,
     )
     .bind(invitation.company_id)
     .bind(request.user_id)
     .bind(invitation.role.to_string())
+    .bind(invitation.profile_type.to_string())
     .bind(invitation.invited_by)
     .bind(&permissions)
     .fetch_one(&mut *tx)
@@ -1060,20 +1124,45 @@ pub async fn is_company_admin(pool: &PgPool, user_id: Uuid, company_id: Uuid) ->
     Ok(result)
 }
 
-/// Check if user has specific permission in a company
+/// Check if user has specific permission in a company (checks all profiles)
 pub async fn check_user_permission(
     pool: &PgPool,
     user_id: Uuid,
     company_id: Uuid,
     permission: &str,
 ) -> DbResult<bool> {
-    // First check if user is admin (admins have all permissions)
+    // First check if user is admin in any profile (admins have all permissions)
     if is_company_admin(pool, user_id, company_id).await? {
         return Ok(true);
     }
 
-    // Check specific permission
-    let membership = match get_user_membership(pool, company_id, user_id).await {
+    // Check specific permission across all user's memberships in this company
+    let memberships = match get_user_memberships_in_company(pool, company_id, user_id).await {
+        Ok(m) => m,
+        Err(_) => return Ok(false),
+    };
+
+    for membership in memberships {
+        if membership.status == MembershipStatus::Active
+            && has_permission(&membership.permissions, permission)
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// Check if user has specific permission for a profile type
+pub async fn check_user_permission_for_profile(
+    pool: &PgPool,
+    user_id: Uuid,
+    company_id: Uuid,
+    profile_type: ProfileType,
+    permission: &str,
+) -> DbResult<bool> {
+    // Check specific permission for this profile
+    let membership = match get_user_membership(pool, company_id, user_id, profile_type).await {
         Ok(m) => m,
         Err(_) => return Ok(false),
     };
@@ -1082,23 +1171,30 @@ pub async fn check_user_permission(
         return Ok(false);
     }
 
+    // Admins have all permissions
+    if membership.role == CompanyRole::Admin {
+        return Ok(true);
+    }
+
     Ok(has_permission(&membership.permissions, permission))
 }
 
-/// Get user's role in a company
+/// Get user's role in a company for a specific profile type
 pub async fn get_user_role(
     pool: &PgPool,
     user_id: Uuid,
     company_id: Uuid,
+    profile_type: ProfileType,
 ) -> DbResult<Option<CompanyRole>> {
     let role = sqlx::query_scalar::<_, Option<String>>(
         r#"
         SELECT role FROM company_memberships
-        WHERE user_id = $1 AND company_id = $2 AND status = 'active'
+        WHERE user_id = $1 AND company_id = $2 AND profile_type = $3 AND status = 'active'
         "#,
     )
     .bind(user_id)
     .bind(company_id)
+    .bind(profile_type.to_string())
     .fetch_optional(pool)
     .await
     .map_err(|e| DbError::TransactionFailed(format!("Failed to get user role: {}", e)))?;

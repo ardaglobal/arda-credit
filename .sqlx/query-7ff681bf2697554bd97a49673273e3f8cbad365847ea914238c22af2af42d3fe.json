@@ -90,11 +90,16 @@
       },
       {
         "ordinal": 17,
-        "name": "kyb_status",
+        "name": "profile_type",
         "type_info": "Varchar"
       },
       {
         "ordinal": 18,
+        "name": "kyb_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 19,
         "name": "kyc_status",
         "type_info": "Varchar"
       }
@@ -123,6 +128,7 @@
       true,
       true,
       true,
+      false,
       false,
       false
     ]
