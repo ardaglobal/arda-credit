@@ -300,6 +300,16 @@ fn default_limit() -> u32 {
         crate::handlers::companies::memberships::update_membership,
         crate::handlers::companies::memberships::remove_member,
 
+        // Company Wallet endpoints (permission-based access control)
+        crate::handlers::companies::wallets::create_wallet_address,
+        crate::handlers::companies::wallets::list_wallet_addresses,
+        crate::handlers::companies::wallets::get_user_wallet_addresses,
+        crate::handlers::companies::wallets::get_wallet_address,
+        crate::handlers::companies::wallets::update_wallet_address,
+        crate::handlers::companies::wallets::grant_wallet_permission,
+        crate::handlers::companies::wallets::list_wallet_permissions,
+        crate::handlers::companies::wallets::revoke_wallet_permission,
+
         // Contract configuration endpoints
         crate::handlers::core::contract::get_contract_config,
         crate::handlers::core::contract::get_transaction_updates,
@@ -310,6 +320,7 @@ fn default_limit() -> u32 {
         (name = "Users", description = "User account management, KYC verification, balances, and transaction history"),
         (name = "Companies", description = "Originator and investor company profiles, documents, turnover tracking, and AI analysis"),
         (name = "Company Memberships", description = "Company team member management with originator/investor profile type support. Users can have multiple profiles (originator and investor) in the same company."),
+        (name = "Company Wallets", description = "Company wallet address management with permission-based access control. Wallet addresses belong to companies with granular user permissions. Only admin users can authorize transactions."),
         (name = "Deals", description = "Deal lifecycle management, marketplace operations, ownership transfers, and payment processing"),
         (name = "State", description = "Blockchain state management, batch processing, ZK proof generation, and contract integration"),
         (name = "Admin", description = "Administrative operations including KYC approval, withdrawal management, and platform oversight"),
@@ -356,6 +367,15 @@ fn default_limit() -> u32 {
         crate::dto::company_dto::UpdateMembershipRequest,
         crate::dto::company_dto::InvitationResponse,
         crate::handlers::companies::memberships::ListMembersQuery,
+
+        // Company Wallet types (permission-based access control)
+        crate::dto::wallet_dto::CreateWalletAddressRequest,
+        crate::dto::wallet_dto::UpdateWalletAddressRequest,
+        crate::dto::wallet_dto::WalletAddressResponse,
+        crate::dto::wallet_dto::UserWalletAddressResponse,
+        crate::dto::wallet_dto::GrantWalletPermissionRequest,
+        crate::dto::wallet_dto::WalletPermissionResponse,
+        crate::handlers::companies::wallets::ListWalletsQuery,
 
         // Document types
         crate::handlers::companies::documents::DocumentUploadResponse,

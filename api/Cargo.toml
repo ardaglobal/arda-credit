@@ -72,8 +72,8 @@ tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 reqwest = { version = "0.12", features = [ "json" ] }
 
 # Authentication dependencies
-jsonwebtoken = "10.0"                                         # JWT token generation/validation
-validator    = { version = "0.20", features = [ "derive" ] } # Email validation
+jsonwebtoken = { version = "10.0", features = [ "aws_lc_rs" ] } # JWT token generation/validation
+validator    = { version = "0.20", features = [ "derive" ] }    # Email validation
 
 # AWS SES Integration
 aws-config    = "1.8"
@@ -85,7 +85,7 @@ askama = "0.14"
 # Session management dependencies
 axum-extra = { version = "0.10", features = [ "cookie" ] }
 base64     = "0.22"
-ipnetwork  = { version = "0.21", features = [ "serde" ] }
+ipnetwork  = { version = "0.20", features = [ "serde" ] }  # Must match sqlx's ipnetwork version
 time       = "0.3"
 
 # OpenTelemetry dependencies (compatible versions)

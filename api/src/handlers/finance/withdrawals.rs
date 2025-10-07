@@ -249,6 +249,21 @@ pub async fn manual_execute_withdrawal(
 }
 
 /// POST /api/v1/admin/withdrawals/{request_id}/approve - Approve a withdrawal request
+///
+/// ## Wallet Permission Authorization
+///
+/// When authentication middleware is implemented, this endpoint should verify that the
+/// approving user has the necessary wallet permissions:
+///
+/// ```rust,ignore
+/// // 1. Extract authenticated user_id from request context (via auth middleware)
+/// // 2. Get the withdrawal request to find the associated wallet_address_id
+/// // 3. Call: arda_credit_db::business::wallet::can_authorize_transaction(&pool, user_id, wallet_address_id)
+/// // 4. If false, return 403 Forbidden: "Only admin users with approve_withdrawal permission can authorize transactions"
+/// ```
+///
+/// The database enforces that only admin users with 'approve_withdrawal' permission
+/// can authorize transactions (via trigger: enforce_admin_only_permissions).
 #[utoipa::path(
     post,
     path = "/api/v1/admin/withdrawals/{request_id}/approve",
@@ -259,6 +274,7 @@ pub async fn manual_execute_withdrawal(
     responses(
         (status = 200, description = "Withdrawal approved successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request", body = ErrorResponse),
+        (status = 403, description = "Access denied - requires admin role with approve_withdrawal permission", body = ErrorResponse),
         (status = 404, description = "Withdrawal request not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -270,6 +286,9 @@ pub async fn approve_withdrawal_request(
     Path(request_id): Path<i32>,
     Json(request): Json<ApproveWithdrawalRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    // TODO: Extract authenticated user_id from request when auth middleware is implemented
+    // TODO: Verify user has approve_withdrawal permission via: can_authorize_transaction(&pool, user_id, wallet_address_id)
+
     info!("Admin approving withdrawal request {}", request_id);
 
     match arda_credit_db::approve_withdrawal_request(&state.pool, request_id, &request.admin_notes)
@@ -324,6 +343,11 @@ pub async fn approve_withdrawal_request(
 }
 
 /// POST /api/v1/admin/withdrawals/{request_id}/reject - Reject a withdrawal request
+///
+/// ## Wallet Permission Authorization
+///
+/// When authentication middleware is implemented, this endpoint should verify that the
+/// rejecting user has the necessary wallet permissions (same as approve).
 #[utoipa::path(
     post,
     path = "/api/v1/admin/withdrawals/{request_id}/reject",
@@ -334,6 +358,7 @@ pub async fn approve_withdrawal_request(
     responses(
         (status = 200, description = "Withdrawal rejected successfully", body = serde_json::Value),
         (status = 400, description = "Invalid request", body = ErrorResponse),
+        (status = 403, description = "Access denied - requires admin role with approve_withdrawal permission", body = ErrorResponse),
         (status = 404, description = "Withdrawal request not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
@@ -345,6 +370,9 @@ pub async fn reject_withdrawal_request(
     Path(request_id): Path<i32>,
     Json(request): Json<RejectWithdrawalRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorResponse>)> {
+    // TODO: Extract authenticated user_id from request when auth middleware is implemented
+    // TODO: Verify user has approve_withdrawal permission via: can_authorize_transaction(&pool, user_id, wallet_address_id)
+
     info!("Admin rejecting withdrawal request {}", request_id);
 
     match arda_credit_db::reject_withdrawal_request(
