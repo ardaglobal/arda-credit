@@ -9,7 +9,7 @@ use validator::Validate;
 // JWT CLAIMS STRUCTURE
 // ============================================================================
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: String,       // Subject (user_id)
     pub email: String,     // User email

@@ -470,6 +470,34 @@ pub fn create_router(state: ApiState) -> Router {
             delete(company_handlers::remove_team_member_endpoint),
         )
         // ========================================================================
+        // COMPANY WALLET ADDRESS ENDPOINTS
+        // ========================================================================
+        .route(
+            paths::COMPANY_WALLETS,
+            post(company_handlers::create_wallet_address)
+                .get(company_handlers::list_wallet_addresses),
+        )
+        .route(
+            paths::COMPANY_WALLET_BY_ID,
+            get(company_handlers::get_wallet_address).put(company_handlers::update_wallet_address),
+        )
+        .route(
+            paths::COMPANY_USER_WALLETS,
+            get(company_handlers::get_user_wallet_addresses),
+        )
+        .route(
+            paths::COMPANY_WALLET_PERMISSIONS,
+            post(company_handlers::grant_wallet_permission),
+        )
+        .route(
+            paths::COMPANY_WALLET_PERMISSIONS_BY_WALLET,
+            get(company_handlers::list_wallet_permissions),
+        )
+        .route(
+            paths::COMPANY_WALLET_PERMISSION_BY_ID,
+            delete(company_handlers::revoke_wallet_permission),
+        )
+        // ========================================================================
         // DOCUMENT MANAGEMENT ENDPOINTS
         // ========================================================================
         .route(

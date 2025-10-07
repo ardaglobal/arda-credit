@@ -490,6 +490,31 @@ pub const UPDATE_TEAM_MEMBER_ROLE: &str = api_path!("/companies/{company_id}/tea
 pub const REMOVE_TEAM_MEMBER: &str = api_path!("/companies/{company_id}/team/{user_id}");
 
 // ============================================================================
+// COMPANY WALLET ADDRESS PATHS
+// ============================================================================
+
+/// Create wallet address for company
+pub const COMPANY_WALLETS: &str = api_path!("/companies/{company_id}/wallets");
+
+/// Get specific wallet address
+pub const COMPANY_WALLET_BY_ID: &str = api_path!("/companies/{company_id}/wallets/{wallet_id}");
+
+/// Get user's accessible wallet addresses in a company
+pub const COMPANY_USER_WALLETS: &str = api_path!("/companies/{company_id}/users/{user_id}/wallets");
+
+/// Grant wallet permission
+pub const COMPANY_WALLET_PERMISSIONS: &str =
+    api_path!("/companies/{company_id}/wallets/permissions");
+
+/// Get permissions for a wallet
+pub const COMPANY_WALLET_PERMISSIONS_BY_WALLET: &str =
+    api_path!("/companies/{company_id}/wallets/{wallet_id}/permissions");
+
+/// Revoke wallet permission
+pub const COMPANY_WALLET_PERMISSION_BY_ID: &str =
+    api_path!("/companies/{company_id}/wallets/permissions/{permission_id}");
+
+// ============================================================================
 // DOCUMENT MANAGEMENT PATHS
 // ============================================================================
 
