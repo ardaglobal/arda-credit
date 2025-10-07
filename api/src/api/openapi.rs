@@ -292,15 +292,24 @@ fn default_limit() -> u32 {
         crate::handlers::companies::companies::update_investor_profile_endpoint,
         crate::handlers::companies::companies::register_investor_endpoint,
 
+        // Company Membership endpoints (with profile_type support)
+        crate::handlers::companies::memberships::invite_member,
+        crate::handlers::companies::memberships::list_members,
+        crate::handlers::companies::memberships::get_membership,
+        crate::handlers::companies::memberships::get_user_memberships,
+        crate::handlers::companies::memberships::update_membership,
+        crate::handlers::companies::memberships::remove_member,
+
         // Contract configuration endpoints
         crate::handlers::core::contract::get_contract_config,
         crate::handlers::core::contract::get_transaction_updates,
     ),
     tags(
-        // Primary API Groups (8 main groups + Dev)
+        // Primary API Groups (9 main groups + Dev)
         (name = "Auth", description = "Authentication, authorization, and invite code management"),
         (name = "Users", description = "User account management, KYC verification, balances, and transaction history"),
         (name = "Companies", description = "Originator and investor company profiles, documents, turnover tracking, and AI analysis"),
+        (name = "Company Memberships", description = "Company team member management with originator/investor profile type support. Users can have multiple profiles (originator and investor) in the same company."),
         (name = "Deals", description = "Deal lifecycle management, marketplace operations, ownership transfers, and payment processing"),
         (name = "State", description = "Blockchain state management, batch processing, ZK proof generation, and contract integration"),
         (name = "Admin", description = "Administrative operations including KYC approval, withdrawal management, and platform oversight"),
@@ -339,6 +348,14 @@ fn default_limit() -> u32 {
         crate::handlers::companies::companies::TeamStats,
         crate::handlers::companies::companies::DocumentStats,
         crate::handlers::companies::companies::ActivityItem,
+
+        // Company Membership types (with profile_type support)
+        crate::dto::company_dto::InviteMemberRequest,
+        crate::dto::company_dto::MembershipResponse,
+        crate::dto::company_dto::MembershipWithUserResponse,
+        crate::dto::company_dto::UpdateMembershipRequest,
+        crate::dto::company_dto::InvitationResponse,
+        crate::handlers::companies::memberships::ListMembersQuery,
 
         // Document types
         crate::handlers::companies::documents::DocumentUploadResponse,

@@ -36,6 +36,7 @@
 // Organized module structure
 pub mod api;
 pub mod config;
+pub mod dto;
 pub mod handlers;
 pub mod middleware;
 pub mod services;
