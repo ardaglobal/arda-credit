@@ -179,6 +179,7 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
             pool.clone(),
         )),
         magic_link_service: None,
+        team_invitation_service: None,
         email_rate_limiter: None,
         withdrawal_executor: None,
         document_service: None,
@@ -232,11 +233,21 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
 
     let magic_link_service = Arc::new(MagicLinkService::new(
         pool.clone(),
-        magic_link_config,
-        email_service,
+        magic_link_config.clone(),
+        email_service.clone(),
         Arc::new(email_rate_limiter.inner.clone()), // Use the same rate limiter as in the state
         session_service.clone(),
     ));
+
+    // Initialize team invitation service for tests
+    let team_invitation_service = Arc::new(
+        crate::services::team_invitation_service::TeamInvitationService::new(
+            pool.clone(),
+            magic_link_service.clone(),
+            email_service,
+            magic_link_config,
+        ),
+    );
 
     ApiState {
         pool: pool.clone(),
@@ -250,6 +261,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
         ads_service,
         session_service,
         magic_link_service: Some(magic_link_service),
+        team_invitation_service: Some(team_invitation_service),
         withdrawal_service,
         balance_service,
         withdrawal_executor: None,

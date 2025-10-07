@@ -40,7 +40,32 @@ pub struct ListMembersQuery {
     pub offset: Option<i64>,
 }
 
-/// Invite a user to join a company with a specific profile type
+/// Invite a user to join a company with a specific profile type via magic link
+///
+/// This endpoint sends a team invitation email with a magic link to the invitee.
+/// Only company admins can send invitations.
+///
+/// ## Flow:
+/// 1. Admin calls this endpoint with the invitee's email, role, and profile type
+/// 2. System creates an invitation record in the database
+/// 3. A magic link is generated with the invitation token embedded in the redirect URI
+/// 4. Professional invitation email is sent to the invitee
+/// 5. When the invitee clicks the magic link and signs in:
+///    - User is authenticated via magic link
+///    - Invitation is automatically accepted
+///    - Company membership is created with the specified role and profile type
+///
+/// ## Authorization:
+/// - Only users with 'admin' role in the company can send invitations
+///
+/// ## Email Integration:
+/// - Sends professional HTML + plain text email via AWS SES (or debug mode if configured)
+/// - Email includes company name, inviter name, role, and profile type
+/// - Magic link expires in 10 minutes for security
+///
+/// ## New vs Existing Users:
+/// - **Existing users**: Receives magic link to sign in and accept invitation
+/// - **New users**: System creates placeholder account, sends magic link for first-time setup
 #[utoipa::path(
     post,
     path = "/api/v1/companies/{company_id}/members/invite",
@@ -49,11 +74,11 @@ pub struct ListMembersQuery {
     ),
     request_body = InviteMemberRequest,
     responses(
-        (status = 201, description = "Invitation sent successfully", body = InvitationResponse),
-        (status = 400, description = "Validation error"),
-        (status = 403, description = "Access denied"),
+        (status = 201, description = "Invitation sent successfully with magic link email", body = InvitationResponse),
+        (status = 400, description = "Validation error - invalid email, role, or profile_type"),
+        (status = 403, description = "Access denied - only company admins can send invitations"),
         (status = 404, description = "Company not found"),
-        (status = 500, description = "Internal server error")
+        (status = 500, description = "Internal server error - failed to send email or create invitation")
     ),
     tag = "Company Memberships"
 )]
@@ -88,6 +113,59 @@ pub async fn invite_member(
         }
     };
 
+    // Use TeamInvitationService if available, otherwise fall back to basic invitation
+    if let Some(team_invitation_service) = &state.team_invitation_service {
+        // Send invitation with magic link email
+        match team_invitation_service
+            .send_invitation(company_id, inviter_id, &request.email, role, profile_type)
+            .await
+        {
+            Ok(message_id) => {
+                info!(
+                    company_id = %company_id,
+                    email = %request.email,
+                    profile_type = %profile_type,
+                    message_id = %message_id,
+                    "Team invitation sent successfully with magic link"
+                );
+                // Get the created invitation to return in response
+                match company::list_company_invitations(&state.pool, company_id, None).await {
+                    Ok(invitations) => {
+                        if let Some(invitation) = invitations
+                            .into_iter()
+                            .find(|inv| inv.email == request.email)
+                        {
+                            return (
+                                StatusCode::CREATED,
+                                Json(InvitationResponse::from(invitation)),
+                            )
+                                .into_response();
+                        }
+                    }
+                    Err(_) => {}
+                }
+                // Fallback response if we can't fetch the invitation
+                return (
+                    StatusCode::CREATED,
+                    Json(serde_json::json!({
+                        "message": "Invitation sent successfully",
+                        "message_id": message_id
+                    })),
+                )
+                    .into_response();
+            }
+            Err(err) => {
+                error!(error = %err, company_id = %company_id, "Failed to send team invitation");
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(format!("Failed to send invitation: {}", err)),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    // Fallback: Basic invitation without magic link (legacy)
     let invite_request = InviteUserRequest {
         email: request.email,
         role,
@@ -101,7 +179,7 @@ pub async fn invite_member(
                 company_id = %company_id,
                 email = %invitation.email,
                 profile_type = %invitation.profile_type,
-                "Member invited successfully"
+                "Member invited successfully (legacy mode - no email sent)"
             );
             (
                 StatusCode::CREATED,

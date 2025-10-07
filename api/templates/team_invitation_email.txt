@@ -1,0 +1,22 @@
+{{ data.app_name }} - Team Invitation
+
+You've been invited!
+
+{{ data.inviter_name }} has invited you to join {{ data.company_name }} on {{ data.app_name }}.
+
+Invitation Details:
+- Role: {{ data.role }}
+- Profile Type: {{ data.profile_type }}
+
+To accept this invitation and set up your account, visit:
+{{ data.magic_link_url }}
+
+This invitation link expires in {{ data.expiry_minutes }} minutes for security purposes.
+
+---
+
+Security notice: This invitation was sent to {{ data.invitee_email }}. If you didn't expect this invitation, you can safely ignore this email.
+
+Need help? Contact our support team at {{ data.support_email }}
+
+{{ data.app_name }} - Privacy-preserving credit platform

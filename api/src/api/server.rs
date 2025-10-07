@@ -168,7 +168,8 @@ impl ApiServer {
             batch_processor: Some(batch_processor_handle),
             ads_service,
             session_service,
-            magic_link_service: None, // Will be set in create_router
+            magic_link_service: None,      // Will be set in create_router
+            team_invitation_service: None, // Will be set in create_router
             withdrawal_service,
             balance_service,
             withdrawal_executor: None, // Not configured in this constructor
@@ -309,7 +310,8 @@ impl ApiServer {
             batch_processor: Some(batch_processor_handle),
             ads_service,
             session_service,
-            magic_link_service: None, // Will be set in create_router
+            magic_link_service: None,      // Will be set in create_router
+            team_invitation_service: None, // Will be set in create_router
             withdrawal_service,
             balance_service,
             withdrawal_executor,
@@ -385,11 +387,21 @@ impl ApiServer {
         let magic_link_config = MagicLinkConfig::default();
         let magic_link_service = Arc::new(MagicLinkService::new(
             self.state.pool.clone(),
-            magic_link_config,
-            email_service,
+            magic_link_config.clone(),
+            email_service.clone(),
             Arc::new(RateLimiter::new(180)), // 180 requests per minute for magic links
             self.state.session_service.clone(),
         ));
+
+        // Initialize team invitation service
+        let team_invitation_service = Arc::new(
+            crate::services::team_invitation_service::TeamInvitationService::new(
+                self.state.pool.clone(),
+                magic_link_service.clone(),
+                email_service,
+                magic_link_config,
+            ),
+        );
 
         // Create API state with email rate limiter
         let api_state = ApiState {
@@ -399,6 +411,7 @@ impl ApiServer {
             ads_service: self.state.ads_service.clone(),
             session_service: self.state.session_service.clone(),
             magic_link_service: Some(magic_link_service),
+            team_invitation_service: Some(team_invitation_service),
             withdrawal_service: self.state.withdrawal_service.clone(),
             balance_service: self.state.balance_service.clone(),
             withdrawal_executor: self.state.withdrawal_executor.clone(),
