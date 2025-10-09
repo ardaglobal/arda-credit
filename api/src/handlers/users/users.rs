@@ -71,6 +71,17 @@ pub struct OriginatorProfileData {
     pub placeholder: String,
 }
 
+/// Company membership information
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CompanyMembershipData {
+    pub company_id: String,
+    pub company_name: String,
+    pub role: String,
+    pub status: String,
+    pub profile_type: Option<String>, // investor or originator
+    pub joined_at: Option<DateTime<Utc>>,
+}
+
 /// User details response with nested profile information
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserDetailsResponse {
@@ -94,6 +105,8 @@ pub struct UserDetailsResponse {
     pub investor_profile: Option<InvestorProfileData>,
     /// Nested originator profile data (placeholder for future implementation)
     pub originator_profile: Option<OriginatorProfileData>,
+    /// List of companies the user is a member of
+    pub companies: Vec<CompanyMembershipData>,
 }
 
 /// Update user profile request
@@ -564,6 +577,19 @@ pub async fn list_identities_endpoint(
                     }
                 };
 
+                // Fetch company memberships for this user
+                let company_memberships =
+                    match fetch_user_company_memberships(&state.pool, row.id).await {
+                        Ok(companies) => companies,
+                        Err(e) => {
+                            warn!(
+                                "⚠️ Failed to fetch company memberships for user {}: {}",
+                                row.id, e
+                            );
+                            Vec::new() // Return empty vec on error
+                        }
+                    };
+
                 users.push(UserDetailsResponse {
                     user_id: row.id.to_string(),
                     email: row.email,
@@ -579,6 +605,7 @@ pub async fn list_identities_endpoint(
                     wallet_address: row.wallet_address,
                     investor_profile,
                     originator_profile,
+                    companies: company_memberships,
                 });
             }
 
@@ -947,6 +974,9 @@ async fn get_user_details_with_profiles(
         }
     };
 
+    // Fetch company memberships
+    let company_memberships = fetch_user_company_memberships(pool, user_id).await?;
+
     Ok(UserDetailsResponse {
         user_id: identity.id.to_string(),
         email: identity.email,
@@ -962,7 +992,45 @@ async fn get_user_details_with_profiles(
         wallet_address: identity.wallet_address,
         investor_profile,
         originator_profile,
+        companies: company_memberships,
     })
+}
+
+/// Fetch all company memberships for a user
+async fn fetch_user_company_memberships(
+    pool: &sqlx::PgPool,
+    user_id: uuid::Uuid,
+) -> Result<Vec<CompanyMembershipData>, sqlx::Error> {
+    let memberships = sqlx::query!(
+        r#"
+        SELECT
+            cm.company_id,
+            c.name as company_name,
+            cm.role,
+            cm.status,
+            cm.profile_type,
+            cm.accepted_at as joined_at
+        FROM company_memberships cm
+        JOIN companies c ON cm.company_id = c.id
+        WHERE cm.user_id = $1
+        ORDER BY cm.created_at DESC
+        "#,
+        user_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(memberships
+        .into_iter()
+        .map(|row| CompanyMembershipData {
+            company_id: row.company_id.to_string(),
+            company_name: row.company_name,
+            role: row.role,
+            status: row.status,
+            profile_type: Some(row.profile_type),
+            joined_at: row.joined_at,
+        })
+        .collect())
 }
 
 /// Create user type-specific profiles after user creation/update
@@ -1020,7 +1088,7 @@ async fn ensure_user_profiles_exist(
     Ok(())
 }
 
-/// Convert database User to API UserDetailsResponse (legacy function for backward compatibility)  
+/// Convert database User to API UserDetailsResponse (legacy function for backward compatibility)
 /// This function now delegates to get_user_details_with_profiles for consistency
 pub fn identity_to_user_details(identity: User) -> UserDetailsResponse {
     UserDetailsResponse {
@@ -1040,6 +1108,7 @@ pub fn identity_to_user_details(identity: User) -> UserDetailsResponse {
         // Use get_user_details_with_profiles for full profile data
         investor_profile: None,
         originator_profile: None,
+        companies: Vec::new(), // Empty companies in legacy conversion
     }
 }
 

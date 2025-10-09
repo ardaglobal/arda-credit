@@ -78,6 +78,7 @@ fn identity_to_user_details(identity: User) -> UserDetailsResponse {
         // Profile fields will be None in legacy conversion
         investor_profile: None,
         originator_profile: None,
+        companies: Vec::new(), // Empty companies in legacy conversion
     }
 }
 
