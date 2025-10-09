@@ -23,19 +23,63 @@ use tracing::{error, info};
 use uuid::Uuid;
 use validator::Validate;
 
-/// Helper function to create dummy claims until proper auth is implemented
+/// Helper function to extract session from headers and create Claims
 ///
-/// IMPORTANT: This is a temporary workaround using chad@arda.xyz's actual user ID.
-/// For production, implement proper JWT authentication with Bearer tokens.
-fn create_dummy_claims() -> Claims {
-    Claims {
-        sub: "2e918cf4-3d02-4eba-970c-a9f2630ecbde".to_string(), // chad@arda.xyz
-        email: "chad@arda.xyz".to_string(),
-        user_type: "admin".to_string(),
-        exp: 0,
-        iat: 0,
-        jti: "dummy".to_string(),
+/// This function extracts the session token from the cookie header,
+/// validates it, and converts the user identity to Claims for compatibility
+/// with existing code that expects JWT Claims.
+async fn extract_claims_from_session(
+    state: &ApiState,
+    headers: &HeaderMap,
+) -> Result<Claims, (StatusCode, String)> {
+    // Extract session token from cookie header
+    let session_token = extract_session_token_from_headers(headers).ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            "Authentication required. No session cookie found.".to_string(),
+        )
+    })?;
+
+    // Validate session and get user identity
+    let identity = state
+        .session_service
+        .validate_session(&session_token)
+        .await
+        .map_err(|e| {
+            error!("Failed to validate session: {}", e);
+            (
+                StatusCode::UNAUTHORIZED,
+                "Authentication required. Invalid or expired session.".to_string(),
+            )
+        })?;
+
+    // Convert identity to Claims
+    Ok(Claims {
+        sub: identity.id.to_string(),
+        email: identity.email,
+        user_type: identity.user_type,
+        exp: 0,             // Not used for session-based auth
+        iat: 0,             // Not used for session-based auth
+        jti: session_token, // Use session token as JTI
+    })
+}
+
+/// Extract session token from cookie header
+fn extract_session_token_from_headers(headers: &HeaderMap) -> Option<String> {
+    let cookie_header = headers.get("cookie")?.to_str().ok()?;
+
+    // Parse cookies to find session_token
+    for cookie in cookie_header.split(';') {
+        let cookie = cookie.trim();
+        if let Some(eq_pos) = cookie.find('=') {
+            let (name, value) = cookie.split_at(eq_pos);
+            if name.trim() == "session_token" {
+                return Some(value[1..].to_string()); // Skip the '=' character
+            }
+        }
     }
+
+    None
 }
 
 /// Register a new company
@@ -53,17 +97,21 @@ fn create_dummy_claims() -> Claims {
 )]
 pub async fn register_company_endpoint(
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Json(request): Json<CompanyRegistrationRequest>,
 ) -> impl IntoResponse {
     let company_service = CompanyService::new(state.pool.clone());
 
-    // TODO: Add authentication back when Claims implements FromRequestParts
-    let dummy_claims = create_dummy_claims();
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
 
-    match company_service
-        .register_company(&dummy_claims, request)
-        .await
-    {
+    match company_service.register_company(&claims, request).await {
         Ok(company) => {
             info!(
                 company_id = %company.id,
@@ -115,13 +163,20 @@ pub async fn register_company_endpoint(
 pub async fn get_company_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let company_service = CompanyService::new(state.pool.clone());
 
-    // TODO: Add authentication back when Claims implements FromRequestParts
-    let dummy_claims = create_dummy_claims();
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
 
-    match company_service.get_company(&dummy_claims, company_id).await {
+    match company_service.get_company(&claims, company_id).await {
         Ok(company) => Json(company).into_response(),
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to get company");
@@ -162,13 +217,22 @@ pub async fn get_company_endpoint(
 pub async fn submit_kyb_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Json(request): Json<KybSubmissionRequest>,
 ) -> impl IntoResponse {
     let company_service = CompanyService::new(state.pool.clone());
 
-    let dummy_claims = create_dummy_claims();
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
+
     match company_service
-        .submit_kyb(&dummy_claims, company_id, request)
+        .submit_kyb(&claims, company_id, request)
         .await
     {
         Ok(company) => {
@@ -229,11 +293,20 @@ pub struct KybStatusResponse {
 pub async fn get_kyb_status_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let company_service = CompanyService::new(state.pool.clone());
 
-    let dummy_claims = create_dummy_claims();
-    match company_service.get_company(&dummy_claims, company_id).await {
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
+
+    match company_service.get_company(&claims, company_id).await {
         Ok(company) => {
             let response = KybStatusResponse {
                 company_id: company.id,
@@ -282,13 +355,22 @@ pub async fn get_kyb_status_endpoint(
 pub async fn invite_team_member_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Json(request): Json<TeamInvitationRequest>,
 ) -> impl IntoResponse {
     let company_service = CompanyService::new(state.pool.clone());
 
-    let dummy_claims = create_dummy_claims();
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
+
     match company_service
-        .invite_team_member(&dummy_claims, company_id, request)
+        .invite_team_member(&claims, company_id, request)
         .await
     {
         Ok(team_member) => {
@@ -341,14 +423,20 @@ pub async fn invite_team_member_endpoint(
 pub async fn list_team_members_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let company_service = CompanyService::new(state.pool.clone());
 
-    let dummy_claims = create_dummy_claims();
-    match company_service
-        .list_team_members(&dummy_claims, company_id)
-        .await
-    {
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
+
+    match company_service.list_team_members(&claims, company_id).await {
         Ok(team_members) => Json(team_members).into_response(),
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to list team members");
@@ -395,14 +483,23 @@ pub struct UpdateTeamMemberRoleRequest {
 pub async fn update_team_member_role_endpoint(
     Path((company_id, user_id)): Path<(Uuid, Uuid)>,
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Json(request): Json<UpdateTeamMemberRoleRequest>,
 ) -> impl IntoResponse {
     let company_service = CompanyService::new(state.pool.clone());
 
-    let dummy_claims = create_dummy_claims();
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
+
     match company_service
         .update_team_member_role(
-            &dummy_claims,
+            &claims,
             company_id,
             user_id,
             request.role,
@@ -474,15 +571,24 @@ pub async fn update_team_member_role_endpoint(
 pub async fn remove_team_member_endpoint(
     Path((company_id, user_id)): Path<(Uuid, Uuid)>,
     State(state): State<ApiState>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     // For now, we'll implement this by setting status to 'inactive'
     // In a full implementation, you might want to add this method to the CompanyService
 
     let _company_service = CompanyService::new(state.pool.clone());
 
-    let dummy_claims = create_dummy_claims();
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
+
     // Check if the requester has team management access
-    let requester_id = match Uuid::parse_str(&dummy_claims.sub) {
+    let requester_id = match Uuid::parse_str(&claims.sub) {
         Ok(id) => id,
         Err(_) => {
             return (StatusCode::BAD_REQUEST, Json("Invalid user ID")).into_response();
@@ -588,12 +694,21 @@ pub struct ActivityItem {
 pub async fn get_company_dashboard_endpoint(
     Path(company_id): Path<Uuid>,
     State(state): State<ApiState>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
     let company_service = CompanyService::new(state.pool.clone());
 
+    // Extract claims from session cookie
+    let claims = match extract_claims_from_session(&state, &headers).await {
+        Ok(claims) => claims,
+        Err((status, message)) => {
+            error!("Authentication failed: {}", message);
+            return (status, Json(message)).into_response();
+        }
+    };
+
     // Get company details
-    let dummy_claims = create_dummy_claims();
-    let company = match company_service.get_company(&dummy_claims, company_id).await {
+    let company = match company_service.get_company(&claims, company_id).await {
         Ok(company) => company,
         Err(err) => {
             error!(error = %err, company_id = %company_id, "Failed to get company for dashboard");
