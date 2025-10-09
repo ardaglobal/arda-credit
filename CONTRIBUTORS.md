@@ -565,7 +565,7 @@ Docker images are automatically built and published via GitHub Actions:
 
 ##### Image Registry
 - **Server Image**: `ghcr.io/ardaglobal/arda-credit:v3.4.5`
-- **Frontend Image**: `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
+- **Frontend Image**: `ghcr.io/ardaglobal/arda-platform-app:v3.4.5`
 - **Multi-Platform**: `linux/amd64`, `linux/arm64` for releases
 
 ##### Build Configuration
@@ -594,7 +594,7 @@ env:
 
 **Docker Images:**
 - Server: `ghcr.io/ardaglobal/arda-credit:v3.4.5`
-- Frontend: `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
+- Frontend: `ghcr.io/ardaglobal/arda-platform-app:v3.4.5`
 
 **Changes:**
 - **Added**: New API endpoints for batch operations

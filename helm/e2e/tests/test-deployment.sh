@@ -180,7 +180,7 @@ test_app() {
     fi
     
     # Check app service
-    if kubectl get service --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" arda-credit-app >/dev/null 2>&1; then
+    if kubectl get service --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" arda-platform-app >/dev/null 2>&1; then
         test_passed "App service exists"
     else
         test_failed "App service not found"

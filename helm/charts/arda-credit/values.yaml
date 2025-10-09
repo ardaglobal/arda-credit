@@ -220,7 +220,7 @@ app:
   
   image:
     registry: ghcr.io/ardaglobal
-    repository: arda-credit-app
+    repository: arda-platform-app
     tag: "latest"
     pullPolicy: Always
   
