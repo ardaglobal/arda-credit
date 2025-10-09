@@ -578,7 +578,7 @@ display_access_info() {
     log_info "Kubernetes Access:"
     echo "  kubectl get pods -n arda-credit"
     echo "  kubectl logs -f deployment/arda-credit-server -n arda-credit"
-    echo "  kubectl logs -f deployment/arda-credit-app -n arda-credit"
+    echo "  kubectl logs -f deployment/arda-platform-app -n arda-credit"
     echo "  kubectl logs -f deployment/arda-credit-prometheus-postgres-exporter -n arda-credit"
     echo "  kubectl port-forward svc/arda-credit-postgresql 5432:5432 -n arda-credit"
     echo

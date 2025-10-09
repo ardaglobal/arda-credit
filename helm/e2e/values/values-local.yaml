@@ -167,7 +167,7 @@ app:
   # Use production app image from GHCR (real frontend)
   image:
     registry: "ghcr.io/ardaglobal"
-    repository: "arda-credit-app" 
+    repository: "arda-platform-app" 
     tag: "latest"
     pullPolicy: Always
   

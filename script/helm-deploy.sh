@@ -422,7 +422,7 @@ build_and_push_kind_images() {
     docker push "${registry_url}/arda-credit:local-dev"
     log_success "Pushed server image to ${registry_url}/arda-credit:local-dev"
     
-    log_info "App will use production image from ghcr.io/ardaglobal/arda-credit-app:latest"
+    log_info "App will use production image from ghcr.io/ardaglobal/arda-platform-app:latest"
     log_success "Local image build and push completed"
 }
 
@@ -536,7 +536,7 @@ display_kind_access_info() {
     log_info "Kubernetes Access:"
     echo "  kubectl get pods -n arda-credit --context=kind-${KIND_CLUSTER_NAME}"
     echo "  kubectl logs -f deployment/arda-credit-server -n arda-credit --context=kind-${KIND_CLUSTER_NAME}"
-    echo "  kubectl logs -f deployment/arda-credit-app -n arda-credit --context=kind-${KIND_CLUSTER_NAME}"
+    echo "  kubectl logs -f deployment/arda-platform-app -n arda-credit --context=kind-${KIND_CLUSTER_NAME}"
     echo "  kubectl port-forward svc/arda-credit-postgresql 5432:5432 -n arda-credit --context=kind-${KIND_CLUSTER_NAME}"
     echo
     log_info "Database Connection:"

@@ -91,7 +91,7 @@ Key configuration options in `values.yaml`:
 | `server.config.serverPort` | Server port | `"8080"` |
 | **App Configuration** |
 | `app.replicaCount` | Number of app replicas | `1` |
-| `app.image.repository` | Frontend app image name | `"arda-credit-app"` |
+| `app.image.repository` | Frontend app image name | `"arda-platform-app"` |
 | **Autoscaling** |
 | `server.autoscaling.enabled` | Enable server autoscaling | `false` |
 | `server.autoscaling.minReplicas` | Min server replicas | `2` |
@@ -271,7 +271,7 @@ kubectl describe pod <pod-name> -n arda-credit
 ### View logs
 ```bash
 kubectl logs -f deployment/arda-credit-server -n arda-credit
-kubectl logs -f deployment/arda-credit-app -n arda-credit
+kubectl logs -f deployment/arda-platform-app -n arda-credit
 ```
 
 ### Check autoscaling
@@ -288,7 +288,7 @@ kubectl run test-pod --image=busybox --rm -it --restart=Never -- sh
 wget -O- http://arda-credit-server:8080/api/v1/health
 
 # Test app service
-wget -O- http://arda-credit-app:80
+wget -O- http://arda-platform-app:80
 ```
 
 ## Testing the API Routing
@@ -306,7 +306,7 @@ curl -H "Host: your-domain.com" https://your-ingress-ip/api/v1/health
 curl -H "Host: your-domain.com" https://your-ingress-ip/
 
 # 4. Check nginx proxy configuration in app pod
-kubectl exec -it deployment/arda-credit-app -n arda-credit -- cat /etc/nginx/conf.d/default.conf
+kubectl exec -it deployment/arda-platform-app -n arda-credit -- cat /etc/nginx/conf.d/default.conf
 ```
 
 ## Upgrading

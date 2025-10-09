@@ -61,7 +61,7 @@ server:
 app:
   image:
     registry: "localhost"
-    repository: "arda-credit-app"
+    repository: "arda-platform-app"
     tag: "local-dev"
     pullPolicy: Never
   service:
