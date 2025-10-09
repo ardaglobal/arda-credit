@@ -555,18 +555,48 @@ impl Default for VersionConfig {
 
 ### Docker Build Automation
 
-#### GitHub Actions Docker Workflow
-Docker images are automatically built and published via GitHub Actions:
+#### GitHub Actions Docker Workflows
+Docker images are automatically built and published via GitHub Actions workflows:
+
+##### Container Images
+The repository builds and publishes multiple container images:
+
+1. **Main Server** (`docker.yml`)
+   - Image: `ghcr.io/ardaglobal/arda-credit:v3.4.5`
+   - Dockerfile: `Dockerfile`
+   - Platform: `linux/amd64`
+   - Triggers: Main branch pushes, releases
+
+2. **Frontend App** (`docker-app.yml`)
+   - Image: `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
+   - Dockerfile: `Dockerfile.app`
+   - Platforms: `linux/amd64`, `linux/arm64`
+   - Triggers: Main branch pushes (app/** changes), releases
+
+3. **Contract Deployer** (`docker-contract-deployer.yml`)
+   - Image: `ghcr.io/ardaglobal/arda-credit-contract-deployer:v3.4.5`
+   - Dockerfile: `Dockerfile.contract-deployer`
+   - Platforms: `linux/amd64`, `linux/arm64`
+   - Triggers: Main branch pushes (contracts/** changes), releases
+
+4. **Data Populator** (`data-populator.yml`)
+   - Image: `ghcr.io/ardaglobal/arda-credit-data-populator:v3.4.5`
+   - Dockerfile: `Dockerfile.data-populator`
+   - Platform: `linux/amd64`
+   - Triggers: Main branch pushes (db/bin/populate_fake_data.rs changes), releases
 
 ##### Trigger Conditions
 - **Main Branch**: Pushes to `main` build `latest` tags
 - **Release Tags**: Tags like `v3.4.5` build versioned tags
+- **Path Filters**: Only rebuild when relevant files change
 - **Manual Dispatch**: Manual trigger for testing
 
 ##### Image Registry
-- **Server Image**: `ghcr.io/ardaglobal/arda-credit:v3.4.5`
-- **Frontend Image**: `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
-- **Multi-Platform**: `linux/amd64`, `linux/arm64` for releases
+All images are published to GitHub Container Registry (GHCR):
+- **Server**: `ghcr.io/ardaglobal/arda-credit:v3.4.5`
+- **Frontend**: `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
+- **Contract Deployer**: `ghcr.io/ardaglobal/arda-credit-contract-deployer:v3.4.5`
+- **Data Populator**: `ghcr.io/ardaglobal/arda-credit-data-populator:v3.4.5`
 
 ##### Build Configuration
 ```yaml
@@ -595,6 +625,8 @@ env:
 **Docker Images:**
 - Server: `ghcr.io/ardaglobal/arda-credit:v3.4.5`
 - Frontend: `ghcr.io/ardaglobal/arda-credit-app:v3.4.5`
+- Contract Deployer: `ghcr.io/ardaglobal/arda-credit-contract-deployer:v3.4.5`
+- Data Populator: `ghcr.io/ardaglobal/arda-credit-data-populator:v3.4.5`
 
 **Changes:**
 - **Added**: New API endpoints for batch operations
