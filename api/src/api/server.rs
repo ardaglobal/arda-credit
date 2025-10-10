@@ -8,11 +8,8 @@ use std::time::Duration;
 
 use sqlx::PgPool;
 use tower_http::{
-    compression::CompressionLayer,
-    cors::{Any, CorsLayer},
-    limit::RequestBodyLimitLayer,
-    timeout::TimeoutLayer,
-    trace::TraceLayer,
+    compression::CompressionLayer, cors::CorsLayer, limit::RequestBodyLimitLayer,
+    timeout::TimeoutLayer, trace::TraceLayer,
 };
 use tracing::{info, instrument, warn};
 
@@ -475,8 +472,39 @@ impl ApiServer {
         }
 
         if self.config.enable_cors {
+            use tower_http::cors::AllowOrigin;
+
+            // Parse configured origins or use default localhost
+            let origins: Vec<_> = self
+                .config
+                .cors_origins
+                .iter()
+                .filter_map(|origin| {
+                    if origin == "*" {
+                        // Skip wildcards when credentials are used
+                        None
+                    } else {
+                        origin.parse::<axum::http::HeaderValue>().ok()
+                    }
+                })
+                .collect();
+
+            let allow_origin = if origins.is_empty() {
+                // Default to allowing localhost origins for development
+                AllowOrigin::list([
+                    "http://localhost:5173".parse().unwrap(),
+                    "http://localhost:3000".parse().unwrap(),
+                    "http://localhost:3001".parse().unwrap(),
+                    "http://127.0.0.1:5173".parse().unwrap(),
+                    "http://127.0.0.1:3000".parse().unwrap(),
+                    "http://127.0.0.1:3001".parse().unwrap(),
+                ])
+            } else {
+                AllowOrigin::list(origins)
+            };
+
             let cors = CorsLayer::new()
-                .allow_origin(Any)
+                .allow_origin(allow_origin)
                 .allow_methods([
                     axum::http::Method::GET,
                     axum::http::Method::POST,
@@ -484,7 +512,16 @@ impl ApiServer {
                     axum::http::Method::DELETE,
                     axum::http::Method::OPTIONS,
                 ])
-                .allow_headers(Any);
+                .allow_headers([
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::AUTHORIZATION,
+                    axum::http::header::ACCEPT,
+                    axum::http::header::ORIGIN,
+                    axum::http::header::USER_AGENT,
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::header::HeaderName::from_static("x-requested-with"),
+                ])
+                .allow_credentials(true);
 
             router = router.layer(cors);
         }
