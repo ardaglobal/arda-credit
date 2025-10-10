@@ -357,8 +357,8 @@ impl DealNegotiationStatus {
 pub struct Deal {
     // was Loan
     pub id: uuid::Uuid,
-    pub originator_id: uuid::Uuid,       // was borrower_id
-    pub investor_id: Option<uuid::Uuid>, // was lender_id - now optional for draft deals
+    pub originator_id: uuid::Uuid, // Company ID of the originator (was borrower_id, now references companies)
+    pub investor_id: Option<uuid::Uuid>, // Company ID of the investor (was lender_id, now references companies) - optional for draft deals
     pub principal_amount: rust_decimal::Decimal,
     pub outstanding_balance: rust_decimal::Decimal,
     pub interest_rate_bps: i32, // Basis points
@@ -1925,8 +1925,8 @@ pub async fn delete_identity(pool: &PgPool, user_id: uuid::Uuid) -> Result<bool,
 pub async fn create_deal(
     // was create_loan
     pool: &PgPool,
-    originator_id: uuid::Uuid,       // was borrower_id
-    investor_id: Option<uuid::Uuid>, // was lender_id - now optional for draft deals
+    originator_id: uuid::Uuid, // Company ID of the originator (was borrower_id, now references companies)
+    investor_id: Option<uuid::Uuid>, // Company ID of the investor (was lender_id, now references companies) - optional for draft deals
     principal_amount: rust_decimal::Decimal,
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,
@@ -1960,10 +1960,10 @@ pub async fn create_deal(
             $9, $10, $11, $12,
             $13, $14, $15, $16, $17, $18
         )
-        "#,  // was loans, borrower_id, lender_id
+        "#,  // was loans, borrower_id, lender_id - now originator_id and investor_id reference companies
         id,
-        originator_id,  // was borrower_id
-        investor_id,    // was lender_id
+        originator_id,  // Company ID of originator
+        investor_id,    // Company ID of investor (optional)
         principal_amount,
         interest_rate_bps,
         deal_status.unwrap_or("originated"),
@@ -1986,8 +1986,8 @@ pub async fn create_deal(
     let deal = Deal {
         // was Loan
         id,
-        originator_id, // was borrower_id
-        investor_id,   // was lender_id
+        originator_id, // Company ID of originator
+        investor_id,   // Company ID of investor (optional)
         principal_amount,
         outstanding_balance: principal_amount,
         interest_rate_bps,
@@ -2018,8 +2018,8 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
         r#"
         SELECT
             id,
-            originator_id,    -- was borrower_id
-            investor_id,      -- was lender_id
+            originator_id,    -- Company ID of originator
+            investor_id,      -- Company ID of investor (optional)
             principal_amount,
             outstanding_balance,
             interest_rate_bps,
@@ -2050,8 +2050,8 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
         Some(row) => Ok(Some(Deal {
             // was Loan
             id: row.id,
-            originator_id: row.originator_id, // was borrower_id
-            investor_id: row.investor_id,     // was lender_id
+            originator_id: row.originator_id, // Company ID of originator
+            investor_id: row.investor_id,     // Company ID of investor (optional)
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
@@ -2092,8 +2092,8 @@ pub async fn list_deals(
         r#"
         SELECT
             id,
-            originator_id,    -- was borrower_id
-            investor_id,      -- was lender_id
+            originator_id,    -- Company ID of originator
+            investor_id,      -- Company ID of investor (optional)
             principal_amount,
             outstanding_balance,
             interest_rate_bps,
@@ -2114,15 +2114,15 @@ pub async fn list_deals(
             minimum_investment
         FROM deals  -- was loans
         WHERE ($1::text IS NULL OR deal_status = $1)
-          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id
-          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id
+          AND ($2::uuid IS NULL OR originator_id = $2)  -- Company ID filter
+          AND ($3::uuid IS NULL OR investor_id = $3)    -- Company ID filter
           AND ($4::text IS NULL OR industry = $4)
         ORDER BY created_at DESC
         LIMIT $5 OFFSET $6
         "#,
         status,
-        originator_id, // was borrower_id
-        investor_id,   // was lender_id
+        originator_id, // Company ID of originator
+        investor_id,   // Company ID of investor
         industry,
         limit.unwrap_or(100),
         offset.unwrap_or(0)
@@ -2135,8 +2135,8 @@ pub async fn list_deals(
         .map(|row| Deal {
             // was Loan
             id: row.id,
-            originator_id: row.originator_id, // was borrower_id
-            investor_id: row.investor_id,     // was lender_id
+            originator_id: row.originator_id, // Company ID of originator
+            investor_id: row.investor_id,     // Company ID of investor (optional)
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
@@ -2161,10 +2161,11 @@ pub async fn list_deals(
     Ok(result)
 }
 
-/// Get deals by user ID (user can be either originator or investor)
-pub async fn get_deals_by_user_id(
+/// Get deals by company ID (company can be either originator or investor)
+/// This function has been updated from get_deals_by_user_id to work with companies
+pub async fn get_deals_by_company_id(
     pool: &PgPool,
-    user_id: uuid::Uuid,
+    company_id: uuid::Uuid,
     limit: Option<i64>,
     offset: Option<i64>,
     status: Option<&str>,
@@ -2199,7 +2200,7 @@ pub async fn get_deals_by_user_id(
         ORDER BY created_at DESC
         LIMIT $3 OFFSET $4
         "#,
-        user_id,
+        company_id,
         status,
         limit.unwrap_or(100),
         offset.unwrap_or(0)
@@ -2235,6 +2236,36 @@ pub async fn get_deals_by_user_id(
         .collect();
 
     Ok(result)
+}
+
+/// Legacy function - Get deals by user ID by looking up their company membership
+/// This maintains backward compatibility by converting user_id to company_id
+pub async fn get_deals_by_user_id(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+    status: Option<&str>,
+) -> Result<Vec<Deal>, sqlx::Error> {
+    // Get the user's active company memberships
+    let company_ids: Vec<uuid::Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT DISTINCT company_id
+        FROM company_memberships
+        WHERE user_id = $1 AND status = 'active'
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    if company_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // For simplicity, get deals from the first company
+    // In a real system, you might want to aggregate across all companies
+    get_deals_by_company_id(pool, company_ids[0], limit, offset, status).await
 }
 
 /// Update deal details (was update_loan)

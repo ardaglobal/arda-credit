@@ -391,32 +391,47 @@ pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Er
     .execute(pool)
     .await?;
 
-    // Create a test company (required for deals)
-    let test_company_id = Uuid::new_v4();
+    // Create test companies (required for deals)
+    // Note: originator and investor must be different companies due to constraint
+    let test_originator_company_id = Uuid::new_v4();
+    let test_investor_company_id = Uuid::new_v4();
+
     sqlx::query!(
         r#"
         INSERT INTO companies (id, name, description, status)
-        VALUES ($1, 'Test Schema Company', 'Test company for schema validation', 'active')
+        VALUES ($1, 'Test Schema Originator Company', 'Test originator company for schema validation', 'active')
         ON CONFLICT (id) DO NOTHING
         "#,
-        test_company_id
+        test_originator_company_id
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query!(
+        r#"
+        INSERT INTO companies (id, name, description, status)
+        VALUES ($1, 'Test Schema Investor Company', 'Test investor company for schema validation', 'active')
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_investor_company_id
     )
     .execute(pool)
     .await?;
 
     // Insert test deal that the listing can reference
+    // Note: originator_id and investor_id now reference companies directly
+    // They must be different companies due to originator_investor_different constraint
     sqlx::query!(
         // was loans table
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, deal_status, originated_at, company_id)
-        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW(), $4)
+                          interest_rate_bps, deal_status, originated_at)
+        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         "#,
-        test_deal_id,       // was test_loan_id
-        test_originator_id, // was test_borrower_id
-        test_investor_id,   // was test_lender_id
-        test_company_id
+        test_deal_id,               // was test_loan_id
+        test_originator_company_id, // originator company ID
+        test_investor_company_id    // investor company ID (must be different)
     )
     .execute(pool)
     .await?;

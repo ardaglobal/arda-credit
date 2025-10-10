@@ -94,14 +94,14 @@ async fn test_marketplace_crud_operations() {
     let pool = init_db().await.expect("Failed to initialize database");
 
     // Create test users and loan for testing
-    let test_lender_id = uuid::Uuid::new_v4();
-    let test_borrower_id = uuid::Uuid::new_v4();
+    let test_seller_user_id = uuid::Uuid::new_v4(); // User who will list the deal for sale
+    let test_buyer_user_id = uuid::Uuid::new_v4(); // User who might buy the deal
     let test_loan_id = uuid::Uuid::new_v4();
 
-    // Insert test lender identity with unique email
-    let lender_email = format!(
-        "test-lender-{}-{}.example.com",
-        test_lender_id.simple(),
+    // Insert test seller user with unique email
+    let seller_email = format!(
+        "test-seller-{}-{}.example.com",
+        test_seller_user_id.simple(),
         chrono::Utc::now().timestamp()
     );
 
@@ -111,17 +111,17 @@ async fn test_marketplace_crud_operations() {
         VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
-        test_lender_id,
-        lender_email
+        test_seller_user_id,
+        seller_email
     )
     .execute(&pool)
     .await
-    .expect("Should be able to create test lender identity");
+    .expect("Should be able to create test seller user");
 
-    // Insert test borrower identity with unique email
-    let borrower_email = format!(
-        "test-borrower-{}-{}.example.com",
-        test_borrower_id.simple(),
+    // Insert test buyer user with unique email
+    let buyer_email = format!(
+        "test-buyer-{}-{}.example.com",
+        test_buyer_user_id.simple(),
         chrono::Utc::now().timestamp()
     );
 
@@ -131,39 +131,68 @@ async fn test_marketplace_crud_operations() {
         VALUES ($1, $2, 'approved', 'investor')
         ON CONFLICT (id) DO NOTHING
         "#,
-        test_borrower_id,
-        borrower_email
+        test_buyer_user_id,
+        buyer_email
     )
     .execute(&pool)
     .await
-    .expect("Should be able to create test borrower identity");
+    .expect("Should be able to create test buyer user");
 
-    // Create a test company (required for deals)
-    let test_company_id = uuid::Uuid::new_v4();
+    // Create test companies (required for deals - originator and investor)
+    let test_originator_company_id = uuid::Uuid::new_v4();
+    let test_investor_company_id = uuid::Uuid::new_v4();
+
     sqlx::query!(
         r#"
         INSERT INTO companies (id, name, description, status)
-        VALUES ($1, 'Test Marketplace Company', 'Test company for marketplace tests', 'active')
+        VALUES ($1, 'Test Originator Company', 'Test originator company for marketplace tests', 'active')
         ON CONFLICT (id) DO NOTHING
         "#,
-        test_company_id
+        test_originator_company_id
     )
     .execute(&pool)
     .await
-    .expect("Should be able to create test company");
+    .expect("Should be able to create test originator company");
+
+    sqlx::query!(
+        r#"
+        INSERT INTO companies (id, name, description, status)
+        VALUES ($1, 'Test Investor Company', 'Test investor company for marketplace tests', 'active')
+        ON CONFLICT (id) DO NOTHING
+        "#,
+        test_investor_company_id
+    )
+    .execute(&pool)
+    .await
+    .expect("Should be able to create test investor company");
+
+    // Link the seller user to the investor company (so they can list deals)
+    // Note: There's no unique constraint on (company_id, user_id) in company_memberships,
+    // so we can't use ON CONFLICT. Just insert directly.
+    sqlx::query!(
+        r#"
+        INSERT INTO company_memberships (company_id, user_id, role, status)
+        VALUES ($1, $2, 'admin', 'active')
+        "#,
+        test_investor_company_id,
+        test_seller_user_id
+    )
+    .execute(&pool)
+    .await
+    .expect("Should be able to link seller user to investor company");
 
     // Insert test loan that the listing can reference
+    // Note: originator_id and investor_id now reference companies, not users
     sqlx::query!(
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, deal_status, originated_at, company_id)
-        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW(), $4)
+                          interest_rate_bps, deal_status, originated_at)
+        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         "#,
         test_loan_id,
-        test_borrower_id,
-        test_lender_id,
-        test_company_id
+        test_originator_company_id,
+        test_investor_company_id
     )
     .execute(&pool)
     .await
@@ -174,7 +203,7 @@ async fn test_marketplace_crud_operations() {
     let listing = marketplace::create_deal_listing(
         &pool,
         test_loan_id,
-        test_lender_id,
+        test_seller_user_id, // Use seller user ID, not company ID
         rust_decimal::Decimal::new(95000, 2), // $950.00
         Some("Test listing".to_string()),
         None, // expires_at
@@ -183,7 +212,7 @@ async fn test_marketplace_crud_operations() {
     .expect("Should be able to create loan listing");
 
     assert_eq!(listing.deal_id, test_loan_id);
-    assert_eq!(listing.seller_id, test_lender_id);
+    assert_eq!(listing.seller_id, test_seller_user_id);
 
     // Test get_loan_listing_by_loan_id
     println!("Testing get_loan_listing_by_loan_id...");
@@ -214,8 +243,8 @@ async fn test_marketplace_crud_operations() {
     assert!(validation.is_some(), "Loan should be valid for transfer");
     assert_eq!(
         validation.as_ref().unwrap().0,
-        test_lender_id,
-        "Should return correct owner"
+        test_investor_company_id, // Returns investor company ID (from deals.investor_id)
+        "Should return correct investor company owner"
     );
 
     // Clean up test data

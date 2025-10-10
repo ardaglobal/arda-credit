@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            originator_id,    -- was borrower_id\n            investor_id,      -- was lender_id\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            deal_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals  -- was loans\n        WHERE ($1::text IS NULL OR deal_status = $1)\n          AND ($2::uuid IS NULL OR originator_id = $2)  -- was borrower_id\n          AND ($3::uuid IS NULL OR investor_id = $3)    -- was lender_id\n          AND ($4::text IS NULL OR industry = $4)\n        ORDER BY created_at DESC\n        LIMIT $5 OFFSET $6\n        ",
+  "query": "\n        SELECT\n            id,\n            originator_id,    -- Company ID of originator\n            investor_id,      -- Company ID of investor (optional)\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            deal_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals  -- was loans\n        WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -111,12 +111,7 @@
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Uuid",
-        "Uuid",
-        "Text",
-        "Int8",
-        "Int8"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -143,5 +138,5 @@
       true
     ]
   },
-  "hash": "eaf17ee8319f161c257b5738ed6153a5cfeba6ed9c75998ef287c3e235232b90"
+  "hash": "e0bcf5a181093f675479f98ad6815d6c265fb2d3aa2e9ecf7fd74de9ba4c401d"
 }
