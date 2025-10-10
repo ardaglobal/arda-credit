@@ -405,18 +405,18 @@ pub async fn validate_marketplace_schema(pool: &PgPool) -> Result<bool, sqlx::Er
     .await?;
 
     // Insert test deal that the listing can reference
+    // Note: originator_id and investor_id now reference companies directly
     sqlx::query!(
         // was loans table
         r#"
         INSERT INTO deals (id, originator_id, investor_id, principal_amount, outstanding_balance,
-                          interest_rate_bps, deal_status, originated_at, company_id)
-        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW(), $4)
+                          interest_rate_bps, deal_status, originated_at)
+        VALUES ($1, $2, $3, 50000.00, 50000.00, 1200, 'active', NOW())
         ON CONFLICT (id) DO NOTHING
         "#,
-        test_deal_id,       // was test_loan_id
-        test_originator_id, // was test_borrower_id
-        test_investor_id,   // was test_lender_id
-        test_company_id
+        test_deal_id,    // was test_loan_id
+        test_company_id, // originator company ID
+        test_company_id  // investor company ID (same company for testing)
     )
     .execute(pool)
     .await?;

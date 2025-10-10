@@ -515,11 +515,12 @@ pub async fn create_deal_endpoint(
     }
 
     // Create deal in database
+    // Note: originator_id and investor_id now reference companies directly
     let deal = create_deal(
         // was create_loan
         &state.pool,
-        originator_id, // was borrower_id
-        investor_id,   // was lender_id
+        originator_id, // Company ID of the originator (was borrower_id)
+        investor_id,   // Company ID of the investor (was lender_id) - optional for draft deals
         principal_amount,
         request.interest_rate_bps as i32,
         maturity_date,

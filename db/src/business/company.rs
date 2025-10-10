@@ -615,7 +615,7 @@ pub async fn get_company_with_stats(pool: &PgPool, company_id: Uuid) -> DbResult
             COUNT(DISTINCT d.id) FILTER (WHERE d.loan_status IN ('originated', 'active')) as active_deal_count
         FROM companies c
         LEFT JOIN company_memberships cm ON c.id = cm.company_id
-        LEFT JOIN deals d ON c.id = d.company_id
+        LEFT JOIN deals d ON c.id = d.originator_id
         WHERE c.id = $1
         "#,
     )
