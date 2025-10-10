@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO companies (id, name, description, status)\n        VALUES ($1, 'Test Schema Investor Company', 'Test investor company for schema validation', 'active')\n        ON CONFLICT (id) DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "87f095917df520fa1ed0d37b894f9f69ca9b0acfeac7912239ce931e9b2edbce"
+}
