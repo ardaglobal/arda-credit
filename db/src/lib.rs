@@ -113,6 +113,7 @@ pub use db::{
     get_deals_by_user_id,
     get_deposit_by_tx_hash,
     get_deposits_by_user_address,
+    get_draft_deals_by_company_id,
     get_identity_by_email,
     get_identity_by_id,
     get_identity_by_reset_token,

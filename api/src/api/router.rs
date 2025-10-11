@@ -345,6 +345,10 @@ pub fn create_router(state: ApiState) -> Router {
             get(crate::handlers::deals::deals::get_deals_by_user_id_endpoint),
         )
         .route(
+            paths::COMPANY_DRAFT_DEALS,
+            get(crate::handlers::deals::deals::get_draft_deals_by_company_endpoint),
+        )
+        .route(
             paths::DEAL_BY_ID,
             get(crate::handlers::deals::deals::get_deal_details_endpoint),
         )

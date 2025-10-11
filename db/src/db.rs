@@ -2238,6 +2238,81 @@ pub async fn get_deals_by_company_id(
     Ok(result)
 }
 
+/// Get draft deals for a company (where status = 'draft')
+/// Draft deals are deals in initial negotiation state that haven't been finalized yet
+pub async fn get_draft_deals_by_company_id(
+    pool: &PgPool,
+    company_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<Deal>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT
+            id,
+            originator_id,
+            investor_id,
+            principal_amount,
+            outstanding_balance,
+            interest_rate_bps,
+            deal_status,
+            originated_at,
+            maturity_date,
+            created_at,
+            updated_at,
+            custom_deal_id,
+            status,
+            industry,
+            document_ids,
+            title,
+            description,
+            risk_level,
+            asset_class,
+            region,
+            minimum_investment
+        FROM deals
+        WHERE originator_id = $1
+          AND status = 'draft'
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+        "#,
+        company_id,
+        limit.unwrap_or(100),
+        offset.unwrap_or(0)
+    )
+    .fetch_all(pool)
+    .await?;
+
+    let result: Vec<Deal> = rows
+        .into_iter()
+        .map(|row| Deal {
+            id: row.id,
+            originator_id: row.originator_id,
+            investor_id: row.investor_id,
+            principal_amount: row.principal_amount,
+            outstanding_balance: row.outstanding_balance,
+            interest_rate_bps: row.interest_rate_bps,
+            deal_status: row.deal_status,
+            originated_at: row.originated_at.unwrap_or_else(|| chrono::Utc::now()),
+            maturity_date: row.maturity_date,
+            created_at: row.created_at.unwrap_or_else(|| chrono::Utc::now()),
+            updated_at: row.updated_at.unwrap_or_else(|| chrono::Utc::now()),
+            custom_deal_id: row.custom_deal_id,
+            status: row.status.unwrap_or_else(|| "draft".to_string()),
+            industry: row.industry,
+            document_ids: row.document_ids,
+            title: row.title,
+            description: row.description,
+            risk_level: row.risk_level,
+            asset_class: row.asset_class,
+            region: row.region,
+            minimum_investment: row.minimum_investment,
+        })
+        .collect();
+
+    Ok(result)
+}
+
 /// Legacy function - Get deals by user ID by looking up their company membership
 /// This maintains backward compatibility by converting user_id to company_id
 pub async fn get_deals_by_user_id(
