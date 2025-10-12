@@ -47,3 +47,5 @@ __pycache__/
 contracts/deployments/local-deployment.json
 contracts/deployments/staging-deployment.json
 # Keep sandbox and production deployments for reference
+
+data/

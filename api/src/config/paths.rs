@@ -197,6 +197,9 @@ pub const DEALS_STATS: &str = api_path!("/deals/stats");
 /// Deals by user ID - get all deals for a user (as originator or investor)
 pub const DEALS_BY_USER_ID: &str = api_path!("/deals/{user_id}");
 
+/// Draft deals by company ID - get all draft deals for a company
+pub const COMPANY_DRAFT_DEALS: &str = api_path!("/company/{company_id}/deals/draft");
+
 /// Deal audit trail - was LOAN_AUDIT_TRAIL
 pub const DEAL_AUDIT_TRAIL: &str = api_path!("/deal/{deal_id}/audit-trail");
 
@@ -515,7 +518,32 @@ pub const COMPANY_WALLET_PERMISSION_BY_ID: &str =
     api_path!("/companies/{company_id}/wallets/permissions/{permission_id}");
 
 // ============================================================================
-// DOCUMENT MANAGEMENT PATHS
+// DEAL DOCUMENT MANAGEMENT PATHS
+// ============================================================================
+
+/// Upload document to deal
+pub const DEAL_DOCUMENT_UPLOAD: &str = api_path!("/deals/{deal_id}/documents");
+
+/// List documents for a deal
+pub const DEAL_DOCUMENTS: &str = api_path!("/deals/{deal_id}/documents");
+
+/// Get deal document by ID
+pub const DEAL_DOCUMENT_BY_ID: &str = api_path!("/documents/{document_id}");
+
+/// Download deal document
+pub const DEAL_DOCUMENT_DOWNLOAD: &str = api_path!("/documents/{document_id}/download");
+
+/// Update deal document metadata
+pub const DEAL_DOCUMENT_UPDATE: &str = api_path!("/documents/{document_id}");
+
+/// Delete deal document
+pub const DEAL_DOCUMENT_DELETE: &str = api_path!("/documents/{document_id}");
+
+/// Get deal document statistics
+pub const DEAL_DOCUMENT_STATS: &str = api_path!("/deals/{deal_id}/documents/stats");
+
+// ============================================================================
+// DOCUMENT MANAGEMENT PATHS (COMPANY)
 // ============================================================================
 
 /// Upload document to company

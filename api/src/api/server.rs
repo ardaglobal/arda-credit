@@ -151,6 +151,14 @@ impl ApiServer {
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
 
+        // Initialize document storage service
+        info!("📁 Initializing document storage service");
+        let document_storage_config =
+            crate::services::document_storage::DocumentStorageConfig::default();
+        let document_storage_service = std::sync::Arc::new(
+            crate::services::document_storage::DocumentStorageService::new(document_storage_config),
+        );
+
         // Initialize Prometheus metrics
         info!("📊 Initializing Prometheus metrics");
         let metrics_handle = crate::utils::metrics::MetricsHandle::new().map_err(|e| {
@@ -171,6 +179,7 @@ impl ApiServer {
             balance_service,
             withdrawal_executor: None, // Not configured in this constructor
             document_service: None,    // Document service not configured in basic constructor
+            document_storage_service: Some(document_storage_service),
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
         };
@@ -207,6 +216,14 @@ impl ApiServer {
         // Initialize withdrawal and balance services
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
+
+        // Initialize document storage service
+        info!("📁 Initializing document storage service");
+        let document_storage_config =
+            crate::services::document_storage::DocumentStorageConfig::default();
+        let document_storage_service = std::sync::Arc::new(
+            crate::services::document_storage::DocumentStorageService::new(document_storage_config),
+        );
 
         // Initialize simple withdrawal executor service if Ethereum config is available
         let withdrawal_executor = if let Some(executor_config) =
@@ -313,6 +330,7 @@ impl ApiServer {
             balance_service,
             withdrawal_executor,
             document_service: None, // Document service not configured in this constructor
+            document_storage_service: Some(document_storage_service),
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
         };
@@ -415,6 +433,7 @@ impl ApiServer {
             metrics_handle: self.state.metrics_handle.clone(),
             email_rate_limiter: Some(email_rate_limiter),
             document_service: None,
+            document_storage_service: self.state.document_storage_service.clone(),
         };
 
         // Use REST API routes (includes health endpoints and state)

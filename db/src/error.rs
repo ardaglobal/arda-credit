@@ -58,6 +58,10 @@ pub enum DbError {
     /// Configuration error
     #[error("Configuration error: {0}")]
     ConfigError(String),
+
+    /// Validation error
+    #[error("Validation error: {0}")]
+    ValidationError(String),
 }
 
 /// Result type alias for database operations
@@ -107,6 +111,7 @@ impl DbError {
             Self::MigrationError(_) => "MIGRATION_ERROR",
             Self::ConfigError(_) => "CONFIG_ERROR",
             Self::InvalidState(_) => "INVALID_STATE",
+            Self::ValidationError(_) => "VALIDATION_ERROR",
         }
     }
 }

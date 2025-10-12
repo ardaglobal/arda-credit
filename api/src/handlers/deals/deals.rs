@@ -70,7 +70,8 @@ use uuid::Uuid;
     "interest_rate_bps": 500,
     "term_days": 365,
     "loan_status": "originated",
-    "status": "draft"
+    "status": "draft",
+    "title": "Real Estate Development Deal - Brooklyn"
 }))]
 pub struct CreateDealRequest {
     // was CreateLoanRequest
@@ -791,6 +792,107 @@ pub async fn get_deals_by_user_id_endpoint(
     info!(
         "✅ API: Found {} deals for user {}",
         response.total_count, user_id
+    );
+    Ok(Json(response))
+}
+
+/// Get draft deals for a company (deals in negotiation status "draft")
+#[utoipa::path(
+    get,
+    path = "/api/v1/company/{company_id}/deals/draft",
+    params(
+        ("company_id" = String, Path, description = "Company ID to get draft deals for"),
+        ("limit" = Option<i32>, Query, description = "Maximum number of deals to return"),
+        ("offset" = Option<i32>, Query, description = "Offset for pagination")
+    ),
+    responses(
+        (status = 200, description = "List of draft deals for the company", body = ListDealsResponse),
+        (status = 400, description = "Invalid company ID format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_draft_deals_by_company_endpoint(
+    State(state): State<ApiState>,
+    Path(company_id): Path<String>,
+    Query(query): Query<ListDealsQuery>,
+) -> Result<Json<ListDealsResponse>, (StatusCode, String)> {
+    info!("📋 API: Getting draft deals for company: {}", company_id);
+
+    // Parse company ID
+    let company_uuid = uuid::Uuid::parse_str(&company_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid company ID format".to_string(),
+        )
+    })?;
+
+    let deals = arda_credit_db::get_draft_deals_by_company_id(
+        &state.pool,
+        company_uuid,
+        query.limit.map(|l| l as i64),
+        query.offset.map(|o| o as i64),
+    )
+    .await
+    .map_err(|e| {
+        error!("❌ Failed to get draft deals for company: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to get draft deals for company".to_string(),
+        )
+    })?;
+
+    // Convert to response format
+    let deal_responses: Vec<DealDetailsResponse> = deals
+        .into_iter()
+        .map(|deal| {
+            // Convert document IDs from JSON to Vec<String> for response
+            let document_ids_response = deal.document_ids.as_ref().and_then(|json| {
+                if let Ok(uuids) = serde_json::from_value::<Vec<uuid::Uuid>>(json.clone()) {
+                    Some(uuids.into_iter().map(|uuid| uuid.to_string()).collect())
+                } else {
+                    None
+                }
+            });
+
+            DealDetailsResponse {
+                deal_id: deal.id.to_string(),
+                originator_id: deal.originator_id.to_string(),
+                investor_id: deal.investor_id.map(|id| id.to_string()),
+                principal_amount: deal.principal_amount.to_string(),
+                outstanding_balance: deal.outstanding_balance.to_string(),
+                interest_rate_bps: deal.interest_rate_bps as u16,
+                loan_status: deal.deal_status,
+                originated_at: deal.originated_at,
+                last_updated: Some(deal.updated_at),
+                custom_deal_id: deal.custom_deal_id,
+                status: deal.status,
+                industry: deal.industry,
+                document_ids: document_ids_response,
+                title: deal.title,
+                description: deal.description,
+                risk_level: deal.risk_level,
+                asset_class: deal.asset_class,
+                region: deal.region,
+                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+            }
+        })
+        .collect();
+
+    let total_count = deal_responses.len();
+    let limit = query.limit.unwrap_or(100) as usize;
+    let has_more = total_count >= limit;
+
+    let response = ListDealsResponse {
+        deals: deal_responses,
+        total_count,
+        has_more,
+    };
+
+    info!(
+        "✅ API: Found {} draft deals for company {}",
+        response.total_count, company_id
     );
     Ok(Json(response))
 }

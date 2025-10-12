@@ -77,6 +77,15 @@ pub use business::transfers::{
     TransferValidationRequest,
 };
 
+// Re-export document operations
+pub use business::documents::{
+    create_document, create_ingestion_job, delete_document, get_deal_document_stats,
+    get_document_by_id, get_documents_by_deal_id, get_pending_ingestion_jobs,
+    save_extracted_document_data, update_document, update_document_ingestion_status,
+    update_ingestion_job_status, CreateDocumentRequest, DealDocument, DocumentIngestionJob,
+    DocumentStats, IngestionStatus, JobStatus, StorageType, UpdateDocumentRequest,
+};
+
 // Re-export batch processing types and functions
 pub use db::{
     approve_withdrawal_request,
@@ -113,6 +122,7 @@ pub use db::{
     get_deals_by_user_id,
     get_deposit_by_tx_hash,
     get_deposits_by_user_address,
+    get_draft_deals_by_company_id,
     get_identity_by_email,
     get_identity_by_id,
     get_identity_by_reset_token,

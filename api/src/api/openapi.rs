@@ -240,6 +240,15 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::get_user_deal_transfer_history_endpoint,
         crate::handlers::deals::deals::validate_deal_transfer_endpoint,
 
+        // Deal Document endpoints
+        crate::handlers::deals::documents::upload_document,
+        crate::handlers::deals::documents::list_documents,
+        crate::handlers::deals::documents::get_document,
+        crate::handlers::deals::documents::download_document,
+        crate::handlers::deals::documents::update_document_metadata,
+        crate::handlers::deals::documents::delete_document_handler,
+        crate::handlers::deals::documents::get_document_stats,
+
         // Withdrawal endpoints
         crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint,
@@ -427,6 +436,11 @@ fn default_limit() -> u32 {
         DealTransferResponse,
         ValidateDealTransferRequest,
         DealTransferValidationResponse,
+
+        // Deal Document types
+        crate::handlers::deals::documents::DocumentUploadResponse,
+        crate::handlers::deals::documents::DocumentListResponse,
+        crate::handlers::deals::documents::DocumentStatsResponse,
 
         // State management types
         BatchInfo,

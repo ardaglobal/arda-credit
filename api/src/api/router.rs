@@ -17,7 +17,7 @@ use crate::handlers::{
     // Deals
     companies as company_handlers,
     // Documents (companies module)
-    documents as document_handlers,
+    companies::documents as company_document_handlers,
     // Finance
     get_account_financial_transactions,
     // Magic Link Auth
@@ -104,6 +104,8 @@ pub struct ApiState {
     pub metrics_handle: Option<Arc<crate::utils::metrics::MetricsHandle>>,
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
     pub document_service: Option<Arc<DocumentService>>,
+    pub document_storage_service:
+        Option<Arc<crate::services::document_storage::DocumentStorageService>>,
 }
 
 /// Configuration for API server
@@ -345,6 +347,10 @@ pub fn create_router(state: ApiState) -> Router {
             get(crate::handlers::deals::deals::get_deals_by_user_id_endpoint),
         )
         .route(
+            paths::COMPANY_DRAFT_DEALS,
+            get(crate::handlers::deals::deals::get_draft_deals_by_company_endpoint),
+        )
+        .route(
             paths::DEAL_BY_ID,
             get(crate::handlers::deals::deals::get_deal_details_endpoint),
         )
@@ -359,6 +365,37 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::DEALS_STATS,
             get(crate::handlers::deals::deals::get_deal_stats_endpoint),
+        )
+        // ========================================================================
+        // DEAL DOCUMENT ENDPOINTS
+        // ========================================================================
+        .route(
+            paths::DEAL_DOCUMENT_UPLOAD,
+            post(crate::handlers::deals::documents::upload_document),
+        )
+        .route(
+            paths::DEAL_DOCUMENTS,
+            get(crate::handlers::deals::documents::list_documents),
+        )
+        .route(
+            paths::DEAL_DOCUMENT_BY_ID,
+            get(crate::handlers::deals::documents::get_document),
+        )
+        .route(
+            paths::DEAL_DOCUMENT_BY_ID,
+            put(crate::handlers::deals::documents::update_document_metadata),
+        )
+        .route(
+            paths::DEAL_DOCUMENT_BY_ID,
+            delete(crate::handlers::deals::documents::delete_document_handler),
+        )
+        .route(
+            paths::DEAL_DOCUMENT_DOWNLOAD,
+            get(crate::handlers::deals::documents::download_document),
+        )
+        .route(
+            paths::DEAL_DOCUMENT_STATS,
+            get(crate::handlers::deals::documents::get_document_stats),
         )
         // ========================================================================
         // DEAL MARKETPLACE ENDPOINTS (consolidated from separate marketplace)
@@ -505,37 +542,43 @@ pub fn create_router(state: ApiState) -> Router {
         // ========================================================================
         .route(
             paths::DOCUMENT_UPLOAD,
-            post(document_handlers::upload_document),
+            post(company_document_handlers::upload_document),
         )
         .route(
             paths::DOCUMENT_DOWNLOAD,
-            get(document_handlers::download_document),
+            get(company_document_handlers::download_document),
         )
-        .route(paths::DOCUMENT_BY_ID, get(document_handlers::get_document))
         .route(
             paths::DOCUMENT_BY_ID,
-            delete(document_handlers::delete_document),
+            get(company_document_handlers::get_document),
         )
-        .route(paths::DOCUMENTS, get(document_handlers::list_documents))
+        .route(
+            paths::DOCUMENT_BY_ID,
+            delete(company_document_handlers::delete_document),
+        )
+        .route(
+            paths::DOCUMENTS,
+            get(company_document_handlers::list_documents),
+        )
         .route(
             paths::DOCUMENT_APPROVE,
-            post(document_handlers::approve_document),
+            post(company_document_handlers::approve_document),
         )
         .route(
             paths::DOCUMENT_REJECT,
-            post(document_handlers::reject_document),
+            post(company_document_handlers::reject_document),
         )
         .route(
             paths::DOCUMENT_VERIFY,
-            post(document_handlers::verify_document),
+            post(company_document_handlers::verify_document),
         )
         .route(
             paths::DOCUMENT_AUDIT,
-            get(document_handlers::get_audit_logs),
+            get(company_document_handlers::get_audit_logs),
         )
         .route(
             paths::DOCUMENT_HEALTH,
-            get(document_handlers::document_service_health_check),
+            get(company_document_handlers::document_service_health_check),
         )
         // AI Analysis endpoints
         .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
