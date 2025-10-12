@@ -5,14 +5,17 @@
 //! - Company wallet address management
 //! - Deal marketplace operations
 //! - Deal ownership transfers
+//! - Document management and ingestion
 
 pub mod company;
+pub mod documents;
 pub mod marketplace;
 pub mod transfers;
 pub mod wallet;
 
 // Re-export commonly used types
 pub use company::*;
+pub use documents::*;
 pub use marketplace::*;
 pub use transfers::*;
 pub use wallet::*;

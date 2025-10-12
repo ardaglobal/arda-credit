@@ -20,6 +20,7 @@ pub mod batch_processor;
 pub mod company_service;
 pub mod deployment_config;
 pub mod document_service;
+pub mod document_storage;
 pub mod email_service;
 pub mod kyc_service;
 pub mod llm_integration;
@@ -41,6 +42,9 @@ pub use company_service::{
     TeamMemberResponseDto,
 };
 pub use document_service::DocumentService;
+pub use document_storage::{
+    DocumentStorageConfig, DocumentStorageService, StorageBackend, UploadedFile,
+};
 pub use email_service::EmailService;
 pub use kyc_service::{KycValidationResult, KycValidationService};
 pub use magic_link_service::MagicLinkService;
