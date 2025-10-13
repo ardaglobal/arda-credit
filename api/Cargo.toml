@@ -21,7 +21,7 @@ default = [ "tikv-jemallocator" ]
 # Core dependencies
 chrono       = { version = "0.4", features = [ "serde" ] }
 once_cell    = "1.19"
-rust_decimal = "1.38"
+rust_decimal = "1.39"
 serde        = { workspace = true }
 thiserror    = "2.0"
 tokio        = { workspace = true }
@@ -39,7 +39,7 @@ arda-credit-db     = { path = "../db", package = "db" }
 arda-credit-lib    = { path = "../lib", package = "lib", features = [ "document_storage", "sp1" ] }
 ethereum-client    = { path = "../ethereum-client" }
 sindri             = { version = "0.3.1", features = [ "sp1-v5" ] }
-sp1-sdk            = "5.2.1"
+sp1-sdk            = "5.2.2"
 sqlx               = { workspace = true, features = [ "chrono", "ipnetwork", "postgres", "uuid" ] }
 
 # API framework dependencies
@@ -77,7 +77,7 @@ validator    = { version = "0.20", features = [ "derive" ] }    # Email validati
 
 # AWS SES Integration
 aws-config    = "1.8"
-aws-sdk-sesv2 = "1.99"
+aws-sdk-sesv2 = "1.100"
 
 # Email template support
 askama = "0.14"
@@ -85,7 +85,7 @@ askama = "0.14"
 # Session management dependencies
 axum-extra = { version = "0.10", features = [ "cookie" ] }
 base64     = "0.22"
-ipnetwork  = { version = "0.20", features = [ "serde" ] }  # Must match sqlx's ipnetwork version
+ipnetwork  = { version = "0.21", features = [ "serde" ] }  # Must match sqlx's ipnetwork version
 time       = "0.3"
 
 # OpenTelemetry dependencies (compatible versions)
@@ -99,7 +99,7 @@ tracing-opentelemetry              = { version = "0.32.0" }
 # Middleware dependencies
 blake3 = "1"
 rand   = "0.9"
-regex  = "1.11"
+regex  = "1.12"
 sha2   = "0.10"
 url    = "2.5"
 
