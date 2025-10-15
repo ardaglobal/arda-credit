@@ -753,7 +753,7 @@ mod tests {
     #[test]
     fn test_comprehensive_schema_types_serialization() {
         use super::super::comprehensive_schema::{
-            self, CreditAgreementExtraction, ExecutionStatus, FacilityType,
+            CreditAgreementExtraction, ExecutionStatus, FacilityType,
             PaymentFrequency as SchemaPaymentFrequency, ReferenceRate, RepaymentType,
             TestFrequency,
         };
