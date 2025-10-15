@@ -19,6 +19,7 @@ pub mod balance_service;
 pub mod batch_processor;
 pub mod company_service;
 pub mod deployment_config;
+pub mod document_ingestion;
 pub mod document_service;
 pub mod document_storage;
 pub mod email_service;
@@ -75,4 +76,11 @@ pub use ai_notification_service::{
 
 pub use llm_integration::{
     ChatPrompt, DocumentAnalysisPrompt, LlmProvider, LlmRequest, LlmResponse, LlmService,
+};
+
+// Re-export LLM extraction types from document_ingestion module
+pub use document_ingestion::{
+    CollateralType, CurrencyCode, DealCollateral, DealCovenants, DealFinancialTerms, DealParties,
+    DealType, DocumentMetadata, ExtractedDealData, InterestRateType, LlmExtractionService,
+    PaymentFrequency,
 };
