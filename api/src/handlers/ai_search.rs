@@ -196,7 +196,7 @@ impl IntoResponse for SearchError {
     )
 )]
 pub async fn semantic_search(
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
     Path(company_id): Path<Uuid>,
     headers: HeaderMap,
     Json(request): Json<SemanticSearchRequest>,
@@ -301,7 +301,7 @@ pub async fn semantic_search(
     )
 )]
 pub async fn search_document(
-    State(state): State<ApiState>,
+    State(_state): State<ApiState>,
     Path((company_id, document_id)): Path<(Uuid, Uuid)>,
     headers: HeaderMap,
     Json(request): Json<DocumentSearchRequest>,

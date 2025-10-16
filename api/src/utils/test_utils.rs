@@ -244,7 +244,6 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
     let team_invitation_service = Arc::new(
         crate::services::team_invitation_service::TeamInvitationService::new(
             pool.clone(),
-            magic_link_service.clone(),
             email_service,
             magic_link_config,
         ),

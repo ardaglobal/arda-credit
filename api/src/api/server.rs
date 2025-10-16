@@ -412,7 +412,6 @@ impl ApiServer {
         let team_invitation_service = Arc::new(
             crate::services::team_invitation_service::TeamInvitationService::new(
                 self.state.pool.clone(),
-                magic_link_service.clone(),
                 email_service,
                 magic_link_config,
             ),

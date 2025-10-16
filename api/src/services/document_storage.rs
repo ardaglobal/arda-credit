@@ -255,12 +255,12 @@ impl DocumentStorageService {
     }
 
     /// Store document to S3 (placeholder implementation)
-    #[instrument(skip(self, file))]
+    #[instrument(skip(self, _file))]
     async fn store_to_s3(
         &self,
-        deal_id: Uuid,
-        file: &UploadedFile,
-        checksum: &str,
+        _deal_id: Uuid,
+        _file: &UploadedFile,
+        _checksum: &str,
     ) -> ApiResult<String> {
         // TODO: Implement S3 storage using AWS SDK
         // For now, return an error indicating S3 is not yet implemented

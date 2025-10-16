@@ -1,9 +1,6 @@
 use crate::{
     api::router::ApiState,
-    services::{
-        auth::Claims,
-        document_storage::{DocumentStorageService, UploadedFile},
-    },
+    services::{auth::Claims, document_storage::UploadedFile},
 };
 use arda_credit_db::{
     create_document, create_ingestion_job, delete_document, get_deal_by_id,
