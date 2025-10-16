@@ -8,10 +8,9 @@ use crate::{
 use arda_credit_db::{
     create_document, create_ingestion_job, delete_document, get_deal_by_id,
     get_deal_document_stats, get_document_by_id, get_documents_by_deal_id, update_document,
-    CreateDocumentRequest, Deal, DealDocument, DocumentStats, StorageType, UpdateDocumentRequest,
+    CreateDocumentRequest, DealDocument, StorageType, UpdateDocumentRequest,
 };
 use axum::{
-    body::Bytes,
     extract::{Multipart, Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -21,7 +20,6 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info};
 use utoipa::ToSchema;
 use uuid::Uuid;
-use validator::Validate;
 
 /// Deal document response (API wrapper with ToSchema)
 #[derive(Debug, Serialize, ToSchema)]

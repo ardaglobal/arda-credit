@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use qdrant_client::qdrant::{
-    Condition, CreateCollectionBuilder, Distance, Filter, PointStruct, SearchPointsBuilder,
-    UpsertPointsBuilder, VectorParams, VectorsConfig,
+    Condition, CreateCollectionBuilder, CreateFieldIndexCollectionBuilder, Distance, FieldType,
+    Filter, KeywordIndexParamsBuilder, PointStruct, SearchPointsBuilder, UpsertPointsBuilder,
+    VectorParams, VectorsConfig,
 };
 use qdrant_client::Qdrant;
 use serde::{Deserialize, Serialize};
@@ -10,9 +11,13 @@ use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// Metadata for a document chunk stored in Qdrant
+///
+/// Multi-tenant support: `company_id` enables customer partitioning
+/// for privacy and performance optimization with Qdrant's `is_tenant` feature
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {
     pub document_id: Uuid,
+    pub company_id: Uuid,
     pub deal_id: Option<Uuid>,
     pub chunk_index: usize,
     pub chunk_text: String,
@@ -80,7 +85,8 @@ impl QdrantService {
 
     /// Initialize the collection (create if doesn't exist)
     ///
-    /// This should be called during application startup
+    /// This should be called during application startup.
+    /// Creates collection with multi-tenant optimization via `is_tenant` payload index.
     pub async fn init_collection(&self) -> Result<()> {
         info!("Initializing Qdrant collection: {}", self.collection_name);
 
@@ -93,6 +99,8 @@ impl QdrantService {
 
         if exists {
             info!("Collection '{}' already exists", self.collection_name);
+            // Ensure tenant index exists (idempotent)
+            self.create_tenant_index().await?;
             return Ok(());
         }
 
@@ -119,6 +127,37 @@ impl QdrantService {
             .await?;
 
         info!("Collection '{}' created successfully", self.collection_name);
+
+        // Create multi-tenant payload index
+        self.create_tenant_index().await?;
+
+        Ok(())
+    }
+
+    /// Create payload index for company_id with is_tenant optimization
+    ///
+    /// The `is_tenant=true` parameter (Qdrant v1.11+) co-locates vectors from
+    /// the same tenant on disk for significantly improved bulk read performance
+    /// and reduced scaling costs in multi-tenant deployments.
+    async fn create_tenant_index(&self) -> Result<()> {
+        info!(
+            "Creating tenant-optimized payload index for company_id in collection: {}",
+            self.collection_name
+        );
+
+        self.client
+            .create_field_index(
+                CreateFieldIndexCollectionBuilder::new(
+                    &self.collection_name,
+                    "company_id",
+                    FieldType::Keyword,
+                )
+                .field_index_params(KeywordIndexParamsBuilder::default().is_tenant(true)),
+            )
+            .await
+            .context("Failed to create tenant payload index")?;
+
+        info!("Tenant payload index created successfully");
         Ok(())
     }
 
@@ -283,6 +322,161 @@ impl QdrantService {
         Ok(results)
     }
 
+    /// Search within a specific company's documents (multi-tenant scoped)
+    ///
+    /// This leverages the tenant-optimized payload index for improved performance.
+    ///
+    /// # Arguments
+    /// * `company_id` - Company ID to scope the search to
+    /// * `query_vector` - Embedding of the search query
+    /// * `limit` - Maximum number of results to return
+    ///
+    /// # Returns
+    /// * Vector of search results sorted by relevance, only from specified company
+    pub async fn search_by_company(
+        &self,
+        company_id: Uuid,
+        query_vector: Vec<f32>,
+        limit: u64,
+    ) -> Result<Vec<SearchResult>> {
+        debug!(
+            "Searching Qdrant for company {} with limit {}",
+            company_id, limit
+        );
+
+        // Validate vector dimension
+        if query_vector.len() != self.embedding_dimension as usize {
+            anyhow::bail!(
+                "Query vector has dimension {} but expected {}",
+                query_vector.len(),
+                self.embedding_dimension
+            );
+        }
+
+        // Filter by company_id using tenant-optimized index
+        let filter = Filter::must([Condition::matches("company_id", company_id.to_string())]);
+
+        // Execute search
+        let search_result = self
+            .client
+            .search_points(
+                SearchPointsBuilder::new(&self.collection_name, query_vector, limit)
+                    .filter(filter)
+                    .with_payload(true),
+            )
+            .await?;
+
+        // Convert to SearchResult
+        let results: Vec<SearchResult> = search_result
+            .result
+            .into_iter()
+            .filter_map(|scored_point| {
+                let id_str = match &scored_point.id?.point_id_options? {
+                    qdrant_client::qdrant::point_id::PointIdOptions::Uuid(uuid_str) => {
+                        uuid_str.clone()
+                    }
+                    qdrant_client::qdrant::point_id::PointIdOptions::Num(_) => return None,
+                };
+
+                let chunk_id = Uuid::parse_str(&id_str).ok()?;
+                let score = scored_point.score;
+
+                let payload_json = serde_json::to_value(&scored_point.payload).ok()?;
+                let metadata: ChunkMetadata = serde_json::from_value(payload_json).ok()?;
+
+                Some(SearchResult {
+                    chunk_id,
+                    score,
+                    metadata,
+                })
+            })
+            .collect();
+
+        debug!("Found {} results for company {}", results.len(), company_id);
+        Ok(results)
+    }
+
+    /// Search within a company's specific document
+    ///
+    /// Combines company and document filtering for precise multi-tenant queries.
+    ///
+    /// # Arguments
+    /// * `company_id` - Company ID to scope the search to
+    /// * `document_id` - Document ID to filter by
+    /// * `query_vector` - Embedding of the search query
+    /// * `limit` - Maximum number of results to return
+    pub async fn search_by_company_and_document(
+        &self,
+        company_id: Uuid,
+        document_id: Uuid,
+        query_vector: Vec<f32>,
+        limit: u64,
+    ) -> Result<Vec<SearchResult>> {
+        debug!(
+            "Searching Qdrant for company {} document {} with limit {}",
+            company_id, document_id, limit
+        );
+
+        // Validate vector dimension
+        if query_vector.len() != self.embedding_dimension as usize {
+            anyhow::bail!(
+                "Query vector has dimension {} but expected {}",
+                query_vector.len(),
+                self.embedding_dimension
+            );
+        }
+
+        // Filter by both company_id and document_id
+        let filter = Filter::must([
+            Condition::matches("company_id", company_id.to_string()),
+            Condition::matches("document_id", document_id.to_string()),
+        ]);
+
+        // Execute search
+        let search_result = self
+            .client
+            .search_points(
+                SearchPointsBuilder::new(&self.collection_name, query_vector, limit)
+                    .filter(filter)
+                    .with_payload(true),
+            )
+            .await?;
+
+        // Convert to SearchResult
+        let results: Vec<SearchResult> = search_result
+            .result
+            .into_iter()
+            .filter_map(|scored_point| {
+                let id_str = match &scored_point.id?.point_id_options? {
+                    qdrant_client::qdrant::point_id::PointIdOptions::Uuid(uuid_str) => {
+                        uuid_str.clone()
+                    }
+                    qdrant_client::qdrant::point_id::PointIdOptions::Num(_) => return None,
+                };
+
+                let chunk_id = Uuid::parse_str(&id_str).ok()?;
+                let score = scored_point.score;
+
+                let payload_json = serde_json::to_value(&scored_point.payload).ok()?;
+                let metadata: ChunkMetadata = serde_json::from_value(payload_json).ok()?;
+
+                Some(SearchResult {
+                    chunk_id,
+                    score,
+                    metadata,
+                })
+            })
+            .collect();
+
+        debug!(
+            "Found {} results for company {} document {}",
+            results.len(),
+            company_id,
+            document_id
+        );
+        Ok(results)
+    }
+
     /// Delete all vectors for a specific document
     ///
     /// Useful for document deletion or re-ingestion
@@ -293,6 +487,66 @@ impl QdrantService {
         use qdrant_client::qdrant::{DeletePoints, PointsSelector};
 
         let filter = Filter::must([Condition::matches("document_id", document_id.to_string())]);
+
+        let points_selector = PointsSelector {
+            points_selector_one_of: Some(
+                qdrant_client::qdrant::points_selector::PointsSelectorOneOf::Filter(filter),
+            ),
+        };
+
+        let request = DeletePoints {
+            collection_name: self.collection_name.clone(),
+            points: Some(points_selector),
+            ..Default::default()
+        };
+
+        self.client.delete_points(request).await?;
+
+        Ok(())
+    }
+
+    /// Delete all vectors for a specific company (multi-tenant cleanup)
+    ///
+    /// Useful for company offboarding or data deletion requests
+    pub async fn delete_company_documents(&self, company_id: Uuid) -> Result<()> {
+        info!("Deleting all vectors for company {}", company_id);
+
+        use qdrant_client::qdrant::{DeletePoints, PointsSelector};
+
+        let filter = Filter::must([Condition::matches("company_id", company_id.to_string())]);
+
+        let points_selector = PointsSelector {
+            points_selector_one_of: Some(
+                qdrant_client::qdrant::points_selector::PointsSelectorOneOf::Filter(filter),
+            ),
+        };
+
+        let request = DeletePoints {
+            collection_name: self.collection_name.clone(),
+            points: Some(points_selector),
+            ..Default::default()
+        };
+
+        self.client.delete_points(request).await?;
+
+        Ok(())
+    }
+
+    /// Delete specific document within a company
+    ///
+    /// Combines company and document filtering for safe multi-tenant deletion
+    pub async fn delete_company_document(&self, company_id: Uuid, document_id: Uuid) -> Result<()> {
+        info!(
+            "Deleting vectors for company {} document {}",
+            company_id, document_id
+        );
+
+        use qdrant_client::qdrant::{DeletePoints, PointsSelector};
+
+        let filter = Filter::must([
+            Condition::matches("company_id", company_id.to_string()),
+            Condition::matches("document_id", document_id.to_string()),
+        ]);
 
         let points_selector = PointsSelector {
             points_selector_one_of: Some(
@@ -366,6 +620,7 @@ mod tests {
     fn test_chunk_metadata_serialization() {
         let metadata = ChunkMetadata {
             document_id: Uuid::new_v4(),
+            company_id: Uuid::new_v4(),
             deal_id: Some(Uuid::new_v4()),
             chunk_index: 0,
             chunk_text: "Test chunk".to_string(),
@@ -379,6 +634,7 @@ mod tests {
             serde_json::from_str(&json).expect("Deserialization failed");
 
         assert_eq!(metadata.document_id, deserialized.document_id);
+        assert_eq!(metadata.company_id, deserialized.company_id);
         assert_eq!(metadata.chunk_index, deserialized.chunk_index);
     }
 }

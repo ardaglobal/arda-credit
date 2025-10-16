@@ -8,6 +8,7 @@ version = "0.0.1"
 # Alloy Ethereum types and utilities
 alloy-consensus      = { workspace = true }
 alloy-contract       = "1.0"
+alloy-dyn-abi        = { workspace = true }                                 # Explicit version to fix RUSTSEC-2025-0073
 alloy-json-rpc       = "1.0"
 alloy-network        = "1.0"
 alloy-primitives     = { workspace = true }
