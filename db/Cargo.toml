@@ -22,7 +22,7 @@ test-utils = [  ]
 [dependencies]
 chrono = { version = "0.4", features = [ "serde" ] }
 lib = { path = "../lib" }
-rust_decimal = "1.38"
+rust_decimal = "1.39"
 serde = { workspace = true }
 sqlx = { workspace = true, features = [
     "chrono",
