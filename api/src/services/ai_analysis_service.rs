@@ -1,9 +1,11 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use reqwest::Client;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::time::Duration;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -120,6 +122,99 @@ pub struct NegotiationInsight {
     pub recommended_action: Option<String>,
     pub priority: ImpactLevel,
     pub created_at: DateTime<Utc>,
+}
+
+/// Request for generating insights with a custom prompt
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct InsightsRequest {
+    /// Custom prompt for the AI analysis
+    pub prompt: String,
+    /// Optional company_id for multi-tenant search scoping
+    pub company_id: Option<Uuid>,
+    /// Maximum number of relevant chunks to retrieve (default: 10)
+    pub max_chunks: Option<usize>,
+}
+
+/// BAML-formatted insight response
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BAMLInsightResponse {
+    /// Unique insight ID
+    pub insight_id: Uuid,
+    /// Document being analyzed
+    pub document_id: Uuid,
+    /// Type of insight (e.g., "opportunity", "risk", "attention_area")
+    pub insight_type: String,
+    /// Main insight title
+    pub title: String,
+    /// Detailed description of the insight
+    pub description: String,
+    /// Relevant document excerpts that support this insight
+    pub supporting_evidence: Vec<EvidenceChunk>,
+    /// Recommended actions based on this insight
+    pub recommended_actions: Vec<String>,
+    /// Confidence score (0.0 to 1.0)
+    pub confidence: f64,
+    /// Impact level
+    pub impact: ImpactLevel,
+    /// When this insight was generated
+    pub generated_at: DateTime<Utc>,
+}
+
+/// Evidence chunk from the document
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct EvidenceChunk {
+    /// Chunk text excerpt
+    pub text: String,
+    /// Page number if available
+    pub page_number: Option<i32>,
+    /// Relevance score (0.0 to 1.0)
+    pub relevance_score: f32,
+}
+
+/// Request payload for Modal agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalInsightsRequest {
+    document_id: String,
+    prompt: String,
+    company_id: Option<String>,
+    max_chunks: usize,
+}
+
+/// Response from Modal agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalInsightsResponse {
+    insights: Vec<ModalInsight>,
+}
+
+/// Individual insight from Modal agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalInsight {
+    insight_type: String,
+    title: String,
+    description: String,
+    supporting_evidence: Vec<ModalEvidenceChunk>,
+    recommended_actions: Vec<String>,
+    confidence: f64,
+    impact: String,
+}
+
+/// Evidence chunk from Modal agent
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ModalEvidenceChunk {
+    text: String,
+    page_number: Option<i32>,
+    relevance_score: f32,
+}
+
+/// Parse impact level string to enum
+fn parse_impact_level(impact: &str) -> ImpactLevel {
+    match impact.to_lowercase().as_str() {
+        "critical" => ImpactLevel::Critical,
+        "significant" => ImpactLevel::Significant,
+        "moderate" => ImpactLevel::Moderate,
+        "minor" => ImpactLevel::Minor,
+        _ => ImpactLevel::Minor,
+    }
 }
 
 pub struct AiAnalysisService {
@@ -256,6 +351,106 @@ impl AiAnalysisService {
         for insight in &insights {
             self.save_negotiation_insight(insight).await?;
         }
+
+        Ok(insights)
+    }
+
+    /// Generate insights using vector search with a custom prompt (BAML format)
+    ///
+    /// This method calls the Modal-hosted agent which handles:
+    /// 1. Embedding generation
+    /// 2. Qdrant vector search
+    /// 3. LLM inference
+    /// 4. Structured BAML response generation
+    pub async fn generate_insights_with_prompt(
+        &self,
+        document_id: Uuid,
+        request: InsightsRequest,
+    ) -> Result<Vec<BAMLInsightResponse>, anyhow::Error> {
+        // Call Modal-hosted agent
+        let modal_response = self.call_modal_agent(document_id, &request).await?;
+
+        Ok(modal_response)
+    }
+
+    /// Call Modal-hosted i2p-agent for insight generation
+    async fn call_modal_agent(
+        &self,
+        document_id: Uuid,
+        request: &InsightsRequest,
+    ) -> Result<Vec<BAMLInsightResponse>, anyhow::Error> {
+        // Get Modal endpoint from environment
+        let modal_endpoint = std::env::var("MODAL_AGENT_ENDPOINT").unwrap_or_else(|_| {
+            "https://ardaglobal--i2p-agent-generate-insights.modal.run".to_string()
+        });
+
+        let modal_api_key = std::env::var("MODAL_API_KEY").ok();
+
+        // Create HTTP client
+        let client = Client::builder().timeout(Duration::from_secs(60)).build()?;
+
+        // Build request payload for Modal agent
+        let payload = ModalInsightsRequest {
+            document_id: document_id.to_string(),
+            prompt: request.prompt.clone(),
+            company_id: request.company_id.map(|id| id.to_string()),
+            max_chunks: request.max_chunks.unwrap_or(10),
+        };
+
+        // Make request to Modal
+        let mut req_builder = client
+            .post(&modal_endpoint)
+            .header("Content-Type", "application/json")
+            .json(&payload);
+
+        // Add API key if available
+        if let Some(api_key) = modal_api_key {
+            req_builder = req_builder.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        let response = req_builder
+            .send()
+            .await
+            .context("Failed to send request to Modal agent")?;
+
+        // Check status
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Modal agent error ({}): {}", status, error_text);
+        }
+
+        // Parse Modal response
+        let modal_response: ModalInsightsResponse = response
+            .json()
+            .await
+            .context("Failed to parse Modal agent response")?;
+
+        // Convert Modal response to our BAML format
+        let insights = modal_response
+            .insights
+            .into_iter()
+            .map(|insight| BAMLInsightResponse {
+                insight_id: Uuid::new_v4(),
+                document_id,
+                insight_type: insight.insight_type,
+                title: insight.title,
+                description: insight.description,
+                supporting_evidence: insight
+                    .supporting_evidence
+                    .into_iter()
+                    .map(|e| EvidenceChunk {
+                        text: e.text,
+                        page_number: e.page_number,
+                        relevance_score: e.relevance_score,
+                    })
+                    .collect(),
+                recommended_actions: insight.recommended_actions,
+                confidence: insight.confidence,
+                impact: parse_impact_level(&insight.impact),
+                generated_at: Utc::now(),
+            })
+            .collect();
 
         Ok(insights)
     }
