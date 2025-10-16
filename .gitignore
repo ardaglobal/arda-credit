@@ -49,3 +49,14 @@ contracts/deployments/staging-deployment.json
 # Keep sandbox and production deployments for reference
 
 data/
+
+mvp_docs/
+
+# BAML Service
+baml-service/node_modules/
+baml-service/dist/
+baml-service/baml_client/
+baml-service/.env
+baml-service/.env.local
+baml-service/npm-debug.log
+baml-service/yarn-error.log

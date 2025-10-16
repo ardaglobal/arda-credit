@@ -21,8 +21,8 @@ uuid         = { workspace = true }
 # SP1 dependencies (for host-side proof operations)
 metrics = { workspace = true, optional = true }
 sindri  = { version = "0.3.1", features = [ "sp1-v5" ], optional = true }
-sp1-sdk = { version = "5.2.1", optional = true }
-tokio   = { version = "1.0", features = [ "time" ], optional = true }
+sp1-sdk = { version = "5.2.2", optional = true }
+tokio   = { version = "1.48", features = [ "time" ], optional = true }
 tracing = { version = "0.1", optional = true }
 
 # CLI dependencies

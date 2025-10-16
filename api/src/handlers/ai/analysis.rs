@@ -1,6 +1,6 @@
 use crate::services::ai_analysis_service::{
-    AiAnalysisService, AiChatRequest, AiChatResponse, DocumentDiffRequest, DocumentDiffResponse,
-    NegotiationInsight,
+    AiAnalysisService, AiChatRequest, AiChatResponse, BAMLInsightResponse, DocumentDiffRequest,
+    DocumentDiffResponse, InsightsRequest, NegotiationInsight,
 };
 // Authentication will be added later
 use crate::config::types::ApiState;
@@ -214,6 +214,40 @@ pub async fn get_negotiation_insights(
 
     let insights = ai_service
         .generate_negotiation_insights(document_id)
+        .await
+        .map_err(handle_service_error)?;
+
+    Ok(Json(insights))
+}
+
+/// Generate insights with custom prompt using vector search (BAML format)
+#[utoipa::path(
+    post,
+    path = "/api/v1/documents/{document_id}/insights",
+    params(
+        ("document_id" = Uuid, Path, description = "Document ID to analyze")
+    ),
+    request_body = crate::services::ai_analysis_service::InsightsRequest,
+    responses(
+        (status = 200, description = "Insights generated successfully", body = Vec<crate::services::ai_analysis_service::BAMLInsightResponse>),
+        (status = 400, description = "Invalid request", body = ApiError),
+        (status = 404, description = "Document not found", body = ApiError),
+        (status = 500, description = "Internal server error", body = ApiError)
+    ),
+    tag = "Analytics",
+    summary = "Generate insights with custom prompt",
+    description = "Generates AI insights using vector search over document chunks based on a custom prompt. Returns structured BAML-formatted JSON."
+)]
+pub async fn generate_insights_with_prompt(
+    State(state): State<ApiState>,
+    Path(document_id): Path<Uuid>,
+    Json(request): Json<InsightsRequest>,
+) -> Result<Json<Vec<BAMLInsightResponse>>, (StatusCode, Json<ApiError>)> {
+    let _claims = get_dummy_claims(); // TODO: Replace with real auth
+    let ai_service = AiAnalysisService::new(state.pool.clone());
+
+    let insights = ai_service
+        .generate_insights_with_prompt(document_id, request)
         .await
         .map_err(handle_service_error)?;
 
@@ -681,7 +715,7 @@ pub fn create_ai_analysis_router() -> Router<ApiState> {
         )
         .route(
             "/documents/{document_id}/insights",
-            get(get_negotiation_insights),
+            get(get_negotiation_insights).post(generate_insights_with_prompt),
         )
         .route(
             "/documents/{document_id}/analysis-history",

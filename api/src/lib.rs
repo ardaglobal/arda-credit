@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::missing_panics_doc)]
 #![allow(clippy::single_match_else)]
