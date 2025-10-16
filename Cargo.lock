@@ -838,7 +838,7 @@ dependencies = [
  "humantime",
  "hyper 1.7.0",
  "io-uring",
- "ipnetwork 0.21.1",
+ "ipnetwork 0.20.0",
  "jsonwebtoken 10.0.0",
  "lib",
  "lopdf 0.34.0",

@@ -36,7 +36,6 @@ pub enum TeamInvitationError {
 #[derive(Clone)]
 pub struct TeamInvitationService {
     pool: PgPool,
-    magic_link_service: Arc<MagicLinkService>,
     email_service: Arc<EmailService>,
     magic_link_config: MagicLinkConfig,
 }
@@ -44,13 +43,11 @@ pub struct TeamInvitationService {
 impl TeamInvitationService {
     pub fn new(
         pool: PgPool,
-        magic_link_service: Arc<MagicLinkService>,
         email_service: Arc<EmailService>,
         magic_link_config: MagicLinkConfig,
     ) -> Self {
         Self {
             pool,
-            magic_link_service,
             email_service,
             magic_link_config,
         }

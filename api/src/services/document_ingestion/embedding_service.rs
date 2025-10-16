@@ -57,7 +57,6 @@ struct EmbeddingData {
 
 #[derive(Debug, Deserialize)]
 struct Usage {
-    prompt_tokens: usize,
     total_tokens: usize,
 }
 

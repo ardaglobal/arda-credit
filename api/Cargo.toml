@@ -85,7 +85,7 @@ askama = "0.14"
 # Session management dependencies
 axum-extra = { version = "0.10", features = [ "cookie" ] }
 base64     = "0.22"
-ipnetwork  = { version = "0.21", features = [ "serde" ] }  # Must match sqlx's ipnetwork version
+ipnetwork  = { version = "0.20", features = [ "serde" ] }  # Must match sqlx's ipnetwork version
 time       = "0.3"
 
 # OpenTelemetry dependencies (compatible versions)
@@ -120,7 +120,7 @@ prometheus                  = { workspace = true }
 # Document ingestion dependencies
 # PDF processing
 lopdf       = "0.34" # PDF parsing and text extraction
-pdf-extract = "0.10"  # Alternative PDF extraction
+pdf-extract = "0.10" # Alternative PDF extraction
 
 # Vector database
 qdrant-client = "1.11" # Qdrant vector database client

@@ -58,8 +58,6 @@ pub use crate::handlers::{
     // Auth types
     GenerateInviteCodeRequest,
     GenerateInviteCodeResponse,
-    InvestorProfileQuery,
-    InvestorProfileResponse,
     KycStatisticsResponse,
     ListDealForSaleRequest,
     ListDealsQuery,
@@ -77,8 +75,6 @@ pub use crate::handlers::{
     PendingTransactionsResponse,
     PlatformMetricsResponse,
     RecordDealPaymentRequest,
-    RegisterInvestorRequest,
-    RegisterInvestorResponse,
     RegisterUserRequest,
     RegisterUserResponse,
     RejectWithdrawalRequest,
@@ -102,7 +98,6 @@ pub use crate::handlers::{
 
     UpdateDealRequest,
     UpdateDealResponse,
-    UpdateInvestorProfileRequest,
     UpdateKycStatusRequest,
     UpdateUserRequest,
     UserDetailsResponse,
@@ -116,6 +111,10 @@ pub use crate::config::magic_link_types::{
     VerifyMagicLinkResponse,
 };
 pub use crate::config::types::UserType;
+pub use crate::handlers::companies::{
+    InvestorProfileQuery, InvestorProfileResponse, RegisterInvestorRequest,
+    RegisterInvestorResponse, UpdateInvestorProfileRequest,
+};
 pub use crate::handlers::users::balance::{
     AddressBalance, AddressBalanceResponse, UserBalanceResponse,
 };

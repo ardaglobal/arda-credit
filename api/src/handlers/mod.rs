@@ -28,7 +28,6 @@ pub mod users;
 pub use ai::*;
 pub use ai_search::*;
 pub use auth::*;
-pub use companies::*;
 pub use core::*;
 pub use deals::*;
 pub use faucet::*;

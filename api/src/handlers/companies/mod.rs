@@ -10,6 +10,8 @@ pub mod wallets;
 
 // Re-export commonly used items
 pub use companies::*;
-pub use documents::*;
 pub use memberships::*;
 pub use wallets::*;
+
+// Company documents module is accessible but not glob re-exported to avoid conflicts with deals::documents
+// Access via companies::documents::* instead

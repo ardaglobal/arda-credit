@@ -20,7 +20,6 @@ use super::document_ingestion::{
 
 /// Document ingestion orchestrator with multi-tenant support
 pub struct DocumentIngestionOrchestrator {
-    db_pool: PgPool,
     pdf_extractor: PdfExtractor,
     text_chunker: TextChunker,
     embedding_service: EmbeddingService,
@@ -50,7 +49,7 @@ pub struct DocumentIngestionResult {
 
 impl DocumentIngestionOrchestrator {
     /// Create a new document ingestion orchestrator from environment
-    pub async fn from_env(db_pool: PgPool) -> Result<Self> {
+    pub async fn from_env(_db_pool: PgPool) -> Result<Self> {
         info!("Initializing Document Ingestion Orchestrator");
 
         let pdf_extractor = PdfExtractor::new();
@@ -76,7 +75,6 @@ impl DocumentIngestionOrchestrator {
         info!("Document Ingestion Orchestrator initialized successfully");
 
         Ok(Self {
-            db_pool,
             pdf_extractor,
             text_chunker,
             embedding_service,
