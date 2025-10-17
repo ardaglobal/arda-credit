@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
+use dashmap::DashMap;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
-use tracing::{debug, info, warn};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
+use tracing::{debug, error, info, warn};
 
 /// Embedding provider
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -69,17 +72,101 @@ struct Usage {
     total_tokens: usize,
 }
 
+/// Retry configuration for failed requests
+#[derive(Debug, Clone)]
+pub struct RetryConfig {
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Initial backoff duration
+    pub initial_backoff: Duration,
+    /// Maximum backoff duration
+    pub max_backoff: Duration,
+    /// Backoff multiplier
+    pub backoff_multiplier: f64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(10),
+            backoff_multiplier: 2.0,
+        }
+    }
+}
+
+/// Rate limiting configuration
+#[derive(Debug, Clone)]
+pub struct RateLimitConfig {
+    /// Maximum concurrent requests
+    pub max_concurrent_requests: usize,
+    /// Minimum delay between requests
+    pub min_request_delay: Duration,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            max_concurrent_requests: 10,
+            min_request_delay: Duration::from_millis(100),
+        }
+    }
+}
+
+/// Embedding generation metrics
+#[derive(Debug, Clone, Default)]
+pub struct EmbeddingMetrics {
+    pub total_requests: usize,
+    pub successful_requests: usize,
+    pub failed_requests: usize,
+    pub total_chunks: usize,
+    pub total_duration: Duration,
+    pub retries: usize,
+}
+
+impl EmbeddingMetrics {
+    pub fn success_rate(&self) -> f64 {
+        if self.total_requests == 0 {
+            0.0
+        } else {
+            self.successful_requests as f64 / self.total_requests as f64
+        }
+    }
+
+    pub fn avg_time_per_chunk(&self) -> Duration {
+        if self.total_chunks == 0 {
+            Duration::ZERO
+        } else {
+            self.total_duration / self.total_chunks as u32
+        }
+    }
+}
+
 /// Embedding Service for converting text to vectors
 ///
 /// Supports multiple providers:
-/// - OpenAI API (default)
-/// - Modal custom endpoint (for hosted models)
+/// - OpenAI API
+/// - Modal custom endpoint (QWen3B hosted model)
+///
+/// Features:
+/// - Retry logic with exponential backoff
+/// - Rate limiting
+/// - Embedding validation
+/// - In-memory caching
+/// - Metrics tracking
 pub struct EmbeddingService {
     client: Client,
     provider: EmbeddingProvider,
     api_key: Option<String>,
     model: EmbeddingModel,
     base_url: String,
+    retry_config: RetryConfig,
+    rate_limiter: Arc<Semaphore>,
+    rate_limit_config: RateLimitConfig,
+    last_request_time: Arc<tokio::sync::Mutex<Instant>>,
+    /// In-memory cache: text -> embedding vector
+    embedding_cache: Arc<DashMap<String, Vec<f32>>>,
 }
 
 impl EmbeddingService {
@@ -157,7 +244,30 @@ impl EmbeddingService {
         model: EmbeddingModel,
         base_url: String,
     ) -> Result<Self> {
-        let client = Client::builder().timeout(Duration::from_secs(60)).build()?;
+        Self::new_with_config(
+            provider,
+            api_key,
+            model,
+            base_url,
+            RetryConfig::default(),
+            RateLimitConfig::default(),
+        )
+    }
+
+    /// Create a new embedding service with custom retry and rate limit configuration
+    pub fn new_with_config(
+        provider: EmbeddingProvider,
+        api_key: Option<String>,
+        model: EmbeddingModel,
+        base_url: String,
+        retry_config: RetryConfig,
+        rate_limit_config: RateLimitConfig,
+    ) -> Result<Self> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(120)) // Longer timeout for large batches
+            .build()?;
+
+        let rate_limiter = Arc::new(Semaphore::new(rate_limit_config.max_concurrent_requests));
 
         Ok(Self {
             client,
@@ -165,6 +275,11 @@ impl EmbeddingService {
             api_key,
             model,
             base_url,
+            retry_config,
+            rate_limiter,
+            rate_limit_config,
+            last_request_time: Arc::new(tokio::sync::Mutex::new(Instant::now())),
+            embedding_cache: Arc::new(DashMap::new()),
         })
     }
 
@@ -191,7 +306,7 @@ impl EmbeddingService {
     /// Generate embeddings for multiple texts in batch
     ///
     /// More efficient than calling embed() multiple times.
-    /// OpenAI allows up to 2048 texts per batch.
+    /// Uses in-memory cache to avoid re-requesting embeddings for duplicate texts.
     ///
     /// # Arguments
     /// * `texts` - Vector of texts to embed
@@ -210,10 +325,78 @@ impl EmbeddingService {
             anyhow::bail!("Batch size exceeds limit of 2048");
         }
 
-        match self.provider {
-            EmbeddingProvider::OpenAI => self.embed_batch_openai(texts).await,
-            EmbeddingProvider::Modal => self.embed_batch_modal(texts).await,
+        // Check cache for existing embeddings
+        let mut cached_embeddings: Vec<Option<Vec<f32>>> = Vec::with_capacity(texts.len());
+        let mut texts_to_fetch = Vec::new();
+        let mut fetch_indices = Vec::new();
+
+        for (i, text) in texts.iter().enumerate() {
+            if let Some(embedding) = self.embedding_cache.get(text) {
+                cached_embeddings.push(Some(embedding.clone()));
+            } else {
+                cached_embeddings.push(None);
+                texts_to_fetch.push(text.clone());
+                fetch_indices.push(i);
+            }
         }
+
+        let cache_hits = texts.len() - texts_to_fetch.len();
+        if cache_hits > 0 {
+            debug!(
+                "Cache hits: {}/{} ({:.1}%)",
+                cache_hits,
+                texts.len(),
+                (cache_hits as f64 / texts.len() as f64) * 100.0
+            );
+        }
+
+        // Fetch embeddings for non-cached texts
+        let fetched_embeddings = if !texts_to_fetch.is_empty() {
+            let embeddings = match self.provider {
+                EmbeddingProvider::OpenAI => {
+                    self.embed_batch_openai(texts_to_fetch.clone()).await?
+                }
+                EmbeddingProvider::Modal => self.embed_batch_modal(texts_to_fetch.clone()).await?,
+            };
+
+            // Store in cache
+            for (text, embedding) in texts_to_fetch.iter().zip(embeddings.iter()) {
+                self.embedding_cache.insert(text.clone(), embedding.clone());
+            }
+
+            embeddings
+        } else {
+            Vec::new()
+        };
+
+        // Combine cached and fetched embeddings in original order
+        let mut result = Vec::with_capacity(texts.len());
+        let mut fetch_iter = fetched_embeddings.into_iter();
+
+        for cached in cached_embeddings {
+            if let Some(embedding) = cached {
+                result.push(embedding);
+            } else {
+                result.push(fetch_iter.next().unwrap());
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Get cache statistics
+    pub fn cache_stats(&self) -> (usize, usize) {
+        let size = self.embedding_cache.len();
+        // Estimate memory usage: each embedding is ~1536 * 4 bytes + overhead
+        let estimated_bytes = size * (self.dimensions() * 4 + 50);
+        (size, estimated_bytes)
+    }
+
+    /// Clear the embedding cache
+    pub fn clear_cache(&self) {
+        let size = self.embedding_cache.len();
+        self.embedding_cache.clear();
+        info!("Cleared embedding cache ({} entries)", size);
     }
 
     /// Generate embeddings using OpenAI API
@@ -269,8 +452,44 @@ impl EmbeddingService {
         Ok(embeddings)
     }
 
-    /// Generate embeddings using Modal endpoint
+    /// Generate embeddings using Modal endpoint with retry logic and validation
     async fn embed_batch_modal(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
+        let start_time = Instant::now();
+        let num_texts = texts.len();
+
+        // Acquire rate limit permit
+        let _permit = self.rate_limiter.acquire().await.unwrap();
+
+        // Enforce minimum delay between requests
+        {
+            let mut last_time = self.last_request_time.lock().await;
+            let elapsed = last_time.elapsed();
+            if elapsed < self.rate_limit_config.min_request_delay {
+                let sleep_duration = self.rate_limit_config.min_request_delay - elapsed;
+                tokio::time::sleep(sleep_duration).await;
+            }
+            *last_time = Instant::now();
+        }
+
+        // Retry with exponential backoff
+        let embeddings = self.embed_batch_modal_with_retry(texts.clone()).await?;
+
+        // Validate embeddings
+        self.validate_embeddings(&embeddings, num_texts)?;
+
+        let duration = start_time.elapsed();
+        debug!(
+            "Modal embedding completed: {} texts in {:.2}s ({:.0} ms/text)",
+            num_texts,
+            duration.as_secs_f64(),
+            duration.as_millis() as f64 / num_texts as f64
+        );
+
+        Ok(embeddings)
+    }
+
+    /// Generate embeddings using Modal endpoint with retry logic
+    async fn embed_batch_modal_with_retry(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         // Modal endpoint expects a simpler format
         #[derive(Serialize)]
         struct ModalRequest {
@@ -282,7 +501,9 @@ impl EmbeddingService {
             embeddings: Vec<Vec<f32>>,
         }
 
-        let request = ModalRequest { texts };
+        let request = ModalRequest {
+            texts: texts.clone(),
+        };
 
         // Call Modal endpoint
         let url = if self.base_url.ends_with('/') {
@@ -291,47 +512,152 @@ impl EmbeddingService {
             format!("{}/embed", self.base_url)
         };
 
-        let mut req = self.client.post(&url).json(&request);
+        let mut attempt = 0;
+        let mut backoff = self.retry_config.initial_backoff;
 
-        // Add auth header if API key is provided
-        if let Some(api_key) = &self.api_key {
-            req = req.header("Authorization", format!("Bearer {}", api_key));
+        loop {
+            attempt += 1;
+
+            let mut req = self.client.post(&url).json(&request);
+
+            // Add auth header if API key is provided
+            if let Some(api_key) = &self.api_key {
+                req = req.header("Authorization", format!("Bearer {}", api_key));
+            }
+
+            match req.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        // Parse response
+                        match response.json::<ModalResponse>().await {
+                            Ok(modal_response) => {
+                                if attempt > 1 {
+                                    info!("Modal request succeeded after {} attempts", attempt);
+                                }
+                                return Ok(modal_response.embeddings);
+                            }
+                            Err(e) => {
+                                error!("Failed to parse Modal response: {}", e);
+                                if attempt >= self.retry_config.max_retries {
+                                    return Err(anyhow::anyhow!(
+                                        "Failed to parse Modal response after {} attempts: {}",
+                                        attempt,
+                                        e
+                                    ));
+                                }
+                            }
+                        }
+                    } else {
+                        let status = response.status();
+                        let error_text = response.text().await.unwrap_or_default();
+
+                        // Check if error is retryable
+                        let is_retryable = status.is_server_error()
+                            || status == reqwest::StatusCode::TOO_MANY_REQUESTS;
+
+                        if !is_retryable || attempt >= self.retry_config.max_retries {
+                            return Err(anyhow::anyhow!(
+                                "Modal API error ({}) after {} attempts: {}",
+                                status,
+                                attempt,
+                                error_text
+                            ));
+                        }
+
+                        warn!(
+                            "Modal request failed with status {} (attempt {}/{}): {}",
+                            status, attempt, self.retry_config.max_retries, error_text
+                        );
+                    }
+                }
+                Err(e) => {
+                    if attempt >= self.retry_config.max_retries {
+                        return Err(anyhow::anyhow!(
+                            "Failed to send request to Modal after {} attempts: {}",
+                            attempt,
+                            e
+                        ));
+                    }
+                    warn!(
+                        "Modal request failed (attempt {}/{}): {}",
+                        attempt, self.retry_config.max_retries, e
+                    );
+                }
+            }
+
+            // Exponential backoff
+            if attempt < self.retry_config.max_retries {
+                debug!("Retrying in {:?}...", backoff);
+                tokio::time::sleep(backoff).await;
+                backoff = std::cmp::min(
+                    Duration::from_secs_f64(
+                        backoff.as_secs_f64() * self.retry_config.backoff_multiplier,
+                    ),
+                    self.retry_config.max_backoff,
+                );
+            }
+        }
+    }
+
+    /// Validate embedding dimensions and values
+    fn validate_embeddings(&self, embeddings: &[Vec<f32>], expected_count: usize) -> Result<()> {
+        // Check count matches
+        if embeddings.len() != expected_count {
+            anyhow::bail!(
+                "Embedding count mismatch: expected {}, got {}",
+                expected_count,
+                embeddings.len()
+            );
         }
 
-        let response = req
-            .send()
-            .await
-            .context("Failed to send embedding request to Modal")?;
+        let expected_dim = self.dimensions();
 
-        // Check status
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Modal API error ({}): {}", status, error_text);
+        for (i, embedding) in embeddings.iter().enumerate() {
+            // Check dimensions
+            if embedding.len() != expected_dim {
+                anyhow::bail!(
+                    "Embedding {} has wrong dimensions: expected {}, got {}",
+                    i,
+                    expected_dim,
+                    embedding.len()
+                );
+            }
+
+            // Check for NaN or infinite values
+            for (j, &value) in embedding.iter().enumerate() {
+                if !value.is_finite() {
+                    anyhow::bail!(
+                        "Embedding {} has invalid value at index {}: {}",
+                        i,
+                        j,
+                        value
+                    );
+                }
+            }
+
+            // Check if embedding is not all zeros (sanity check)
+            let sum: f32 = embedding.iter().sum();
+            if sum.abs() < 1e-8 {
+                warn!("Embedding {} appears to be all zeros", i);
+            }
         }
-
-        // Parse response
-        let modal_response: ModalResponse = response
-            .json()
-            .await
-            .context("Failed to parse Modal embedding response")?;
 
         debug!(
-            "Generated {} embeddings from Modal",
-            modal_response.embeddings.len()
+            "Validated {} embeddings (dim={})",
+            embeddings.len(),
+            expected_dim
         );
-
-        Ok(modal_response.embeddings)
+        Ok(())
     }
 
     /// Generate embeddings in chunks to handle large batches
     ///
     /// Automatically splits large batches into multiple API calls
-    /// to stay within OpenAI's batch size limit.
+    /// with optimal chunk size for throughput.
     ///
     /// # Arguments
     /// * `texts` - Vector of texts to embed
-    /// * `chunk_size` - Size of each batch (default: 100)
+    /// * `chunk_size` - Size of each batch (default: 100 for OpenAI, 50 for Modal)
     ///
     /// # Returns
     /// * Vector of embeddings in the same order as input texts
@@ -344,23 +670,57 @@ impl EmbeddingService {
             return Ok(vec![]);
         }
 
+        let start_time = Instant::now();
+
+        // Optimize chunk size based on provider
+        let optimal_chunk_size = match self.provider {
+            EmbeddingProvider::Modal => chunk_size.min(50), // Modal QWen3B works best with smaller batches
+            EmbeddingProvider::OpenAI => chunk_size.min(100),
+        };
+
         info!(
-            "Generating embeddings for {} texts in chunks of {}",
+            "Generating embeddings for {} texts in chunks of {} (provider: {:?})",
             texts.len(),
-            chunk_size
+            optimal_chunk_size,
+            self.provider
         );
 
         let mut all_embeddings = Vec::with_capacity(texts.len());
+        let total_chunks = (texts.len() + optimal_chunk_size - 1) / optimal_chunk_size;
 
-        for chunk in texts.chunks(chunk_size) {
+        for (i, chunk) in texts.chunks(optimal_chunk_size).enumerate() {
+            debug!(
+                "Processing chunk {}/{} ({} texts)",
+                i + 1,
+                total_chunks,
+                chunk.len()
+            );
+
             let chunk_embeddings = self.embed_batch(chunk.to_vec()).await?;
             all_embeddings.extend(chunk_embeddings);
 
-            // Small delay to avoid rate limits
-            if texts.len() > chunk_size {
-                tokio::time::sleep(Duration::from_millis(100)).await;
+            // Progress logging
+            if (i + 1) % 10 == 0 || i + 1 == total_chunks {
+                let progress = (i + 1) as f64 / total_chunks as f64 * 100.0;
+                let elapsed = start_time.elapsed();
+                let rate = all_embeddings.len() as f64 / elapsed.as_secs_f64();
+                info!(
+                    "Progress: {:.1}% ({}/{} chunks, {:.0} embeddings/sec)",
+                    progress,
+                    i + 1,
+                    total_chunks,
+                    rate
+                );
             }
         }
+
+        let total_duration = start_time.elapsed();
+        info!(
+            "Completed embedding generation: {} texts in {:.2}s ({:.0} texts/sec)",
+            texts.len(),
+            total_duration.as_secs_f64(),
+            texts.len() as f64 / total_duration.as_secs_f64()
+        );
 
         Ok(all_embeddings)
     }
