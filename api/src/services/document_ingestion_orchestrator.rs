@@ -179,6 +179,11 @@ impl DocumentIngestionOrchestrator {
                     .try_into()
                     .unwrap_or(0),
             ),
+            processing_progress: Some(0.5),
+            error_message: None,
+            retry_count: 0,
+            processing_started_at: Some(Utc::now()),
+            processing_completed_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };

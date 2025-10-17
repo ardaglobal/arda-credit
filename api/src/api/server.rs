@@ -182,6 +182,7 @@ impl ApiServer {
             document_storage_service: Some(document_storage_service),
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
+            surrealdb_service: None,  // SurrealDB service not configured in basic constructor
         };
 
         let server = Self { config, state };
@@ -333,6 +334,7 @@ impl ApiServer {
             document_storage_service: Some(document_storage_service),
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
+            surrealdb_service: None,  // SurrealDB service not configured in this constructor
         };
 
         Ok(Self { config, state })
@@ -433,6 +435,7 @@ impl ApiServer {
             email_rate_limiter: Some(email_rate_limiter),
             document_service: None,
             document_storage_service: self.state.document_storage_service.clone(),
+            surrealdb_service: self.state.surrealdb_service.clone(),
         };
 
         // Use REST API routes (includes health endpoints and state)

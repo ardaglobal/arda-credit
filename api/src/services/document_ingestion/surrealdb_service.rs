@@ -18,9 +18,14 @@ pub struct Document {
     pub file_size: i64,
     pub user_id: Option<Uuid>,
     pub upload_timestamp: DateTime<Utc>,
-    pub status: String, // 'pending', 'processing', 'completed', 'failed'
+    pub status: String, // 'uploaded', 'queued', 'processing', 'completed', 'failed'
     pub content: String,
     pub page_count: Option<i32>,
+    pub processing_progress: Option<f32>, // 0.0 to 1.0
+    pub error_message: Option<String>,
+    pub retry_count: i32,
+    pub processing_started_at: Option<DateTime<Utc>>,
+    pub processing_completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -259,6 +264,179 @@ impl SurrealDBService {
         let documents: Vec<Document> = result.take(0).context("Failed to parse documents")?;
 
         Ok(documents)
+    }
+
+    // ====================
+    // Job Queue Operations
+    // ====================
+
+    /// Get documents by status (for job queue polling)
+    ///
+    /// # Arguments
+    /// * `status` - Status to filter by (e.g., "uploaded", "queued")
+    /// * `limit` - Maximum number of documents to return
+    ///
+    /// # Returns
+    /// * Vector of documents with the specified status, ordered by upload_timestamp
+    pub async fn get_documents_by_status(
+        &self,
+        status: &str,
+        limit: usize,
+    ) -> Result<Vec<Document>> {
+        debug!(
+            "Fetching documents with status '{}' (limit: {})",
+            status, limit
+        );
+
+        let status_owned = status.to_string();
+        let query = format!(
+            "SELECT * FROM documents WHERE status = $status ORDER BY upload_timestamp ASC LIMIT {}",
+            limit
+        );
+
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("status", status_owned))
+            .await
+            .context("Failed to query documents by status")?;
+
+        let documents: Vec<Document> = result.take(0).context("Failed to parse documents")?;
+
+        debug!(
+            "Found {} documents with status '{}'",
+            documents.len(),
+            status
+        );
+        Ok(documents)
+    }
+
+    /// Update document status with timestamps
+    ///
+    /// # Arguments
+    /// * `document_id` - Document ID
+    /// * `status` - New status
+    /// * `progress` - Optional progress percentage (0.0 to 1.0)
+    /// * `error_message` - Optional error message
+    pub async fn update_document_status(
+        &self,
+        document_id: Uuid,
+        status: &str,
+        progress: Option<f32>,
+        error_message: Option<String>,
+    ) -> Result<Document> {
+        debug!("Updating document {} status to '{}'", document_id, status);
+
+        let status_owned = status.to_string();
+        let now = Utc::now();
+        let mut query = String::from("UPDATE $document_id SET status = $status, updated_at = $now");
+
+        // Add processing timestamps based on status
+        if status == "processing" {
+            query.push_str(", processing_started_at = $now");
+        } else if status == "completed" || status == "failed" {
+            query.push_str(", processing_completed_at = $now");
+        }
+
+        // Add optional fields
+        if let Some(prog) = progress {
+            query.push_str(&format!(", processing_progress = {}", prog));
+        }
+        if error_message.is_some() {
+            query.push_str(", error_message = $error_message");
+        }
+
+        let mut db_query = self
+            .db
+            .query(query)
+            .bind(("document_id", format!("documents:{}", document_id)))
+            .bind(("status", status_owned))
+            .bind(("now", now));
+
+        if let Some(err) = error_message {
+            db_query = db_query.bind(("error_message", err));
+        }
+
+        let mut result = db_query.await.context("Failed to update document status")?;
+
+        let updated: Vec<Document> = result.take(0).context("Failed to parse updated document")?;
+        updated
+            .into_iter()
+            .next()
+            .context("No document returned after update")
+    }
+
+    /// Increment retry count for a document
+    pub async fn increment_retry_count(&self, document_id: Uuid) -> Result<i32> {
+        debug!("Incrementing retry count for document {}", document_id);
+
+        let query =
+            "UPDATE $document_id SET retry_count += 1, updated_at = time::now() RETURN retry_count";
+
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("document_id", format!("documents:{}", document_id)))
+            .await
+            .context("Failed to increment retry count")?;
+
+        #[derive(Deserialize)]
+        struct RetryResult {
+            retry_count: i32,
+        }
+
+        let retry_result: Vec<RetryResult> =
+            result.take(0).context("Failed to parse retry count")?;
+        let retry_count = retry_result
+            .into_iter()
+            .next()
+            .context("No retry count returned")?
+            .retry_count;
+
+        Ok(retry_count)
+    }
+
+    /// Mark document as processing (atomically check and update status)
+    ///
+    /// Returns true if the document was successfully claimed for processing
+    pub async fn claim_document_for_processing(&self, document_id: Uuid) -> Result<bool> {
+        debug!(
+            "Attempting to claim document {} for processing",
+            document_id
+        );
+
+        // Atomic update: only update if status is 'uploaded' or 'queued'
+        let query = r#"
+            UPDATE $document_id SET
+                status = 'processing',
+                processing_started_at = time::now(),
+                updated_at = time::now()
+            WHERE status IN ['uploaded', 'queued']
+        "#;
+
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("document_id", format!("documents:{}", document_id)))
+            .await
+            .context("Failed to claim document for processing")?;
+
+        let updated: Vec<Document> = result.take(0).unwrap_or_default();
+        let claimed = !updated.is_empty();
+
+        if claimed {
+            info!(
+                "Successfully claimed document {} for processing",
+                document_id
+            );
+        } else {
+            debug!(
+                "Document {} already being processed or not available",
+                document_id
+            );
+        }
+
+        Ok(claimed)
     }
 
     // ====================
@@ -554,6 +732,11 @@ mod tests {
             status: "completed".to_string(),
             content: "Test content".to_string(),
             page_count: Some(10),
+            processing_progress: Some(1.0),
+            error_message: None,
+            retry_count: 0,
+            processing_started_at: Some(Utc::now()),
+            processing_completed_at: Some(Utc::now()),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };

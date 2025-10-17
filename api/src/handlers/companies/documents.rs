@@ -729,6 +729,93 @@ pub async fn get_audit_logs(
     }))
 }
 
+/// Get document ingestion status endpoint
+/// GET /api/documents/{document_id}/status
+#[utoipa::path(
+    get,
+    path = "/api/documents/{document_id}/status",
+    params(
+        ("document_id" = Uuid, Path, description = "Document ID")
+    ),
+    responses(
+        (status = 200, description = "Document status retrieved successfully", body = DocumentIngestionStatus),
+        (status = 404, description = "Document not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Documents",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+pub async fn get_document_status(
+    State(state): State<ApiState>,
+    Path(document_id): Path<Uuid>,
+) -> Result<Json<DocumentIngestionStatus>, StatusCode> {
+    // Get SurrealDB service from state
+    let surrealdb_service = state
+        .surrealdb_service
+        .as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+
+    // Fetch document from SurrealDB
+    let document = surrealdb_service
+        .get_document(document_id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Build status response
+    let status_response = DocumentIngestionStatus {
+        document_id: document.document_id,
+        filename: document.filename,
+        status: document.status,
+        processing_progress: document.processing_progress,
+        error_message: document.error_message,
+        retry_count: document.retry_count,
+        upload_timestamp: document.upload_timestamp,
+        processing_started_at: document.processing_started_at,
+        processing_completed_at: document.processing_completed_at,
+        created_at: document.created_at,
+        updated_at: document.updated_at,
+    };
+
+    info!(
+        document_id = %document_id,
+        status = %status_response.status,
+        progress = ?status_response.processing_progress,
+        "Document status retrieved"
+    );
+
+    Ok(Json(status_response))
+}
+
+/// Document ingestion status response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DocumentIngestionStatus {
+    /// Document ID
+    pub document_id: Uuid,
+    /// Original filename
+    pub filename: String,
+    /// Current processing status: uploaded, queued, processing, completed, failed
+    pub status: String,
+    /// Processing progress (0.0 to 1.0)
+    pub processing_progress: Option<f32>,
+    /// Error message if status is failed
+    pub error_message: Option<String>,
+    /// Number of retry attempts
+    pub retry_count: i32,
+    /// When the document was uploaded
+    pub upload_timestamp: chrono::DateTime<chrono::Utc>,
+    /// When processing started
+    pub processing_started_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// When processing completed (success or failure)
+    pub processing_completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// When the document record was created
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the document record was last updated
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// Health check endpoint for document service
 /// GET /api/documents/health
 pub async fn document_service_health_check() -> Result<Json<serde_json::Value>, StatusCode> {

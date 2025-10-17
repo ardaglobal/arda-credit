@@ -106,6 +106,7 @@ pub struct ApiState {
     pub document_service: Option<Arc<DocumentService>>,
     pub document_storage_service:
         Option<Arc<crate::services::document_storage::DocumentStorageService>>,
+    pub surrealdb_service: Option<Arc<crate::services::document_ingestion::SurrealDBService>>,
 }
 
 /// Configuration for API server

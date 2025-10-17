@@ -15,6 +15,8 @@ pub mod comprehensive_schema;
 pub mod csv_extractor;
 pub mod embedding_service;
 pub mod excel_extractor;
+pub mod ingestion_orchestrator;
+pub mod job_queue_worker;
 pub mod llm_extraction;
 pub mod pdf_extractor;
 pub mod surrealdb_service;
@@ -24,6 +26,8 @@ pub mod text_chunker;
 pub use csv_extractor::{CsvData, CsvExtractionResult, CsvExtractor, CsvMetadata};
 pub use embedding_service::{cosine_similarity, EmbeddingModel, EmbeddingService};
 pub use excel_extractor::{ExcelExtractionResult, ExcelExtractor, ExcelMetadata, ExcelSheet};
+pub use ingestion_orchestrator::IngestionOrchestrator;
+pub use job_queue_worker::{JobProcessor, JobQueueConfig, JobQueueWorker};
 pub use llm_extraction::{
     CollateralType, CurrencyCode, DealCollateral, DealCovenants, DealFinancialTerms, DealParties,
     DealType, DocumentMetadata, ExtractedDealData, InterestRateType, LlmExtractionService,
