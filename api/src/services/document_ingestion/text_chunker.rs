@@ -2,6 +2,19 @@ use anyhow::Result;
 use text_splitter::{ChunkConfig, TextSplitter};
 use tracing::{debug, info};
 
+/// Document-specific metadata for a chunk
+#[derive(Debug, Clone, Default)]
+pub struct ChunkMetadata {
+    /// Page number (for PDF documents)
+    pub page_number: Option<i32>,
+    /// Sheet name (for Excel documents)
+    pub sheet_name: Option<String>,
+    /// Starting row index (for CSV/Excel documents)
+    pub start_row: Option<usize>,
+    /// Ending row index (for CSV/Excel documents)
+    pub end_row: Option<usize>,
+}
+
 /// A chunk of text with metadata
 #[derive(Debug, Clone)]
 pub struct TextChunk {
@@ -10,6 +23,8 @@ pub struct TextChunk {
     pub start_index: usize,
     pub end_index: usize,
     pub chunk_index: usize,
+    /// Document-specific metadata
+    pub metadata: ChunkMetadata,
 }
 
 /// Strategy for chunking text
@@ -110,6 +125,7 @@ impl TextChunker {
                 start_index: start,
                 end_index: end,
                 chunk_index,
+                metadata: ChunkMetadata::default(),
             });
 
             start += chunk_size - overlap;
@@ -146,6 +162,7 @@ impl TextChunker {
                 start_index,
                 end_index,
                 chunk_index,
+                metadata: ChunkMetadata::default(),
             });
 
             // Move forward accounting for overlap
@@ -176,6 +193,7 @@ impl TextChunker {
                 start_index: current_index,
                 end_index,
                 chunk_index,
+                metadata: ChunkMetadata::default(),
             });
 
             // Account for the paragraph separator
@@ -212,6 +230,163 @@ impl TextChunker {
         }
 
         Ok(())
+    }
+
+    /// Chunk PDF text with page numbers preserved
+    ///
+    /// # Arguments
+    /// * `text_by_page` - Vector of text strings, one per page
+    ///
+    /// # Returns
+    /// * Vector of chunks with page metadata
+    pub fn chunk_pdf(&self, text_by_page: &[String]) -> Result<Vec<TextChunk>> {
+        let mut all_chunks = Vec::new();
+        let mut global_chunk_index = 0;
+
+        for (page_num, page_text) in text_by_page.iter().enumerate() {
+            if page_text.trim().is_empty() {
+                continue;
+            }
+
+            let mut page_chunks = self.chunk(page_text)?;
+
+            // Add page metadata to each chunk
+            for chunk in &mut page_chunks {
+                chunk.metadata.page_number = Some((page_num + 1) as i32);
+                chunk.chunk_index = global_chunk_index;
+                global_chunk_index += 1;
+            }
+
+            all_chunks.extend(page_chunks);
+        }
+
+        info!(
+            "Chunked PDF: {} pages → {} chunks",
+            text_by_page.len(),
+            all_chunks.len()
+        );
+
+        Ok(all_chunks)
+    }
+
+    /// Chunk Excel data with sheet and row metadata
+    ///
+    /// # Arguments
+    /// * `sheet_name` - Name of the Excel sheet
+    /// * `rows` - Vector of row data (each row is a vector of cell values)
+    /// * `batch_size` - Number of rows to include in each chunk
+    ///
+    /// # Returns
+    /// * Vector of chunks with sheet and row metadata
+    pub fn chunk_excel(
+        &self,
+        sheet_name: &str,
+        rows: &[Vec<String>],
+        batch_size: usize,
+    ) -> Result<Vec<TextChunk>> {
+        let mut chunks = Vec::new();
+        let mut chunk_index = 0;
+
+        for (i, row_batch) in rows.chunks(batch_size).enumerate() {
+            // Convert rows to text (tab-separated values)
+            let text = row_batch
+                .iter()
+                .map(|row| row.join("\t"))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if text.trim().is_empty() {
+                continue;
+            }
+
+            let start_row = i * batch_size;
+            let end_row = start_row + row_batch.len();
+
+            chunks.push(TextChunk {
+                text: text.clone(),
+                char_count: text.chars().count(),
+                start_index: 0,
+                end_index: text.len(),
+                chunk_index,
+                metadata: ChunkMetadata {
+                    page_number: None,
+                    sheet_name: Some(sheet_name.to_string()),
+                    start_row: Some(start_row),
+                    end_row: Some(end_row),
+                },
+            });
+
+            chunk_index += 1;
+        }
+
+        info!(
+            "Chunked Excel sheet '{}': {} rows → {} chunks",
+            sheet_name,
+            rows.len(),
+            chunks.len()
+        );
+
+        Ok(chunks)
+    }
+
+    /// Chunk CSV data with row metadata and header preservation
+    ///
+    /// # Arguments
+    /// * `headers` - CSV headers
+    /// * `rows` - Vector of row data
+    /// * `batch_size` - Number of rows to include in each chunk
+    ///
+    /// # Returns
+    /// * Vector of chunks with row metadata
+    pub fn chunk_csv(
+        &self,
+        headers: &[String],
+        rows: &[Vec<String>],
+        batch_size: usize,
+    ) -> Result<Vec<TextChunk>> {
+        let mut chunks = Vec::new();
+        let mut chunk_index = 0;
+
+        let header_line = headers.join("\t");
+
+        for (i, row_batch) in rows.chunks(batch_size).enumerate() {
+            // Include headers in each chunk for context
+            let mut text = header_line.clone();
+            text.push('\n');
+
+            // Add rows
+            for row in row_batch {
+                text.push_str(&row.join("\t"));
+                text.push('\n');
+            }
+
+            if text.trim().is_empty() {
+                continue;
+            }
+
+            let start_row = i * batch_size;
+            let end_row = start_row + row_batch.len();
+
+            chunks.push(TextChunk {
+                text: text.clone(),
+                char_count: text.chars().count(),
+                start_index: 0,
+                end_index: text.len(),
+                chunk_index,
+                metadata: ChunkMetadata {
+                    page_number: None,
+                    sheet_name: None,
+                    start_row: Some(start_row),
+                    end_row: Some(end_row),
+                },
+            });
+
+            chunk_index += 1;
+        }
+
+        info!("Chunked CSV: {} rows → {} chunks", rows.len(), chunks.len());
+
+        Ok(chunks)
     }
 
     /// Get statistics about chunking result
