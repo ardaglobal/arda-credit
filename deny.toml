@@ -17,7 +17,6 @@ ignore = [
     "RUSTSEC-2021-0139", # ansi_term unmaintained
     "RUSTSEC-2021-0141", # dotenv unmaintained
     "RUSTSEC-2024-0384", # instant unmaintained
-    "RUSTSEC-2024-0387", # opentelemetry_api unmaintained (merged into opentelemetry crate)
     "RUSTSEC-2024-0388", # derivative unmaintained
     "RUSTSEC-2024-0436", # paste unmaintained
     "RUSTSEC-2025-0012", # backoff unmaintained
@@ -67,6 +66,9 @@ confidence-threshold = 0.8
 exceptions = [
     # Allow LGPL-3.0-or-later for downloader crate
     { allow = [ "LGPL-3.0-or-later" ], name = "downloader" },
+    # Allow BUSL-1.1 for SurrealDB (Business Source License - free for non-production use)
+    { allow = [ "BUSL-1.1" ], name = "surrealdb" },
+    { allow = [ "BUSL-1.1" ], name = "surrealdb-core" },
 ]
 
 # Some crates don't have (easily) machine readable licensing information,
@@ -114,8 +116,6 @@ highlight = "all"
 skip = [
     # Skip duplicate base64 versions from SP1/AWS dependencies
     { name = "base64", version = "=0.21.7" },
-    # Skip duplicate bindgen versions from build dependencies
-    { name = "bindgen", version = "=0.69.5" },
     # Skip additional duplicates from transitive dependencies
     { name = "core-foundation", version = "=0.9.4" },
     { name = "derive_more", version = "=1.0.0" },

@@ -223,7 +223,7 @@ pub async fn semantic_search(
     //     SearchError::ServiceUnavailable("Embedding service not available".to_string())
     // })?;
 
-    // let qdrant_service = state.qdrant_service.as_ref().ok_or_else(|| {
+    // let surrealdb_service = state.surrealdb_service.as_ref().ok_or_else(|| {
     //     SearchError::ServiceUnavailable("Vector search service not available".to_string())
     // })?;
 
@@ -233,26 +233,27 @@ pub async fn semantic_search(
     //     .await
     //     .map_err(|e| SearchError::InternalError(format!("Failed to embed query: {}", e)))?;
 
-    // // Search in Qdrant with company filtering (multi-tenant)
-    // let search_results = qdrant_service
-    //     .search_by_company(company_id, query_embedding, request.limit as u64)
+    // // Search in SurrealDB with company filtering (multi-tenant)
+    // let search_results = surrealdb_service
+    //     .search_by_company(Some(company_id), query_embedding, request.limit)
     //     .await
     //     .map_err(|e| SearchError::InternalError(format!("Search failed: {}", e)))?;
 
     let search_results: Vec<crate::services::document_ingestion::SearchResult> = vec![];
 
     // Convert to response format
+    // TODO: Update this when implementing search functionality with SurrealDB
     let results: Vec<SearchResultItem> = search_results
         .into_iter()
         .map(|result| SearchResultItem {
-            chunk_id: result.chunk_id,
+            chunk_id: result.embedding_id, // Updated field name
             score: result.score,
-            document_id: result.metadata.document_id,
-            company_id: result.metadata.company_id,
-            text: result.metadata.chunk_text,
-            page_number: result.metadata.page_number,
-            document_type: result.metadata.document_type,
-            deal_id: result.metadata.deal_id,
+            document_id: result.document_id,
+            company_id: Uuid::nil(), // TODO: Get from document metadata
+            text: result.chunk_text,
+            page_number: result.page_number,
+            document_type: "unknown".to_string(), // TODO: Get from document metadata
+            deal_id: None,                        // TODO: Get from document metadata
         })
         .collect();
 
@@ -329,7 +330,7 @@ pub async fn search_document(
     //     SearchError::ServiceUnavailable("Embedding service not available".to_string())
     // })?;
 
-    // let qdrant_service = state.qdrant_service.as_ref().ok_or_else(|| {
+    // let surrealdb_service = state.surrealdb_service.as_ref().ok_or_else(|| {
     //     SearchError::ServiceUnavailable("Vector search service not available".to_string())
     // })?;
 
@@ -339,13 +340,12 @@ pub async fn search_document(
     //     .await
     //     .map_err(|e| SearchError::InternalError(format!("Failed to embed query: {}", e)))?;
 
-    // // Search with company + document filtering (multi-tenant + document-scoped)
-    // let search_results = qdrant_service
-    //     .search_by_company_and_document(
-    //         company_id,
+    // // Search with document filtering (multi-tenant + document-scoped)
+    // let search_results = surrealdb_service
+    //     .search_by_document(
     //         document_id,
     //         query_embedding,
-    //         request.limit as u64,
+    //         request.limit,
     //     )
     //     .await
     //     .map_err(|e| SearchError::InternalError(format!("Search failed: {}", e)))?;
@@ -353,17 +353,18 @@ pub async fn search_document(
     let search_results: Vec<crate::services::document_ingestion::SearchResult> = vec![];
 
     // Convert to response format
+    // TODO: Update this when implementing search functionality with SurrealDB
     let results: Vec<SearchResultItem> = search_results
         .into_iter()
         .map(|result| SearchResultItem {
-            chunk_id: result.chunk_id,
+            chunk_id: result.embedding_id, // Updated field name
             score: result.score,
-            document_id: result.metadata.document_id,
-            company_id: result.metadata.company_id,
-            text: result.metadata.chunk_text,
-            page_number: result.metadata.page_number,
-            document_type: result.metadata.document_type,
-            deal_id: result.metadata.deal_id,
+            document_id: result.document_id,
+            company_id: Uuid::nil(), // TODO: Get from document metadata
+            text: result.chunk_text,
+            page_number: result.page_number,
+            document_type: "unknown".to_string(), // TODO: Get from document metadata
+            deal_id: None,                        // TODO: Get from document metadata
         })
         .collect();
 
@@ -411,19 +412,19 @@ pub async fn search_health_check(
     //     false
     // };
 
-    // // Check Qdrant service
-    // let qdrant_healthy = if let Some(service) = state.qdrant_service.as_ref() {
+    // // Check SurrealDB service
+    // let surrealdb_healthy = if let Some(service) = state.surrealdb_service.as_ref() {
     //     service
     //         .health_check()
     //         .await
-    //         .map_err(|e| SearchError::InternalError(format!("Qdrant health check failed: {}", e)))?
+    //         .map_err(|e| SearchError::InternalError(format!("SurrealDB health check failed: {}", e)))?
     // } else {
     //     false
     // };
 
     let embedding_healthy = true; // Placeholder
-    let qdrant_healthy = true; // Placeholder
-    let healthy = embedding_healthy && qdrant_healthy;
+    let surrealdb_healthy = true; // Placeholder
+    let healthy = embedding_healthy && surrealdb_healthy;
     let status = if healthy { "healthy" } else { "unhealthy" };
 
     if !healthy {
@@ -435,7 +436,7 @@ pub async fn search_health_check(
     Ok(Json(json!({
         "status": status,
         "embedding_service": embedding_healthy,
-        "vector_database": qdrant_healthy,
+        "vector_database": surrealdb_healthy,
         "timestamp": chrono::Utc::now().to_rfc3339()
     })))
 }
