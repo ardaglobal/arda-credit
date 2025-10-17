@@ -581,6 +581,10 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DOCUMENT_HEALTH,
             get(company_document_handlers::document_service_health_check),
         )
+        .route(
+            paths::DOCUMENT_STATUS,
+            get(company_document_handlers::get_document_status),
+        )
         // AI Analysis endpoints
         .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
         // Faucet endpoints (local/staging only)
