@@ -13,10 +13,20 @@ DEFINE FIELD document_type ON documents TYPE string;
 DEFINE FIELD file_size ON documents TYPE int;
 DEFINE FIELD user_id ON documents TYPE option<record<users>>;
 DEFINE FIELD upload_timestamp ON documents TYPE datetime DEFAULT time::now();
-DEFINE FIELD status ON documents TYPE string DEFAULT 'pending';
-    -- Status options: 'pending', 'processing', 'completed', 'failed'
+DEFINE FIELD status ON documents TYPE string DEFAULT 'uploaded';
+    -- Status options: 'uploaded', 'queued', 'processing', 'completed', 'failed'
 DEFINE FIELD content ON documents TYPE string;
 DEFINE FIELD page_count ON documents TYPE option<int>;
+DEFINE FIELD processing_progress ON documents TYPE option<float> DEFAULT 0.0;
+    -- Progress percentage (0.0 to 1.0)
+DEFINE FIELD error_message ON documents TYPE option<string>;
+    -- Error details if status is 'failed'
+DEFINE FIELD retry_count ON documents TYPE int DEFAULT 0;
+    -- Number of retry attempts
+DEFINE FIELD processing_started_at ON documents TYPE option<datetime>;
+    -- When processing began
+DEFINE FIELD processing_completed_at ON documents TYPE option<datetime>;
+    -- When processing completed (success or failure)
 DEFINE FIELD created_at ON documents TYPE datetime DEFAULT time::now();
 DEFINE FIELD updated_at ON documents TYPE datetime DEFAULT time::now();
 

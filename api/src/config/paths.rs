@@ -577,6 +577,9 @@ pub const DOCUMENT_AUDIT: &str = api_path!("/companies/{company_id}/documents/au
 /// Document service health check
 pub const DOCUMENT_HEALTH: &str = api_path!("/documents/health");
 
+/// Document ingestion status (for job queue polling)
+pub const DOCUMENT_STATUS: &str = api_path!("/documents/{document_id}/status");
+
 // ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================
