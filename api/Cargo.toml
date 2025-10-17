@@ -122,10 +122,15 @@ prometheus                  = { workspace = true }
 lopdf       = "0.34" # PDF parsing and text extraction
 pdf-extract = "0.10" # Alternative PDF extraction
 
+# Excel/CSV processing
+calamine = "0.28" # Excel (XLS/XLSX) parsing
+csv      = "1.3"  # CSV parsing and writing
+
 # Vector database
 surrealdb = "2.3" # SurrealDB client with vector support
 
-# Text processing
+# Text processing and embeddings
+rig-core      = "0.5"  # LLM and embedding framework for Rust
 text-splitter = "0.28" # Semantic text chunking for embeddings
 
 [dev-dependencies]

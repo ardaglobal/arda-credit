@@ -57,8 +57,14 @@ impl PdfExtractor {
             .context("Failed to get file metadata")?
             .len() as usize;
 
+        // Check file size limit (50MB as per requirements)
+        if file_size > 50 * 1024 * 1024 {
+            anyhow::bail!("File size exceeds 50MB limit: {} bytes", file_size);
+        }
+
         // Load PDF document
-        let doc = Document::load(path).context("Failed to load PDF document")?;
+        let doc = Document::load(path)
+            .context("Failed to load PDF document - file may be corrupted or encrypted")?;
 
         // Extract metadata
         let metadata = self.extract_metadata(&doc, file_size)?;
@@ -101,8 +107,14 @@ impl PdfExtractor {
 
         let file_size = pdf_bytes.len();
 
+        // Check file size limit (50MB)
+        if file_size > 50 * 1024 * 1024 {
+            anyhow::bail!("File size exceeds 50MB limit: {} bytes", file_size);
+        }
+
         // Load PDF from bytes
-        let doc = Document::load_mem(pdf_bytes).context("Failed to load PDF from memory")?;
+        let doc = Document::load_mem(pdf_bytes)
+            .context("Failed to load PDF from memory - file may be corrupted or encrypted")?;
 
         // Extract metadata
         let metadata = self.extract_metadata(&doc, file_size)?;

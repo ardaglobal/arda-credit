@@ -2,7 +2,16 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+
+/// Embedding provider
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum EmbeddingProvider {
+    /// OpenAI API
+    OpenAI,
+    /// Modal custom endpoint
+    Modal,
+}
 
 /// OpenAI embedding models
 #[derive(Debug, Clone, Copy)]
@@ -62,11 +71,13 @@ struct Usage {
 
 /// Embedding Service for converting text to vectors
 ///
-/// Uses OpenAI's embedding API to generate vector representations
-/// of text chunks for semantic search.
+/// Supports multiple providers:
+/// - OpenAI API (default)
+/// - Modal custom endpoint (for hosted models)
 pub struct EmbeddingService {
     client: Client,
-    api_key: String,
+    provider: EmbeddingProvider,
+    api_key: Option<String>,
     model: EmbeddingModel,
     base_url: String,
 }
@@ -74,15 +85,30 @@ pub struct EmbeddingService {
 impl EmbeddingService {
     /// Create a new embedding service from environment variables
     ///
-    /// Required env vars:
-    /// - OPENAI_API_KEY
+    /// Required env vars (depending on provider):
+    /// - For OpenAI: OPENAI_API_KEY
+    /// - For Modal: MODAL_EMBEDDING_URL (defaults to https://ardaglobal--embed.modal.run/)
     ///
     /// Optional env vars:
+    /// - EMBEDDING_PROVIDER (openai|modal, default: modal)
     /// - EMBEDDING_MODEL (default: text-embedding-3-small)
     /// - OPENAI_API_BASE_URL (default: https://api.openai.com/v1)
     pub fn from_env() -> Result<Self> {
-        let api_key = std::env::var("OPENAI_API_KEY")
-            .context("OPENAI_API_KEY environment variable not set")?;
+        let provider_str = std::env::var("EMBEDDING_PROVIDER")
+            .unwrap_or_else(|_| "modal".to_string())
+            .to_lowercase();
+
+        let provider = match provider_str.as_str() {
+            "openai" => EmbeddingProvider::OpenAI,
+            "modal" => EmbeddingProvider::Modal,
+            _ => {
+                warn!(
+                    "Unknown embedding provider '{}', defaulting to Modal",
+                    provider_str
+                );
+                EmbeddingProvider::Modal
+            }
+        };
 
         let model_str = std::env::var("EMBEDDING_MODEL")
             .unwrap_or_else(|_| "text-embedding-3-small".to_string());
@@ -92,27 +118,50 @@ impl EmbeddingService {
             "text-embedding-3-large" => EmbeddingModel::TextEmbedding3Large,
             "text-embedding-ada-002" => EmbeddingModel::Ada002,
             _ => {
-                anyhow::bail!("Unknown embedding model: {}", model_str);
+                warn!(
+                    "Unknown embedding model '{}', defaulting to text-embedding-3-small",
+                    model_str
+                );
+                EmbeddingModel::TextEmbedding3Small
             }
         };
 
-        let base_url = std::env::var("OPENAI_API_BASE_URL")
-            .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+        let (api_key, base_url) = match provider {
+            EmbeddingProvider::OpenAI => {
+                let key = std::env::var("OPENAI_API_KEY")
+                    .context("OPENAI_API_KEY required when using OpenAI provider")?;
+                let url = std::env::var("OPENAI_API_BASE_URL")
+                    .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
+                (Some(key), url)
+            }
+            EmbeddingProvider::Modal => {
+                let url = std::env::var("MODAL_EMBEDDING_URL")
+                    .unwrap_or_else(|_| "https://ardaglobal--embed.modal.run/".to_string());
+                (None, url) // Modal endpoint may not require API key
+            }
+        };
 
         info!(
-            "Initializing EmbeddingService with model: {}",
+            "Initializing EmbeddingService with provider: {:?}, model: {}",
+            provider,
             model.as_str()
         );
 
-        Self::new(api_key, model, base_url)
+        Self::new(provider, api_key, model, base_url)
     }
 
     /// Create a new embedding service with explicit configuration
-    pub fn new(api_key: String, model: EmbeddingModel, base_url: String) -> Result<Self> {
+    pub fn new(
+        provider: EmbeddingProvider,
+        api_key: Option<String>,
+        model: EmbeddingModel,
+        base_url: String,
+    ) -> Result<Self> {
         let client = Client::builder().timeout(Duration::from_secs(60)).build()?;
 
         Ok(Self {
             client,
+            provider,
             api_key,
             model,
             base_url,
@@ -156,10 +205,23 @@ impl EmbeddingService {
 
         debug!("Generating embeddings for {} texts", texts.len());
 
-        // OpenAI limits batch size to 2048
+        // Check batch size limit
         if texts.len() > 2048 {
-            anyhow::bail!("Batch size exceeds OpenAI limit of 2048");
+            anyhow::bail!("Batch size exceeds limit of 2048");
         }
+
+        match self.provider {
+            EmbeddingProvider::OpenAI => self.embed_batch_openai(texts).await,
+            EmbeddingProvider::Modal => self.embed_batch_modal(texts).await,
+        }
+    }
+
+    /// Generate embeddings using OpenAI API
+    async fn embed_batch_openai(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
+        let api_key = self
+            .api_key
+            .as_ref()
+            .context("API key required for OpenAI provider")?;
 
         // Build request
         let request = EmbeddingRequest {
@@ -173,7 +235,7 @@ impl EmbeddingService {
         let response = self
             .client
             .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .json(&request)
             .send()
@@ -205,6 +267,61 @@ impl EmbeddingService {
         let embeddings: Vec<Vec<f32>> = data.into_iter().map(|d| d.embedding).collect();
 
         Ok(embeddings)
+    }
+
+    /// Generate embeddings using Modal endpoint
+    async fn embed_batch_modal(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
+        // Modal endpoint expects a simpler format
+        #[derive(Serialize)]
+        struct ModalRequest {
+            texts: Vec<String>,
+        }
+
+        #[derive(Deserialize)]
+        struct ModalResponse {
+            embeddings: Vec<Vec<f32>>,
+        }
+
+        let request = ModalRequest { texts };
+
+        // Call Modal endpoint
+        let url = if self.base_url.ends_with('/') {
+            format!("{}embed", self.base_url)
+        } else {
+            format!("{}/embed", self.base_url)
+        };
+
+        let mut req = self.client.post(&url).json(&request);
+
+        // Add auth header if API key is provided
+        if let Some(api_key) = &self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        let response = req
+            .send()
+            .await
+            .context("Failed to send embedding request to Modal")?;
+
+        // Check status
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Modal API error ({}): {}", status, error_text);
+        }
+
+        // Parse response
+        let modal_response: ModalResponse = response
+            .json()
+            .await
+            .context("Failed to parse Modal embedding response")?;
+
+        debug!(
+            "Generated {} embeddings from Modal",
+            modal_response.embeddings.len()
+        );
+
+        Ok(modal_response.embeddings)
     }
 
     /// Generate embeddings in chunks to handle large batches
