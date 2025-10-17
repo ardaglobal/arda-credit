@@ -130,6 +130,7 @@ csv      = "1.3"  # CSV parsing and writing
 surrealdb = "2.3" # SurrealDB client with vector support
 
 # Text processing and embeddings
+dashmap       = "6.1"  # Concurrent HashMap for embedding cache
 rig-core      = "0.5"  # LLM and embedding framework for Rust
 text-splitter = "0.28" # Semantic text chunking for embeddings
 

@@ -858,6 +858,7 @@ dependencies = [
  "chrono",
  "clap",
  "csv",
+ "dashmap 6.1.0",
  "db",
  "dotenv",
  "ethereum-client",
