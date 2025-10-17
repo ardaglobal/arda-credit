@@ -3,7 +3,7 @@
 //! This module contains all services related to document ingestion and processing:
 //! - PDF text extraction
 //! - Text chunking for embeddings
-//! - Vector storage (Qdrant)
+//! - Vector storage (SurrealDB)
 //! - Embedding generation
 //! - Document field extraction (via native Rust LLM integration)
 //! - Comprehensive extraction schemas matching MVP CSV specifications
@@ -13,7 +13,7 @@ pub mod comprehensive_schema;
 pub mod embedding_service;
 pub mod llm_extraction;
 pub mod pdf_extractor;
-pub mod qdrant_service;
+pub mod surrealdb_service;
 pub mod text_chunker;
 
 // Re-export commonly used types
@@ -24,7 +24,7 @@ pub use llm_extraction::{
     PaymentFrequency,
 };
 pub use pdf_extractor::{PdfExtractionResult, PdfExtractor, PdfMetadata};
-pub use qdrant_service::{ChunkMetadata, QdrantService, SearchResult};
+pub use surrealdb_service::{Document, DocumentEmbedding, SearchResult, SurrealDBService};
 pub use text_chunker::{ChunkingStats, ChunkingStrategy, TextChunk, TextChunker};
 
 // Re-export comprehensive schema types

@@ -359,7 +359,7 @@ impl AiAnalysisService {
     ///
     /// This method calls the Modal-hosted agent which handles:
     /// 1. Embedding generation
-    /// 2. Qdrant vector search
+    /// 2. SurrealDB vector search
     /// 3. LLM inference
     /// 4. Structured BAML response generation
     pub async fn generate_insights_with_prompt(

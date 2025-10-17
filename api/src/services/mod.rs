@@ -81,9 +81,9 @@ pub use llm_integration::{
 
 // Re-export LLM extraction types from document_ingestion module
 pub use document_ingestion::{
-    ChunkMetadata, CollateralType, CurrencyCode, DealCollateral, DealCovenants, DealFinancialTerms,
-    DealParties, DealType, DocumentMetadata, EmbeddingService, ExtractedDealData, InterestRateType,
-    LlmExtractionService, PaymentFrequency, QdrantService, SearchResult,
+    CollateralType, CurrencyCode, DealCollateral, DealCovenants, DealFinancialTerms, DealParties,
+    DealType, Document, DocumentEmbedding, DocumentMetadata, EmbeddingService, ExtractedDealData,
+    InterestRateType, LlmExtractionService, PaymentFrequency, SearchResult, SurrealDBService,
 };
 
 // Re-export document ingestion orchestrator

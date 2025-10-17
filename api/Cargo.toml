@@ -123,7 +123,7 @@ lopdf       = "0.34" # PDF parsing and text extraction
 pdf-extract = "0.10" # Alternative PDF extraction
 
 # Vector database
-qdrant-client = "1.11" # Qdrant vector database client
+surrealdb = "2.3" # SurrealDB client with vector support
 
 # Text processing
 text-splitter = "0.28" # Semantic text chunking for embeddings
