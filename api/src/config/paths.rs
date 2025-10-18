@@ -586,6 +586,9 @@ pub const DOCUMENT_SEARCH: &str = api_path!("/documents/search");
 /// RAG query - Ask questions about documents
 pub const DOCUMENT_ASK: &str = api_path!("/documents/ask");
 
+/// RAG query - Ask questions about documents with streaming response
+pub const DOCUMENT_ASK_STREAM: &str = api_path!("/documents/ask/stream");
+
 // ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================

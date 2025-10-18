@@ -3,9 +3,11 @@
 ///! Provides integration with OpenRouter API for accessing various LLM models
 ///! including GPT-4, Claude, and other leading models through a unified interface.
 use anyhow::{Context, Result};
+use futures_util::stream::{Stream, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use std::pin::Pin;
+use tracing::{debug, info, warn};
 
 /// OpenRouter API endpoint
 const OPENROUTER_API_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
@@ -37,6 +39,8 @@ struct OpenRouterRequest {
     max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stream: Option<bool>,
 }
 
 /// Response from OpenRouter API
@@ -67,6 +71,30 @@ pub struct CompletionResult {
     pub prompt_tokens: Option<u32>,
     pub completion_tokens: Option<u32>,
     pub total_tokens: Option<u32>,
+}
+
+/// Streaming chunk from OpenRouter API
+#[derive(Debug, Deserialize)]
+struct StreamChunk {
+    choices: Vec<StreamChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamChoice {
+    delta: Delta,
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Delta {
+    content: Option<String>,
+}
+
+/// Stream event for SSE
+#[derive(Debug, Clone, Serialize)]
+pub struct StreamEvent {
+    pub content: String,
+    pub done: bool,
 }
 
 impl OpenRouterService {
@@ -123,6 +151,7 @@ impl OpenRouterService {
             temperature,
             max_tokens,
             top_p: None,
+            stream: None,
         };
 
         let mut request_builder = self
@@ -214,6 +243,136 @@ impl OpenRouterService {
 
         let result = self.complete(messages, Some(0.7), Some(2000)).await?;
         Ok(result.content)
+    }
+
+    /// Stream completion with custom model
+    ///
+    /// Returns a stream of content chunks that can be sent via Server-Sent Events
+    pub async fn stream_completion_with_model(
+        &self,
+        model: &str,
+        messages: Vec<ChatMessage>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>> {
+        debug!(
+            "Starting streaming completion request to OpenRouter (model: {}, messages: {})",
+            model,
+            messages.len()
+        );
+
+        let request = OpenRouterRequest {
+            model: model.to_string(),
+            messages,
+            temperature,
+            max_tokens,
+            top_p: None,
+            stream: Some(true),
+        };
+
+        let mut request_builder = self
+            .client
+            .post(OPENROUTER_API_URL)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request);
+
+        // Add optional site info headers
+        if let Some(site_url) = &self.site_url {
+            request_builder = request_builder.header("HTTP-Referer", site_url);
+        }
+        if let Some(site_name) = &self.site_name {
+            request_builder = request_builder.header("X-Title", site_name);
+        }
+
+        let response = request_builder
+            .send()
+            .await
+            .context("Failed to send streaming request to OpenRouter")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(anyhow::anyhow!(
+                "OpenRouter API error ({}): {}",
+                status,
+                error_text
+            ));
+        }
+
+        // Convert response into a stream of events
+        let byte_stream = response.bytes_stream();
+
+        let event_stream = byte_stream.map(|chunk_result| {
+            match chunk_result {
+                Ok(bytes) => {
+                    // Parse SSE format: "data: {...}\n\n"
+                    let text = String::from_utf8_lossy(&bytes);
+
+                    // Handle the special [DONE] message
+                    if text.contains("[DONE]") {
+                        return Ok(StreamEvent {
+                            content: String::new(),
+                            done: true,
+                        });
+                    }
+
+                    // Parse each line that starts with "data: "
+                    for line in text.lines() {
+                        if let Some(json_str) = line.strip_prefix("data: ") {
+                            if json_str.trim() == "[DONE]" {
+                                return Ok(StreamEvent {
+                                    content: String::new(),
+                                    done: true,
+                                });
+                            }
+
+                            match serde_json::from_str::<StreamChunk>(json_str) {
+                                Ok(chunk) => {
+                                    if let Some(choice) = chunk.choices.first() {
+                                        if let Some(content) = &choice.delta.content {
+                                            return Ok(StreamEvent {
+                                                content: content.clone(),
+                                                done: choice.finish_reason.is_some(),
+                                            });
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        "Failed to parse streaming chunk: {} - JSON: {}",
+                                        e, json_str
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    // Return empty event if no content found
+                    Ok(StreamEvent {
+                        content: String::new(),
+                        done: false,
+                    })
+                }
+                Err(e) => Err(anyhow::anyhow!("Stream error: {}", e)),
+            }
+        });
+
+        Ok(Box::pin(event_stream))
+    }
+
+    /// Stream completion with default model
+    pub async fn stream_completion(
+        &self,
+        messages: Vec<ChatMessage>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>> {
+        self.stream_completion_with_model(&self.default_model, messages, temperature, max_tokens)
+            .await
     }
 }
 
