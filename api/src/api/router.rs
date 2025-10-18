@@ -594,6 +594,10 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DOCUMENT_ASK,
             post(crate::handlers::document_rag::rag_query),
         )
+        .route(
+            paths::DOCUMENT_ASK_STREAM,
+            post(crate::handlers::document_rag::rag_query_stream),
+        )
         // AI Analysis endpoints
         .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
         // Faucet endpoints (local/staging only)

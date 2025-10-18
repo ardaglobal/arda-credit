@@ -28,6 +28,8 @@ pub struct RagQuery {
     pub document_id: Option<Uuid>,
     /// Number of relevant chunks to retrieve (default: 5)
     pub top_k: Option<usize>,
+    /// Optional model override (defaults to service default)
+    pub model: Option<String>,
     /// LLM temperature (default: 0.7)
     pub temperature: Option<f32>,
     /// Max tokens for LLM response (default: 1500)
@@ -128,15 +130,28 @@ impl RagService {
 
         // 4. Generate LLM response
         debug!("Generating LLM response");
-        let completion = self
-            .llm
-            .complete(
-                self.build_messages(&query.question, &context),
-                query.temperature.or(Some(0.7)),
-                query.max_tokens.or(Some(1500)),
-            )
-            .await
-            .context("Failed to generate LLM response")?;
+        let completion = if let Some(model) = &query.model {
+            // Use custom model
+            self.llm
+                .complete_with_model(
+                    model,
+                    self.build_messages(&query.question, &context),
+                    query.temperature.or(Some(0.7)),
+                    query.max_tokens.or(Some(1500)),
+                )
+                .await
+                .context("Failed to generate LLM response")?
+        } else {
+            // Use default model
+            self.llm
+                .complete(
+                    self.build_messages(&query.question, &context),
+                    query.temperature.or(Some(0.7)),
+                    query.max_tokens.or(Some(1500)),
+                )
+                .await
+                .context("Failed to generate LLM response")?
+        };
 
         // 5. Build result with sources
         let sources = search_results
@@ -219,6 +234,7 @@ Guidelines:
             company_id: None,
             document_id: None,
             top_k,
+            model: None,
             temperature: None,
             max_tokens: None,
         })
@@ -237,6 +253,7 @@ Guidelines:
             company_id: None,
             document_id: Some(document_id),
             top_k,
+            model: None,
             temperature: None,
             max_tokens: None,
         })
@@ -255,6 +272,7 @@ Guidelines:
             company_id: Some(company_id),
             document_id: None,
             top_k,
+            model: None,
             temperature: None,
             max_tokens: None,
         })

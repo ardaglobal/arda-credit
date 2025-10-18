@@ -45,6 +45,7 @@ sqlx               = { workspace = true, features = [ "chrono", "ipnetwork", "po
 # API framework dependencies
 async-graphql = { version = "7.0", features = [ "chrono" ] }
 async-graphql-axum = "7.0"
+async-stream = "0.3"
 async-trait = "0.1"
 axum = { workspace = true, features = [ "multipart", "ws" ] }
 futures-util = "0.3"

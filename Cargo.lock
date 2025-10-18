@@ -845,6 +845,7 @@ dependencies = [
  "askama",
  "async-graphql",
  "async-graphql-axum",
+ "async-stream",
  "async-trait",
  "aws-config",
  "aws-sdk-sesv2",
