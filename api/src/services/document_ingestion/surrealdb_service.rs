@@ -46,13 +46,16 @@ pub struct DocumentEmbedding {
 }
 
 /// Search result from SurrealDB vector search
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SearchResult {
     pub embedding_id: Uuid,
     pub document_id: Uuid,
+    pub company_id: Uuid,
+    pub deal_id: Option<Uuid>,
     pub score: f32,
     pub chunk_text: String,
     pub chunk_index: usize,
+    pub chunk_position: usize,
     pub page_number: Option<i32>,
 }
 
@@ -549,7 +552,8 @@ impl SurrealDBService {
         // Build query with optional company filter
         let query = if company_id.is_some() {
             format!(
-                "SELECT embedding_id, document_id, chunk_text, chunk_index, page_number,
+                "SELECT embedding_id, document_id, company_id, deal_id, chunk_text,
+                 chunk_index, chunk_position, page_number,
                  vector::similarity::cosine(embedding, $query_vector) AS score
                  FROM document_embeddings
                  WHERE company_id = $company_id
@@ -559,7 +563,8 @@ impl SurrealDBService {
             )
         } else {
             format!(
-                "SELECT embedding_id, document_id, chunk_text, chunk_index, page_number,
+                "SELECT embedding_id, document_id, company_id, deal_id, chunk_text,
+                 chunk_index, chunk_position, page_number,
                  vector::similarity::cosine(embedding, $query_vector) AS score
                  FROM document_embeddings
                  ORDER BY score DESC
@@ -588,8 +593,11 @@ impl SurrealDBService {
         struct RawSearchResult {
             embedding_id: String,
             document_id: String,
+            company_id: String,
+            deal_id: Option<String>,
             chunk_text: String,
             chunk_index: usize,
+            chunk_position: usize,
             page_number: Option<i32>,
             score: f32,
         }
@@ -603,9 +611,12 @@ impl SurrealDBService {
                 Some(SearchResult {
                     embedding_id: Uuid::parse_str(&r.embedding_id).ok()?,
                     document_id: Uuid::parse_str(&r.document_id).ok()?,
+                    company_id: Uuid::parse_str(&r.company_id).ok()?,
+                    deal_id: r.deal_id.and_then(|id| Uuid::parse_str(&id).ok()),
                     score: r.score,
                     chunk_text: r.chunk_text,
                     chunk_index: r.chunk_index,
+                    chunk_position: r.chunk_position,
                     page_number: r.page_number,
                 })
             })
@@ -625,7 +636,8 @@ impl SurrealDBService {
         debug!("Searching in document {} with limit {}", document_id, limit);
 
         let query = format!(
-            "SELECT embedding_id, document_id, chunk_text, chunk_index, page_number,
+            "SELECT embedding_id, document_id, company_id, deal_id, chunk_text,
+             chunk_index, chunk_position, page_number,
              vector::similarity::cosine(embedding, $query_vector) AS score
              FROM document_embeddings
              WHERE document_id = $document_id
@@ -647,8 +659,11 @@ impl SurrealDBService {
         struct RawSearchResult {
             embedding_id: String,
             document_id: String,
+            company_id: String,
+            deal_id: Option<String>,
             chunk_text: String,
             chunk_index: usize,
+            chunk_position: usize,
             page_number: Option<i32>,
             score: f32,
         }
@@ -662,9 +677,12 @@ impl SurrealDBService {
                 Some(SearchResult {
                     embedding_id: Uuid::parse_str(&r.embedding_id).ok()?,
                     document_id: Uuid::parse_str(&r.document_id).ok()?,
+                    company_id: Uuid::parse_str(&r.company_id).ok()?,
+                    deal_id: r.deal_id.and_then(|id| Uuid::parse_str(&id).ok()),
                     score: r.score,
                     chunk_text: r.chunk_text,
                     chunk_index: r.chunk_index,
+                    chunk_position: r.chunk_position,
                     page_number: r.page_number,
                 })
             })

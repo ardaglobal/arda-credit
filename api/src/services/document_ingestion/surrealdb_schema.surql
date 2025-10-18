@@ -45,6 +45,8 @@ DEFINE FIELD embedding_id ON document_embeddings TYPE record<document_embeddings
 DEFINE FIELD document_id ON document_embeddings TYPE record<documents>;
 DEFINE FIELD company_id ON document_embeddings TYPE record<companies>;
 DEFINE FIELD deal_id ON document_embeddings TYPE option<record<deals>>;
+DEFINE FIELD user_id ON document_embeddings TYPE option<record<users>>;
+    -- User who uploaded the document (for filtering)
 DEFINE FIELD chunk_index ON document_embeddings TYPE int;
 DEFINE FIELD chunk_text ON document_embeddings TYPE string;
 DEFINE FIELD chunk_position ON document_embeddings TYPE int;
@@ -57,7 +59,11 @@ DEFINE FIELD created_at ON document_embeddings TYPE datetime DEFAULT time::now()
 DEFINE INDEX idx_embedding_document ON document_embeddings FIELDS document_id;
 DEFINE INDEX idx_embedding_company ON document_embeddings FIELDS company_id;
 DEFINE INDEX idx_embedding_deal ON document_embeddings FIELDS deal_id;
+DEFINE INDEX idx_embedding_user ON document_embeddings FIELDS user_id;
 
 -- MTREE Index for fast vector similarity search
 -- Uses cosine similarity for semantic search
 DEFINE INDEX idx_embedding_vector ON document_embeddings FIELDS embedding MTREE DIMENSION 1536 DIST COSINE;
+
+-- Full-text search index for hybrid search (keyword search)
+DEFINE INDEX idx_embedding_fulltext ON document_embeddings FIELDS chunk_text SEARCH ANALYZER ascii BM25;

@@ -580,6 +580,12 @@ pub const DOCUMENT_HEALTH: &str = api_path!("/documents/health");
 /// Document ingestion status (for job queue polling)
 pub const DOCUMENT_STATUS: &str = api_path!("/documents/{document_id}/status");
 
+/// Vector similarity search
+pub const DOCUMENT_SEARCH: &str = api_path!("/documents/search");
+
+/// RAG query - Ask questions about documents
+pub const DOCUMENT_ASK: &str = api_path!("/documents/ask");
+
 // ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================
