@@ -14,6 +14,7 @@
 pub mod comprehensive_schema;
 pub mod csv_extractor;
 pub mod embedding_service;
+pub mod enhanced_chunking;
 pub mod excel_extractor;
 pub mod ingestion_orchestrator;
 pub mod job_queue_worker;
@@ -25,6 +26,7 @@ pub mod text_chunker;
 // Re-export commonly used types
 pub use csv_extractor::{CsvData, CsvExtractionResult, CsvExtractor, CsvMetadata};
 pub use embedding_service::{cosine_similarity, EmbeddingModel, EmbeddingService};
+pub use enhanced_chunking::{EnhancedChunkingStrategy, EnhancedTextChunker};
 pub use excel_extractor::{ExcelExtractionResult, ExcelExtractor, ExcelMetadata, ExcelSheet};
 pub use ingestion_orchestrator::IngestionOrchestrator;
 pub use job_queue_worker::{JobProcessor, JobQueueConfig, JobQueueWorker};

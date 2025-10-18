@@ -24,9 +24,13 @@ pub mod document_ingestion_orchestrator;
 pub mod document_service;
 pub mod document_storage;
 pub mod email_service;
+pub mod hybrid_search_service;
 pub mod kyc_service;
 pub mod llm_integration;
 pub mod magic_link_service;
+pub mod modal_embedding_service;
+pub mod openrouter_service;
+pub mod rag_service;
 pub mod session_service;
 pub mod simple_withdrawal_executor;
 pub mod team_invitation_service;
@@ -78,6 +82,14 @@ pub use ai_notification_service::{
 pub use llm_integration::{
     ChatPrompt, DocumentAnalysisPrompt, LlmProvider, LlmRequest, LlmResponse, LlmService,
 };
+
+// Re-export OpenRouter and RAG services
+pub use openrouter_service::{ChatMessage, CompletionResult, OpenRouterService};
+pub use rag_service::{RagQuery, RagResult, RagService, Source};
+
+// Re-export hybrid search and Modal services
+pub use hybrid_search_service::{HybridSearchConfig, HybridSearchQuery, HybridSearchService};
+pub use modal_embedding_service::{ModalEmbeddingService, UnifiedEmbeddingService};
 
 // Re-export LLM extraction types from document_ingestion module
 pub use document_ingestion::{

@@ -585,6 +585,15 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DOCUMENT_STATUS,
             get(company_document_handlers::get_document_status),
         )
+        // Document RAG endpoints (vector search + AI inference)
+        .route(
+            paths::DOCUMENT_SEARCH,
+            post(crate::handlers::document_rag::vector_search),
+        )
+        .route(
+            paths::DOCUMENT_ASK,
+            post(crate::handlers::document_rag::rag_query),
+        )
         // AI Analysis endpoints
         .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
         // Faucet endpoints (local/staging only)
