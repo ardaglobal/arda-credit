@@ -43,13 +43,13 @@ impl EnhancedTextChunker {
     pub fn new(strategy: EnhancedChunkingStrategy) -> Self {
         Self {
             strategy,
-            // Sentence boundary detection (handles common abbreviations)
+            // Sentence boundary detection (simplified without look-around)
             sentence_pattern: Regex::new(
-                r"(?<=[.!?])\s+(?=[A-Z])|(?<=[.!?])\n+|(?<=\n)\n+"
+                r"[.!?]\s+[A-Z]|[.!?]\n+|\n\n+"
             ).unwrap(),
             // Section heading detection
             section_pattern: Regex::new(
-                r"(?m)^(?:#{1,6}\s+|\d+\.\s+|[IVX]+\.\s+|[A-Z][A-Z\s]+:|\n\n[A-Z][A-Z\s]+\n)"
+                r"(?m)^(?:#{1,6}\s+|\d+\.\s+|[IVX]+\.\s+|[A-Z][A-Z\s]+:)"
             ).unwrap(),
             // Financial terms that should stay together
             financial_pattern: Regex::new(
@@ -415,7 +415,7 @@ mod tests {
         });
 
         let text =
-            "# Introduction\nThis is the intro.\n\n# Section 1\nThis is section one content.";
+            "# Introduction\nThis is the introduction section with enough content to exceed the minimum chunk size requirement.\n\n# Section 1\nThis is section one content with sufficient length to be treated as a separate chunk.";
         let chunks = chunker.chunk(text).unwrap();
         assert!(chunks.len() >= 2);
     }

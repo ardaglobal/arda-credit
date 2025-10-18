@@ -35,9 +35,8 @@ impl TestDatabase {
         };
         let test_db_url = format!("postgresql://postgres:password@{host}:5432/{database_name}");
 
-        env::set_var("DATABASE_URL", &test_db_url);
-
-        let pool = crate::db::init_db().await?;
+        // Don't set global env var - use init_db_with_url directly to avoid test interference
+        let pool = crate::db::init_db_with_url(&test_db_url).await?;
 
         Ok(Self {
             pool,

@@ -208,14 +208,24 @@ impl HybridSearchService {
 
     /// Extract keywords from query text
     fn extract_keywords(&self, text: &str) -> Vec<String> {
+        Self::extract_keywords_static(text)
+    }
+
+    /// Static helper for keyword extraction (for testing)
+    fn extract_keywords_static(text: &str) -> Vec<String> {
         // Simple keyword extraction - split on whitespace and filter stopwords
         let stopwords = vec![
             "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
-            "by", "from", "is", "are", "was", "were", "be", "been",
+            "by", "from", "is", "are", "was", "were", "be", "been", "what", "who", "where", "when",
+            "why", "how", "this", "that", "these", "those",
         ];
 
         text.split_whitespace()
-            .map(|word| word.trim().to_lowercase())
+            .map(|word| {
+                // Strip punctuation from both ends and convert to lowercase
+                word.trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase()
+            })
             .filter(|word| !word.is_empty() && !stopwords.contains(&word.as_str()))
             .collect()
     }
@@ -294,16 +304,15 @@ mod tests {
 
     #[test]
     fn test_extract_keywords() {
-        let service = HybridSearchService {
-            surrealdb: Arc::new(unsafe { std::mem::zeroed() }),
-            embedding: Arc::new(unsafe { std::mem::zeroed() }),
-        };
-
-        let keywords = service.extract_keywords("What is the interest rate for this loan?");
+        let keywords = HybridSearchService::extract_keywords_static(
+            "What is the interest rate for this loan?",
+        );
         assert!(keywords.contains(&"interest".to_string()));
         assert!(keywords.contains(&"rate".to_string()));
         assert!(keywords.contains(&"loan".to_string()));
+        assert!(!keywords.contains(&"what".to_string())); // stopword
         assert!(!keywords.contains(&"is".to_string())); // stopword
+        assert!(!keywords.contains(&"the".to_string())); // stopword
     }
 
     #[test]

@@ -184,7 +184,7 @@ impl RagService {
         vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: self.build_system_prompt(),
+                content: Self::build_system_prompt(),
             },
             ChatMessage {
                 role: "user".to_string(),
@@ -197,7 +197,7 @@ impl RagService {
     }
 
     /// Build system prompt for LLM
-    fn build_system_prompt(&self) -> String {
+    fn build_system_prompt() -> String {
         r#"You are an AI assistant for Arda Credit, a privacy-preserving credit platform.
 
 Your role is to help users understand and analyze financial documents, credit agreements, and deal information.
@@ -274,13 +274,7 @@ mod tests {
 
     #[test]
     fn test_system_prompt_contains_guidelines() {
-        let rag = RagService {
-            surrealdb: Arc::new(unsafe { std::mem::zeroed() }),
-            embedding: Arc::new(unsafe { std::mem::zeroed() }),
-            llm: Arc::new(unsafe { std::mem::zeroed() }),
-        };
-
-        let prompt = rag.build_system_prompt();
+        let prompt = RagService::build_system_prompt();
         assert!(prompt.contains("Arda Credit"));
         assert!(prompt.contains("Guidelines"));
     }
