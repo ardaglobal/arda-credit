@@ -164,7 +164,7 @@ impl std::str::FromStr for IngestionStatus {
 
 /// Job status for ingestion jobs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
-#[sqlx(type_name = "TEXT")]
+#[sqlx(type_name = "VARCHAR")]
 pub enum JobStatus {
     #[serde(rename = "queued")]
     #[sqlx(rename = "queued")]

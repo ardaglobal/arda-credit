@@ -21,7 +21,12 @@ use uuid::Uuid;
 /// Deal document response (API wrapper with ToSchema)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DealDocumentResponse {
-    pub id: Uuid,
+    /// Unique document identifier - use this to reference the document
+    #[schema(example = "123e4567-e89b-12d3-a456-426614174000")]
+    pub document_id: Uuid,
+
+    /// Deal this document belongs to
+    #[schema(example = "789e0123-e89b-12d3-a456-426614174000")]
     pub deal_id: Uuid,
 
     // File metadata
@@ -61,7 +66,7 @@ pub struct DealDocumentResponse {
     pub deleted_at: Option<String>,
     pub deleted_by: Option<Uuid>,
 
-    // Version control
+    // Version control (for document versioning)
     pub version: i32,
     pub parent_document_id: Option<Uuid>,
 
@@ -73,7 +78,7 @@ pub struct DealDocumentResponse {
 impl From<DealDocument> for DealDocumentResponse {
     fn from(doc: DealDocument) -> Self {
         Self {
-            id: doc.id,
+            document_id: doc.id, // Renamed from 'id' to 'document_id' for API clarity
             deal_id: doc.deal_id,
             file_name: doc.file_name,
             original_file_name: doc.original_file_name,
@@ -274,6 +279,11 @@ pub async fn upload_document(
     // Generate unique filename for storage
     let unique_filename = format!("{}_{}", Uuid::new_v4(), original_filename);
 
+    // Clone document_type for SurrealDB before it gets moved
+    let document_type_for_surreal = document_type
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string());
+
     // Create document record in database
     let doc_request = CreateDocumentRequest {
         deal_id,
@@ -297,6 +307,49 @@ pub async fn upload_document(
     };
 
     let document = create_document(&state.pool, doc_request).await?;
+
+    // Store document metadata in SurrealDB for vector search and AI analysis
+    if let Some(ref surrealdb_service) = state.surrealdb_service {
+        info!(
+            document_id = %document.id,
+            deal_id = %deal_id,
+            "Creating SurrealDB document record"
+        );
+
+        let surreal_doc = crate::services::document_ingestion::surrealdb_service::Document {
+            document_id: document.id,
+            company_id: deal.originator_id, // Use originator company as owner
+            deal_id: Some(deal_id),
+            filename: original_filename.clone(),
+            document_type: document_type_for_surreal,
+            file_size: storage_metadata.file_size_bytes as i64,
+            user_id: Some(user_id),
+            upload_timestamp: chrono::Utc::now(),
+            status: "uploaded".to_string(),
+            content: String::new(), // Will be populated during ingestion
+            page_count: None,
+            processing_progress: Some(0.0),
+            error_message: None,
+            retry_count: 0,
+            processing_started_at: None,
+            processing_completed_at: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        if let Err(e) = surrealdb_service.create_document(surreal_doc).await {
+            error!("Failed to create SurrealDB document record: {}", e);
+            // Don't fail the upload if SurrealDB storage fails
+            // The document is still in PostgreSQL and can be reprocessed
+        } else {
+            info!(
+                document_id = %document.id,
+                "SurrealDB document record created successfully"
+            );
+        }
+    } else {
+        debug!("SurrealDB service not available, skipping document metadata storage");
+    }
 
     // Create ingestion job for async processing
     let _job = create_ingestion_job(&state.pool, document.id)
@@ -521,7 +574,15 @@ pub async fn download_document(
 }
 
 /// Update document metadata
+/// DEPRECATED: This endpoint is no longer exposed via the API router
+/// Documents must be managed through deal context only
+/// Use POST /api/v1/deals/{deal_id}/documents to upload new documents
+///
 /// PUT /api/v1/documents/{document_id}
+#[deprecated(
+    note = "Documents must be managed through deal context. Use POST /api/v1/deals/{deal_id}/documents"
+)]
+#[allow(dead_code)]
 #[utoipa::path(
     put,
     path = "/api/v1/documents/{document_id}",

@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     response::Json,
     routing::{delete, get, post, put},
     Router,
@@ -382,10 +382,8 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DEAL_DOCUMENT_BY_ID,
             get(crate::handlers::deals::documents::get_document),
         )
-        .route(
-            paths::DEAL_DOCUMENT_BY_ID,
-            put(crate::handlers::deals::documents::update_document_metadata),
-        )
+        // PUT endpoint removed - documents must be managed through deal context
+        // Use POST /api/v1/deals/{deal_id}/documents to upload new documents
         .route(
             paths::DEAL_DOCUMENT_BY_ID,
             delete(crate::handlers::deals::documents::delete_document_handler),
@@ -613,6 +611,9 @@ pub fn create_router(state: ApiState) -> Router {
             paths::FAUCET_REQUEST,
             post(crate::handlers::faucet::request_faucet_funds),
         )
+        // Set maximum request body size to 100MB for document uploads
+        // Default Axum limit is 2MB which is too small for PDFs
+        .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100MB
         .with_state(state)
 }
 

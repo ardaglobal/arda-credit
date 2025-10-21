@@ -1,6 +1,6 @@
 use crate::services::ai_analysis_service::{
     AiAnalysisService, AiChatRequest, AiChatResponse, BAMLInsightResponse, DocumentDiffRequest,
-    DocumentDiffResponse, InsightsRequest, NegotiationInsight,
+    DocumentDiffResponse, InsightsRequest, NegotiationInsight, SimplifiedAnalysisResponse,
 };
 // Authentication will be added later
 use crate::config::types::ApiState;
@@ -34,8 +34,8 @@ use uuid::Uuid;
 /// Query parameters for document analysis
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct AnalyzeDocumentQuery {
-    /// Previous version ID for comparison. If not provided, compares with the most recent previous version
-    pub previous_version_id: Option<Uuid>,
+    /// Previous version ID for comparison (required)
+    pub previous_version_id: Uuid,
     /// Type of analysis to perform (e.g., "full_diff", "financial_only", "legal_only")
     pub analysis_type: Option<String>,
     /// Comma-separated list of focus areas: financial, legal, operational, compliance
@@ -92,20 +92,20 @@ fn handle_service_error(err: anyhow::Error) -> (StatusCode, Json<ApiError>) {
     ),
     params(AnalyzeDocumentQuery),
     responses(
-        (status = 200, description = "Analysis completed successfully", body = crate::services::ai_analysis_service::DocumentDiffResponse),
+        (status = 200, description = "Analysis completed successfully", body = SimplifiedAnalysisResponse),
         (status = 400, description = "Invalid request parameters", body = ApiError),
         (status = 404, description = "Document not found", body = ApiError),
         (status = 500, description = "Internal server error", body = ApiError)
     ),
     tag = "Analytics",
     summary = "Analyze document changes",
-    description = "Analyzes differences between document versions using AI to identify changes, assess risk, and provide recommendations"
+    description = "Analyzes differences between document versions using AI. Returns a simplified response with AI analysis and key differences. Requires previous_version_id parameter."
 )]
 pub async fn analyze_document_diff(
     State(state): State<ApiState>,
     Path(document_id): Path<Uuid>,
     Query(query): Query<AnalyzeDocumentQuery>,
-) -> Result<Json<DocumentDiffResponse>, (StatusCode, Json<ApiError>)> {
+) -> Result<Json<SimplifiedAnalysisResponse>, (StatusCode, Json<ApiError>)> {
     let _claims = get_dummy_claims(); // TODO: Replace with real auth
     let ai_service = AiAnalysisService::new(state.pool.clone());
 
@@ -136,14 +136,18 @@ pub async fn analyze_document_diff(
 
     let request = DocumentDiffRequest {
         document_id,
-        previous_version_id: query.previous_version_id,
+        previous_version_id: Some(query.previous_version_id),
         current_version_id,
-        analysis_type: query.analysis_type,
-        focus_areas,
+        analysis_type: query.analysis_type.clone(),
+        focus_areas: focus_areas.clone(),
     };
 
     let response = ai_service
-        .analyze_document_diff(request)
+        .analyze_document_diff_simplified(
+            request,
+            query.analysis_type.as_deref(),
+            focus_areas.as_ref(),
+        )
         .await
         .map_err(handle_service_error)?;
 
@@ -734,7 +738,7 @@ mod tests {
     #[test]
     fn test_focus_areas_parsing() {
         let query = AnalyzeDocumentQuery {
-            previous_version_id: None,
+            previous_version_id: Uuid::new_v4(),
             analysis_type: None,
             focus_areas: Some("financial,legal,invalid".to_string()),
         };

@@ -100,6 +100,7 @@ impl IngestionOrchestrator {
                 document_id: document.document_id,
                 company_id: document.company_id,
                 deal_id: document.deal_id,
+                user_id: document.user_id,
                 chunk_index: chunk.chunk_index,
                 chunk_text: chunk.text,
                 chunk_position: chunk.start_index,

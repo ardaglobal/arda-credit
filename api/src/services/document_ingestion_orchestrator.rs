@@ -34,6 +34,7 @@ pub struct DocumentIngestionRequest {
     pub document_id: Uuid,
     pub company_id: Uuid,
     pub deal_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
     pub document_type: String,
     pub file_path: String,
 }
@@ -203,6 +204,7 @@ impl DocumentIngestionOrchestrator {
                 document_id: request.document_id,
                 company_id: request.company_id, // ⭐ Multi-tenant partitioning
                 deal_id: request.deal_id,
+                user_id: request.user_id,
                 chunk_index: i,
                 chunk_text: chunk.text.clone(),
                 chunk_position: chunk.start_index,
@@ -387,6 +389,7 @@ mod tests {
             document_id: Uuid::new_v4(),
             company_id: Uuid::new_v4(),
             deal_id: Some(Uuid::new_v4()),
+            user_id: Some(Uuid::new_v4()),
             document_type: "credit_agreement".to_string(),
             file_path: "/path/to/document.pdf".to_string(),
         };

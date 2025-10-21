@@ -889,6 +889,7 @@ dependencies = [
  "reqwest 0.12.24",
  "rig-core",
  "rust_decimal",
+ "rustls 0.23.32",
  "serde",
  "serde_json",
  "sha2",

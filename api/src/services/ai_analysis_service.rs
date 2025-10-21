@@ -9,6 +9,8 @@ use std::time::Duration;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use crate::services::openrouter_service::{ChatMessage, OpenRouterService};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ChangeType {
@@ -78,6 +80,15 @@ pub struct DocumentDiffResponse {
     pub summary: String,
     pub critical_changes_count: i32,
     pub processed_at: DateTime<Utc>,
+}
+
+/// Simplified document analysis response
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SimplifiedAnalysisResponse {
+    /// AI-generated analysis summary
+    pub ai_analysis: String,
+    /// Key differences between document versions
+    pub key_differences: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -224,6 +235,122 @@ pub struct AiAnalysisService {
 impl AiAnalysisService {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// Get prompt template based on analysis type and focus areas
+    fn get_analysis_prompt(
+        analysis_type: Option<&str>,
+        focus_areas: Option<&Vec<ChangeCategory>>,
+    ) -> String {
+        let base_prompt = "You are an expert document analyst. Compare the following two document versions and provide:
+1. A comprehensive AI analysis of the changes
+2. A list of key differences between the versions
+
+Be specific, actionable, and highlight any significant changes that require attention.";
+
+        let analysis_suffix = match analysis_type {
+            Some("full_diff") | None => "\n\nProvide a complete analysis covering all aspects of the document changes.",
+            Some("financial_only") => "\n\nFocus specifically on financial aspects: amounts, rates, fees, payment terms, and any monetary implications.",
+            Some("legal_only") => "\n\nFocus specifically on legal aspects: contract terms, obligations, liabilities, warranties, and compliance requirements.",
+            Some("risk_assessment") => "\n\nFocus on risk assessment: identify potential risks, liability exposures, and compliance issues.",
+            Some("compliance_check") => "\n\nFocus on compliance: regulatory requirements, legal obligations, and industry standards adherence.",
+            _ => "\n\nProvide a comprehensive analysis of all changes.",
+        };
+
+        let focus_suffix = if let Some(areas) = focus_areas {
+            if !areas.is_empty() {
+                let area_names: Vec<String> = areas
+                    .iter()
+                    .map(|a| match a {
+                        ChangeCategory::Financial => "financial",
+                        ChangeCategory::Legal => "legal",
+                        ChangeCategory::Operational => "operational",
+                        ChangeCategory::Compliance => "compliance",
+                    })
+                    .map(|s| s.to_string())
+                    .collect();
+                format!(
+                    "\n\nPay special attention to these areas: {}",
+                    area_names.join(", ")
+                )
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+
+        format!(
+            "{}{}{}\n\nProvide your response in the following JSON format:
+{{
+  \"ai_analysis\": \"Your comprehensive analysis here\",
+  \"key_differences\": [\"difference 1\", \"difference 2\", ...]
+}}",
+            base_prompt, analysis_suffix, focus_suffix
+        )
+    }
+
+    /// Analyze document differences with simplified response using OpenRouter
+    pub async fn analyze_document_diff_simplified(
+        &self,
+        request: DocumentDiffRequest,
+        analysis_type: Option<&str>,
+        focus_areas: Option<&Vec<ChangeCategory>>,
+    ) -> Result<SimplifiedAnalysisResponse, anyhow::Error> {
+        // Get document content for both versions
+        let current_content = self
+            .get_document_content(request.current_version_id)
+            .await?;
+
+        let previous_content = match request.previous_version_id {
+            Some(prev_id) => self.get_document_content(prev_id).await?,
+            None => return Err(anyhow::anyhow!("Previous version ID is required")),
+        };
+
+        // Initialize OpenRouter service
+        let openrouter = OpenRouterService::from_env().context(
+            "Failed to initialize OpenRouter service. Ensure OPENROUTER_API_KEY is set.",
+        )?;
+
+        // Get the appropriate prompt based on analysis type and focus areas
+        let system_prompt = Self::get_analysis_prompt(analysis_type, focus_areas);
+
+        // Construct the user prompt with document content
+        let user_prompt = format!(
+            "Previous Version:\n{}\n\n---\n\nCurrent Version:\n{}\n\nPlease analyze the differences and provide the response in the requested JSON format.",
+            previous_content, current_content
+        );
+
+        // Call OpenRouter to analyze the documents
+        let messages = vec![
+            ChatMessage {
+                role: "system".to_string(),
+                content: system_prompt,
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: user_prompt,
+            },
+        ];
+
+        let result = openrouter
+            .complete(messages, Some(0.7), Some(4000))
+            .await
+            .context("Failed to get analysis from OpenRouter")?;
+
+        // Parse the JSON response
+        let response: SimplifiedAnalysisResponse = serde_json::from_str(&result.content)
+            .unwrap_or_else(|_| {
+                // If JSON parsing fails, create a fallback response
+                SimplifiedAnalysisResponse {
+                    ai_analysis: result.content.clone(),
+                    key_differences: vec![
+                        "Unable to parse structured differences. Please check the AI analysis for details.".to_string()
+                    ],
+                }
+            });
+
+        Ok(response)
     }
 
     /// Analyze differences between document versions using AI

@@ -16,8 +16,8 @@ pub enum EmbeddingProvider {
     Modal,
 }
 
-/// OpenAI embedding models
-#[derive(Debug, Clone, Copy)]
+/// Embedding models
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmbeddingModel {
     /// text-embedding-3-small (1536 dimensions, $0.02/1M tokens)
     TextEmbedding3Small,
@@ -25,6 +25,8 @@ pub enum EmbeddingModel {
     TextEmbedding3Large,
     /// text-embedding-ada-002 (1536 dimensions, legacy)
     Ada002,
+    /// Qwen3-Embedding-8B (4096 dimensions, hosted on Modal TEI)
+    Qwen3Embedding8B,
 }
 
 impl EmbeddingModel {
@@ -33,6 +35,7 @@ impl EmbeddingModel {
             EmbeddingModel::TextEmbedding3Small => "text-embedding-3-small",
             EmbeddingModel::TextEmbedding3Large => "text-embedding-3-large",
             EmbeddingModel::Ada002 => "text-embedding-ada-002",
+            EmbeddingModel::Qwen3Embedding8B => "qwen3-embedding-8b",
         }
     }
 
@@ -41,6 +44,18 @@ impl EmbeddingModel {
             EmbeddingModel::TextEmbedding3Small => 1536,
             EmbeddingModel::TextEmbedding3Large => 3072,
             EmbeddingModel::Ada002 => 1536,
+            EmbeddingModel::Qwen3Embedding8B => 4096,
+        }
+    }
+
+    /// Parse embedding model from string (case-insensitive)
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "text-embedding-3-small" => Some(EmbeddingModel::TextEmbedding3Small),
+            "text-embedding-3-large" => Some(EmbeddingModel::TextEmbedding3Large),
+            "text-embedding-ada-002" => Some(EmbeddingModel::Ada002),
+            "qwen3-embedding-8b" | "qwen3" => Some(EmbeddingModel::Qwen3Embedding8B),
+            _ => None,
         }
     }
 }
@@ -83,15 +98,21 @@ pub struct RetryConfig {
     pub max_backoff: Duration,
     /// Backoff multiplier
     pub backoff_multiplier: f64,
+    /// Regular request timeout (for warm containers)
+    pub timeout: Duration,
+    /// Warmup request timeout (for cold starts, longer)
+    pub warmup_timeout: Duration,
 }
 
 impl Default for RetryConfig {
     fn default() -> Self {
         Self {
-            max_retries: 3,
-            initial_backoff: Duration::from_millis(100),
-            max_backoff: Duration::from_secs(10),
+            max_retries: 5,                           // Increased from 3 to 5
+            initial_backoff: Duration::from_secs(15), // Fixed 15s for first retry
+            max_backoff: Duration::from_secs(120),    // Max 120s
             backoff_multiplier: 2.0,
+            timeout: Duration::from_secs(120), // Regular timeout
+            warmup_timeout: Duration::from_secs(180), // Warmup timeout for cold starts
         }
     }
 }
@@ -197,21 +218,22 @@ impl EmbeddingService {
             }
         };
 
-        let model_str = std::env::var("EMBEDDING_MODEL")
-            .unwrap_or_else(|_| "text-embedding-3-small".to_string());
-
-        let model = match model_str.as_str() {
-            "text-embedding-3-small" => EmbeddingModel::TextEmbedding3Small,
-            "text-embedding-3-large" => EmbeddingModel::TextEmbedding3Large,
-            "text-embedding-ada-002" => EmbeddingModel::Ada002,
-            _ => {
-                warn!(
-                    "Unknown embedding model '{}', defaulting to text-embedding-3-small",
-                    model_str
-                );
-                EmbeddingModel::TextEmbedding3Small
-            }
+        // Default model based on provider
+        let default_model = match provider {
+            EmbeddingProvider::OpenAI => "text-embedding-3-small",
+            EmbeddingProvider::Modal => "qwen3-embedding-8b",
         };
+
+        let model_str =
+            std::env::var("EMBEDDING_MODEL").unwrap_or_else(|_| default_model.to_string());
+
+        let model = EmbeddingModel::from_str(&model_str).unwrap_or_else(|| {
+            warn!(
+                "Unknown embedding model '{}', defaulting to {}",
+                model_str, default_model
+            );
+            EmbeddingModel::from_str(default_model).unwrap()
+        });
 
         let (api_key, base_url) = match provider {
             EmbeddingProvider::OpenAI => {
@@ -263,8 +285,9 @@ impl EmbeddingService {
         retry_config: RetryConfig,
         rate_limit_config: RateLimitConfig,
     ) -> Result<Self> {
+        // Use the warmup timeout as the client timeout (longest possible wait)
         let client = Client::builder()
-            .timeout(Duration::from_secs(120)) // Longer timeout for large batches
+            .timeout(retry_config.warmup_timeout)
             .build()?;
 
         let rate_limiter = Arc::new(Semaphore::new(rate_limit_config.max_concurrent_requests));
@@ -490,19 +513,35 @@ impl EmbeddingService {
 
     /// Generate embeddings using Modal endpoint with retry logic
     async fn embed_batch_modal_with_retry(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
-        // Modal endpoint expects a simpler format
+        // Modal endpoint expects TEI-compatible format
         #[derive(Serialize)]
         struct ModalRequest {
             texts: Vec<String>,
+            model: String,
         }
 
-        #[derive(Deserialize)]
+        // TEI response format from Modal
+        #[derive(Deserialize, Debug)]
+        struct ModalEmbeddingResult {
+            embedding: Vec<f32>,
+            #[allow(dead_code)]
+            model: Option<String>,
+            #[allow(dead_code)]
+            dimensions: Option<usize>,
+            success: bool,
+            #[allow(dead_code)]
+            backend: Option<String>,
+            error_message: Option<String>,
+        }
+
+        #[derive(Deserialize, Debug)]
         struct ModalResponse {
-            embeddings: Vec<Vec<f32>>,
+            results: Vec<ModalEmbeddingResult>,
         }
 
         let request = ModalRequest {
             texts: texts.clone(),
+            model: self.model.as_str().to_string(),
         };
 
         // Call Modal endpoint
@@ -534,7 +573,29 @@ impl EmbeddingService {
                                 if attempt > 1 {
                                     info!("Modal request succeeded after {} attempts", attempt);
                                 }
-                                return Ok(modal_response.embeddings);
+
+                                // Extract embeddings from results array
+                                let mut embeddings = Vec::new();
+                                for (i, result) in modal_response.results.iter().enumerate() {
+                                    if !result.success {
+                                        let error_msg = result
+                                            .error_message
+                                            .as_ref()
+                                            .map(|s| s.as_str())
+                                            .unwrap_or("Unknown error");
+                                        error!("Embedding {} failed: {}", i, error_msg);
+                                        return Err(anyhow::anyhow!(
+                                            "Embedding generation failed: {}",
+                                            error_msg
+                                        ));
+                                    }
+
+                                    // Validate and clean embedding (replace None/NaN with 0.0)
+                                    let cleaned_embedding = self.clean_embedding(&result.embedding);
+                                    embeddings.push(cleaned_embedding);
+                                }
+
+                                return Ok(embeddings);
                             }
                             Err(e) => {
                                 error!("Failed to parse Modal response: {}", e);
@@ -597,6 +658,22 @@ impl EmbeddingService {
                 );
             }
         }
+    }
+
+    /// Clean embedding by replacing invalid values (NaN, infinite) with 0.0
+    /// This is more resilient than rejecting the entire batch
+    fn clean_embedding(&self, embedding: &[f32]) -> Vec<f32> {
+        embedding
+            .iter()
+            .map(|&value| {
+                if value.is_finite() {
+                    value
+                } else {
+                    // Replace NaN or infinite with 0.0
+                    0.0
+                }
+            })
+            .collect()
     }
 
     /// Validate embedding dimensions and values
@@ -736,6 +813,167 @@ impl EmbeddingService {
             }
         }
     }
+
+    /// Pre-warm multiple Modal containers before ingestion
+    ///
+    /// This is particularly useful for Modal deployments where containers
+    /// may be cold and need time to spin up. Uses parallel warmup with
+    /// graceful degradation.
+    ///
+    /// # Arguments
+    /// * `num_containers` - Number of containers to pre-warm (default: 4)
+    /// * `min_success_rate` - Minimum fraction of containers that must succeed (0.0-1.0, default: 0.5)
+    ///
+    /// # Returns
+    /// * `true` if at least min_success_rate containers warmed up successfully
+    pub async fn warmup_containers(
+        &self,
+        num_containers: usize,
+        min_success_rate: f64,
+    ) -> Result<bool> {
+        info!(
+            "🔥 Warming up {} Modal containers (model: {}, dim: {})...",
+            num_containers,
+            self.model.as_str(),
+            self.dimensions()
+        );
+        info!("   Cold start may take 30-60s (connection resets are normal)");
+
+        // Create warmup tasks
+        let mut tasks = Vec::new();
+        for i in 0..num_containers {
+            let service = self.clone_for_warmup();
+            let task = tokio::spawn(async move { service.send_warmup_request(i + 1).await });
+            tasks.push(task);
+        }
+
+        // Wait for all warmup requests to complete
+        let mut results = Vec::new();
+        for (i, task) in tasks.into_iter().enumerate() {
+            match task.await {
+                Ok(Ok(success)) => {
+                    results.push(success);
+                    if success {
+                        info!("✅ Container {}/{} ready", i + 1, num_containers);
+                    } else {
+                        warn!("⚠️ Container {}/{} warmup failed", i + 1, num_containers);
+                    }
+                }
+                Ok(Err(e)) => {
+                    error!("❌ Container {}/{} error: {}", i + 1, num_containers, e);
+                    results.push(false);
+                }
+                Err(e) => {
+                    error!(
+                        "❌ Container {}/{} join error: {}",
+                        i + 1,
+                        num_containers,
+                        e
+                    );
+                    results.push(false);
+                }
+            }
+        }
+
+        let successful = results.iter().filter(|&&r| r).count();
+        let required = (num_containers as f64 * min_success_rate).ceil() as usize;
+
+        info!("\n🔥 Warmup Results:");
+        info!("   ✅ Successful: {}/{}", successful, num_containers);
+        info!(
+            "   📊 Required: {}/{} ({:.0}%)",
+            required,
+            num_containers,
+            min_success_rate * 100.0
+        );
+
+        if successful >= required {
+            info!(
+                "✅ {} Modal container(s) ready for embedding generation!",
+                successful
+            );
+            if successful < num_containers {
+                warn!(
+                    "   ⚠️ Running with reduced capacity ({}/{} containers)",
+                    successful, num_containers
+                );
+            }
+            Ok(true)
+        } else {
+            error!(
+                "❌ Insufficient containers ready: {}/{} (need {})",
+                successful, num_containers, required
+            );
+            error!("   Modal service may be cold starting or unavailable");
+            Ok(false)
+        }
+    }
+
+    /// Clone service for warmup (lightweight clone for concurrent warmup)
+    fn clone_for_warmup(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            provider: self.provider,
+            api_key: self.api_key.clone(),
+            model: self.model,
+            base_url: self.base_url.clone(),
+            retry_config: self.retry_config.clone(),
+            rate_limiter: Arc::clone(&self.rate_limiter),
+            rate_limit_config: self.rate_limit_config.clone(),
+            last_request_time: Arc::clone(&self.last_request_time),
+            embedding_cache: Arc::clone(&self.embedding_cache),
+        }
+    }
+
+    /// Send a single warmup request to trigger container spin-up
+    async fn send_warmup_request(&self, container_num: usize) -> Result<bool> {
+        let warmup_text = vec![format!("warmup request {}", container_num)];
+
+        // Use shorter timeout for warmup health check
+        let start = Instant::now();
+        match tokio::time::timeout(
+            self.retry_config.warmup_timeout,
+            self.embed_batch(warmup_text),
+        )
+        .await
+        {
+            Ok(Ok(embeddings)) => {
+                let duration = start.elapsed();
+                debug!(
+                    "Container {} ready in {:.2}s",
+                    container_num,
+                    duration.as_secs_f64()
+                );
+                Ok(!embeddings.is_empty())
+            }
+            Ok(Err(e)) => {
+                // Service responding but embedding failed - log as warning
+                if e.to_string().contains("Connection reset")
+                    || e.to_string().contains("Connection aborted")
+                {
+                    warn!(
+                        "🔌 Connection reset for container {} (common during cold start)",
+                        container_num
+                    );
+                } else {
+                    warn!(
+                        "⚠️ Warmup request {} failed: {}",
+                        container_num,
+                        e.to_string().chars().take(100).collect::<String>()
+                    );
+                }
+                Ok(false)
+            }
+            Err(_) => {
+                warn!(
+                    "⏰ Warmup request {} timed out (waited {}s)",
+                    container_num,
+                    self.retry_config.warmup_timeout.as_secs()
+                );
+                Ok(false)
+            }
+        }
+    }
 }
 
 /// Calculate cosine similarity between two embeddings
@@ -766,6 +1004,24 @@ mod tests {
         assert_eq!(EmbeddingModel::TextEmbedding3Small.dimensions(), 1536);
         assert_eq!(EmbeddingModel::TextEmbedding3Large.dimensions(), 3072);
         assert_eq!(EmbeddingModel::Ada002.dimensions(), 1536);
+        assert_eq!(EmbeddingModel::Qwen3Embedding8B.dimensions(), 4096);
+    }
+
+    #[test]
+    fn test_embedding_model_from_str() {
+        assert_eq!(
+            EmbeddingModel::from_str("qwen3-embedding-8b"),
+            Some(EmbeddingModel::Qwen3Embedding8B)
+        );
+        assert_eq!(
+            EmbeddingModel::from_str("qwen3"),
+            Some(EmbeddingModel::Qwen3Embedding8B)
+        );
+        assert_eq!(
+            EmbeddingModel::from_str("text-embedding-3-small"),
+            Some(EmbeddingModel::TextEmbedding3Small)
+        );
+        assert_eq!(EmbeddingModel::from_str("unknown"), None);
     }
 
     #[test]

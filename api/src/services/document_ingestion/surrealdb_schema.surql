@@ -5,13 +5,13 @@
 -- Stores document metadata and content
 DEFINE TABLE documents SCHEMAFULL;
 
-DEFINE FIELD document_id ON documents TYPE record<documents>;
-DEFINE FIELD company_id ON documents TYPE record<companies>;
-DEFINE FIELD deal_id ON documents TYPE option<record<deals>>;
+DEFINE FIELD document_id ON documents TYPE string;
+DEFINE FIELD company_id ON documents TYPE string;
+DEFINE FIELD deal_id ON documents TYPE option<string>;
 DEFINE FIELD filename ON documents TYPE string;
 DEFINE FIELD document_type ON documents TYPE string;
 DEFINE FIELD file_size ON documents TYPE int;
-DEFINE FIELD user_id ON documents TYPE option<record<users>>;
+DEFINE FIELD user_id ON documents TYPE option<string>;
 DEFINE FIELD upload_timestamp ON documents TYPE datetime DEFAULT time::now();
 DEFINE FIELD status ON documents TYPE string DEFAULT 'uploaded';
     -- Status options: 'uploaded', 'queued', 'processing', 'completed', 'failed'
@@ -41,11 +41,11 @@ DEFINE INDEX idx_document_type ON documents FIELDS document_type;
 -- Stores vector embeddings for semantic search
 DEFINE TABLE document_embeddings SCHEMAFULL;
 
-DEFINE FIELD embedding_id ON document_embeddings TYPE record<document_embeddings>;
-DEFINE FIELD document_id ON document_embeddings TYPE record<documents>;
-DEFINE FIELD company_id ON document_embeddings TYPE record<companies>;
-DEFINE FIELD deal_id ON document_embeddings TYPE option<record<deals>>;
-DEFINE FIELD user_id ON document_embeddings TYPE option<record<users>>;
+DEFINE FIELD embedding_id ON document_embeddings TYPE string;
+DEFINE FIELD document_id ON document_embeddings TYPE string;
+DEFINE FIELD company_id ON document_embeddings TYPE string;
+DEFINE FIELD deal_id ON document_embeddings TYPE option<string>;
+DEFINE FIELD user_id ON document_embeddings TYPE option<string>;
     -- User who uploaded the document (for filtering)
 DEFINE FIELD chunk_index ON document_embeddings TYPE int;
 DEFINE FIELD chunk_text ON document_embeddings TYPE string;
