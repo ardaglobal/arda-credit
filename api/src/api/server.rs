@@ -70,7 +70,7 @@ impl Default for ApiServerConfig {
             enable_compression: true,
             enable_cors: true,
             request_timeout_seconds: 30,
-            max_request_size_bytes: 1024 * 1024, // 1MB
+            max_request_size_bytes: 100 * 1024 * 1024, // 100MB (for document uploads)
             cors_origins: vec!["*".to_string()],
             rate_limit_per_minute: 100,
         }
@@ -166,6 +166,25 @@ impl ApiServer {
             e
         })?;
 
+        // Initialize SurrealDB service for document storage
+        info!("🌐 Initializing SurrealDB service");
+        let surrealdb_service = match crate::services::document_ingestion::surrealdb_service::SurrealDBService::from_env().await {
+            Ok(service) => {
+                info!("✅ SurrealDB service initialized successfully");
+                // Initialize schema on startup
+                if let Err(e) = service.init_schema().await {
+                    warn!("⚠️  Failed to initialize SurrealDB schema: {}", e);
+                    warn!("💡 Schema initialization is optional, continuing without it");
+                }
+                Some(Arc::new(service))
+            }
+            Err(e) => {
+                warn!("⚠️  Failed to initialize SurrealDB service: {}", e);
+                warn!("💡 Set SURREALDB_URL, SURREALDB_USERNAME, and SURREALDB_PASSWORD to enable document storage");
+                None
+            }
+        };
+
         // Create API state
         let state = ApiState {
             pool,
@@ -182,7 +201,7 @@ impl ApiServer {
             document_storage_service: Some(document_storage_service),
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
-            surrealdb_service: None,  // SurrealDB service not configured in basic constructor
+            surrealdb_service,        // SurrealDB service initialized from environment
         };
 
         let server = Self { config, state };
@@ -319,6 +338,25 @@ impl ApiServer {
             e
         })?;
 
+        // Initialize SurrealDB service for document storage
+        info!("🌐 Initializing SurrealDB service");
+        let surrealdb_service = match crate::services::document_ingestion::surrealdb_service::SurrealDBService::from_env().await {
+            Ok(service) => {
+                info!("✅ SurrealDB service initialized successfully");
+                // Initialize schema on startup
+                if let Err(e) = service.init_schema().await {
+                    warn!("⚠️  Failed to initialize SurrealDB schema: {}", e);
+                    warn!("💡 Schema initialization is optional, continuing without it");
+                }
+                Some(Arc::new(service))
+            }
+            Err(e) => {
+                warn!("⚠️  Failed to initialize SurrealDB service: {}", e);
+                warn!("💡 Set SURREALDB_URL, SURREALDB_USERNAME, and SURREALDB_PASSWORD to enable document storage");
+                None
+            }
+        };
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
@@ -334,7 +372,7 @@ impl ApiServer {
             document_storage_service: Some(document_storage_service),
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
-            surrealdb_service: None,  // SurrealDB service not configured in this constructor
+            surrealdb_service,        // SurrealDB service initialized from environment
         };
 
         Ok(Self { config, state })

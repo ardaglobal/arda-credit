@@ -1,22 +1,123 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use surrealdb::engine::any::Any;
 use surrealdb::opt::auth::Root;
 use surrealdb::Surreal;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+// Custom serde module for serializing UUID as string
+mod uuid_as_string {
+    use super::*;
+
+    pub fn serialize<S>(uuid: &Uuid, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&uuid.to_string())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Uuid, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Uuid::parse_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
+// Custom serde module for Option<UUID> as Option<String>
+mod option_uuid_as_string {
+    use super::*;
+
+    pub fn serialize<S>(opt_uuid: &Option<Uuid>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match opt_uuid {
+            Some(uuid) => serializer.serialize_some(&uuid.to_string()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Uuid>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Option::<String>::deserialize(deserializer)?
+            .map(|s| Uuid::parse_str(&s).map_err(serde::de::Error::custom))
+            .transpose()
+    }
+}
+
+// Custom serde module for DateTime as RFC3339 string compatible with SurrealDB
+mod datetime_as_rfc3339 {
+    use super::*;
+
+    pub fn serialize<S>(dt: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize as RFC3339 string for SurrealDB compatibility
+        serializer.serialize_str(&dt.to_rfc3339())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        DateTime::parse_from_rfc3339(&s)
+            .map(|dt| dt.with_timezone(&Utc))
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+// Custom serde module for Option<DateTime>
+mod option_datetime_as_rfc3339 {
+    use super::*;
+
+    pub fn serialize<S>(opt_dt: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match opt_dt {
+            Some(dt) => serializer.serialize_some(&dt.to_rfc3339()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Option::<String>::deserialize(deserializer)?
+            .map(|s| {
+                DateTime::parse_from_rfc3339(&s)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(serde::de::Error::custom)
+            })
+            .transpose()
+    }
+}
+
 /// Document metadata stored in SurrealDB
+/// Note: UUID fields are serialized as strings for SurrealDB compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
+    #[serde(with = "uuid_as_string")]
     pub document_id: Uuid,
+    #[serde(with = "uuid_as_string")]
     pub company_id: Uuid,
+    #[serde(with = "option_uuid_as_string")]
     pub deal_id: Option<Uuid>,
     pub filename: String,
     pub document_type: String,
     pub file_size: i64,
+    #[serde(with = "option_uuid_as_string")]
     pub user_id: Option<Uuid>,
+    #[serde(with = "datetime_as_rfc3339")]
     pub upload_timestamp: DateTime<Utc>,
     pub status: String, // 'uploaded', 'queued', 'processing', 'completed', 'failed'
     pub content: String,
@@ -24,33 +125,50 @@ pub struct Document {
     pub processing_progress: Option<f32>, // 0.0 to 1.0
     pub error_message: Option<String>,
     pub retry_count: i32,
+    #[serde(with = "option_datetime_as_rfc3339")]
     pub processing_started_at: Option<DateTime<Utc>>,
+    #[serde(with = "option_datetime_as_rfc3339")]
     pub processing_completed_at: Option<DateTime<Utc>>,
+    #[serde(with = "datetime_as_rfc3339")]
     pub created_at: DateTime<Utc>,
+    #[serde(with = "datetime_as_rfc3339")]
     pub updated_at: DateTime<Utc>,
 }
 
 /// Document embedding chunk with vector data
+/// Note: UUID fields are serialized as strings for SurrealDB compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentEmbedding {
+    #[serde(with = "uuid_as_string")]
     pub embedding_id: Uuid,
+    #[serde(with = "uuid_as_string")]
     pub document_id: Uuid,
+    #[serde(with = "uuid_as_string")]
     pub company_id: Uuid,
+    #[serde(with = "option_uuid_as_string")]
     pub deal_id: Option<Uuid>,
+    #[serde(with = "option_uuid_as_string")]
+    pub user_id: Option<Uuid>,
     pub chunk_index: usize,
     pub chunk_text: String,
     pub chunk_position: usize,
     pub page_number: Option<i32>,
     pub embedding: Vec<f32>,
+    #[serde(with = "datetime_as_rfc3339")]
     pub created_at: DateTime<Utc>,
 }
 
 /// Search result from SurrealDB vector search
+/// Note: UUID fields are deserialized from strings
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SearchResult {
+    #[serde(with = "uuid_as_string")]
     pub embedding_id: Uuid,
+    #[serde(with = "uuid_as_string")]
     pub document_id: Uuid,
+    #[serde(with = "uuid_as_string")]
     pub company_id: Uuid,
+    #[serde(with = "option_uuid_as_string")]
     pub deal_id: Option<Uuid>,
     pub score: f32,
     pub chunk_text: String,
@@ -106,6 +224,10 @@ impl SurrealDBService {
         namespace: &str,
         database: &str,
     ) -> Result<Self> {
+        // Install default crypto provider for rustls (required for WSS connections)
+        // This is safe to call multiple times - it will only install once
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
         // Connect to SurrealDB using the `any` engine (supports ws:// and wss://)
         let db = surrealdb::engine::any::connect(url)
             .await
@@ -165,9 +287,12 @@ impl SurrealDBService {
             .create(("documents", document.document_id.to_string()))
             .content(document)
             .await
-            .context("Failed to create document")?;
+            .map_err(|e| {
+                tracing::error!("SurrealDB create error: {:?}", e);
+                anyhow::anyhow!("Failed to create document: {}", e)
+            })?;
 
-        created.context("Failed to create document: no result returned")
+        created.ok_or_else(|| anyhow::anyhow!("Failed to create document: no result returned"))
     }
 
     /// Get a document by ID
@@ -773,6 +898,7 @@ mod tests {
             document_id: Uuid::new_v4(),
             company_id: Uuid::new_v4(),
             deal_id: Some(Uuid::new_v4()),
+            user_id: Some(Uuid::new_v4()),
             chunk_index: 0,
             chunk_text: "Test chunk".to_string(),
             chunk_position: 0,

@@ -244,7 +244,7 @@ fn default_limit() -> u32 {
         crate::handlers::deals::documents::list_documents,
         crate::handlers::deals::documents::get_document,
         crate::handlers::deals::documents::download_document,
-        crate::handlers::deals::documents::update_document_metadata,
+        // update_document_metadata removed - documents managed through deal context only
         crate::handlers::deals::documents::delete_document_handler,
         crate::handlers::deals::documents::get_document_stats,
 

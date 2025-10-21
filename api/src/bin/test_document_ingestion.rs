@@ -169,6 +169,7 @@ async fn ingest_documents(directory: PathBuf) -> Result<()> {
             document_id,
             company_id,
             deal_id: None,
+            user_id: None, // In production, this would come from user context
             document_type: "credit_agreement".to_string(),
             file_path: pdf_path.to_string_lossy().to_string(),
         };
