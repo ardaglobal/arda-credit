@@ -358,7 +358,7 @@ server: up
 		> withdrawal_executor.log 2>&1 &
 	@echo "Withdrawal executor started (logs: withdrawal_executor.log)"
 	@echo "Starting API server..."
-	RUST_LOG=debug cargo run --bin server
+	RUST_LOG=info cargo run --bin server
 
 ## server-stop: Stop background services (deposit monitor and withdrawal executor)
 .PHONY: server-stop

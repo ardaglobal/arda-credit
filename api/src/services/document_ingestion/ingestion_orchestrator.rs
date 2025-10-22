@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::csv_extractor::CsvExtractor;
 use super::embedding_service::EmbeddingService;
@@ -75,15 +75,22 @@ impl IngestionOrchestrator {
         self.update_progress(document_id, 0.4, "Generating embeddings")
             .await?;
 
+        info!(
+            "🧠 Generating embeddings for {} chunks via Modal API",
+            chunks.len()
+        );
         let chunk_texts: Vec<String> = chunks.iter().map(|c| c.text.clone()).collect();
         let embeddings = self
             .embedding_service
             .embed_batch_chunked(chunk_texts, 50)
             .await
-            .context("Failed to generate embeddings")?;
+            .map_err(|e| {
+                error!("❌ Embedding generation failed: {:#}", e);
+                anyhow::anyhow!("Failed to generate embeddings: {:#}", e)
+            })?;
 
         info!(
-            "Generated {} embeddings for document {}",
+            "✅ Generated {} embeddings for document {}",
             embeddings.len(),
             document_id
         );
@@ -91,6 +98,11 @@ impl IngestionOrchestrator {
         // Stage 3: Store embeddings in SurrealDB
         self.update_progress(document_id, 0.7, "Storing embeddings")
             .await?;
+
+        info!(
+            "💾 Storing {} document embeddings in SurrealDB",
+            embeddings.len()
+        );
 
         let document_embeddings: Vec<DocumentEmbedding> = chunks
             .into_iter()
@@ -159,22 +171,45 @@ impl IngestionOrchestrator {
 
     /// Parse PDF document
     async fn parse_pdf(&self, document: &Document) -> Result<Vec<super::text_chunker::TextChunk>> {
-        debug!("Parsing PDF document {}", document.document_id);
+        info!(
+            "📄 Parsing PDF document {} from filesystem",
+            document.document_id
+        );
 
-        // Write content to temp file for parsing
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join(format!("{}.pdf", document.document_id));
+        // Get storage path
+        let storage_path = document.storage_path.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Document {} has no storage_path", document.document_id)
+        })?;
 
-        std::fs::write(&temp_file, &document.content).context("Failed to write temp PDF file")?;
+        // Load PDF file from storage path
+        let storage_base = std::env::var("DOCUMENT_STORAGE_PATH")
+            .unwrap_or_else(|_| "./data/documents".to_string());
+        let file_path = std::path::Path::new(&storage_base).join(storage_path);
+
+        info!("📂 Loading PDF from: {}", file_path.display());
+
+        if !file_path.exists() {
+            return Err(anyhow::anyhow!("File not found: {}", file_path.display()));
+        }
 
         // Extract text from PDF
         let pdf_result = self
             .pdf_extractor
-            .extract_from_file(&temp_file)
-            .context("Failed to extract PDF content")?;
+            .extract_from_file(&file_path)
+            .context(format!(
+                "Failed to extract PDF content from {}",
+                file_path.display()
+            ))?;
 
-        // Clean up temp file
-        std::fs::remove_file(&temp_file).ok();
+        info!(
+            "✅ Extracted text from PDF: {} pages, {} total characters",
+            pdf_result.text_by_page.len(),
+            pdf_result
+                .text_by_page
+                .iter()
+                .map(|p| p.len())
+                .sum::<usize>()
+        );
 
         // Chunk by page
         let chunks = self
@@ -182,6 +217,7 @@ impl IngestionOrchestrator {
             .chunk_pdf(&pdf_result.text_by_page)
             .context("Failed to chunk PDF")?;
 
+        info!("✂️  Chunked PDF into {} chunks", chunks.len());
         Ok(chunks)
     }
 
@@ -190,14 +226,32 @@ impl IngestionOrchestrator {
         &self,
         document: &Document,
     ) -> Result<Vec<super::text_chunker::TextChunk>> {
-        debug!("Parsing Excel document {}", document.document_id);
+        info!(
+            "📊 Parsing Excel document {} from filesystem",
+            document.document_id
+        );
 
-        // Write content to temp file for parsing
+        // Get storage path and read file from filesystem
+        let storage_path = document.storage_path.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Document {} has no storage_path", document.document_id)
+        })?;
+
+        let storage_base = std::env::var("DOCUMENT_STORAGE_PATH")
+            .unwrap_or_else(|_| "./data/documents".to_string());
+        let file_path = std::path::Path::new(&storage_base).join(storage_path);
+
+        info!("📂 Loading Excel from: {}", file_path.display());
+
+        if !file_path.exists() {
+            return Err(anyhow::anyhow!("File not found: {}", file_path.display()));
+        }
+
+        // Copy to temp file for Excel library (it needs a file path)
         let temp_dir = std::env::temp_dir();
         let extension = document.filename.rsplit('.').next().unwrap_or("xlsx");
         let temp_file = temp_dir.join(format!("{}.{}", document.document_id, extension));
 
-        std::fs::write(&temp_file, &document.content).context("Failed to write temp Excel file")?;
+        std::fs::copy(&file_path, &temp_file).context("Failed to copy Excel file to temp")?;
 
         // Extract data from Excel
         let excel_result = self
@@ -223,13 +277,31 @@ impl IngestionOrchestrator {
 
     /// Parse CSV document
     async fn parse_csv(&self, document: &Document) -> Result<Vec<super::text_chunker::TextChunk>> {
-        debug!("Parsing CSV document {}", document.document_id);
+        info!(
+            "📊 Parsing CSV document {} from filesystem",
+            document.document_id
+        );
 
-        // Write content to temp file for parsing
+        // Get storage path and read file from filesystem
+        let storage_path = document.storage_path.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Document {} has no storage_path", document.document_id)
+        })?;
+
+        let storage_base = std::env::var("DOCUMENT_STORAGE_PATH")
+            .unwrap_or_else(|_| "./data/documents".to_string());
+        let file_path = std::path::Path::new(&storage_base).join(storage_path);
+
+        info!("📂 Loading CSV from: {}", file_path.display());
+
+        if !file_path.exists() {
+            return Err(anyhow::anyhow!("File not found: {}", file_path.display()));
+        }
+
+        // Copy to temp file for CSV library (it needs a file path)
         let temp_dir = std::env::temp_dir();
         let temp_file = temp_dir.join(format!("{}.csv", document.document_id));
 
-        std::fs::write(&temp_file, &document.content).context("Failed to write temp CSV file")?;
+        std::fs::copy(&file_path, &temp_file).context("Failed to copy CSV file to temp")?;
 
         // Extract data from CSV
         let csv_result = self

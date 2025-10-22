@@ -4,12 +4,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use surrealdb::engine::any::Any;
 use surrealdb::opt::auth::Root;
 use surrealdb::Surreal;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 // Custom serde module for serializing UUID as string
 mod uuid_as_string {
     use super::*;
+    use serde::de::{self, Visitor};
+    use std::fmt;
 
     pub fn serialize<S>(uuid: &Uuid, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -22,14 +24,58 @@ mod uuid_as_string {
     where
         D: Deserializer<'de>,
     {
-        let s = String::deserialize(deserializer)?;
-        Uuid::parse_str(&s).map_err(serde::de::Error::custom)
+        struct UuidStringVisitor;
+
+        impl<'de> Visitor<'de> for UuidStringVisitor {
+            type Value = Uuid;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a UUID string or SurrealDB Id")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Uuid, E>
+            where
+                E: de::Error,
+            {
+                Uuid::parse_str(value).map_err(E::custom)
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Uuid, E>
+            where
+                E: de::Error,
+            {
+                Uuid::parse_str(&value).map_err(E::custom)
+            }
+
+            // Handle SurrealDB's native types by converting them to strings first
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Uuid, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                // Try to deserialize as a string
+                String::deserialize(deserializer)
+                    .and_then(|s| Uuid::parse_str(&s).map_err(de::Error::custom))
+            }
+
+            // Handle other types by trying to convert to string
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Uuid, E>
+            where
+                E: de::Error,
+            {
+                let s = std::str::from_utf8(v).map_err(E::custom)?;
+                Uuid::parse_str(s).map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_any(UuidStringVisitor)
     }
 }
 
 // Custom serde module for Option<UUID> as Option<String>
 mod option_uuid_as_string {
     use super::*;
+    use serde::de::{self, Visitor};
+    use std::fmt;
 
     pub fn serialize<S>(opt_uuid: &Option<Uuid>, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -45,60 +91,199 @@ mod option_uuid_as_string {
     where
         D: Deserializer<'de>,
     {
-        Option::<String>::deserialize(deserializer)?
-            .map(|s| Uuid::parse_str(&s).map_err(serde::de::Error::custom))
-            .transpose()
-    }
-}
+        struct OptUuidStringVisitor;
 
-// Custom serde module for DateTime as RFC3339 string compatible with SurrealDB
-mod datetime_as_rfc3339 {
-    use super::*;
+        impl<'de> Visitor<'de> for OptUuidStringVisitor {
+            type Value = Option<Uuid>;
 
-    pub fn serialize<S>(dt: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        // Serialize as RFC3339 string for SurrealDB compatibility
-        serializer.serialize_str(&dt.to_rfc3339())
-    }
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an optional UUID string or null")
+            }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        DateTime::parse_from_rfc3339(&s)
-            .map(|dt| dt.with_timezone(&Utc))
-            .map_err(serde::de::Error::custom)
-    }
-}
+            fn visit_none<E>(self) -> Result<Option<Uuid>, E>
+            where
+                E: de::Error,
+            {
+                Ok(None)
+            }
 
-// Custom serde module for Option<DateTime>
-mod option_datetime_as_rfc3339 {
-    use super::*;
+            fn visit_unit<E>(self) -> Result<Option<Uuid>, E>
+            where
+                E: de::Error,
+            {
+                Ok(None)
+            }
 
-    pub fn serialize<S>(opt_dt: &Option<DateTime<Utc>>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match opt_dt {
-            Some(dt) => serializer.serialize_some(&dt.to_rfc3339()),
-            None => serializer.serialize_none(),
+            fn visit_some<D>(self, deserializer: D) -> Result<Option<Uuid>, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                struct InnerVisitor;
+
+                impl<'de> Visitor<'de> for InnerVisitor {
+                    type Value = Uuid;
+
+                    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                        formatter.write_str("a UUID string or SurrealDB Id")
+                    }
+
+                    fn visit_str<E>(self, value: &str) -> Result<Uuid, E>
+                    where
+                        E: de::Error,
+                    {
+                        Uuid::parse_str(value).map_err(E::custom)
+                    }
+
+                    fn visit_string<E>(self, value: String) -> Result<Uuid, E>
+                    where
+                        E: de::Error,
+                    {
+                        Uuid::parse_str(&value).map_err(E::custom)
+                    }
+
+                    // Handle SurrealDB's native types
+                    fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Uuid, D::Error>
+                    where
+                        D: serde::Deserializer<'de>,
+                    {
+                        String::deserialize(deserializer)
+                            .and_then(|s| Uuid::parse_str(&s).map_err(de::Error::custom))
+                    }
+
+                    fn visit_bytes<E>(self, v: &[u8]) -> Result<Uuid, E>
+                    where
+                        E: de::Error,
+                    {
+                        let s = std::str::from_utf8(v).map_err(E::custom)?;
+                        Uuid::parse_str(s).map_err(E::custom)
+                    }
+                }
+
+                deserializer.deserialize_any(InnerVisitor).map(Some)
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Option<Uuid>, E>
+            where
+                E: de::Error,
+            {
+                Uuid::parse_str(value).map(Some).map_err(E::custom)
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Option<Uuid>, E>
+            where
+                E: de::Error,
+            {
+                Uuid::parse_str(&value).map(Some).map_err(E::custom)
+            }
         }
+
+        deserializer.deserialize_any(OptUuidStringVisitor)
+    }
+}
+
+// Custom serde module for extracting UUID from SurrealDB record ID
+// Handles both direct UUID strings and record IDs like "document_embeddings:⟨uuid⟩"
+mod uuid_from_record_id {
+    use super::*;
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    pub fn serialize<S>(uuid: &Uuid, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&uuid.to_string())
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Uuid, D::Error>
     where
         D: Deserializer<'de>,
     {
-        Option::<String>::deserialize(deserializer)?
-            .map(|s| {
-                DateTime::parse_from_rfc3339(&s)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .map_err(serde::de::Error::custom)
-            })
-            .transpose()
+        struct UuidVisitor;
+
+        impl<'de> Visitor<'de> for UuidVisitor {
+            type Value = Uuid;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a UUID string or SurrealDB record ID")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Uuid, E>
+            where
+                E: de::Error,
+            {
+                self.parse_uuid_from_string(value)
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Uuid, E>
+            where
+                E: de::Error,
+            {
+                self.parse_uuid_from_string(&value)
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Uuid, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                let mut id_value: Option<String> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "id" {
+                        id_value = Some(map.next_value()?);
+                        break;
+                    } else {
+                        // Skip other fields
+                        map.next_value::<serde::de::IgnoredAny>()?;
+                    }
+                }
+
+                if let Some(id_str) = id_value {
+                    self.parse_uuid_from_string(&id_str)
+                } else {
+                    Err(de::Error::custom("Record object missing 'id' field"))
+                }
+            }
+
+            // Handle SurrealDB's native types
+            fn visit_newtype_struct<D>(self, deserializer: D) -> Result<Uuid, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                String::deserialize(deserializer).and_then(|s| self.parse_uuid_from_string(&s))
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Uuid, E>
+            where
+                E: de::Error,
+            {
+                let s = std::str::from_utf8(v).map_err(E::custom)?;
+                self.parse_uuid_from_string(s)
+            }
+        }
+
+        impl UuidVisitor {
+            fn parse_uuid_from_string<E>(&self, s: &str) -> Result<Uuid, E>
+            where
+                E: de::Error,
+            {
+                // Try to parse as UUID first
+                if let Ok(uuid) = Uuid::parse_str(s) {
+                    return Ok(uuid);
+                }
+
+                // If that fails, try to extract UUID from record ID format
+                // Format: "table_name:⟨uuid⟩" or "table_name:uuid"
+                if let Some(uuid_part) = s.split(':').nth(1) {
+                    let uuid_str = uuid_part.trim_start_matches('⟨').trim_end_matches('⟩');
+                    Uuid::parse_str(uuid_str).map_err(E::custom)
+                } else {
+                    Err(E::custom(format!("Invalid record ID format: {}", s)))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(UuidVisitor)
     }
 }
 
@@ -115,9 +300,10 @@ pub struct Document {
     pub filename: String,
     pub document_type: String,
     pub file_size: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage_path: Option<String>, // Path to file in storage (relative to base path) - optional for backward compatibility
     #[serde(with = "option_uuid_as_string")]
     pub user_id: Option<Uuid>,
-    #[serde(with = "datetime_as_rfc3339")]
     pub upload_timestamp: DateTime<Utc>,
     pub status: String, // 'uploaded', 'queued', 'processing', 'completed', 'failed'
     pub content: String,
@@ -125,21 +311,18 @@ pub struct Document {
     pub processing_progress: Option<f32>, // 0.0 to 1.0
     pub error_message: Option<String>,
     pub retry_count: i32,
-    #[serde(with = "option_datetime_as_rfc3339")]
     pub processing_started_at: Option<DateTime<Utc>>,
-    #[serde(with = "option_datetime_as_rfc3339")]
     pub processing_completed_at: Option<DateTime<Utc>>,
-    #[serde(with = "datetime_as_rfc3339")]
     pub created_at: DateTime<Utc>,
-    #[serde(with = "datetime_as_rfc3339")]
     pub updated_at: DateTime<Utc>,
 }
 
 /// Document embedding chunk with vector data
 /// Note: UUID fields are serialized as strings for SurrealDB compatibility
+/// The embedding_id is extracted from the SurrealDB record ID (aliased as "id")
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentEmbedding {
-    #[serde(with = "uuid_as_string")]
+    #[serde(with = "uuid_from_record_id", alias = "id")]
     pub embedding_id: Uuid,
     #[serde(with = "uuid_as_string")]
     pub document_id: Uuid,
@@ -154,7 +337,6 @@ pub struct DocumentEmbedding {
     pub chunk_position: usize,
     pub page_number: Option<i32>,
     pub embedding: Vec<f32>,
-    #[serde(with = "datetime_as_rfc3339")]
     pub created_at: DateTime<Utc>,
 }
 
@@ -274,6 +456,17 @@ impl SurrealDBService {
         Ok(())
     }
 
+    /// Execute a raw SurrealQL query
+    ///
+    /// This is useful for admin operations, schema migrations, and debugging.
+    /// Returns the raw response which can be parsed as needed.
+    pub async fn execute_query(&self, query: &str) -> Result<surrealdb::Response> {
+        self.db
+            .query(query)
+            .await
+            .context("Failed to execute query")
+    }
+
     // ====================
     // Document CRUD Operations
     // ====================
@@ -282,17 +475,85 @@ impl SurrealDBService {
     pub async fn create_document(&self, document: Document) -> Result<Document> {
         debug!("Creating document: {}", document.document_id);
 
-        let created: Option<Document> = self
+        // Use raw query with bindings to properly handle DateTime types
+        // Use angle brackets for UUIDs with hyphens in SurrealDB
+        // Use SurrealDB's time functions for datetime fields to avoid serialization issues
+        let record_id = format!("documents:⟨{}⟩", document.document_id);
+
+        // Convert DateTime values to RFC3339 strings for SurrealDB's time::parse()
+        let upload_timestamp_str = document.upload_timestamp.to_rfc3339();
+        let processing_started_str = document.processing_started_at.map(|dt| dt.to_rfc3339());
+        let processing_completed_str = document.processing_completed_at.map(|dt| dt.to_rfc3339());
+
+        let query = format!(
+            r#"
+            CREATE {} SET
+                document_id = $document_id,
+                company_id = $company_id,
+                deal_id = $deal_id,
+                filename = $filename,
+                document_type = $document_type,
+                file_size = $file_size,
+                storage_path = $storage_path,
+                user_id = $user_id,
+                upload_timestamp = <datetime> $upload_timestamp,
+                status = $status,
+                content = $content,
+                page_count = $page_count,
+                processing_progress = $processing_progress,
+                error_message = $error_message,
+                retry_count = $retry_count,
+                processing_started_at = IF $processing_started_at != NONE THEN <datetime> $processing_started_at ELSE NONE END,
+                processing_completed_at = IF $processing_completed_at != NONE THEN <datetime> $processing_completed_at ELSE NONE END,
+                created_at = time::now(),
+                updated_at = time::now()
+        "#,
+            record_id
+        );
+
+        let mut result = self
             .db
-            .create(("documents", document.document_id.to_string()))
-            .content(document)
+            .query(query)
+            .bind(("document_id", document.document_id.to_string()))
+            .bind(("company_id", document.company_id.to_string()))
+            .bind(("deal_id", document.deal_id.map(|id| id.to_string())))
+            .bind(("filename", document.filename))
+            .bind(("document_type", document.document_type))
+            .bind(("file_size", document.file_size))
+            .bind((
+                "storage_path",
+                document.storage_path.clone().unwrap_or_default(),
+            ))
+            .bind(("user_id", document.user_id.map(|id| id.to_string())))
+            .bind(("upload_timestamp", upload_timestamp_str))
+            .bind(("status", document.status))
+            .bind(("content", document.content))
+            .bind(("page_count", document.page_count))
+            .bind(("processing_progress", document.processing_progress))
+            .bind(("error_message", document.error_message))
+            .bind(("retry_count", document.retry_count))
+            .bind(("processing_started_at", processing_started_str))
+            .bind(("processing_completed_at", processing_completed_str))
             .await
             .map_err(|e| {
                 tracing::error!("SurrealDB create error: {:?}", e);
                 anyhow::anyhow!("Failed to create document: {}", e)
             })?;
 
-        created.ok_or_else(|| anyhow::anyhow!("Failed to create document: no result returned"))
+        let created: Vec<Document> = result.take(0).map_err(|e| {
+            tracing::error!(
+                "Failed to parse SurrealDB response for document {}: {:?}",
+                document.document_id,
+                e
+            );
+            anyhow::anyhow!("Failed to parse created document: {}", e)
+        })?;
+
+        debug!("SurrealDB returned {} documents", created.len());
+        created
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Failed to create document: no result returned"))
     }
 
     /// Get a document by ID
@@ -312,17 +573,71 @@ impl SurrealDBService {
     pub async fn update_document(&self, document: Document) -> Result<Document> {
         debug!("Updating document: {}", document.document_id);
 
-        let mut updated_doc = document.clone();
-        updated_doc.updated_at = Utc::now();
+        // Convert DateTime values to RFC3339 strings for SurrealDB's datetime casting
+        let upload_timestamp_str = document.upload_timestamp.to_rfc3339();
+        let processing_started_str = document.processing_started_at.map(|dt| dt.to_rfc3339());
+        let processing_completed_str = document.processing_completed_at.map(|dt| dt.to_rfc3339());
+        let created_at_str = document.created_at.to_rfc3339();
 
-        let updated: Option<Document> = self
+        // Build query with record ID directly in the query string
+        let record_id = format!("documents:⟨{}⟩", document.document_id);
+        let query = format!(
+            r#"
+            UPDATE {} SET
+                company_id = $company_id,
+                deal_id = $deal_id,
+                filename = $filename,
+                document_type = $document_type,
+                file_size = $file_size,
+                storage_path = $storage_path,
+                user_id = $user_id,
+                upload_timestamp = <datetime> $upload_timestamp,
+                status = $status,
+                content = $content,
+                page_count = $page_count,
+                processing_progress = $processing_progress,
+                error_message = $error_message,
+                retry_count = $retry_count,
+                processing_started_at = IF $processing_started_at != NONE THEN <datetime> $processing_started_at ELSE NONE END,
+                processing_completed_at = IF $processing_completed_at != NONE THEN <datetime> $processing_completed_at ELSE NONE END,
+                created_at = <datetime> $created_at,
+                updated_at = time::now()
+            RETURN *
+        "#,
+            record_id
+        );
+
+        let mut result = self
             .db
-            .update(("documents", document.document_id.to_string()))
-            .content(updated_doc)
+            .query(query)
+            .bind(("company_id", document.company_id.to_string()))
+            .bind(("deal_id", document.deal_id.map(|id| id.to_string())))
+            .bind(("filename", document.filename))
+            .bind(("document_type", document.document_type))
+            .bind(("file_size", document.file_size))
+            .bind((
+                "storage_path",
+                document.storage_path.clone().unwrap_or_default(),
+            ))
+            .bind(("user_id", document.user_id.map(|id| id.to_string())))
+            .bind(("upload_timestamp", upload_timestamp_str))
+            .bind(("status", document.status))
+            .bind(("content", document.content))
+            .bind(("page_count", document.page_count))
+            .bind(("processing_progress", document.processing_progress))
+            .bind(("error_message", document.error_message))
+            .bind(("retry_count", document.retry_count))
+            .bind(("processing_started_at", processing_started_str))
+            .bind(("processing_completed_at", processing_completed_str))
+            .bind(("created_at", created_at_str))
             .await
             .context("Failed to update document")?;
 
-        updated.context("Failed to update document: no result returned")
+        let updated: Vec<Document> = result.take(0).context("Failed to parse updated document")?;
+        updated
+            .into_iter()
+            .next()
+            .context("Failed to update document: no result returned")
     }
 
     /// Delete a document and all its embeddings
@@ -429,7 +744,17 @@ impl SurrealDBService {
             .await
             .context("Failed to query documents by status")?;
 
-        let documents: Vec<Document> = result.take(0).context("Failed to parse documents")?;
+        let documents: Vec<Document> = result.take(0).map_err(|e| {
+            tracing::error!(
+                "Failed to parse documents from SurrealDB (status='{}'): {:?}",
+                status,
+                e
+            );
+            tracing::error!(
+                "This may indicate documents in SurrealDB don't have all required fields"
+            );
+            anyhow::anyhow!("Failed to parse documents: {}", e)
+        })?;
 
         debug!(
             "Found {} documents with status '{}'",
@@ -457,13 +782,20 @@ impl SurrealDBService {
 
         let status_owned = status.to_string();
         let now = Utc::now();
-        let mut query = String::from("UPDATE $document_id SET status = $status, updated_at = $now");
+        let now_str = now.to_rfc3339();
+        let record_id = format!("documents:⟨{}⟩", document_id);
+
+        // Build query with record ID directly in the query string
+        let mut query = format!(
+            "UPDATE {} SET status = $status, updated_at = <datetime> $now",
+            record_id
+        );
 
         // Add processing timestamps based on status
         if status == "processing" {
-            query.push_str(", processing_started_at = $now");
+            query.push_str(", processing_started_at = <datetime> $now");
         } else if status == "completed" || status == "failed" {
-            query.push_str(", processing_completed_at = $now");
+            query.push_str(", processing_completed_at = <datetime> $now");
         }
 
         // Add optional fields
@@ -474,12 +806,14 @@ impl SurrealDBService {
             query.push_str(", error_message = $error_message");
         }
 
+        // Add RETURN clause to get the updated document back
+        query.push_str(" RETURN *");
+
         let mut db_query = self
             .db
             .query(query)
-            .bind(("document_id", format!("documents:{}", document_id)))
             .bind(("status", status_owned))
-            .bind(("now", now));
+            .bind(("now", now_str));
 
         if let Some(err) = error_message {
             db_query = db_query.bind(("error_message", err));
@@ -498,13 +832,15 @@ impl SurrealDBService {
     pub async fn increment_retry_count(&self, document_id: Uuid) -> Result<i32> {
         debug!("Incrementing retry count for document {}", document_id);
 
-        let query =
-            "UPDATE $document_id SET retry_count += 1, updated_at = time::now() RETURN retry_count";
+        let record_id = format!("documents:⟨{}⟩", document_id);
+        let query = format!(
+            "UPDATE {} SET retry_count += 1, updated_at = time::now() RETURN retry_count",
+            record_id
+        );
 
         let mut result = self
             .db
             .query(query)
-            .bind(("document_id", format!("documents:{}", document_id)))
             .await
             .context("Failed to increment retry count")?;
 
@@ -528,24 +864,46 @@ impl SurrealDBService {
     ///
     /// Returns true if the document was successfully claimed for processing
     pub async fn claim_document_for_processing(&self, document_id: Uuid) -> Result<bool> {
-        debug!(
-            "Attempting to claim document {} for processing",
-            document_id
-        );
+        // First, check current status for debugging using proper record ID syntax
+        let check_query = "SELECT status FROM type::thing('documents', $document_id)";
+        let mut check_result = self
+            .db
+            .query(check_query)
+            .bind(("document_id", document_id.to_string()))
+            .await?;
+
+        #[derive(Deserialize)]
+        struct StatusCheck {
+            status: String,
+        }
+
+        let current_status: Vec<StatusCheck> = check_result.take(0).unwrap_or_default();
+        if let Some(status_obj) = current_status.first() {
+            info!(
+                "📊 Current status in SurrealDB for document {}: '{}'",
+                document_id, status_obj.status
+            );
+        } else {
+            warn!("⚠️  Document {} not found in SurrealDB!", document_id);
+        }
 
         // Atomic update: only update if status is 'uploaded' or 'queued'
-        let query = r#"
-            UPDATE $document_id SET
+        // Use record ID format that works with UPDATE
+        let record_id = format!("documents:⟨{}⟩", document_id);
+        let query = format!(
+            r#"
+            UPDATE {} SET
                 status = 'processing',
                 processing_started_at = time::now(),
                 updated_at = time::now()
             WHERE status IN ['uploaded', 'queued']
-        "#;
+        "#,
+            record_id
+        );
 
         let mut result = self
             .db
             .query(query)
-            .bind(("document_id", format!("documents:{}", document_id)))
             .await
             .context("Failed to claim document for processing")?;
 
@@ -554,10 +912,14 @@ impl SurrealDBService {
 
         if claimed {
             info!(
-                "Successfully claimed document {} for processing",
+                "✅ Successfully claimed document {} for processing (status changed to 'processing')",
                 document_id
             );
         } else {
+            info!(
+                "❌ Failed to claim document {} - current status is NOT 'uploaded' or 'queued'",
+                document_id
+            );
             debug!(
                 "Document {} already being processed or not available",
                 document_id
@@ -581,14 +943,116 @@ impl SurrealDBService {
             embedding.document_id, embedding.chunk_index
         );
 
-        let created: Option<DocumentEmbedding> = self
-            .db
-            .create(("document_embeddings", embedding.embedding_id.to_string()))
-            .content(embedding)
-            .await
-            .context("Failed to create embedding")?;
+        // Convert DateTime to RFC3339 string for SurrealDB compatibility
+        let created_at_str = embedding.created_at.to_rfc3339();
 
-        created.context("Failed to create embedding: no result returned")
+        // Use raw query with bindings to properly handle DateTime types
+        // Use angle brackets for UUIDs with hyphens in SurrealDB
+        // Note: embedding_id is encoded in the record ID, so we don't set it as a field
+        // RETURN AFTER to get the created record's ID as a simple string
+        let record_id = format!("document_embeddings:⟨{}⟩", embedding.embedding_id);
+        let query = format!(
+            r#"
+            CREATE {} SET
+                document_id = $document_id,
+                company_id = $company_id,
+                deal_id = $deal_id,
+                user_id = $user_id,
+                chunk_index = $chunk_index,
+                chunk_text = $chunk_text,
+                chunk_position = $chunk_position,
+                page_number = $page_number,
+                embedding = $embedding,
+                created_at = <datetime> $created_at
+            RETURN {{
+                id: string::split(meta::id(id), ':')[1],
+                document_id: document_id,
+                company_id: company_id,
+                deal_id: deal_id,
+                user_id: user_id,
+                chunk_index: chunk_index,
+                chunk_text: chunk_text,
+                chunk_position: chunk_position,
+                page_number: page_number,
+                embedding: embedding,
+                created_at: created_at
+            }}
+        "#,
+            record_id
+        );
+
+        let mut result = self
+            .db
+            .query(query)
+            .bind(("document_id", embedding.document_id.to_string()))
+            .bind(("company_id", embedding.company_id.to_string()))
+            .bind(("deal_id", embedding.deal_id.map(|id| id.to_string())))
+            .bind(("user_id", embedding.user_id.map(|id| id.to_string())))
+            .bind(("chunk_index", embedding.chunk_index))
+            .bind(("chunk_text", embedding.chunk_text.clone()))
+            .bind(("chunk_position", embedding.chunk_position))
+            .bind(("page_number", embedding.page_number))
+            .bind(("embedding", embedding.embedding.clone()))
+            .bind(("created_at", created_at_str))
+            .await
+            .map_err(|e| {
+                error!("Failed to create embedding in SurrealDB: {:#}", e);
+                anyhow::anyhow!("Failed to create embedding: {:#}", e)
+            })?;
+
+        // Intermediate struct to deserialize the response without custom serde
+        #[derive(Deserialize)]
+        struct RawEmbedding {
+            id: String,
+            document_id: String,
+            company_id: String,
+            deal_id: Option<String>,
+            user_id: Option<String>,
+            chunk_index: usize,
+            chunk_text: String,
+            chunk_position: usize,
+            page_number: Option<i32>,
+            embedding: Vec<f32>,
+            created_at: String,
+        }
+
+        let raw: Vec<RawEmbedding> = result.take(0).map_err(|e| {
+            error!("Failed to parse created embedding: {:#}", e);
+            anyhow::anyhow!("Failed to parse created embedding: {:#}", e)
+        })?;
+
+        let raw_embedding = raw
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Failed to create embedding: no result returned"))?;
+
+        // Convert to DocumentEmbedding
+        Ok(DocumentEmbedding {
+            embedding_id: Uuid::parse_str(&raw_embedding.id)
+                .context("Failed to parse embedding_id")?,
+            document_id: Uuid::parse_str(&raw_embedding.document_id)
+                .context("Failed to parse document_id")?,
+            company_id: Uuid::parse_str(&raw_embedding.company_id)
+                .context("Failed to parse company_id")?,
+            deal_id: raw_embedding
+                .deal_id
+                .map(|id| Uuid::parse_str(&id))
+                .transpose()
+                .context("Failed to parse deal_id")?,
+            user_id: raw_embedding
+                .user_id
+                .map(|id| Uuid::parse_str(&id))
+                .transpose()
+                .context("Failed to parse user_id")?,
+            chunk_index: raw_embedding.chunk_index,
+            chunk_text: raw_embedding.chunk_text,
+            chunk_position: raw_embedding.chunk_position,
+            page_number: raw_embedding.page_number,
+            embedding: raw_embedding.embedding,
+            created_at: DateTime::parse_from_rfc3339(&raw_embedding.created_at)
+                .context("Failed to parse created_at")?
+                .with_timezone(&Utc),
+        })
     }
 
     /// Create multiple embeddings in batch
@@ -599,12 +1063,25 @@ impl SurrealDBService {
         info!("Creating {} embeddings in batch", embeddings.len());
 
         let mut created_embeddings = Vec::new();
+        let total = embeddings.len();
 
-        for embedding in embeddings {
-            let created = self.create_embedding(embedding).await?;
+        for (i, embedding) in embeddings.into_iter().enumerate() {
+            let created = self.create_embedding(embedding).await.map_err(|e| {
+                error!("Failed to create embedding {}/{}: {:#}", i + 1, total, e);
+                e
+            })?;
             created_embeddings.push(created);
+
+            // Log progress every 100 embeddings
+            if (i + 1) % 100 == 0 || i + 1 == total {
+                debug!("Created {}/{} embeddings", i + 1, total);
+            }
         }
 
+        info!(
+            "Successfully created {} embeddings",
+            created_embeddings.len()
+        );
         Ok(created_embeddings)
     }
 
@@ -870,6 +1347,7 @@ mod tests {
             filename: "test.pdf".to_string(),
             document_type: "credit_agreement".to_string(),
             file_size: 1024,
+            storage_path: Some("path/to/file.pdf".to_string()),
             user_id: Some(Uuid::new_v4()),
             upload_timestamp: Utc::now(),
             status: "completed".to_string(),
