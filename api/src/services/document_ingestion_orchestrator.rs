@@ -169,6 +169,7 @@ impl DocumentIngestionOrchestrator {
                 .to_string(),
             document_type: request.document_type.clone(),
             file_size: 0, // File size not available from PDF metadata
+            storage_path: Some(request.file_path.clone()), // Use the file path as storage path
             user_id: None,
             upload_timestamp: Utc::now(),
             status: "processing".to_string(),

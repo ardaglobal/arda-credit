@@ -185,6 +185,52 @@ impl ApiServer {
             }
         };
 
+        // Initialize job queue worker if SurrealDB is available
+        if let Some(ref surreal_service) = surrealdb_service {
+            info!("🔄 Initializing document ingestion job queue worker");
+
+            // Initialize embedding service
+            match crate::services::document_ingestion::EmbeddingService::from_env() {
+                Ok(embedding_service) => {
+                    info!("✅ Embedding service initialized successfully");
+                    let embedding_service = Arc::new(embedding_service);
+
+                    // Initialize ingestion orchestrator
+                    info!("🔧 Creating ingestion orchestrator...");
+                    let orchestrator = Arc::new(
+                        crate::services::document_ingestion::IngestionOrchestrator::new(
+                            surreal_service.clone(),
+                            embedding_service,
+                        ),
+                    );
+
+                    // Initialize and start job queue worker
+                    info!("⚙️  Starting job queue worker...");
+                    let job_config =
+                        crate::services::document_ingestion::JobQueueConfig::from_env();
+                    let mut worker = crate::services::document_ingestion::JobQueueWorker::new(
+                        surreal_service.clone(),
+                        job_config,
+                        orchestrator,
+                    );
+
+                    // Start the worker in the background
+                    let _shutdown_tx = worker.start();
+                    info!("✅ Document ingestion job queue worker started successfully");
+
+                    // Note: We're not storing the shutdown_tx or worker handle in state
+                    // The worker will run for the lifetime of the application
+                    // In production, you may want to add graceful shutdown handling
+                }
+                Err(e) => {
+                    warn!("⚠️  Failed to initialize embedding service: {}", e);
+                    warn!("💡 Document processing will not be available - set MODAL_EMBEDDING_URL or OPENAI_API_KEY");
+                }
+            }
+        } else {
+            info!("ℹ️  SurrealDB service not available - document processing disabled");
+        }
+
         // Create API state
         let state = ApiState {
             pool,
@@ -356,6 +402,42 @@ impl ApiServer {
                 None
             }
         };
+
+        // Start document ingestion worker if SurrealDB is available
+        if let Some(ref surreal_db) = surrealdb_service {
+            // Try to initialize embedding service (supports both Modal and OpenAI)
+            match crate::services::document_ingestion::embedding_service::EmbeddingService::from_env(
+            ) {
+                Ok(embedding_service) => {
+                    info!("🚀 Starting document ingestion worker");
+
+                    let embedding_service = Arc::new(embedding_service);
+
+                    // Create ingestion orchestrator
+                    let orchestrator = Arc::new(crate::services::document_ingestion::ingestion_orchestrator::IngestionOrchestrator::new(
+                        Arc::clone(surreal_db),
+                        embedding_service,
+                    ));
+
+                    // Create and start job queue worker
+                    let config = crate::services::document_ingestion::job_queue_worker::JobQueueConfig::from_env();
+                    let mut worker = crate::services::document_ingestion::job_queue_worker::JobQueueWorker::new(
+                        Arc::clone(surreal_db),
+                        config,
+                        orchestrator as Arc<dyn crate::services::document_ingestion::job_queue_worker::JobProcessor>,
+                    );
+
+                    worker.start();
+                    info!("✅ Document ingestion worker started successfully");
+                }
+                Err(e) => {
+                    warn!("⚠️  Failed to initialize embedding service: {}", e);
+                    warn!(
+                        "💡 Set MODAL_EMBEDDING_URL or OPENAI_API_KEY to enable document ingestion"
+                    );
+                }
+            }
+        }
 
         let state = ApiState {
             pool,

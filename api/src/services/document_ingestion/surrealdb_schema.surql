@@ -11,6 +11,7 @@ DEFINE FIELD deal_id ON documents TYPE option<string>;
 DEFINE FIELD filename ON documents TYPE string;
 DEFINE FIELD document_type ON documents TYPE string;
 DEFINE FIELD file_size ON documents TYPE int;
+DEFINE FIELD storage_path ON documents TYPE option<string>;
 DEFINE FIELD user_id ON documents TYPE option<string>;
 DEFINE FIELD upload_timestamp ON documents TYPE datetime DEFAULT time::now();
 DEFINE FIELD status ON documents TYPE string DEFAULT 'uploaded';
@@ -41,7 +42,7 @@ DEFINE INDEX idx_document_type ON documents FIELDS document_type;
 -- Stores vector embeddings for semantic search
 DEFINE TABLE document_embeddings SCHEMAFULL;
 
-DEFINE FIELD embedding_id ON document_embeddings TYPE string;
+-- Note: embedding_id is stored in the record ID itself (e.g., document_embeddings:⟨uuid⟩)
 DEFINE FIELD document_id ON document_embeddings TYPE string;
 DEFINE FIELD company_id ON document_embeddings TYPE string;
 DEFINE FIELD deal_id ON document_embeddings TYPE option<string>;
@@ -52,7 +53,7 @@ DEFINE FIELD chunk_text ON document_embeddings TYPE string;
 DEFINE FIELD chunk_position ON document_embeddings TYPE int;
 DEFINE FIELD page_number ON document_embeddings TYPE option<int>;
 DEFINE FIELD embedding ON document_embeddings TYPE array<float>;
-    -- Vector embedding (1536 dimensions for text-embedding-3-small)
+    -- Vector embedding (4096 dimensions for Qwen3-Embedding-8B)
 DEFINE FIELD created_at ON document_embeddings TYPE datetime DEFAULT time::now();
 
 -- Indexes for efficient querying
@@ -63,7 +64,9 @@ DEFINE INDEX idx_embedding_user ON document_embeddings FIELDS user_id;
 
 -- MTREE Index for fast vector similarity search
 -- Uses cosine similarity for semantic search
-DEFINE INDEX idx_embedding_vector ON document_embeddings FIELDS embedding MTREE DIMENSION 1536 DIST COSINE;
+-- Dimension: 4096 for Qwen3-Embedding-8B model
+DEFINE INDEX idx_embedding_vector ON document_embeddings FIELDS embedding MTREE DIMENSION 4096 DIST COSINE;
 
 -- Full-text search index for hybrid search (keyword search)
-DEFINE INDEX idx_embedding_fulltext ON document_embeddings FIELDS chunk_text SEARCH ANALYZER ascii BM25;
+-- TODO: Re-enable when compatible analyzer is available in SurrealDB Cloud
+-- DEFINE INDEX idx_embedding_fulltext ON document_embeddings FIELDS chunk_text SEARCH ANALYZER ascii BM25;

@@ -226,17 +226,37 @@ impl JobQueueWorker {
         let mut tasks = Vec::new();
 
         for document in all_docs {
+            info!(
+                "📋 Spawning processing task for document {} ({})",
+                document.document_id, document.filename
+            );
+
             let db = Arc::clone(db);
             let processor = Arc::clone(processor);
             let semaphore = Arc::clone(semaphore);
             let config = config.clone();
 
             // Acquire semaphore permit
+            info!(
+                "🎫 Acquiring semaphore permit for document {}",
+                document.document_id
+            );
             let permit = semaphore.clone().acquire_owned().await.unwrap();
+            info!(
+                "✅ Semaphore permit acquired for document {}",
+                document.document_id
+            );
 
             let task = tokio::spawn(async move {
+                info!("🚀 Task started for document {}", document.document_id);
                 let result =
                     Self::process_single_document(&db, &document, &processor, &config).await;
+
+                info!(
+                    "📤 Task completed for document {} with result: {:?}",
+                    document.document_id,
+                    result.as_ref().map(|_| "Ok").map_err(|e| e.to_string())
+                );
 
                 // Release permit
                 drop(permit);
@@ -269,15 +289,23 @@ impl JobQueueWorker {
     ) -> Result<()> {
         let document_id = document.document_id;
 
+        info!(
+            "🔄 Attempting to claim document {} ({}) for processing",
+            document_id, document.filename
+        );
+
         // Atomically claim document for processing
         let claimed = db.claim_document_for_processing(document_id).await?;
         if !claimed {
-            debug!("Document {} already being processed", document_id);
+            info!(
+                "⏭️  Document {} already being processed, skipping",
+                document_id
+            );
             return Ok(());
         }
 
         info!(
-            "Processing document {} ({})",
+            "✅ Claimed document {} ({}), starting processing",
             document_id, document.filename
         );
 

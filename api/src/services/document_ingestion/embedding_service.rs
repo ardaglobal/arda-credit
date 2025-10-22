@@ -544,12 +544,8 @@ impl EmbeddingService {
             model: self.model.as_str().to_string(),
         };
 
-        // Call Modal endpoint
-        let url = if self.base_url.ends_with('/') {
-            format!("{}embed", self.base_url)
-        } else {
-            format!("{}/embed", self.base_url)
-        };
+        // Call Modal endpoint - Modal expects POST to root path, not /embed
+        let url = self.base_url.trim_end_matches('/').to_string();
 
         let mut attempt = 0;
         let mut backoff = self.retry_config.initial_backoff;

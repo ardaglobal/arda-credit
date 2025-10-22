@@ -14,7 +14,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -323,6 +323,7 @@ pub async fn upload_document(
             filename: original_filename.clone(),
             document_type: document_type_for_surreal,
             file_size: storage_metadata.file_size_bytes as i64,
+            storage_path: Some(storage_metadata.storage_path.clone()),
             user_id: Some(user_id),
             upload_timestamp: chrono::Utc::now(),
             status: "uploaded".to_string(),
@@ -337,15 +338,41 @@ pub async fn upload_document(
             updated_at: chrono::Utc::now(),
         };
 
-        if let Err(e) = surrealdb_service.create_document(surreal_doc).await {
-            error!("Failed to create SurrealDB document record: {}", e);
-            // Don't fail the upload if SurrealDB storage fails
-            // The document is still in PostgreSQL and can be reprocessed
-        } else {
-            info!(
-                document_id = %document.id,
-                "SurrealDB document record created successfully"
-            );
+        // Retry SurrealDB document creation with exponential backoff
+        let mut retry_count = 0;
+        let max_retries = 3;
+        let mut backoff_ms = 100;
+
+        loop {
+            match surrealdb_service.create_document(surreal_doc.clone()).await {
+                Ok(_) => {
+                    info!(
+                        document_id = %document.id,
+                        "SurrealDB document record created successfully"
+                    );
+                    break;
+                }
+                Err(e) => {
+                    retry_count += 1;
+                    if retry_count >= max_retries {
+                        error!(
+                            "Failed to create SurrealDB document record after {} retries: {}",
+                            max_retries, e
+                        );
+                        // Don't fail the upload if SurrealDB storage fails
+                        // The document is still in PostgreSQL and can be reprocessed
+                        break;
+                    }
+
+                    warn!(
+                        "Failed to create SurrealDB document record (attempt {}/{}): {}. Retrying in {}ms...",
+                        retry_count, max_retries, e, backoff_ms
+                    );
+
+                    tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
+                    backoff_ms *= 2; // Exponential backoff
+                }
+            }
         }
     } else {
         debug!("SurrealDB service not available, skipping document metadata storage");
