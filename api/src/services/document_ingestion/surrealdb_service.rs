@@ -1000,58 +1000,157 @@ impl SurrealDBService {
                 anyhow::anyhow!("Failed to create embedding: {:#}", e)
             })?;
 
-        // Intermediate struct to deserialize the response without custom serde
-        #[derive(Deserialize)]
-        struct RawEmbedding {
-            id: String,
-            document_id: String,
-            company_id: String,
-            deal_id: Option<String>,
-            user_id: Option<String>,
-            chunk_index: usize,
-            chunk_text: String,
-            chunk_position: usize,
-            page_number: Option<i32>,
-            embedding: Vec<f32>,
-            created_at: String,
-        }
-
-        let raw: Vec<RawEmbedding> = result.take(0).map_err(|e| {
+        // Parse as JSON to handle SurrealDB's native types
+        let raw_results: Vec<serde_json::Value> = result.take(0).map_err(|e| {
             error!("Failed to parse created embedding: {:#}", e);
             anyhow::anyhow!("Failed to parse created embedding: {:#}", e)
         })?;
 
-        let raw_embedding = raw
+        debug!("Raw results from SurrealDB: {:?}", raw_results);
+
+        let raw_json = raw_results
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("Failed to create embedding: no result returned"))?;
 
+        debug!(
+            "Raw JSON: {}",
+            serde_json::to_string_pretty(&raw_json).unwrap_or_default()
+        );
+
+        let obj = raw_json.as_object().ok_or_else(|| {
+            error!("Response is not an object: {:?}", raw_json);
+            anyhow::anyhow!("Response is not an object")
+        })?;
+
+        // Parse fields from JSON - handle id field being None or missing
+        let embedding_id = if let Some(id_value) = obj.get("id") {
+            debug!("Found id field: {:?}", id_value);
+            if id_value.is_null() {
+                debug!("id field is null, using original embedding_id");
+                embedding.embedding_id
+            } else if let Some(id_str) = id_value.as_str() {
+                Uuid::parse_str(id_str).unwrap_or_else(|e| {
+                    warn!("Failed to parse id '{}': {}, using original", id_str, e);
+                    embedding.embedding_id
+                })
+            } else {
+                debug!("id field is not a string: {:?}, using original", id_value);
+                embedding.embedding_id
+            }
+        } else {
+            debug!("id field not present, using original embedding_id");
+            embedding.embedding_id
+        };
+
+        // If response is missing fields, it means RETURN clause didn't work
+        // Fall back to using the original embedding data
+        let document_id = obj
+            .get("document_id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .unwrap_or_else(|| {
+                debug!("document_id not in response, using original");
+                embedding.document_id
+            });
+
+        let company_id = obj
+            .get("company_id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .unwrap_or_else(|| {
+                debug!("company_id not in response, using original");
+                embedding.company_id
+            });
+
+        let deal_id = obj
+            .get("deal_id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .or(embedding.deal_id);
+
+        let user_id = obj
+            .get("user_id")
+            .and_then(|v| v.as_str())
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .or(embedding.user_id);
+
+        let chunk_index = obj
+            .get("chunk_index")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as usize)
+            .unwrap_or_else(|| {
+                debug!("chunk_index not in response, using original");
+                embedding.chunk_index
+            });
+
+        let chunk_text = obj
+            .get("chunk_text")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                debug!("chunk_text not in response, using original");
+                embedding.chunk_text.clone()
+            });
+
+        let chunk_position = obj
+            .get("chunk_position")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as usize)
+            .unwrap_or_else(|| {
+                debug!("chunk_position not in response, using original");
+                embedding.chunk_position
+            });
+
+        let page_number = obj
+            .get("page_number")
+            .and_then(|v| v.as_i64())
+            .map(|n| n as i32)
+            .or(embedding.page_number);
+
+        let embedding_vec = obj
+            .get("embedding")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_f64().map(|f| f as f32))
+                    .collect::<Vec<f32>>()
+            })
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| {
+                debug!("embedding not in response, using original");
+                embedding.embedding.clone()
+            });
+
+        let created_at =
+            if let Some(created_at_str) = obj.get("created_at").and_then(|v| v.as_str()) {
+                DateTime::parse_from_rfc3339(created_at_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|e| {
+                        warn!(
+                            "Failed to parse created_at '{}': {}, using original",
+                            created_at_str, e
+                        );
+                        embedding.created_at
+                    })
+            } else {
+                debug!("created_at not in response, using original");
+                embedding.created_at
+            };
+
         // Convert to DocumentEmbedding
         Ok(DocumentEmbedding {
-            embedding_id: Uuid::parse_str(&raw_embedding.id)
-                .context("Failed to parse embedding_id")?,
-            document_id: Uuid::parse_str(&raw_embedding.document_id)
-                .context("Failed to parse document_id")?,
-            company_id: Uuid::parse_str(&raw_embedding.company_id)
-                .context("Failed to parse company_id")?,
-            deal_id: raw_embedding
-                .deal_id
-                .map(|id| Uuid::parse_str(&id))
-                .transpose()
-                .context("Failed to parse deal_id")?,
-            user_id: raw_embedding
-                .user_id
-                .map(|id| Uuid::parse_str(&id))
-                .transpose()
-                .context("Failed to parse user_id")?,
-            chunk_index: raw_embedding.chunk_index,
-            chunk_text: raw_embedding.chunk_text,
-            chunk_position: raw_embedding.chunk_position,
-            page_number: raw_embedding.page_number,
-            embedding: raw_embedding.embedding,
-            created_at: DateTime::parse_from_rfc3339(&raw_embedding.created_at)
-                .context("Failed to parse created_at")?
-                .with_timezone(&Utc),
+            embedding_id,
+            document_id,
+            company_id,
+            deal_id,
+            user_id,
+            chunk_index,
+            chunk_text,
+            chunk_position,
+            page_number,
+            embedding: embedding_vec,
+            created_at,
         })
     }
 
