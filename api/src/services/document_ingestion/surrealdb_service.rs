@@ -368,8 +368,6 @@ pub struct SearchResult {
 /// - Multi-tenant support via company_id
 pub struct SurrealDBService {
     db: Surreal<Any>,
-    namespace: String,
-    database: String,
 }
 
 impl SurrealDBService {
@@ -428,11 +426,7 @@ impl SurrealDBService {
 
         info!("Successfully connected to SurrealDB");
 
-        Ok(Self {
-            db,
-            namespace: namespace.to_string(),
-            database: database.to_string(),
-        })
+        Ok(Self { db })
     }
 
     /// Initialize the schema (create tables and indexes)

@@ -15,7 +15,6 @@
 //! - `ai`: AI-powered features
 
 pub mod ai;
-pub mod ai_search;
 pub mod auth;
 pub mod companies;
 pub mod core;
@@ -27,7 +26,6 @@ pub mod users;
 
 // Re-export all handler functions for backward compatibility
 pub use ai::*;
-pub use ai_search::*;
 pub use auth::*;
 pub use core::*;
 pub use deals::*;

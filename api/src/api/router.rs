@@ -14,10 +14,8 @@ use crate::api::openapi::ApiDoc;
 use crate::config::paths;
 use crate::config::types::UserType;
 use crate::handlers::{
-    // Deals
+    // Companies
     companies as company_handlers,
-    // Documents (companies module)
-    companies::documents as company_document_handlers,
     // Finance
     get_account_financial_transactions,
     // Magic Link Auth
@@ -537,52 +535,8 @@ pub fn create_router(state: ApiState) -> Router {
             delete(company_handlers::revoke_wallet_permission),
         )
         // ========================================================================
-        // DOCUMENT MANAGEMENT ENDPOINTS
+        // DOCUMENT RAG ENDPOINTS (AI-powered search and question answering)
         // ========================================================================
-        .route(
-            paths::DOCUMENT_UPLOAD,
-            post(company_document_handlers::upload_document),
-        )
-        .route(
-            paths::DOCUMENT_DOWNLOAD,
-            get(company_document_handlers::download_document),
-        )
-        .route(
-            paths::DOCUMENT_BY_ID,
-            get(company_document_handlers::get_document),
-        )
-        .route(
-            paths::DOCUMENT_BY_ID,
-            delete(company_document_handlers::delete_document),
-        )
-        .route(
-            paths::DOCUMENTS,
-            get(company_document_handlers::list_documents),
-        )
-        .route(
-            paths::DOCUMENT_APPROVE,
-            post(company_document_handlers::approve_document),
-        )
-        .route(
-            paths::DOCUMENT_REJECT,
-            post(company_document_handlers::reject_document),
-        )
-        .route(
-            paths::DOCUMENT_VERIFY,
-            post(company_document_handlers::verify_document),
-        )
-        .route(
-            paths::DOCUMENT_AUDIT,
-            get(company_document_handlers::get_audit_logs),
-        )
-        .route(
-            paths::DOCUMENT_HEALTH,
-            get(company_document_handlers::document_service_health_check),
-        )
-        .route(
-            paths::DOCUMENT_STATUS,
-            get(company_document_handlers::get_document_status),
-        )
         // Document RAG endpoints (vector search + AI inference)
         .route(
             paths::DOCUMENT_SEARCH,
@@ -596,8 +550,6 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DOCUMENT_ASK_STREAM,
             post(crate::handlers::document_rag::rag_query_stream),
         )
-        // AI Analysis endpoints
-        .merge(crate::handlers::ai::analysis::create_ai_analysis_router())
         // Faucet endpoints (local/staging only)
         .route(
             paths::FAUCET_INFO,

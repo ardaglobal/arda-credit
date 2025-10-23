@@ -29,8 +29,6 @@ struct ModalEmbeddingRequest {
 struct ModalEmbeddingResponse {
     embeddings: Vec<Vec<f32>>,
     #[serde(default)]
-    model: Option<String>,
-    #[serde(default)]
     dimensions: Option<usize>,
 }
 

@@ -140,7 +140,7 @@ pub struct SourceDto {
         (status = 500, description = "Internal server error"),
         (status = 503, description = "Service unavailable - SurrealDB or embedding service not configured")
     ),
-    tag = "Documents - AI Search",
+    tag = "Documents",
     security(
         ("bearer_auth" = [])
     )
@@ -260,7 +260,7 @@ pub async fn vector_search(
         (status = 500, description = "Internal server error"),
         (status = 503, description = "Service unavailable - RAG services not configured")
     ),
-    tag = "Documents - AI Search",
+    tag = "Documents",
     security(
         ("bearer_auth" = [])
     )
@@ -386,7 +386,7 @@ pub async fn rag_query(
         (status = 500, description = "Internal server error"),
         (status = 503, description = "Service unavailable - RAG services not configured")
     ),
-    tag = "Documents - AI Search",
+    tag = "Documents",
     security(
         ("bearer_auth" = [])
     )
