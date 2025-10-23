@@ -21,12 +21,6 @@ pub use crate::handlers::{
     AdminUserIdentity,
     AdminUserListResponse,
     AdminWithdrawalDashboard,
-    // AI types
-    AnalysisHistoryResponse,
-    AnalysisSummary,
-    AnalyticsDashboardResponse,
-    AnalyzeDocumentQuery,
-    ApiError as AiApiError,
     ApproveWithdrawalRequest,
     BatchInfo,
     BatchListResponse,
@@ -52,7 +46,6 @@ pub use crate::handlers::{
     DealTransferResponse,
     DealTransferValidationResponse,
     DeleteDealResponse,
-    DocumentActivity,
     FinancialSummaryResponse,
     FinancialTransactionQuery,
     // Auth types
@@ -78,7 +71,6 @@ pub use crate::handlers::{
     RegisterUserRequest,
     RegisterUserResponse,
     RejectWithdrawalRequest,
-    RiskTrendPoint,
     SubmitKycRequest,
     SubmitKycResponse,
     SubmitTransactionRequest,
@@ -90,8 +82,6 @@ pub use crate::handlers::{
     TransactionUpdateEvent,
     TransactionUpdatesQuery,
     TransferDealOwnershipRequest,
-    TriggerAnalysisRequest,
-    TriggerAnalysisResponse,
     TriggerBatchResponse,
     UnifiedFinancialTransactionResponse,
     UpdateBatchProofRequest,
@@ -117,10 +107,6 @@ pub use crate::handlers::companies::{
 };
 pub use crate::handlers::users::balance::{
     AddressBalance, AddressBalanceResponse, UserBalanceResponse,
-};
-pub use crate::services::ai_analysis_service::{
-    AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis, ChangeCategory, ChangeType,
-    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, NegotiationInsight, RiskFactor,
 };
 // AvailableBalance removed - now using consolidated AddressBalance from balance handlers
 pub use crate::services::withdrawal_service::{
@@ -248,22 +234,17 @@ fn default_limit() -> u32 {
         crate::handlers::deals::documents::delete_document_handler,
         crate::handlers::deals::documents::get_document_stats,
 
+        // Document RAG endpoints (AI-powered search and question answering)
+        crate::handlers::document_rag::vector_search,
+        crate::handlers::document_rag::rag_query,
+        crate::handlers::document_rag::rag_query_stream,
+
         // Withdrawal endpoints
         crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint,
         crate::handlers::finance::withdrawals::get_user_withdrawal_history_endpoint,
         crate::handlers::finance::withdrawals::cancel_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_pending_withdrawals_endpoint,
-
-        // AI Analysis endpoints
-        crate::handlers::ai::analysis::analyze_document_diff,
-        crate::handlers::ai::analysis::process_chat_message,
-        crate::handlers::ai::analysis::get_negotiation_insights,
-        crate::handlers::ai::analysis::get_chat_history,
-        crate::handlers::ai::analysis::get_analysis_history,
-        crate::handlers::ai::analysis::trigger_analysis,
-        crate::handlers::ai::analysis::get_analytics_dashboard,
-
 
         // Faucet endpoints (local/staging only)
         crate::handlers::faucet::get_faucet_info,
@@ -330,9 +311,8 @@ fn default_limit() -> u32 {
         (name = "Company Memberships", description = "Company team member management with originator/investor profile type support. Users can have multiple profiles (originator and investor) in the same company."),
         (name = "Company Wallets", description = "Company wallet address management with permission-based access control. Wallet addresses belong to companies with granular user permissions. Only admin users can authorize transactions."),
         (name = "Deals", description = "Deal lifecycle management, marketplace operations, ownership transfers, and payment processing"),
-        (name = "State", description = "Blockchain state management, batch processing, ZK proof generation, and contract integration"),
+        (name = "State", description = "Blockchain state management, batch processing, ZK proof generation, transaction history, and contract integration"),
         (name = "Admin", description = "Administrative operations including KYC approval, withdrawal management, and platform oversight"),
-        (name = "Analytics", description = "Pool analytics, credit lines, transaction history, metrics, and AI-powered insights"),
         (name = "Payments", description = "Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines"),
         (name = "Dev", description = "Development and testing utilities: health checks, API info, faucet operations (local/staging only)")
     ),
@@ -385,15 +365,6 @@ fn default_limit() -> u32 {
         crate::dto::wallet_dto::WalletPermissionResponse,
         crate::handlers::companies::wallets::ListWalletsQuery,
 
-        // Document types
-        crate::handlers::companies::documents::DocumentUploadResponse,
-        crate::handlers::companies::documents::DocumentDownloadHeaders,
-        crate::handlers::companies::documents::DocumentVerificationResponse,
-        crate::handlers::companies::documents::DocumentListResponse,
-        crate::handlers::companies::documents::AuditLogsResponse,
-        crate::services::document_service::DocumentResponseDto,
-        crate::services::document_service::DocumentAuditLogDto,
-
         // Admin types
         AdminUserIdentity,
         AdminUserListResponse,
@@ -437,9 +408,18 @@ fn default_limit() -> u32 {
         DealTransferValidationResponse,
 
         // Deal Document types
+        crate::handlers::deals::documents::DealDocumentResponse,
         crate::handlers::deals::documents::DocumentUploadResponse,
         crate::handlers::deals::documents::DocumentListResponse,
         crate::handlers::deals::documents::DocumentStatsResponse,
+
+        // Document RAG types (AI-powered search and question answering)
+        crate::handlers::document_rag::VectorSearchRequest,
+        crate::handlers::document_rag::VectorSearchResponse,
+        crate::handlers::document_rag::SearchResultDto,
+        crate::handlers::document_rag::RagQueryRequest,
+        crate::handlers::document_rag::RagQueryResponse,
+        crate::handlers::document_rag::SourceDto,
 
         // State management types
         BatchInfo,
@@ -493,30 +473,6 @@ fn default_limit() -> u32 {
         ContractConfigQuery,
         TransactionUpdateEvent,
         TransactionUpdatesQuery,
-
-        // AI Analysis types
-        AnalyzeDocumentQuery,
-        AnalysisHistoryResponse,
-        AnalysisSummary,
-        AnalyticsDashboardResponse,
-        AiApiError,
-        DocumentActivity,
-        RiskTrendPoint,
-        TriggerAnalysisRequest,
-        TriggerAnalysisResponse,
-
-        // AI Service types
-        AiChatMessage,
-        AiChatRequest,
-        AiChatResponse,
-        ChangeAnalysis,
-        ChangeCategory,
-        ChangeType,
-        DocumentDiffRequest,
-        DocumentDiffResponse,
-        ImpactLevel,
-        NegotiationInsight,
-        RiskFactor,
 
         // Magic Link Authentication schemas (NEW)
         MagicLinkRequest,

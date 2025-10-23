@@ -35,7 +35,6 @@ pub struct EnhancedTextChunker {
     strategy: EnhancedChunkingStrategy,
     sentence_pattern: Regex,
     section_pattern: Regex,
-    financial_pattern: Regex,
 }
 
 impl EnhancedTextChunker {
@@ -44,17 +43,10 @@ impl EnhancedTextChunker {
         Self {
             strategy,
             // Sentence boundary detection (simplified without look-around)
-            sentence_pattern: Regex::new(
-                r"[.!?]\s+[A-Z]|[.!?]\n+|\n\n+"
-            ).unwrap(),
+            sentence_pattern: Regex::new(r"[.!?]\s+[A-Z]|[.!?]\n+|\n\n+").unwrap(),
             // Section heading detection
-            section_pattern: Regex::new(
-                r"(?m)^(?:#{1,6}\s+|\d+\.\s+|[IVX]+\.\s+|[A-Z][A-Z\s]+:)"
-            ).unwrap(),
-            // Financial terms that should stay together
-            financial_pattern: Regex::new(
-                r"\$[\d,]+\.?\d*|[\d,]+\.?\d*%|\d+\s+(?:basis\s+)?points?|LIBOR|SOFR|principal|interest|maturity|collateral|covenant"
-            ).unwrap(),
+            section_pattern: Regex::new(r"(?m)^(?:#{1,6}\s+|\d+\.\s+|[IVX]+\.\s+|[A-Z][A-Z\s]+:)")
+                .unwrap(),
         }
     }
 
@@ -281,7 +273,6 @@ impl EnhancedTextChunker {
                 text: text.to_string(),
                 start_pos: 0,
                 end_pos: text.len(),
-                heading: None,
             }];
         }
 
@@ -291,7 +282,6 @@ impl EnhancedTextChunker {
                 text: text[..matches[0].start()].to_string(),
                 start_pos: 0,
                 end_pos: matches[0].start(),
-                heading: None,
             });
         }
 
@@ -308,7 +298,6 @@ impl EnhancedTextChunker {
                 text: text[start..end].to_string(),
                 start_pos: start,
                 end_pos: end,
-                heading: Some(matches[i].as_str().to_string()),
             });
         }
 
@@ -388,7 +377,6 @@ struct Section {
     text: String,
     start_pos: usize,
     end_pos: usize,
-    heading: Option<String>,
 }
 
 #[cfg(test)]
