@@ -176,6 +176,7 @@ impl EmbeddingMetrics {
 /// - Embedding validation
 /// - In-memory caching
 /// - Metrics tracking
+#[derive(Clone)]
 pub struct EmbeddingService {
     client: Client,
     provider: EmbeddingProvider,
@@ -324,6 +325,42 @@ impl EmbeddingService {
             .into_iter()
             .next()
             .context("No embedding returned")
+    }
+
+    /// Warm up the embedding service (Modal cold start mitigation)
+    ///
+    /// Sends a dummy request to wake up Modal servers so subsequent requests are faster.
+    /// Should be called on server startup.
+    ///
+    /// # Returns
+    /// * Ok(()) on success or if warmup fails (non-fatal)
+    pub async fn warmup(&self) -> Result<()> {
+        info!(
+            "🔥 Warming up embedding service ({:?} provider)...",
+            self.provider
+        );
+
+        let warmup_text = "Initializing embedding service for faster responses";
+
+        match tokio::time::timeout(Duration::from_secs(30), self.embed(warmup_text)).await {
+            Ok(Ok(embedding)) => {
+                info!(
+                    "✅ Embedding service warmup successful (vector dim: {})",
+                    embedding.len()
+                );
+                Ok(())
+            }
+            Ok(Err(e)) => {
+                warn!("⚠️ Embedding service warmup failed: {:#}", e);
+                warn!("Service will still work, but first request may be slower");
+                Ok(()) // Don't fail server startup if warmup fails
+            }
+            Err(_) => {
+                warn!("⚠️ Embedding service warmup timed out after 30s");
+                warn!("Service will still work, but first request may be slower");
+                Ok(()) // Don't fail server startup if warmup times out
+            }
+        }
     }
 
     /// Generate embeddings for multiple texts in batch

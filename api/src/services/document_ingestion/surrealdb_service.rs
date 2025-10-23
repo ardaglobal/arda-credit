@@ -1152,74 +1152,122 @@ impl SurrealDBService {
         );
 
         // Build query with optional company filter
+        // Don't use VALUE - need to ORDER BY score, which requires score in the result set
+        // Explicitly cast UUID fields to strings using <string> syntax
+        // Filter out records with null required fields
         let query = if company_id.is_some() {
             format!(
-                "SELECT embedding_id, document_id, company_id, deal_id, chunk_text,
-                 chunk_index, chunk_position, page_number,
+                "SELECT
+                 string::split(meta::id(id), ':')[1] AS embedding_id,
+                 document_id,
+                 company_id,
+                 deal_id,
+                 chunk_text,
+                 chunk_index,
+                 chunk_position,
+                 page_number,
                  vector::similarity::cosine(embedding, $query_vector) AS score
                  FROM document_embeddings
                  WHERE company_id = $company_id
+                 AND document_id != NONE
+                 AND company_id != NONE
+                 AND chunk_text != NONE
                  ORDER BY score DESC
                  LIMIT {}",
                 limit
             )
         } else {
             format!(
-                "SELECT embedding_id, document_id, company_id, deal_id, chunk_text,
-                 chunk_index, chunk_position, page_number,
+                "SELECT
+                 string::split(meta::id(id), ':')[1] AS embedding_id,
+                 document_id,
+                 company_id,
+                 deal_id,
+                 chunk_text,
+                 chunk_index,
+                 chunk_position,
+                 page_number,
                  vector::similarity::cosine(embedding, $query_vector) AS score
                  FROM document_embeddings
+                 WHERE document_id != NONE
+                 AND company_id != NONE
+                 AND chunk_text != NONE
                  ORDER BY score DESC
                  LIMIT {}",
                 limit
             )
         };
 
+        debug!("Executing search query: {}", query);
+        debug!("Query vector dimensions: {}", query_vector.len());
+
         let mut result = if let Some(cid) = company_id {
             self.db
-                .query(query)
+                .query(&query)
                 .bind(("query_vector", query_vector))
                 .bind(("company_id", cid.to_string()))
                 .await
-                .context("Failed to execute search query")?
+                .map_err(|e| {
+                    error!("Search query execution failed: {:#}", e);
+                    error!("Query was: {}", query);
+                    anyhow::anyhow!("Failed to execute search query: {:#}", e)
+                })?
         } else {
             self.db
-                .query(query)
+                .query(&query)
                 .bind(("query_vector", query_vector))
                 .await
-                .context("Failed to execute search query")?
+                .map_err(|e| {
+                    error!("Search query execution failed: {:#}", e);
+                    error!("Query was: {}", query);
+                    anyhow::anyhow!("Failed to execute search query: {:#}", e)
+                })?
         };
 
-        // Parse results
-        #[derive(Deserialize)]
-        struct RawSearchResult {
-            embedding_id: String,
-            document_id: String,
-            company_id: String,
-            deal_id: Option<String>,
-            chunk_text: String,
-            chunk_index: usize,
-            chunk_position: usize,
-            page_number: Option<i32>,
-            score: f32,
-        }
+        // Parse results directly as JSON values
+        let raw_results: Vec<serde_json::Value> = result.take(0).map_err(|e| {
+            error!("Failed to parse search results: {:#}", e);
+            anyhow::anyhow!("Failed to parse search results: {:#}", e)
+        })?;
 
-        let raw_results: Vec<RawSearchResult> =
-            result.take(0).context("Failed to parse search results")?;
+        debug!("Parsed {} raw search results", raw_results.len());
 
         let search_results: Vec<SearchResult> = raw_results
             .into_iter()
-            .filter_map(|r| {
+            .filter_map(|json_val| {
+                let obj = json_val.as_object()?;
+
+                // embedding_id might be null, use a random UUID as placeholder
+                let embedding_id = obj
+                    .get("embedding_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                    .unwrap_or_else(Uuid::new_v4);
+
+                // Parse required fields - skip record if any are missing
+                let document_id = Uuid::parse_str(obj.get("document_id")?.as_str()?).ok()?;
+                let company_id = Uuid::parse_str(obj.get("company_id")?.as_str()?).ok()?;
+                let score = obj.get("score")?.as_f64()? as f32;
+                let chunk_text = obj.get("chunk_text")?.as_str()?.to_string();
+                let chunk_index = obj.get("chunk_index")?.as_i64()? as usize;
+                let chunk_position = obj.get("chunk_position")?.as_i64()? as usize;
+
                 Some(SearchResult {
-                    embedding_id: Uuid::parse_str(&r.embedding_id).ok()?,
-                    document_id: Uuid::parse_str(&r.document_id).ok()?,
-                    company_id: Uuid::parse_str(&r.company_id).ok()?,
-                    deal_id: r.deal_id.and_then(|id| Uuid::parse_str(&id).ok()),
-                    score: r.score,
-                    chunk_text: r.chunk_text,
-                    chunk_index: r.chunk_index,
-                    chunk_position: r.chunk_position,
-                    page_number: r.page_number,
+                    embedding_id,
+                    document_id,
+                    company_id,
+                    deal_id: obj
+                        .get("deal_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| Uuid::parse_str(s).ok()),
+                    score,
+                    chunk_text,
+                    chunk_index,
+                    chunk_position,
+                    page_number: obj
+                        .get("page_number")
+                        .and_then(|v| v.as_i64())
+                        .map(|n| n as i32),
                 })
             })
             .collect();
@@ -1237,59 +1285,94 @@ impl SurrealDBService {
     ) -> Result<Vec<SearchResult>> {
         debug!("Searching in document {} with limit {}", document_id, limit);
 
+        // Don't use VALUE - need to ORDER BY score, which requires score in the result set
+        // Explicitly cast UUID fields to strings using <string> syntax
+        // Filter out records with null required fields
         let query = format!(
-            "SELECT embedding_id, document_id, company_id, deal_id, chunk_text,
-             chunk_index, chunk_position, page_number,
+            "SELECT
+             string::split(meta::id(id), ':')[1] AS embedding_id,
+             document_id,
+             company_id,
+             deal_id,
+             chunk_text,
+             chunk_index,
+             chunk_position,
+             page_number,
              vector::similarity::cosine(embedding, $query_vector) AS score
              FROM document_embeddings
              WHERE document_id = $document_id
+             AND document_id != NONE
+             AND company_id != NONE
+             AND chunk_text != NONE
              ORDER BY score DESC
              LIMIT {}",
             limit
         );
 
+        debug!("Executing document search query: {}", query);
+        debug!("Query vector dimensions: {}", query_vector.len());
+
         let mut result = self
             .db
-            .query(query)
+            .query(&query)
             .bind(("query_vector", query_vector))
             .bind(("document_id", document_id.to_string()))
             .await
-            .context("Failed to execute search query")?;
+            .map_err(|e| {
+                error!("Search query execution failed: {:#}", e);
+                error!("Query was: {}", query);
+                anyhow::anyhow!("Failed to execute search query: {:#}", e)
+            })?;
 
-        // Parse results
-        #[derive(Deserialize)]
-        struct RawSearchResult {
-            embedding_id: String,
-            document_id: String,
-            company_id: String,
-            deal_id: Option<String>,
-            chunk_text: String,
-            chunk_index: usize,
-            chunk_position: usize,
-            page_number: Option<i32>,
-            score: f32,
-        }
+        // Parse results directly as JSON values
+        let raw_results: Vec<serde_json::Value> = result.take(0).map_err(|e| {
+            error!("Failed to parse search results: {:#}", e);
+            anyhow::anyhow!("Failed to parse search results: {:#}", e)
+        })?;
 
-        let raw_results: Vec<RawSearchResult> =
-            result.take(0).context("Failed to parse search results")?;
+        debug!("Parsed {} raw search results", raw_results.len());
 
         let search_results: Vec<SearchResult> = raw_results
             .into_iter()
-            .filter_map(|r| {
+            .filter_map(|json_val| {
+                let obj = json_val.as_object()?;
+
+                // embedding_id might be null, use a random UUID as placeholder
+                let embedding_id = obj
+                    .get("embedding_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok())
+                    .unwrap_or_else(Uuid::new_v4);
+
+                // Parse required fields - skip record if any are missing
+                let document_id = Uuid::parse_str(obj.get("document_id")?.as_str()?).ok()?;
+                let company_id = Uuid::parse_str(obj.get("company_id")?.as_str()?).ok()?;
+                let score = obj.get("score")?.as_f64()? as f32;
+                let chunk_text = obj.get("chunk_text")?.as_str()?.to_string();
+                let chunk_index = obj.get("chunk_index")?.as_i64()? as usize;
+                let chunk_position = obj.get("chunk_position")?.as_i64()? as usize;
+
                 Some(SearchResult {
-                    embedding_id: Uuid::parse_str(&r.embedding_id).ok()?,
-                    document_id: Uuid::parse_str(&r.document_id).ok()?,
-                    company_id: Uuid::parse_str(&r.company_id).ok()?,
-                    deal_id: r.deal_id.and_then(|id| Uuid::parse_str(&id).ok()),
-                    score: r.score,
-                    chunk_text: r.chunk_text,
-                    chunk_index: r.chunk_index,
-                    chunk_position: r.chunk_position,
-                    page_number: r.page_number,
+                    embedding_id,
+                    document_id,
+                    company_id,
+                    deal_id: obj
+                        .get("deal_id")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| Uuid::parse_str(s).ok()),
+                    score,
+                    chunk_text,
+                    chunk_index,
+                    chunk_position,
+                    page_number: obj
+                        .get("page_number")
+                        .and_then(|v| v.as_i64())
+                        .map(|n| n as i32),
                 })
             })
             .collect();
 
+        debug!("Found {} search results", search_results.len());
         Ok(search_results)
     }
 
