@@ -19,14 +19,14 @@ default = [ "tikv-jemallocator" ]
 
 [dependencies]
 # Core dependencies
-chrono       = { version = "0.4", features = [ "serde" ] }
-once_cell    = "1.19"
-rust_decimal = "1.39"
+chrono       = { workspace = true, features = [ "serde" ] }
+once_cell    = { workspace = true }
+rust_decimal = { workspace = true }
 serde        = { workspace = true }
-thiserror    = "2.0"
+thiserror    = { workspace = true }
 tokio        = { workspace = true }
 tracing      = { workspace = true }
-uuid         = { version = "1.0", features = [ "serde", "v4" ] }
+uuid         = { workspace = true, features = [ "serde", "v4" ] }
 
 # Database and arithmetic dependencies
 alloy-network      = { workspace = true }
@@ -38,8 +38,8 @@ anyhow             = { workspace = true }
 arda-credit-db     = { path = "../db", package = "db" }
 arda-credit-lib    = { path = "../lib", package = "lib", features = [ "document_storage", "sp1" ] }
 ethereum-client    = { path = "../ethereum-client" }
-sindri             = { version = "0.3.1", features = [ "sp1-v5" ] }
-sp1-sdk            = "5.2.2"
+sindri             = { workspace = true, features = [ "sp1-v5" ] }
+sp1-sdk            = { workspace = true }
 sqlx               = { workspace = true, features = [ "chrono", "ipnetwork", "postgres", "uuid" ] }
 
 # API framework dependencies
@@ -49,10 +49,10 @@ async-stream = "0.3"
 async-trait = "0.1"
 axum = { workspace = true, features = [ "multipart", "ws" ] }
 futures-util = "0.3"
-hex = "0.4"
+hex = { workspace = true }
 http = "1.0"
 hyper = "1.0"
-serde_json = "1.0"
+serde_json = { workspace = true }
 tokio-stream = "0.1"
 tower = { version = "0.5", features = [ "util" ] }
 tower-http = { version = "0.6", features = [
@@ -64,20 +64,20 @@ tower-http = { version = "0.6", features = [
 ] }
 
 # Server binary dependencies
-clap               = { version = "4.5", features = [ "derive" ] }
-dotenv             = "0.15"
+clap               = { workspace = true, features = [ "derive" ] }
+dotenv             = { workspace = true }
 tokio-util         = "0.7"
 tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 
 # HTTP client dependencies
-reqwest = { version = "0.12", features = [ "json" ] }
+reqwest = { workspace = true, features = [ "json" ] }
 
 # Authentication dependencies
 jsonwebtoken = { version = "10.0", features = [ "aws_lc_rs" ] } # JWT token generation/validation
-validator    = { version = "0.20", features = [ "derive" ] }    # Email validation
+validator    = { workspace = true, features = [ "derive" ] }    # Email validation
 
 # AWS SES Integration
-aws-config    = "1.8"
+aws-config    = { workspace = true }
 aws-sdk-sesv2 = "1.100"
 
 # Email template support
@@ -101,8 +101,8 @@ tracing-opentelemetry              = { version = "0.32.0" }
 blake3 = "1"
 rand   = "0.9"
 regex  = "1.12"
-sha2   = "0.10"
-url    = "2.5"
+sha2   = { workspace = true }
+url    = { workspace = true }
 
 # Time formatting
 humantime = "2"
@@ -144,8 +144,8 @@ text-splitter = "0.28" # Semantic text chunking for embeddings
 [dev-dependencies]
 
 axum-test          = "18.1.0"
-futures            = { version = "0.3", features = [ "async-await" ] }
+futures            = { workspace = true, features = [ "async-await" ] }
 tempfile           = "3.21"
 tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
-uuid               = { version = "1.0", features = [ "v4" ] }
+uuid               = { workspace = true, features = [ "v4" ] }
