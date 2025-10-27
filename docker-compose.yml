@@ -95,6 +95,28 @@ services:
     profiles:
       - local
       - staging
+  # FastMCP Proxy - MCP Server Proxy
+  mcp-proxy:
+    image: ghcr.io/ardaglobal/fastmcp-proxy:latest
+    container_name: fastmcp_proxy
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=MCP Proxy Server
+      - APP_VERSION=0.1.0
+      - DEBUG=${MCP_DEBUG:-false}
+      - MCP_SERVER_URL=${MCP_SERVER_URL:-https://arda-insights.fastmcp.app/mcp}
+      - MCP_TIMEOUT=${MCP_TIMEOUT:-30.0}
+      - API_KEYS=${MCP_PROXY_API_KEYS:-dev-key-123}
+      - CORS_ORIGINS=${MCP_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      - LOG_LEVEL=${MCP_LOG_LEVEL:-INFO}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
 volumes:
   postgres_data:
