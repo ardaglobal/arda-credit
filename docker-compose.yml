@@ -107,8 +107,8 @@ services:
       - DEBUG=${MCP_DEBUG:-false}
       - MCP_SERVER_URL=${MCP_SERVER_URL:-https://arda-insights.fastmcp.app/mcp}
       - MCP_TIMEOUT=${MCP_TIMEOUT:-30.0}
-      - API_KEYS=${MCP_PROXY_API_KEYS:-dev-key-123}
-      - CORS_ORIGINS=${MCP_CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      - API_KEYS=${MCP_PROXY_API_KEYS:-["dev-key-123"]}
+      - CORS_ORIGINS=${MCP_CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173","http://localhost:8080"]}
       - LOG_LEVEL=${MCP_LOG_LEVEL:-INFO}
     restart: unless-stopped
     healthcheck:
