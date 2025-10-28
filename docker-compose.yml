@@ -101,14 +101,31 @@ services:
     container_name: fastmcp_proxy
     ports:
       - "8000:8000"
+    volumes:
+      # Mount servers config file - path can be customized via SERVERS_CONFIG_FILE env var
+      # Updates to the config file will be reflected without rebuilding the container
+      - ${SERVERS_CONFIG_FILE:-./servers.yaml}:/app/${SERVERS_CONFIG_PATH:-servers.yaml}:ro
     environment:
+      # Application settings - can be overridden by host environment variables
       - APP_NAME=MCP Proxy Server
       - APP_VERSION=0.1.0
       - DEBUG=${MCP_DEBUG:-false}
-      - MCP_SERVER_URL=${MCP_SERVER_URL:-https://arda-insights.fastmcp.app/mcp}
-      - MCP_TIMEOUT=${MCP_TIMEOUT:-30.0}
-      - API_KEYS=${MCP_PROXY_API_KEYS:-["dev-key-123"]}
-      - CORS_ORIGINS=${MCP_CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173","http://localhost:8080"]}
+      
+      # Server configuration
+      # Path inside container where servers config file is located
+      - SERVERS_CONFIG_PATH=${MCP_SERVERS_CONFIG_PATH:-servers.yaml}
+      
+      # Authentication - set AUTH_ENABLED=false in host env to disable for development
+      - AUTH_ENABLED=${MCP_AUTH_ENABLED:-false}
+      - API_KEYS=${MCP_API_KEYS:-["dev-key-123","prod-key-456"]}
+      
+      # CORS settings
+      - CORS_ORIGINS=${MCP_CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173"]}
+      - CORS_ALLOW_CREDENTIALS=${MCP_CORS_ALLOW_CREDENTIALS:-true}
+      - CORS_ALLOW_METHODS=${MCP_CORS_ALLOW_METHODS:-["*"]}
+      - CORS_ALLOW_HEADERS=${MCP_CORS_ALLOW_HEADERS:-["*"]}
+      
+      # Logging
       - LOG_LEVEL=${MCP_LOG_LEVEL:-INFO}
     restart: unless-stopped
     healthcheck:
