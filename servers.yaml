@@ -1,0 +1,20 @@
+# MCP Server Configuration
+# Define multiple MCP servers that the proxy can connect to
+
+servers:
+  - name: arda-insights
+    url: https://arda-insights.fastmcp.app/mcp
+    type: staging
+    description: Arda Global insights and analytics server
+    timeout: 30.0
+    enabled: true
+  
+  - name: arda-credit-api
+    url: https://arda-credit-api-stag.fastmcp.app/mcp
+    type: staging
+    description: Arda Credit API server
+    timeout: 30.0
+    enabled: true
+
+# Default server to use when no server_name is specified in requests
+default_server: arda-insights
