@@ -76,6 +76,62 @@ make setup         # Complete setup from scratch
 make server        # Start API server locally
 ```
 
+## MCP Proxy Integration
+
+Arda Credit includes an **MCP (Model Context Protocol) Proxy** for AI-powered document analysis and insights.
+
+### Quick Start
+
+```bash
+# Start the MCP proxy service
+docker-compose up -d mcp-proxy
+
+# Check health
+curl http://localhost:8000/health
+
+# View logs
+docker-compose logs -f mcp-proxy
+
+# Stop the service
+docker-compose stop mcp-proxy
+```
+
+### Configuration
+
+The MCP proxy is configured via environment variables in `.env`:
+
+```bash
+# MCP Server URL (upstream MCP server)
+MCP_SERVER_URL=https://arda-insights.fastmcp.app/mcp
+
+# API Keys for authentication (comma-separated)
+MCP_PROXY_API_KEYS=your-secure-key-1,your-secure-key-2
+
+# CORS Origins (comma-separated)
+MCP_CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://localhost:8080
+
+# Optional: Timeout and logging
+MCP_TIMEOUT=30.0
+MCP_DEBUG=false
+MCP_LOG_LEVEL=INFO
+```
+
+**Security Note**: Change default API keys in production! See `.env.example` for complete configuration options.
+
+### Service Details
+
+- **Port**: 8000
+- **Health Check**: `GET http://localhost:8000/health`
+- **Upstream**: `https://arda-insights.fastmcp.app/mcp`
+- **Container**: `fastmcp_proxy`
+- **Image**: `ghcr.io/ardaglobal/fastmcp-proxy:latest`
+
+The MCP proxy enables:
+- AI-powered document analysis via InfraNodus integration
+- Knowledge graph generation from text
+- Content gap analysis and research question generation
+- Integration with Claude Code and other MCP-compatible tools
+
 ## Privacy Guarantees
 
 ### What Stays Private
@@ -146,6 +202,22 @@ This creates:
 - **Borough limits**: Realistic percentage thresholds for risk diversification testing
 
 Perfect for testing the borough percentage system, credit line requests, and pool management features.
+
+### 🌐 Local Service URLs
+
+When running locally via `docker-compose up` and `make server`, the following services are available:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| **API Server** | http://0.0.0.0:8080 | Main REST API |
+| **Swagger UI** | http://0.0.0.0:8080/swagger-ui/ | Interactive API documentation |
+| **Health Check** | http://0.0.0.0:8080/api/v1/health | Service health status |
+| **MCP Proxy** | http://localhost:8000 | MCP protocol proxy |
+| **MCP Health** | http://localhost:8000/health | MCP proxy health check |
+| **PostgreSQL** | localhost:5432 | Database (postgres/password) |
+| **Prometheus** | http://localhost:9090 | Metrics collection |
+| **Grafana** | http://localhost:3100 | Metrics visualization (admin/admin) |
+| **Anvil** | http://localhost:8545 | Local Ethereum devnet (local/staging only) |
 
 ## Documentation
 

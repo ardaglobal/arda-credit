@@ -56,10 +56,10 @@ url                  = "2.5.4"
 uuid                 = "1.0"
 
 # Prometheus metrics dependencies
-axum-prometheus             = "0.7"
+axum-prometheus             = "0.9"
 metrics                     = "0.23"
 metrics-exporter-prometheus = "0.15"
-metrics-util                = "0.17"
+metrics-util                = "0.20"
 prometheus                  = "0.14.0"
 
 # AWS S3 and document storage dependencies
