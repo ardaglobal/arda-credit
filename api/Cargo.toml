@@ -138,7 +138,7 @@ surrealdb = { version = "2.3", features = [
 
 # Text processing and embeddings
 dashmap       = "6.1"  # Concurrent HashMap for embedding cache
-rig-core      = "0.5"  # LLM and embedding framework for Rust
+rig-core      = "0.23"  # LLM and embedding framework for Rust
 text-splitter = "0.28" # Semantic text chunking for embeddings
 
 [dev-dependencies]
