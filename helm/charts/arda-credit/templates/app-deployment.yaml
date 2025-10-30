@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "arda-credit.fullname" . }}-app
+  name: {{ include "arda-credit.fullname" . }}-platform
   labels:
     {{- include "arda-credit.labels" . | nindent 4 }}
     app.kubernetes.io/component: app
