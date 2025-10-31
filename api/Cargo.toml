@@ -86,8 +86,8 @@ askama = "0.14"
 # Session management dependencies
 axum-extra = { version = "0.10", features = [ "cookie" ] }
 base64     = "0.22"
-ipnetwork  = { version = "0.21", features = [ "serde" ] }  # Must match sqlx's ipnetwork version
-time       = "0.3"
+# Note: IpNetwork is re-exported from sqlx::types::ipnetwork (version 0.20)
+time = "0.3"
 
 # OpenTelemetry dependencies (compatible versions)
 opentelemetry                      = { version = "0.31.0", features = [ "trace" ] }
