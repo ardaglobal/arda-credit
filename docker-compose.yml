@@ -110,21 +110,21 @@ services:
       - APP_NAME=MCP Proxy Server
       - APP_VERSION=0.1.0
       - DEBUG=${MCP_DEBUG:-false}
-      
+
       # Server configuration
       # Path inside container where servers config file is located
       - SERVERS_CONFIG_PATH=${MCP_SERVERS_CONFIG_PATH:-servers.yaml}
-      
+
       # Authentication - set AUTH_ENABLED=false in host env to disable for development
       - AUTH_ENABLED=${MCP_AUTH_ENABLED:-false}
       - API_KEYS=${MCP_API_KEYS:-["dev-key-123","prod-key-456"]}
-      
+
       # CORS settings
       - CORS_ORIGINS=${MCP_CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173"]}
       - CORS_ALLOW_CREDENTIALS=${MCP_CORS_ALLOW_CREDENTIALS:-true}
       - CORS_ALLOW_METHODS=${MCP_CORS_ALLOW_METHODS:-["*"]}
       - CORS_ALLOW_HEADERS=${MCP_CORS_ALLOW_HEADERS:-["*"]}
-      
+
       # Logging
       - LOG_LEVEL=${MCP_LOG_LEVEL:-INFO}
     restart: unless-stopped

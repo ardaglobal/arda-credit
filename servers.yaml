@@ -8,7 +8,7 @@ servers:
     description: Arda Global insights and analytics server
     timeout: 30.0
     enabled: true
-  
+
   - name: arda-credit-api
     url: https://arda-credit-api-stag.fastmcp.app/mcp
     type: staging

@@ -9,10 +9,9 @@ use arda_credit_lib::{
     DocumentStorageClient, DocumentUploadRequest, StorageConfig, StorageError, SupportedFileType,
 };
 use chrono::{DateTime, Utc};
-use ipnetwork::IpNetwork;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sqlx::{PgPool, Row};
+use sqlx::{types::ipnetwork::IpNetwork, PgPool, Row};
 use std::collections::HashMap;
 use thiserror::Error;
 use tracing::{error, info};
