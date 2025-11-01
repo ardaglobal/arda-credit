@@ -150,18 +150,66 @@ pub struct TermSheetExtraction {
 }
 
 // =============================================================================
-// Security Agreement Schema (8 fields from security_agreement.csv)
+// Security Agreement Schema (Expanded to match security_agreements table)
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityAgreementExtraction {
+    // Core Identifiers
     pub document_id: Option<String>,
     pub doc_hash: Option<String>,
+
+    // Parties
     pub grantor: String,
+    pub grantor_jurisdiction: Option<String>,
     pub secured_party: String,
+    pub collateral_agent: Option<String>,
+
+    // Collateral Scope
     pub collateral_scope_summary: String,
-    pub perfection_methods: Vec<String>,
+    pub collateral_description: Option<String>,
+
+    // Collateral Categories (boolean flags)
+    pub includes_accounts_receivable: bool,
+    pub includes_inventory: bool,
+    pub includes_equipment: bool,
+    pub includes_intellectual_property: bool,
+    pub includes_real_estate: bool,
+    pub includes_deposit_accounts: bool,
+    pub includes_investment_property: bool,
+    pub includes_general_intangibles: bool,
+
+    // Collateral Details (flexible JSONB)
+    pub collateral_details: Option<serde_json::Value>,
+
+    // Perfection
+    pub perfection_methods: Vec<String>, // ['UCC-1', 'DACA', 'Possession', 'Control']
+    pub perfection_status: Option<PerfectionStatus>,
+    pub perfection_date: Option<String>,
+
+    // Priority
+    pub lien_priority: Option<LienPriority>,
+    pub intercreditor_agreement_id: Option<String>,
+
+    // Jurisdictions & Governing Law
     pub governing_law: String,
+    pub filing_jurisdictions: Vec<String>,
+
+    // Exclusions & Carve-Outs
+    pub excluded_collateral: Option<String>,
+    pub permitted_liens: Option<String>,
+
+    // Effective Dates
+    pub effective_date: Option<String>,
+    pub termination_date: Option<String>,
+
+    // Release Provisions
+    pub release_conditions: Option<String>,
+    pub partial_release_permitted: bool,
+
+    // Maintenance Obligations
+    pub maintenance_covenants: Option<String>,
+    pub insurance_requirements: Option<String>,
 }
 
 // =============================================================================
@@ -247,6 +295,314 @@ pub enum DocumentationStandard {
     Custom,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PerfectionStatus {
+    Perfected,
+    Pending,
+    Partial,
+    NotRequired,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LienPriority {
+    FirstLien,
+    SecondLien,
+    Junior,
+    PariPassu,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GuaranteeType {
+    FullUnconditional,
+    Limited,
+    Capped,
+    Payment,
+    Collection,
+    Performance,
+    Completion,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CustodyType {
+    Bank,
+    SelfCustody,
+    Custodian,
+    Exchange,
+    Hybrid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TradeType {
+    ParTrade,
+    DiscountTrade,
+    PremiumTrade,
+    DistressedTrade,
+    Participation,
+    Assignment,
+    Novation,
+    Syndication,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PriceType {
+    PercentageOfPar,
+    DollarPrice,
+    YieldBased,
+    DiscountToPar,
+    PremiumToPar,
+}
+
+// =============================================================================
+// Fee Letter Schema
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeeLetterExtraction {
+    // Core Identifiers
+    pub document_id: Option<String>,
+    pub doc_hash_fee_letter: Option<String>,
+
+    // Fee Components (JSONB flexible structure)
+    pub fee_components: Option<serde_json::Value>,
+
+    // Confidentiality
+    pub confidentiality_flag: bool,
+
+    // Individual Fee Breakdown (optional detailed fields)
+    pub upfront_fee_pct: Option<f64>,
+    pub original_issue_discount_pct: Option<f64>,
+    pub unused_commitment_fee_bps: Option<i32>,
+    pub agency_fee_amount: Option<f64>,
+    pub amendment_fee_amount: Option<f64>,
+
+    // Additional Details
+    pub fee_payment_schedule: Option<String>,
+    pub fee_calculation_basis: Option<String>,
+    pub effective_date: Option<String>,
+    pub expiry_date: Option<String>,
+    pub notes: Option<String>,
+}
+
+// =============================================================================
+// Legal Opinion Schema
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LegalOpinionExtraction {
+    // Core Identifiers
+    pub document_id: Option<String>,
+    pub doc_hash_legal_opinion: Vec<String>, // Array of hashes for multiple opinions
+
+    // Opinion Firms
+    pub opinion_firms: Vec<String>, // Array of issuing law firms
+    pub lead_opinion_firm: Option<String>,
+
+    // Opinion Scopes
+    pub scopes: Vec<String>, // ['Enforceability', 'Authorization', 'Perfection', etc.]
+
+    // Governing Laws
+    pub governing_laws: Vec<String>, // ['NY', 'DE', 'DE UCC']
+    pub primary_governing_law: Option<String>,
+
+    // Reliance
+    pub reliance_language_present: bool,
+    pub beneficiaries: Vec<String>,
+
+    // Opinion Details
+    pub opinion_date: Option<String>,
+    pub effective_date: Option<String>,
+    pub limitations: Option<String>,
+    pub assumptions: Option<String>,
+
+    // Deliverables
+    pub full_opinion_delivered: bool,
+    pub disclosure_schedules_attached: bool,
+
+    // Bring-Down
+    pub is_bring_down: bool,
+    pub original_opinion_id: Option<String>,
+
+    // Coverage
+    pub coverage_status: Option<String>, // 'complete', 'partial', 'pending', 'waived'
+    pub gaps_or_qualifications: Option<String>,
+}
+
+// =============================================================================
+// Guaranty Schema
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GuarantyExtraction {
+    // Core Identifiers
+    pub document_id: Option<String>,
+    pub doc_hash: Option<String>,
+
+    // Guarantor Information
+    pub guarantor_name: String,
+    pub guarantor_type: Option<String>, // 'corporate', 'individual', 'parent', 'subsidiary'
+    pub guarantor_jurisdiction: Option<String>,
+    pub guarantor_relationship: Option<String>,
+
+    // Multiple Guarantors
+    pub is_joint_guaranty: bool,
+    pub other_guarantors: Vec<String>,
+
+    // Beneficiary
+    pub beneficiary: String,
+
+    // Guarantee Type & Scope
+    pub guarantee_type: Option<GuaranteeType>,
+    pub coverage_scope: String,
+    pub covers_principal: bool,
+    pub covers_interest: bool,
+    pub covers_fees: bool,
+    pub covers_expenses: bool,
+    pub covers_amendments: bool,
+
+    // Cap/Limitation
+    pub is_capped: bool,
+    pub cap_amount: Option<f64>,
+    pub cap_currency: Option<String>,
+    pub cap_type: Option<String>, // 'absolute', 'per_guarantor', 'aggregate'
+
+    // Payment/Collection Type
+    pub is_payment_guaranty: bool,
+    pub is_collection_guaranty: bool,
+
+    // Continuing Guaranty
+    pub is_continuing: bool,
+    pub revolving_guaranty: bool,
+
+    // Defenses & Waivers
+    pub waivers_of_defenses: Option<String>,
+    pub suretyship_defenses_waived: bool,
+
+    // Subrogation
+    pub subrogation_rights: Option<String>,
+    pub subrogation_subordinated: bool,
+
+    // Security
+    pub secured_guaranty: bool,
+    pub guarantor_security_description: Option<String>,
+
+    // Release
+    pub release_conditions: Option<String>,
+    pub automatic_release_trigger: Option<String>,
+
+    // Effectiveness
+    pub effective_date: Option<String>,
+    pub termination_date: Option<String>,
+    pub governing_law: String,
+}
+
+// =============================================================================
+// SSI (Standard Settlement Instructions) Schema
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SsiExtraction {
+    // Core Identifiers
+    pub document_id: Option<String>,
+    pub doc_hash: Option<String>,
+
+    // SSI Type
+    pub ssi_type: Option<String>, // 'full_bilateral', 'seller_only', 'buyer_only'
+
+    // Seller SSI Details
+    pub seller_ssi_id: String,
+    pub seller_beneficiary_name: String,
+    pub seller_bank_name: Option<String>,
+    pub seller_bank_identifier: Option<String>, // SWIFT/BIC/ABA
+    pub seller_reference_text: Option<String>,
+
+    // Seller Digital Custody
+    pub seller_custody_type: Option<CustodyType>,
+    pub seller_custodian_name: Option<String>,
+    pub seller_custodian_account_ref: Option<String>,
+    pub seller_wallet_chain: Option<String>,
+    pub seller_wallet_chain_id: Option<i32>,
+
+    // Buyer SSI Details
+    pub buyer_ssi_id: String,
+    pub buyer_beneficiary_name: String,
+    pub buyer_bank_name: Option<String>,
+    pub buyer_bank_identifier: Option<String>,
+    pub buyer_reference_text: Option<String>,
+
+    // Buyer Digital Custody
+    pub buyer_custody_type: Option<CustodyType>,
+    pub buyer_custodian_name: Option<String>,
+    pub buyer_custodian_account_ref: Option<String>,
+    pub buyer_wallet_chain: Option<String>,
+    pub buyer_wallet_chain_id: Option<i32>,
+
+    // Effective Dates
+    pub effective_date: Option<String>,
+    pub expiry_date: Option<String>,
+
+    // Settlement Preferences
+    pub settlement_currency: Option<String>,
+    pub settlement_method: Option<String>, // 'wire', 'ach', 'blockchain', etc.
+    pub special_instructions: Option<String>,
+}
+
+// =============================================================================
+// Secondary Trading Schema
+// =============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecondaryTradingExtraction {
+    // Core Identifiers
+    pub trade_id: String,
+    pub trade_confirm_hash: Option<String>,
+    pub instrument_id: String,
+
+    // Parties
+    pub seller_party_id: String,
+    pub buyer_party_id: String,
+    pub seller_legal_name: Option<String>,
+    pub buyer_legal_name: Option<String>,
+
+    // Trade Details
+    pub trade_datetime: Option<String>,
+    pub trade_date: Option<String>,
+    pub trade_type: Option<TradeType>,
+
+    // Financial Terms
+    pub notional_amount: f64,
+    pub notional_currency: Option<String>,
+    pub price_type: Option<PriceType>,
+    pub price: f64,
+    pub price_in_dollars: Option<f64>,
+
+    // Accrued Interest
+    pub accrued_interest_amount: Option<f64>,
+
+    // Settlement
+    pub effective_date: Option<String>,
+    pub settlement_date: Option<String>,
+
+    // Compliance
+    pub eligibility_checks: Option<serde_json::Value>, // JSONB for flexible checks
+
+    // Allocation & Documentation
+    pub allocation_id: Option<String>,
+    pub docs_required: Option<serde_json::Value>, // JSONB for document tracking
+
+    // Transfer Fees
+    pub transfer_fee_amount: Option<f64>,
+    pub transfer_fee_currency: Option<String>,
+
+    // Special Terms
+    pub special_terms: Option<String>,
+}
+
 // =============================================================================
 // Unified Extraction Result
 // =============================================================================
@@ -287,7 +643,11 @@ pub enum DocumentData {
     CreditAgreement(CreditAgreementExtraction),
     TermSheet(TermSheetExtraction),
     SecurityAgreement(SecurityAgreementExtraction),
-    // Add other document types as needed
+    FeeLetter(FeeLetterExtraction),
+    LegalOpinion(LegalOpinionExtraction),
+    Guaranty(GuarantyExtraction),
+    Ssi(SsiExtraction),
+    SecondaryTrading(SecondaryTradingExtraction),
     Unknown,
 }
 

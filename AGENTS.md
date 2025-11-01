@@ -408,6 +408,209 @@ struct UsdcDeposit {
 }
 ```
 
+## Document Schema & Extraction Mapping
+
+### Overview
+
+The Arda Credit system includes comprehensive document extraction and database schemas for all credit agreement document types. This enables automated document ingestion, LLM-based field extraction, and structured storage in specialized database tables.
+
+### Supported Document Types
+
+All 8 document types from the MVP specification are fully implemented:
+
+1. **Credit Agreement** (52 fields) - Core deal terms, parties, pricing, covenants
+2. **Term Sheet** (39 fields) - Pre-agreement indicative terms
+3. **Security Agreement** (30+ fields) - Collateral details, perfection, priority
+4. **Fee Letter** (10+ fields) - Fee structures and payment schedules
+5. **Legal Opinion** (15+ fields) - Legal enforceability opinions
+6. **Guaranty** (40+ fields) - Guarantor obligations and coverage
+7. **SSI** (20+ fields) - Standard Settlement Instructions for payments
+8. **Secondary Trading** (30+ fields) - Secondary market trade details
+
+### Database Migrations
+
+**Location**: `db/migrations/020-030_*.sql`
+
+All specialized document tables have been created:
+- `020_credit_agreements.sql` - Credit agreement table
+- `021_fee_letters.sql` - Fee letter table
+- `022_legal_opinions.sql` - Legal opinions table
+- `023_security_agreements.sql` - Security agreements (expanded)
+- `024_ucc_financing_statements.sql` - UCC filing tracking
+- `025_account_control_agreements.sql` - DACA/ACA tracking
+- `026_guaranties.sql` - Guaranty agreements
+- `027_assignment_assumption_agreements.sql` - Assignment documentation
+- `028_participation_agreements.sql` - Participation interests
+- `029_ssi_records.sql` - **NEW**: Standard Settlement Instructions
+- `030_secondary_trades.sql` - **NEW**: Secondary trading records
+
+### Extraction Schemas
+
+**Location**: `api/src/services/document_ingestion/comprehensive_schema.rs`
+
+All extraction structs are defined with full field coverage:
+
+```rust
+// All extraction types available:
+pub struct CreditAgreementExtraction { /* 52 fields */ }
+pub struct TermSheetExtraction { /* 39 fields */ }
+pub struct SecurityAgreementExtraction { /* 30+ fields - expanded */ }
+pub struct FeeLetterExtraction { /* 10+ fields */ }
+pub struct LegalOpinionExtraction { /* 15+ fields */ }
+pub struct GuarantyExtraction { /* 40+ fields */ }
+pub struct SsiExtraction { /* 20 fields */ }
+pub struct SecondaryTradingExtraction { /* 30+ fields */ }
+
+// Supporting enums:
+pub enum ExecutionStatus { Draft, Executed, Amended, Superseded }
+pub enum FacilityType { TermLoan, Revolver, DelayedDraw, BridgeLoan, ... }
+pub enum PerfectionStatus { Perfected, Pending, Partial, NotRequired }
+pub enum LienPriority { FirstLien, SecondLien, Junior, PariPassu }
+pub enum GuaranteeType { FullUnconditional, Limited, Capped, ... }
+pub enum CustodyType { Bank, SelfCustody, Custodian, Exchange, Hybrid }
+pub enum TradeType { ParTrade, DiscountTrade, PremiumTrade, ... }
+pub enum PriceType { PercentageOfPar, DollarPrice, YieldBased, ... }
+```
+
+### Document Data Mapping Reference
+
+**Location**: `db/src/document_mappers.rs` (reference implementation)
+
+This module provides mapping functions to convert extracted document data (from LLM extraction) into database-ready structures. Each document type has a dedicated mapper function:
+
+**Available Mappers:**
+```rust
+// Map extraction results to database records
+pub fn map_credit_agreement_to_db(...) -> Result<CreditAgreementDbRecord>
+pub fn map_term_sheet_to_db(...) -> Result<serde_json::Value>
+pub fn map_security_agreement_to_db(...) -> Result<SecurityAgreementDbRecord>
+pub fn map_fee_letter_to_db(...) -> Result<FeeLetterDbRecord>
+pub fn map_legal_opinion_to_db(...) -> Result<LegalOpinionDbRecord>
+pub fn map_guaranty_to_db(...) -> Result<GuarantyDbRecord>
+pub fn map_ssi_to_db(...) -> Result<SsiDbRecord>
+pub fn map_secondary_trading_to_db(...) -> Result<SecondaryTradingDbRecord>
+```
+
+**Note**: The document_mappers module is provided as a reference implementation for building your ingestion pipeline. See the module file for complete implementation examples.
+
+### Type Mapping Convention
+
+**CSV → Rust → PostgreSQL Type Mapping:**
+
+| CSV/Document Type | Rust Type | PostgreSQL Type |
+|-------------------|-----------|-----------------|
+| string/uuid | `Uuid` | `UUID` |
+| string | `String` | `VARCHAR/TEXT` |
+| enum | Custom `enum` | `VARCHAR` + `CHECK` |
+| boolean | `bool` | `BOOLEAN` |
+| date | `NaiveDate` | `DATE` |
+| datetime | `DateTime<Utc>` | `TIMESTAMP WITH TIME ZONE` |
+| money | `Decimal` | `DECIMAL(20, 2)` |
+| number | `f64` | `DECIMAL` or `DOUBLE` |
+| integer | `i32` | `INTEGER` |
+| array<string> | `Vec<String>` | `TEXT[]` |
+| object | `serde_json::Value` | `JSONB` |
+
+### Integration Example
+
+When building your document ingestion pipeline, follow this pattern:
+
+```rust
+use api::services::document_ingestion::comprehensive_schema::CreditAgreementExtraction;
+use api::services::document_ingestion::llm_extraction::LlmExtractionService;
+use db::document_mappers::map_credit_agreement_to_db;
+
+// 1. Extract document data using LLM
+let extraction_service = LlmExtractionService::from_env()?;
+let extracted_data: CreditAgreementExtraction =
+    extraction_service.extract_credit_agreement_comprehensive(&document_text).await?;
+
+// 2. Map to database record
+let db_record = map_credit_agreement_to_db(
+    &extracted_data,
+    "CA-2025-001",     // document_id
+    Some(uuid),         // credit_agreement_id
+)?;
+
+// 3. Insert into database
+sqlx::query!(
+    r#"
+    INSERT INTO credit_agreements (
+        id, document_id, version, execution_status, borrower_legal_name,
+        agent_or_lender, committed_amount, currency, ...
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ...)
+    "#,
+    db_record.id,
+    db_record.document_id,
+    db_record.version,
+    // ... all other fields
+)
+.execute(&pool)
+.await?;
+```
+
+### Document Schema Field Coverage
+
+**Credit Agreement (52 fields):**
+- Core Identifiers (7): agreement_id, version, execution_status, effective_date, maturity_date, governing_law, executed_pdf_hash
+- Parties & Roles (5): borrower, agent/lender, guarantors, collateral_agent
+- Facility & Economics (14): facility_type, committed_amount, currency, draw_rules, repayment, pricing, fees
+- Collateral & Support (4): secured, collateral_scope, account_control, ucc_filings
+- Covenants (7): financial covenants, affirmative/negative covenants, cure rights
+- Defaults & Remedies (3): events_of_default, cross-default, cure_period
+- Ops & Admin (4): borrowing_notice, compliance_certificate, reporting, assignment_rules
+- Conditions Precedent (4): kyc_complete, legal_opinions, insurance, corporate_approvals
+- Linkage & Provenance (3): pdf_hash, registry_pointer, linked_term_sheet
+
+**Security Agreement (30+ fields - expanded):**
+- Core: document_id, doc_hash, grantor, secured_party, collateral_agent
+- Collateral Categories (8 booleans): accounts_receivable, inventory, equipment, IP, real_estate, etc.
+- Perfection: methods, status, date, priority, intercreditor_agreement
+- Jurisdictions: governing_law, filing_jurisdictions
+- Terms: effective_date, termination_date, release_conditions, maintenance_covenants
+
+**SSI - Standard Settlement Instructions (20 fields):**
+- Seller SSI: beneficiary_name, bank_name, bank_identifier, reference_text
+- Seller Digital: custody_type, custodian_name, wallet_chain, wallet_chain_id
+- Buyer SSI: beneficiary_name, bank_name, bank_identifier, reference_text
+- Buyer Digital: custody_type, custodian_name, wallet_chain, wallet_chain_id
+- Preferences: settlement_currency, settlement_method, effective_date, expiry_date
+
+**Secondary Trading (30+ fields):**
+- Trade Details: trade_id, instrument_id, trade_datetime, trade_type, trade_status
+- Parties: seller_party_id, buyer_party_id, seller_legal_name, buyer_legal_name
+- Financial: notional_amount, price_type, price, accrued_interest, transfer_fee
+- Settlement: effective_date, settlement_date, settlement_days
+- Compliance: eligibility_checks (JSONB), allocation_id, docs_required (JSONB)
+
+### Database Schema Features
+
+All specialized document tables include:
+- **UUID primary keys** for globally unique identification
+- **Foreign key references** to `credit_agreements` table
+- **Document hashing** (SHA-256) for tamper evidence
+- **Audit timestamps** (created_at, updated_at)
+- **Audit trail** (created_by, updated_by)
+- **JSONB metadata fields** for flexible additional data
+- **GIN indexes** on JSONB and array fields for fast querying
+- **Triggers** for automatic timestamp updates
+- **Helper functions** for common queries
+
+### Next Steps for Ingestion Pipeline
+
+When building your document ingestion pipeline, you'll need to:
+
+1. **Parse Documents** - Extract text from PDFs, images, or structured files
+2. **Classify Document Type** - Determine which extraction schema to use
+3. **LLM Extraction** - Use LlmExtractionService with appropriate schema
+4. **Validation** - Validate required fields and data types
+5. **Database Mapping** - Use document_mappers functions to convert to database records
+6. **Database Insertion** - Insert into specialized tables
+7. **Linking** - Link documents to parent credit agreements
+8. **Embedding Generation** - Generate embeddings for vector search (already implemented)
+
+The extraction schemas and database tables are ready to use. The LLM extraction service already has methods for Credit Agreement and Term Sheet. You'll need to add extraction methods for the other 6 document types following the same pattern.
+
 ## Common Development Patterns
 
 ### Adding New Deal Operations
