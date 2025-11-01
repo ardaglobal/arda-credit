@@ -63,6 +63,12 @@ pub mod db;
 pub mod error;
 pub mod telemetry;
 
+// Document extraction mappers (reference implementation)
+// Note: This module is provided as a reference for building your ingestion pipeline.
+// It cannot be compiled directly due to cross-crate dependencies.
+// See db/src/document_mappers.rs for implementation examples.
+// pub mod document_mappers;
+
 // Re-export marketplace operations
 pub use business::marketplace::{
     browse_marketplace_deals, create_deal_listing, get_deal_listing_by_deal_id,
