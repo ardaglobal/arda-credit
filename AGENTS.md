@@ -1,58 +1,53 @@
-# AGENTS.md
+# CLAUDE.md
 
 This file provides guidance to AI agents when working with code in this repository.
 
 ## Overview
 
-**Arda Credit** is a privacy-preserving deal vApp (verifiable app) built on SP1 zero-knowledge proofs. The MVP enables deal origination, payments, and closeouts with KYC verification, plus **liquidity pool creation and management** for investors. All operations maintain transaction privacy through batch processing and ZK proofs.
+**Arda Credit** is a credit deal management platform with document ingestion, AI analysis, and blockchain integration. The system enables deal origination, payments, marketplace trading, and comprehensive document processing.
 
-### Core Deal Features
+### Core Features
 
-**User Types & KYC:**
-- **Investors** and **Originators** - both can be KYC'd or non-KYC'd
-- **KYC Status** - used in transaction flows for compliance
-- **Account Registration** - user registration with KYC verification
-
-**USDC Deposit & Withdrawal System:**
-- **Smart Contract Integration** - Direct USDC deposits/withdrawals to/from vApp contract
-- **Automatic Balance Tracking** - Database triggers update user balances
-- **Deposit History** - Complete audit trail of all deposits and confirmations
-- **Withdrawal Processing** - KYC validation, balance verification, and transaction tracking
-- **Multi-table Architecture** - Separate deposit/withdrawal tracking and user balance systems
+**Company & User Management:**
+- **Companies** - Organizations that create/invest in deals (with KYB verification)
+- **Users** - Individual team members within companies (with optional KYC)
+- **Deals** - Agreements between originator companies and investor companies
+- **Authentication** - Magic link email authentication with session management
 
 **Deal Operations:**
-- **Deal Origination** - create new deals between parties
-- **Deal Payments** - make payments toward outstanding deals
-- **Deal Closeout** - final settlement and deal completion
-- **Deal Marketplace** - list deals for sale, browse available deals, purchase deals
-- **Deal Transfers** - transfer deal ownership between investors with validation
+- **Deal CRUD** - Create, read, update, delete deals between companies
+- **Deal Payments** - Make payments toward outstanding deals
+- **Deal Marketplace** - List deals for sale, browse, and purchase
+- **Deal Transfers** - Transfer ownership between investors with validation
 
-**Liquidity Pool Management:**
-- **Pool Creation** - investors can create yield-bearing liquidity pools with deployment rules
-- **Pool Funding** - deposit USDC into pools for credit line matching
-- **Pool Configuration** - LTV ratios, interest rates, repayment periods per pool
-- **Pool State Tracking** - total deposits, available/utilized liquidity, status management
+**Document Management:**
+- **Document Upload** - PDF, DOCX, XLSX support with S3 storage
+- **LLM Extraction** - Automated field extraction from 8+ document types
+- **AI Analysis** - Document Q&A, chat interface, RAG search
+- **Structured Storage** - Specialized tables for credit agreements, term sheets, etc.
 
-**Privacy & Verification:**
-- Users can **prove transaction inclusion** (deal payment, origination, closeout, KYC status)
-- **Batch processing** keeps individual transaction details private
-- **Zero-knowledge proofs** verify state transitions without revealing private data
+**Financial Operations:**
+- **USDC Deposits** - Direct deposits to smart contract with auto-balance tracking
+- **USDC Withdrawals** - Balance verification and blockchain execution
+- **Transaction History** - Complete audit trail of all financial operations
+
+**Blockchain & Privacy:**
+- **Smart Contracts** - ARDA contract for deposits/withdrawals/proof verification
+- **ZK Proofs** - SP1 zkVM batch processing via Sindri service
+- **Merkle Tree ADS** - Database-backed authenticated data structure
 
 ### Core Architecture
 
 **Three-Component Architecture:**
-- **Smart Contracts** (`contracts/`) - On-chain proof verification and state management
-- **ZKVM Program** (`program/`) - Zero-knowledge transaction processing
-- **Web Server Application** (Main repo) - User interface, API, and orchestration
-
-For detailed architecture information, see [`docs/architecture/three-component-overview.md`](docs/architecture/three-component-overview.md).
+1. **Smart Contracts** (`contracts/`) - On-chain proof verification and state management
+2. **ZKVM Program** (`program/`) - Zero-knowledge transaction processing
+3. **Web Server** (Main repo) - API, document processing, and orchestration
 
 **Component Structure:**
-- **`program/`** - SP1 zkVM program for privacy-preserving computations
-- **`script/`** - Local testing with fast SP1 Core proofs
-- **`api/`** - REST/GraphQL API server with ZK proof generation
-- **`db/`** - PostgreSQL database with ADS (Authenticated Data Structures)
-- **`contracts/`** - Solidity contracts for on-chain proof verification
+- **`api/`** - REST API server with Swagger docs
+- **`db/`** - PostgreSQL with specialized document tables
+- **`contracts/`** - Solidity contracts (ARDA, MockUSDC, ARDAFaucet)
+- **`program/`** - SP1 zkVM program for batch processing
 - **`lib/`** - Shared computation logic (zkVM compatible)
 - **`ethereum-client/`** - Ethereum integration utilities
 
@@ -60,363 +55,190 @@ For detailed architecture information, see [`docs/architecture/three-component-o
 
 ### Quick Setup
 ```bash
-# Complete automated setup
-make setup                           # Install deps + copy .env + init database
-
-# Individual steps
-make install                         # Install all dependencies (Rust, SP1, Foundry, Docker, etc.)
-make env                            # Copy .env.example to .env
-make initDB                         # Initialize database with migrations + SQLx cache
-
-# Deploy circuit to Sindri (required for proofs)
-make deploy                         # Deploy circuit using SINDRI_CIRCUIT_TAG from .env
+make setup          # Install deps + copy .env + init database
+make env            # Copy .env.example to .env (edit SINDRI_API_KEY)
+make initDB         # Initialize database with migrations + SQLx cache
+make deploy         # Deploy circuit to Sindri (for sandbox/production)
 ```
 
 ### Development Workflow
 ```bash
-# Fast local SP1 development (no database required)
-make run                           # ~8s Core proofs: test deal operations
+# Local development
+make up             # Start Postgres + Anvil (local) or Postgres only (sandbox/production)
+make server         # Run server (auto-deploys contracts if needed)
 
-# Full stack development with local Anvil devnet
-make up                             # Start Postgres + Anvil (local/staging) or just Postgres (sandbox/production)
-make deploy-contracts               # Deploy contracts (environment-aware)
-make server                         # Run server with deposit/withdrawal monitors
+# Testing
+make test           # All tests with database
+cargo test          # Unit tests only
+make forge-test     # Smart contract tests
 
-# Alternative: Server auto-deploys contracts if needed
-make server                         # One command to start everything
+# Code quality
+make fmt            # Format code
+make lint           # Lint code
 
-# Stop services
-make down                           # Stop all services
-make clean-anvil                    # Reset Anvil blockchain state
+# Cleanup
+make down           # Stop all services
+make clean-anvil    # Reset Anvil blockchain state
 ```
 
-### Local Anvil Devnet (Local/Staging Environments)
+### Local Anvil Development
 
-For local and staging environments, Arda Credit uses a local Anvil devnet instead of remote testnets:
+For local/staging environments, use Anvil devnet:
 
 ```bash
-# Anvil management
-make anvil-start                    # Start Anvil devnet
-make anvil-stop                     # Stop Anvil (preserves state)
-make anvil-logs                     # View Anvil logs
-make clean-anvil                    # Reset blockchain state
-
-# Faucet commands (get test ETH + USDC)
-make faucet-request ADDRESS=0x742d35Cc6...   # Request 0.5 ETH + 1M USDC (1 hour cooldown)
-make faucet-status ADDRESS=0x742d35Cc6...    # Check balance and cooldown status
-make faucet-stats                            # View overall faucet statistics
+# Faucet (get test ETH + USDC)
+make faucet-request ADDRESS=0x...   # 0.5 ETH + 1M USDC (1 hour cooldown)
+make faucet-status ADDRESS=0x...    # Check balance and cooldown
+make faucet-stats                   # View statistics
 
 # Contract deployment (environment-aware)
-SERVER_ENVIRONMENT=local make deploy-contracts      # Deploy to local Anvil
-SERVER_ENVIRONMENT=sandbox make deploy-contracts    # Deploy to Sepolia testnet
+SERVER_ENVIRONMENT=local make deploy-contracts      # → Anvil with mocks
+SERVER_ENVIRONMENT=sandbox make deploy-contracts    # → Sepolia testnet
 ```
 
 **What gets deployed:**
-- **Local/Staging**: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier (to Anvil)
-- **Sandbox/Production**: ARDA only (to Sepolia/Mainnet with real USDC)
-
-**Faucet Configuration:**
-- USDC: 1,000,000 USDC per request
-- ETH: 0.5 ETH per request (for gas fees)
-- Cooldown: 1 hour between requests
-- Initial balance: 100,000,000 USDC
-
-See [`docs/development/local-anvil-workflow.md`](docs/development/local-anvil-workflow.md) for complete details.
+- **Local/Staging**: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier
+- **Sandbox/Production**: ARDA only (requires RPC URL, verifier, program key)
 
 ### API Server Usage
 
-The API server provides REST endpoints for all operations. Access the interactive API documentation at:
+**Swagger UI**: `http://0.0.0.0:8080/swagger-ui/` - Interactive API documentation
 
-**Swagger UI**: `http://0.0.0.0:8080/swagger-ui/`
-
-**Core API Testing Examples:**
-
+**Basic API Examples:**
 ```bash
-# GET request - Health check
+# Health check
 curl http://0.0.0.0:8080/api/v1/health
 
-# POST request - Create user
+# Create user
 curl -X POST http://0.0.0.0:8080/api/v1/user \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","user_type":"investor"}'
 
-# PUT request with authentication - Update user
-curl -X PUT http://0.0.0.0:8080/api/v1/user/{user_id} \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"kyc_status":"approved"}'
-
-# DELETE request with authentication - Remove listing
-curl -X DELETE http://0.0.0.0:8080/api/v1/deal/{deal_id}/remove-from-sale \
+# List deals
+curl "http://0.0.0.0:8080/api/v1/deals?status=active&limit=20" \
   -H "Authorization: Bearer YOUR_TOKEN"
-
-# GET request with query parameters
-curl "http://0.0.0.0:8080/api/v1/deals?status=active&limit=20"
 ```
 
-**For complete API documentation and all available endpoints, see:**
-- Interactive documentation: `http://0.0.0.0:8080/swagger-ui/`
-- API documentation: [`docs/integrations/api-swagger.md`](docs/integrations/api-swagger.md)
+**For all endpoints, see Swagger UI at http://0.0.0.0:8080/swagger-ui/**
 
-### Testing & Building
+### Email Debug Mode
+
+For development without AWS SES:
 ```bash
-# Test suites
-make test                           # All tests with database
-cargo test                          # Unit tests only (no database)
-make cover                          # Generate code coverage report
-
-# Smart contracts
-make forge-build                    # Build contracts
-make forge-test                     # Run contract tests
-cd contracts && forge test --match-contract LoanManagementTest  # Specific tests
-
-# Code quality
-make fmt                            # Format code
-make lint                           # Lint code
-make lint-rust                      # Rust-specific linting
-```
-
-### Email Debug Mode (Bypass AWS SES)
-
-**For development and testing without AWS SES:**
-```bash
-# Enable debug mode in environment
 echo "EMAIL_DEBUG_MODE=true" >> .env
-
 # Magic links will be logged to console instead of sent via email
-# Example output:
-# 🔗 DEBUG MODE: Magic link for matt@arda.xyz:
-#       https://app.arda.xyz/auth/verify?token=abc123&state=xyz789
-#       Expires in 10 minutes
-#       Click this link to authenticate (expires in 10 minutes)
-
-# Use the logged URL for manual testing of authentication flow
 ```
-
-**Configuration Options:**
-```bash
-# Email configuration
-EMAIL_DEBUG_MODE=true           # Skip AWS SES, log links only
-EMAIL_ENABLED=true              # Must be true for debug mode to work
-EMAIL_FROM=test@example.com    # From address for email templates
-EMAIL_REPLY_TO=support@arda.xyz # Reply-to address
-MAGIC_BASE_URL=https://app.arda.xyz/auth/verify  # Base URL for magic links
-```
-
-### Smart Contract Deployment
-
-**Environment-aware deployment** (recommended):
-```bash
-# Deploy based on SERVER_ENVIRONMENT
-make deploy-contracts               # Uses SERVER_ENVIRONMENT (default: local)
-
-# Or specify environment explicitly
-SERVER_ENVIRONMENT=local make deploy-contracts      # → Anvil (with mocks)
-SERVER_ENVIRONMENT=sandbox make deploy-contracts    # → Sepolia testnet
-SERVER_ENVIRONMENT=production make deploy-contracts # → Mainnet
-
-make deploy-contract-help           # Show deployment help
-```
-
-**What gets deployed:**
-- **Local/Staging**: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier (automated)
-- **Sandbox/Production**: ARDA only (requires env vars: RPC URL, verifier, program key)
-
-**Local development with Anvil** (automated):
-```bash
-# Anvil is automatically managed by docker-compose
-make up                             # Starts Anvil + Postgres
-make deploy-contracts               # Deploys all contracts to Anvil
-make server                         # Auto-deploys if needed, then starts server
-
-# Or manual Anvil management
-make anvil-start                    # Start Anvil manually
-make anvil-stop                     # Stop Anvil (preserves state)
-make anvil-logs                     # View Anvil logs
-make clean-anvil                    # Reset blockchain state
-
-# Faucet for test funds (local/staging only)
-make faucet-request ADDRESS=0x...   # Request 0.5 ETH + 1M USDC (1hr cooldown)
-make faucet-status ADDRESS=0x...    # Check balance and status
-make faucet-stats                   # View overall statistics
-```
-
-**Manual deployment** (legacy):
-```bash
-# Start Anvil manually
-anvil                               # Runs on http://127.0.0.1:8545 (Chain ID: 31337)
-
-# Deploy with forge create
-cd contracts
-forge create src/ARDA.sol:ARDA \
-  --rpc-url http://127.0.0.1:8545 \
-  --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
-  --constructor-args VERIFIER_ADDRESS PROGRAM_VKEY
-
-# Better: Use automated deployment script
-make deploy-contracts
-```
-
-## High-Level Architecture
-
-### Three-Component Architecture
-
-Arda Credit implements a **three-component architecture** with clean separation of concerns:
-
-1. **Smart Contracts** (`contracts/`) - On-chain proof verification and state management
-2. **ZKVM Program** (`program/`) - Zero-knowledge transaction processing
-3. **Web Server Application** (Main repo) - User interface, API, and orchestration
-
-For detailed architecture information, see [`docs/architecture/three-component-overview.md`](docs/architecture/three-component-overview.md).
-
-### Deal Processing Flow
-1. **User Registration**: Users register as investors/originators with optional KYC
-2. **USDC Deposits**: Users deposit USDC to smart contract, automatically updating internal balances
-3. **Deal Origination**: KYC'd users create deals (queued in `deal_transactions` table)
-4. **Payment Processing**: Deal payments batched and processed via ZK proofs
-5. **USDC Withdrawals**: KYC'd users withdraw USDC with balance validation and smart contract execution
-6. **State Transitions**: Deal states (active, paid, closed) updated with cryptographic verification
-7. **Marketplace Trading**: Deals can be listed for sale, browsed, and transferred between investors
-8. **Ownership Transfers**: Deal ownership changes with validation and cryptographic verification
-9. **Contract Posting**: Background process posts proven deal state changes to Ethereum
-
-### Zero-Knowledge Properties
-
-For detailed privacy guarantees and ZK properties, see [`docs/architecture/three-component-overview.md#zero-knowledge-properties`](docs/architecture/three-component-overview.md#zero-knowledge-properties).
-
-**Core Privacy Guarantees:**
-- Individual deal amounts, payments, and user details remain hidden
-- Only state root transitions and transaction counts are public
-- Users can prove their specific transaction was included without revealing others
-- Batch processing maintains privacy while enabling regulatory compliance
 
 ## Environment Configuration
 
-**Setup environment variables:**
-```bash
-# Copy and configure environment file
-make env                            # Copies .env.example to .env
-# Edit .env to add your SINDRI_API_KEY and other required variables
-```
-
-**Configuration details:** See `.env.example` for complete configuration options and required environment variables.
-
-**Key variables for development:**
+**Key variables:**
 - `DATABASE_URL` - PostgreSQL connection string
-- `SERVER_ENVIRONMENT` - Server environment: `local`, `staging`, `sandbox`, or `production` (default: `local`)
-  - `local` and `staging` use local SP1 prover for fast development
-  - `sandbox` and `production` use Sindri service for proof generation
-- `SINDRI_API_KEY` - API key for proof generation (get from https://sindri.app) - required for `sandbox`/`production`
+- `SERVER_ENVIRONMENT` - `local`, `staging`, `sandbox`, or `production`
+  - `local`/`staging` use local SP1 prover
+  - `sandbox`/`production` use Sindri service
+- `SINDRI_API_KEY` - Required for sandbox/production proof generation
 - `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
-- `ETHEREUM_RPC_URL` - Ethereum RPC endpoint for contract interactions
-- `ETHEREUM_ARDA_CONTRACT_ADDRESS` - Deployed ARDA contract address (was LOAN_CONTRACT_ADDRESS)
-- `DEAL_PROGRAM_VKEY` - Deal program verification key (was LOAN_PROGRAM_VKEY)
-- `EMAIL_DEBUG_MODE` - Set to `true` to bypass AWS SES and log magic links to console
-- `EMAIL_ENABLED` - Set to `true` to enable email functionality
+- `ETHEREUM_RPC_URL` - Ethereum RPC endpoint
+- `ETHEREUM_ARDA_CONTRACT_ADDRESS` - Deployed ARDA contract address
+- `DEAL_PROGRAM_VKEY` - Deal program verification key
+- `EMAIL_DEBUG_MODE` - Set to `true` to log magic links to console
+- `EMAIL_ENABLED` - Set to `true` to enable email
 
-**AI functionality variables (choose one provider):**
-- `OPENAI_API_KEY` - OpenAI API key for GPT models
-- `ANTHROPIC_API_KEY` - Anthropic API key for Claude models
-- `AZURE_OPENAI_KEY` + `AZURE_OPENAI_ENDPOINT` - Azure OpenAI configuration
-- `OPENROUTER_API_KEY` - OpenRouter API key for multi-model access
-- `OPENROUTER_SITE_URL` + `OPENROUTER_SITE_NAME` - OpenRouter site info (optional)
+**AI provider (choose one):**
+- `OPENAI_API_KEY` - OpenAI GPT models
+- `ANTHROPIC_API_KEY` - Anthropic Claude models
+- `AZURE_OPENAI_KEY` + `AZURE_OPENAI_ENDPOINT` - Azure OpenAI
+- `OPENROUTER_API_KEY` - OpenRouter multi-model access
 
-For production deployment, see [`docs/deployment/security-production.md`](docs/deployment/security-production.md).
+## Core Data Structures
 
-## Deal Data Structures
-
-### Core Types
+**Users & Companies:**
 ```rust
-// User account with KYC status
 struct User {
     user_id: uuid::Uuid,
-    user_type: UserType,  // Investor | Originator
     email: String,
     kyc_status: KycStatus,  // NotSubmitted | Pending | Approved | Rejected
-    kyc_verified_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
 }
 
-// Deal record (converted from Loan)
+struct Company {
+    company_id: uuid::Uuid,
+    legal_name: String,
+    kyb_status: KybStatus,  // NotSubmitted | Pending | Approved | Rejected
+    created_at: DateTime<Utc>,
+}
+```
+
+**Deals:**
+```rust
 struct Deal {
     deal_id: uuid::Uuid,
-    originator_id: uuid::Uuid,  // was borrower_id
-    investor_id: uuid::Uuid,    // was lender_id
+    originator_id: uuid::Uuid,  // Company ID
+    investor_id: uuid::Uuid,    // Company ID
     principal_amount: Decimal,
     outstanding_balance: Decimal,
     interest_rate_bps: i32,
-    loan_status: String,  // keeping same field name: originated | active | paid_off | closed | defaulted
+    loan_status: String,  // originated | active | paid_off | closed | defaulted
     originated_at: DateTime<Utc>,
     maturity_date: Option<DateTime<Utc>>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
 }
 
-// Deal payment (converted from Payment)
 struct DealPayment {
     payment_id: uuid::Uuid,
-    deal_id: uuid::Uuid,      // was loan_id
+    deal_id: uuid::Uuid,
     payer_id: uuid::Uuid,
     amount: Decimal,
     payment_type: String, // regular | principal | interest | penalty
-    transaction_hash: Option<String>,
     processed_at: DateTime<Utc>,
-    created_at: DateTime<Utc>,
-}
-
-// Deal transaction for ZK proof integration (converted from LoanTransaction)
-struct DealTransaction {
-    transaction_id: uuid::Uuid,
-    deal_id_hash: Option<[u8; 32]>,  // was loan_id_hash
-    transaction_type: TransactionType,  // DealOrigination | DealPayment | DealCloseout
-    amount: Decimal,
-    created_at: DateTime<Utc>,
-}
-
-// Deal marketplace listing (converted from LoanListing)
-struct DealListing {
-    listing_id: uuid::Uuid,
-    deal_id: uuid::Uuid,      // was loan_id
-    seller_id: uuid::Uuid,
-    asking_price: Decimal,
-    description: Option<String>,
-    listed_at: DateTime<Utc>,
-    expires_at: Option<DateTime<Utc>>,
-    status: String, // active | sold | cancelled | expired
-}
-
-// Deal ownership transfer (converted from LoanTransfer)
-struct DealTransfer {
-    transfer_id: uuid::Uuid,
-    deal_id: uuid::Uuid,          // was loan_id
-    from_investor_id: uuid::Uuid, // was from_lender_id
-    to_investor_id: uuid::Uuid,   // was to_lender_id
-    transfer_price: Decimal,
-    transfer_date: DateTime<Utc>,
-    status: String, // pending | completed | cancelled
-}
-
-// USDC deposit from smart contract (unchanged)
-struct UsdcDeposit {
-    id: i32,
-    user_address: String,  // Ethereum wallet address
-    amount: Decimal,       // Amount in wei (6 decimals for USDC)
-    transaction_hash: String,
-    status: String,        // pending | confirmed | processed | failed
-    confirmation_count: i32,
-    block_number: i64,
-    created_at: DateTime<Utc>,
 }
 ```
 
-## Document Schema & Extraction Mapping
+**Marketplace:**
+```rust
+struct DealListing {
+    listing_id: uuid::Uuid,
+    deal_id: uuid::Uuid,
+    seller_id: uuid::Uuid,
+    asking_price: Decimal,
+    status: String, // active | sold | cancelled | expired
+    listed_at: DateTime<Utc>,
+}
 
-### Overview
+struct DealTransfer {
+    transfer_id: uuid::Uuid,
+    deal_id: uuid::Uuid,
+    from_investor_id: uuid::Uuid,
+    to_investor_id: uuid::Uuid,
+    transfer_price: Decimal,
+    status: String, // pending | completed | cancelled
+}
+```
 
-The Arda Credit system includes comprehensive document extraction and database schemas for all credit agreement document types. This enables automated document ingestion, LLM-based field extraction, and structured storage in specialized database tables.
+**Financial:**
+```rust
+struct UsdcDeposit {
+    id: i32,
+    user_address: String,
+    amount: Decimal,
+    transaction_hash: String,
+    status: String, // pending | confirmed | processed | failed
+    block_number: i64,
+}
+
+struct UsdcWithdrawal {
+    id: i32,
+    user_address: String,
+    recipient_address: String,
+    amount: Decimal,
+    status: String, // pending | processing | completed | failed | cancelled
+}
+```
+
+## Document System
 
 ### Supported Document Types
 
-All 8 document types from the MVP specification are fully implemented:
+The system supports 8+ specialized document types with LLM extraction:
 
 1. **Credit Agreement** (52 fields) - Core deal terms, parties, pricing, covenants
 2. **Term Sheet** (39 fields) - Pre-agreement indicative terms
@@ -427,189 +249,36 @@ All 8 document types from the MVP specification are fully implemented:
 7. **SSI** (20+ fields) - Standard Settlement Instructions for payments
 8. **Secondary Trading** (30+ fields) - Secondary market trade details
 
-### Database Migrations
+### Document Processing Pipeline
 
-**Location**: `db/migrations/020-030_*.sql`
-
-All specialized document tables have been created:
-- `020_credit_agreements.sql` - Credit agreement table
-- `021_fee_letters.sql` - Fee letter table
-- `022_legal_opinions.sql` - Legal opinions table
-- `023_security_agreements.sql` - Security agreements (expanded)
-- `024_ucc_financing_statements.sql` - UCC filing tracking
-- `025_account_control_agreements.sql` - DACA/ACA tracking
-- `026_guaranties.sql` - Guaranty agreements
-- `027_assignment_assumption_agreements.sql` - Assignment documentation
-- `028_participation_agreements.sql` - Participation interests
-- `029_ssi_records.sql` - **NEW**: Standard Settlement Instructions
-- `030_secondary_trades.sql` - **NEW**: Secondary trading records
-
-### Extraction Schemas
-
-**Location**: `api/src/services/document_ingestion/comprehensive_schema.rs`
-
-All extraction structs are defined with full field coverage:
+**Location**: `api/src/services/document_ingestion/`
 
 ```rust
-// All extraction types available:
-pub struct CreditAgreementExtraction { /* 52 fields */ }
-pub struct TermSheetExtraction { /* 39 fields */ }
-pub struct SecurityAgreementExtraction { /* 30+ fields - expanded */ }
-pub struct FeeLetterExtraction { /* 10+ fields */ }
-pub struct LegalOpinionExtraction { /* 15+ fields */ }
-pub struct GuarantyExtraction { /* 40+ fields */ }
-pub struct SsiExtraction { /* 20 fields */ }
-pub struct SecondaryTradingExtraction { /* 30+ fields */ }
-
-// Supporting enums:
-pub enum ExecutionStatus { Draft, Executed, Amended, Superseded }
-pub enum FacilityType { TermLoan, Revolver, DelayedDraw, BridgeLoan, ... }
-pub enum PerfectionStatus { Perfected, Pending, Partial, NotRequired }
-pub enum LienPriority { FirstLien, SecondLien, Junior, PariPassu }
-pub enum GuaranteeType { FullUnconditional, Limited, Capped, ... }
-pub enum CustodyType { Bank, SelfCustody, Custodian, Exchange, Hybrid }
-pub enum TradeType { ParTrade, DiscountTrade, PremiumTrade, ... }
-pub enum PriceType { PercentageOfPar, DollarPrice, YieldBased, ... }
-```
-
-### Document Data Mapping Reference
-
-**Location**: `db/src/document_mappers.rs` (reference implementation)
-
-This module provides mapping functions to convert extracted document data (from LLM extraction) into database-ready structures. Each document type has a dedicated mapper function:
-
-**Available Mappers:**
-```rust
-// Map extraction results to database records
-pub fn map_credit_agreement_to_db(...) -> Result<CreditAgreementDbRecord>
-pub fn map_term_sheet_to_db(...) -> Result<serde_json::Value>
-pub fn map_security_agreement_to_db(...) -> Result<SecurityAgreementDbRecord>
-pub fn map_fee_letter_to_db(...) -> Result<FeeLetterDbRecord>
-pub fn map_legal_opinion_to_db(...) -> Result<LegalOpinionDbRecord>
-pub fn map_guaranty_to_db(...) -> Result<GuarantyDbRecord>
-pub fn map_ssi_to_db(...) -> Result<SsiDbRecord>
-pub fn map_secondary_trading_to_db(...) -> Result<SecondaryTradingDbRecord>
-```
-
-**Note**: The document_mappers module is provided as a reference implementation for building your ingestion pipeline. See the module file for complete implementation examples.
-
-### Type Mapping Convention
-
-**CSV → Rust → PostgreSQL Type Mapping:**
-
-| CSV/Document Type | Rust Type | PostgreSQL Type |
-|-------------------|-----------|-----------------|
-| string/uuid | `Uuid` | `UUID` |
-| string | `String` | `VARCHAR/TEXT` |
-| enum | Custom `enum` | `VARCHAR` + `CHECK` |
-| boolean | `bool` | `BOOLEAN` |
-| date | `NaiveDate` | `DATE` |
-| datetime | `DateTime<Utc>` | `TIMESTAMP WITH TIME ZONE` |
-| money | `Decimal` | `DECIMAL(20, 2)` |
-| number | `f64` | `DECIMAL` or `DOUBLE` |
-| integer | `i32` | `INTEGER` |
-| array<string> | `Vec<String>` | `TEXT[]` |
-| object | `serde_json::Value` | `JSONB` |
-
-### Integration Example
-
-When building your document ingestion pipeline, follow this pattern:
-
-```rust
-use api::services::document_ingestion::comprehensive_schema::CreditAgreementExtraction;
-use api::services::document_ingestion::llm_extraction::LlmExtractionService;
-use db::document_mappers::map_credit_agreement_to_db;
-
 // 1. Extract document data using LLM
 let extraction_service = LlmExtractionService::from_env()?;
-let extracted_data: CreditAgreementExtraction =
-    extraction_service.extract_credit_agreement_comprehensive(&document_text).await?;
+let extracted_data = extraction_service
+    .extract_credit_agreement_comprehensive(&document_text)
+    .await?;
 
 // 2. Map to database record
 let db_record = map_credit_agreement_to_db(
     &extracted_data,
-    "CA-2025-001",     // document_id
-    Some(uuid),         // credit_agreement_id
+    "CA-2025-001",
+    Some(uuid),
 )?;
 
-// 3. Insert into database
-sqlx::query!(
-    r#"
-    INSERT INTO credit_agreements (
-        id, document_id, version, execution_status, borrower_legal_name,
-        agent_or_lender, committed_amount, currency, ...
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ...)
-    "#,
-    db_record.id,
-    db_record.document_id,
-    db_record.version,
-    // ... all other fields
-)
-.execute(&pool)
-.await?;
+// 3. Insert into specialized table (credit_agreements, fee_letters, etc.)
 ```
 
-### Document Schema Field Coverage
+**Database Tables**: `db/migrations/020-030_*.sql`
 
-**Credit Agreement (52 fields):**
-- Core Identifiers (7): agreement_id, version, execution_status, effective_date, maturity_date, governing_law, executed_pdf_hash
-- Parties & Roles (5): borrower, agent/lender, guarantors, collateral_agent
-- Facility & Economics (14): facility_type, committed_amount, currency, draw_rules, repayment, pricing, fees
-- Collateral & Support (4): secured, collateral_scope, account_control, ucc_filings
-- Covenants (7): financial covenants, affirmative/negative covenants, cure rights
-- Defaults & Remedies (3): events_of_default, cross-default, cure_period
-- Ops & Admin (4): borrowing_notice, compliance_certificate, reporting, assignment_rules
-- Conditions Precedent (4): kyc_complete, legal_opinions, insurance, corporate_approvals
-- Linkage & Provenance (3): pdf_hash, registry_pointer, linked_term_sheet
-
-**Security Agreement (30+ fields - expanded):**
-- Core: document_id, doc_hash, grantor, secured_party, collateral_agent
-- Collateral Categories (8 booleans): accounts_receivable, inventory, equipment, IP, real_estate, etc.
-- Perfection: methods, status, date, priority, intercreditor_agreement
-- Jurisdictions: governing_law, filing_jurisdictions
-- Terms: effective_date, termination_date, release_conditions, maintenance_covenants
-
-**SSI - Standard Settlement Instructions (20 fields):**
-- Seller SSI: beneficiary_name, bank_name, bank_identifier, reference_text
-- Seller Digital: custody_type, custodian_name, wallet_chain, wallet_chain_id
-- Buyer SSI: beneficiary_name, bank_name, bank_identifier, reference_text
-- Buyer Digital: custody_type, custodian_name, wallet_chain, wallet_chain_id
-- Preferences: settlement_currency, settlement_method, effective_date, expiry_date
-
-**Secondary Trading (30+ fields):**
-- Trade Details: trade_id, instrument_id, trade_datetime, trade_type, trade_status
-- Parties: seller_party_id, buyer_party_id, seller_legal_name, buyer_legal_name
-- Financial: notional_amount, price_type, price, accrued_interest, transfer_fee
-- Settlement: effective_date, settlement_date, settlement_days
-- Compliance: eligibility_checks (JSONB), allocation_id, docs_required (JSONB)
-
-### Database Schema Features
-
-All specialized document tables include:
-- **UUID primary keys** for globally unique identification
-- **Foreign key references** to `credit_agreements` table
-- **Document hashing** (SHA-256) for tamper evidence
-- **Audit timestamps** (created_at, updated_at)
-- **Audit trail** (created_by, updated_by)
-- **JSONB metadata fields** for flexible additional data
-- **GIN indexes** on JSONB and array fields for fast querying
-- **Triggers** for automatic timestamp updates
-- **Helper functions** for common queries
-
-### Next Steps for Ingestion Pipeline
-
-When building your document ingestion pipeline, you'll need to:
-
-1. **Parse Documents** - Extract text from PDFs, images, or structured files
-2. **Classify Document Type** - Determine which extraction schema to use
-3. **LLM Extraction** - Use LlmExtractionService with appropriate schema
-4. **Validation** - Validate required fields and data types
-5. **Database Mapping** - Use document_mappers functions to convert to database records
-6. **Database Insertion** - Insert into specialized tables
-7. **Linking** - Link documents to parent credit agreements
-8. **Embedding Generation** - Generate embeddings for vector search (already implemented)
-
-The extraction schemas and database tables are ready to use. The LLM extraction service already has methods for Credit Agreement and Term Sheet. You'll need to add extraction methods for the other 6 document types following the same pattern.
+All document tables include:
+- UUID primary keys
+- Foreign key references to parent credit agreements
+- Document hashing (SHA-256) for tamper evidence
+- Audit timestamps (created_at, updated_at)
+- JSONB metadata fields for flexible data
+- GIN indexes for fast querying
 
 ## Common Development Patterns
 
@@ -617,14 +286,7 @@ The extraction schemas and database tables are ready to use. The LLM extraction 
 1. Add transaction type to `TransactionType` enum in `lib/src/transactions.rs`
 2. Implement handler in `api/src/deal_handlers.rs`
 3. Add API endpoint route in `api/src/routes.rs`
-4. Add database migration if needed
-5. Test with curl or Swagger UI at `http://0.0.0.0:8080/swagger-ui/`
-
-### KYC Integration
-1. KYC status tracked in `users` table
-2. KYC verification can be managed via API endpoints
-3. Transaction validation checks KYC status for restricted operations
-4. Users can prove KYC status inclusion in batches
+4. Test with Swagger UI at `http://0.0.0.0:8080/swagger-ui/`
 
 ### Database Changes
 1. Create migration in `db/migrations/`
@@ -634,314 +296,80 @@ The extraction schemas and database tables are ready to use. The LLM extraction 
 ### Smart Contract Updates
 1. Modify contracts in `contracts/src/`
 2. Test: `make forge-test`
-3. Deploy: `make deploy-contract` (after setting env vars)
-4. Update `ETHEREUM_ARDA_CONTRACT_ADDRESS` in environment
+3. Deploy: `make deploy-contracts`
+4. Update `ETHEREUM_ARDA_CONTRACT_ADDRESS` in .env
 
 ### Circuit Changes
-1. Modify SP1 program in `program/src/main.rs` for deal transaction processing
-2. Test locally: `make run`
+1. Modify SP1 program in `program/src/main.rs`
+2. Test locally: `make run` (~8s Core proofs)
 3. Deploy to Sindri: `make deploy`
-4. Update `SINDRI_CIRCUIT_TAG` if using specific version
+4. Update `SINDRI_CIRCUIT_TAG` in .env
 
 ## Deal Workflow Examples
 
-### USDC Deposit Flow
-```bash
-# 1. User deposits USDC to smart contract (triggers database update via monitor)
-
-# 2. Check deposit balance via API
-curl "http://0.0.0.0:8080/api/v1/balance/0x742E4C1D5B5B8Ac5dC12345678901234567890aB" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 3. Link wallet to user account via API
-curl -X POST http://0.0.0.0:8080/api/v1/user/link-wallet \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"user_id":"user-uuid","wallet_address":"0x742E..."}'
-
-# 4. View deposit history via API
-curl "http://0.0.0.0:8080/api/v1/deposits?address=0x742E..." \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-**Note:** For complete API endpoint details, see the Swagger UI at http://0.0.0.0:8080/swagger-ui/
-
 ### Complete Deal Lifecycle
 ```bash
-# 1. Register users via API
-curl -X POST http://0.0.0.0:8080/api/v1/user \
+# 1. Register company and users
+curl -X POST http://0.0.0.0:8080/api/v1/company \
   -H "Content-Type: application/json" \
-  -d '{"email":"originator@example.com","user_type":"originator"}'
+  -d '{"legal_name":"Acme Corp","email":"contact@acme.com"}'
 
-curl -X POST http://0.0.0.0:8080/api/v1/user \
-  -H "Content-Type: application/json" \
-  -d '{"email":"investor@example.com","user_type":"investor"}'
-
-# 2. Submit KYC (both users)
-curl -X POST http://0.0.0.0:8080/api/v1/user/{originator-uuid}/kyc \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-curl -X POST http://0.0.0.0:8080/api/v1/user/{investor-uuid}/kyc \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 3. Originate deal (KYC required)
+# 2. Create deal between companies
 curl -X POST http://0.0.0.0:8080/api/v1/deal \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"originator_id":"originator-uuid","investor_id":"investor-uuid","amount":50000}'
+  -d '{"originator_id":"company-uuid","investor_id":"investor-company-uuid","amount":50000}'
 
-# 4. Make payments
+# 3. Make payment
 curl -X POST http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/payment \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"amount":5000}'
 
-# 5. Trigger batch processing
+# 4. Trigger batch processing (ZK proof generation)
 curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
   -H "Authorization: Bearer YOUR_TOKEN"
-
-# 6. For all API endpoints, see Swagger UI at: http://0.0.0.0:8080/swagger-ui/
 ```
 
-**Note:** These are example API calls. See Swagger UI at http://0.0.0.0:8080/swagger-ui/ for exact endpoint paths and parameters.
-
-### Complete Liquidity Pool Lifecycle
+### Deal Marketplace
 ```bash
-# 1. Create a new liquidity pool via API
-curl -X POST http://0.0.0.0:8080/api/v1/pool \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"name":"Conservative Credit Pool","max_ltv_ratio":0.75,"max_interest_rate":0.10,"repayment_period_days":180}'
-
-# 2. List all pools (with status filter)
-curl "http://0.0.0.0:8080/api/v1/pools?status=active" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 3. Check specific pool details
-curl "http://0.0.0.0:8080/api/v1/pool/{pool-uuid}" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 4. Update pool status (pause/reactivate)
-curl -X PUT http://0.0.0.0:8080/api/v1/pool/{pool-uuid}/status \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"status":"paused"}'
-
-# 5. Find matching pools for credit deployment
-curl "http://0.0.0.0:8080/api/v1/pools/match?required_liquidity=50000&max_ltv=0.80" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
-```
-
-### Complete Deal Marketplace Lifecycle
-```bash
-# 1. Create and fund a deal via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"originator_id": "originator-uuid", "investor_id": "investor-uuid", "amount": 50000}' \
-  http://0.0.0.0:8080/api/v1/deal
-
-# 2. List deal for sale (by current investor) via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"deal_id": "deal-uuid", "asking_price": 47500, "seller_id": "investor-uuid", "description": "Great investment opportunity"}' \
-  http://0.0.0.0:8080/api/v1/deal/deal-uuid/list-for-sale
-
-# 3. Browse marketplace via API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://0.0.0.0:8080/api/v1/deals/for-sale?limit=10"
-
-# 4. Get marketplace statistics via API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://0.0.0.0:8080/api/v1/deals/marketplace/stats
-
-# 5. Remove from sale (if needed) via API
-curl -X DELETE \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  http://0.0.0.0:8080/api/v1/deal/deal-uuid/remove-from-sale
-
-# 6. All marketplace operations are included in batch processing for ZK proofs
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  http://0.0.0.0:8080/api/v1/batch/trigger
-
-# 7. Verify deal listing was included in ZK proof
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"transaction_id": "listing-uuid", "transaction_type": "deal_listing", "proof_file": "proof_batch_1.json"}' \
-  http://0.0.0.0:8080/api/v1/verify/inclusion
-# 1. List deal for sale (by current investor)
-curl -X POST http://0.0.0.0:8080/api/v1/deal/\{deal-uuid\}/list-for-sale \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"asking_price":47500,"description":"Great investment opportunity"}'
-
-# 2. Browse marketplace
-curl "http://0.0.0.0:8080/api/v1/deals/for-sale?limit=10" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 3. Get marketplace statistics
-curl "http://0.0.0.0:8080/api/v1/deals/marketplace/stats" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 4. Remove from sale (if needed)
-curl -X DELETE http://0.0.0.0:8080/api/v1/deal/\{deal-uuid\}/remove-from-sale \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
-# 1. List deal for sale (by current investor)
+# List deal for sale
 curl -X POST http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/list-for-sale \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"asking_price":47500,"description":"Great investment opportunity"}'
+  -d '{"asking_price":47500,"description":"Investment opportunity"}'
 
-# 2. Browse marketplace
+# Browse marketplace
 curl "http://0.0.0.0:8080/api/v1/deals/for-sale?limit=10" \
   -H "Authorization: Bearer YOUR_TOKEN"
 
-# 3. Get marketplace statistics
-curl "http://0.0.0.0:8080/api/v1/deals/marketplace/stats" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 4. Remove from sale (if needed)
-curl -X DELETE http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/remove-from-sale \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
-```
-
-### Complete Deal Transfer Lifecycle
-```bash
-# 1. Validate transfer is possible via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"deal_id": "deal-uuid", "current_investor_id": "current-investor-uuid"}' \
-  http://0.0.0.0:8080/api/v1/deal/deal-uuid/transfer/validate
-
-# 2. Execute deal ownership transfer via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"deal_id": "deal-uuid", "from_investor_id": "current-investor-uuid", "to_investor_id": "new-investor-uuid", "transfer_price": 47500}' \
-  http://0.0.0.0:8080/api/v1/deal/deal-uuid/transfer
-
-# 3. Check transfer history for the deal via API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://0.0.0.0:8080/api/v1/deal/deal-uuid/transfers?limit=5"
-
-# 4. Check user's transfer history via API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://0.0.0.0:8080/api/v1/user/current-investor-uuid/deal-transfers?limit=10"
-
-# 5. All transfer operations are included in batch processing for ZK proofs
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  http://0.0.0.0:8080/api/v1/batch/trigger
-
-# 6. Verify transfer inclusion in ZK proof
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"transaction_id": "transfer-transaction-uuid", "transaction_type": "deal_transfer", "proof_file": "proof_batch_1.json"}' \
-  http://0.0.0.0:8080/api/v1/verify/inclusion
-# 1. Validate transfer is possible
-curl -X POST http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/transfer/validate \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"current_investor_id":"current-investor-uuid"}'
-
-# 2. Execute deal ownership transfer
+# Transfer ownership
 curl -X POST http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/transfer \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"from_investor_id":"current-investor-uuid","to_investor_id":"new-investor-uuid","transfer_price":47500}'
-
-# 3. Check transfer history for the deal
-curl "http://0.0.0.0:8080/api/v1/deal/{deal-uuid}/transfers?limit=5" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 4. Check user's transfer history
-curl "http://0.0.0.0:8080/api/v1/user/{user-uuid}/deal-transfers?limit=10" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
+  -d '{"from_investor_id":"current-uuid","to_investor_id":"new-uuid","transfer_price":47500}'
 ```
 
-### Complete Withdrawal Lifecycle
+### USDC Operations
 ```bash
-# 1. Check available balance for withdrawals via API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://0.0.0.0:8080/api/v1/user/balance?address=0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
-
-# 2. Initiate withdrawal (requires KYC approval + sufficient balance) via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"user_address": "0x742E4C1D5B5B8Ac5dC12345678901234567890aB", "recipient_address": "0x123456789012345678901234567890123456789", "amount": 100.50}' \
-  http://0.0.0.0:8080/api/v1/withdrawal/initiate
-
-# 3. Check withdrawal status via API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://0.0.0.0:8080/api/v1/withdrawal/status/1
-
-# 4. View withdrawal history via API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://0.0.0.0:8080/api/v1/withdrawals?address=0x742E4C1D5B5B8Ac5dC12345678901234567890aB"
-
-# 5. Cancel withdrawal (only if not yet submitted to blockchain) via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  http://0.0.0.0:8080/api/v1/withdrawal/1/cancel
-
-# 6. Admin: View pending withdrawals via API
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  "http://0.0.0.0:8080/api/v1/withdrawals/pending?limit=10"
-
-# 7. Create batch and generate ZK proof (includes withdrawal transactions) via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  http://0.0.0.0:8080/api/v1/batch/trigger
-
-# 8. Verify withdrawal inclusion in ZK proof via API
-curl -X POST \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"transaction_id": "withdrawal-transaction-uuid", "transaction_type": "user_withdrawal", "proof_file": "proof_batch_1.json"}' \
-  http://0.0.0.0:8080/api/v1/verify/inclusion
-# 1. Check available balance for withdrawals
-curl "http://0.0.0.0:8080/api/v1/balance/0x742E4C1D5B5B8Ac5dC12345678901234567890aB" \
+# Check balance
+curl "http://0.0.0.0:8080/api/v1/balance/{wallet-address}" \
   -H "Authorization: Bearer YOUR_TOKEN"
 
-# 2. Initiate withdrawal (requires KYC approval + sufficient balance)
+# Initiate withdrawal
 curl -X POST http://0.0.0.0:8080/api/v1/withdrawal \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{"user_address":"0x742E4C1D5B5B8Ac5dC12345678901234567890aB","recipient_address":"0x123456789012345678901234567890123456789","amount":"100.50"}'
+  -d '{"user_address":"0x...","recipient_address":"0x...","amount":"100.50"}'
 
-# 3. Check withdrawal status
-curl "http://0.0.0.0:8080/api/v1/withdrawal/1" \
+# Check withdrawal status
+curl "http://0.0.0.0:8080/api/v1/withdrawal/{id}" \
   -H "Authorization: Bearer YOUR_TOKEN"
-
-# 4. View withdrawal history
-curl "http://0.0.0.0:8080/api/v1/withdrawals?address=0x742E4C1D5B5B8Ac5dC12345678901234567890aB" \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# 5. Cancel withdrawal (only if not yet submitted to blockchain)
-curl -X DELETE http://0.0.0.0:8080/api/v1/withdrawal/1 \
-  -H "Authorization: Bearer YOUR_TOKEN"
-
-# For complete API documentation, see: http://0.0.0.0:8080/swagger-ui/
 ```
 
 ## Debugging Tips
 
 ### SQLx Offline Mode
-For development without database:
 ```bash
 export SQLX_OFFLINE=true
 cargo check --workspace     # Works without PostgreSQL
@@ -950,112 +378,66 @@ cargo check --workspace     # Works without PostgreSQL
 ### Common Issues
 - **Proof generation fails**: Check `SINDRI_API_KEY` and circuit deployment
 - **Database connection errors**: Ensure PostgreSQL running via `make up`
-- **API authentication errors**: Verify your Bearer token is valid and not expired
-- **KYC validation errors**: Check user KYC status before deal operations via API
-- **API connection errors**: Verify server is running on `http://0.0.0.0:8080`
-- **KYC validation errors**: Check user KYC status before deal operations
-- **Contract deployment fails**: Check all Ethereum environment variables are set
+- **API authentication errors**: Verify Bearer token is valid
+- **Contract deployment fails**: Check all Ethereum environment variables
 
 ### Service URLs
-- Database: `0.0.0.0:5432`
-- API Server: `http://0.0.0.0:8080`
-- Health Check: `http://0.0.0.0:8080/api/v1/health`
-- GraphQL Playground: `http://0.0.0.0:8080/playground` (dev only)
-- **Swagger/OpenAPI Documentation**: `http://0.0.0.0:8080/swagger-ui/`
-- **AI Document Analysis**: `http://0.0.0.0:8080/api/v1/documents/{id}/analyze`
-- **AI Chat Interface**: `http://0.0.0.0:8080/api/v1/ai/chat`
-- **AI Analytics Dashboard**: `http://0.0.0.0:8080/api/v1/ai/analytics/dashboard`
+- **API Server**: `http://0.0.0.0:8080`
+- **Health Check**: `http://0.0.0.0:8080/api/v1/health`
+- **Swagger Docs**: `http://0.0.0.0:8080/swagger-ui/`
+- **Database**: `0.0.0.0:5432`
 
-### Key API Endpoints (Updated)
-- **Deal Management**:
-  - `POST /api/v1/deal` - Create deal
-  - `GET /api/v1/deals` - List deals
-  - `GET /api/v1/deal/{id}` - Get deal details
-  - `PUT /api/v1/deal/{id}` - Update deal
-  - `DELETE /api/v1/deal/{id}` - Delete deal
-- **Deal Marketplace** (consolidated):
-  - `GET /api/v1/deals/for-sale` - Browse marketplace
-  - `POST /api/v1/deal/{id}/list-for-sale` - List deal for sale
-  - `DELETE /api/v1/deal/{id}/remove-from-sale` - Remove from sale
-  - `GET /api/v1/deals/marketplace/stats` - Marketplace statistics
-- **Deal Transfers** (consolidated):
-  - `POST /api/v1/deal/{id}/transfer` - Transfer ownership
-  - `GET /api/v1/deal/{id}/transfers` - Get transfer history
-  - `POST /api/v1/deal/{id}/transfer/validate` - Validate transfer
-  - `GET /api/v1/user/{id}/deal-transfers` - User transfer history
+### Key API Endpoints
+- **Authentication**: `POST /api/v1/auth/magic-link`, `POST /api/v1/auth/verify`
+- **Users**: `POST /api/v1/user`, `GET /api/v1/user/{id}`
+- **Companies**: `POST /api/v1/company`, `GET /api/v1/companies`
+- **Deals**: `POST /api/v1/deal`, `GET /api/v1/deals`, `GET /api/v1/deal/{id}`
+- **Marketplace**: `GET /api/v1/deals/for-sale`, `POST /api/v1/deal/{id}/list-for-sale`
+- **Transfers**: `POST /api/v1/deal/{id}/transfer`, `GET /api/v1/deal/{id}/transfers`
+- **Documents**: `POST /api/v1/document/upload`, `GET /api/v1/documents/{id}/analyze`
+- **Financial**: `GET /api/v1/balance/{address}`, `POST /api/v1/withdrawal`
 
 ## Documentation References
 
-For detailed information on specific topics, see the [`docs/`](docs/) directory:
+See the [`docs/`](docs/) directory for detailed information:
 
 ### Development & Setup
-- **Local Development Setup**: [`docs/deployment/development-setup.md`](docs/deployment/development-setup.md)
-- **Local Testing with GitHub Actions**: [`docs/development/local-testing.md`](docs/development/local-testing.md)
+- **Local Development**: `docs/deployment/development-setup.md`
+- **Local Testing**: `docs/development/local-testing.md`
+- **Local Anvil Workflow**: `docs/development/local-anvil-workflow.md`
 
 ### Architecture & Design
-- **Three-Component Architecture**: [`docs/architecture/three-component-overview.md`](docs/architecture/three-component-overview.md)
-- **Deal System Architecture**: [`docs/architecture/deal-system.md`](docs/architecture/deal-system.md)
-- **Performance Targets**: [`docs/architecture/performance-targets.md`](docs/architecture/performance-targets.md)
+- **Three-Component Architecture**: `docs/architecture/three-component-overview.md`
+- **Deal System**: `docs/architecture/deal-system.md`
+- **Performance Targets**: `docs/architecture/performance-targets.md`
 
 ### Integration & APIs
-- **API Documentation**: [`docs/integrations/api-swagger.md`](docs/integrations/api-swagger.md)
-- **Authentication Integration**: [`docs/integrations/authentication.md`](docs/integrations/authentication.md)
-- **Frontend Examples**: [`docs/integrations/frontend-examples.md`](docs/integrations/frontend-examples.md)
+- **API Documentation**: `docs/integrations/api-swagger.md`
+- **Authentication**: `docs/integrations/authentication.md`
+- **Frontend Examples**: `docs/integrations/frontend-examples.md`
 
 ### Deployment & Operations
-- **Production Security**: [`docs/deployment/security-production.md`](docs/deployment/security-production.md)
-- **Monitoring Setup**: [`docs/deployment/monitoring.md`](docs/deployment/monitoring.md)
+- **Production Security**: `docs/deployment/security-production.md`
+- **Monitoring**: `docs/deployment/monitoring.md`
 
-## System Conversion Summary
+## System Notes
 
-This system has been converted from loan-based terminology to deal-based terminology for improved clarity and business alignment.
+### Company-Based Model
+- **Deals are between companies**, not individual users
+- Users are team members within companies
+- Users have KYC status, companies have KYB (Know Your Business) status
+- Deal originators and investors are company IDs
 
-### Key Changes Made
-
-**Terminology Updates:**
-- Loan → Deal (throughout system)
-- Borrower → Originator (user who requests the deal)
-- Lender → Investor (user who provides capital)
-- All database tables: `loans` → `deals`, `loan_transactions` → `deal_transactions`, etc.
-- All API endpoints: `/loans` → `/deals`, `/loan/{id}` → `/deal/{id}`, etc.
-- All CLI commands: `loan originate` → `deal originate`, etc.
-
-**Functional Consolidation:**
-- **Marketplace functionality** consolidated into deal endpoints
-- **Transfer functionality** consolidated into deal endpoints
-- **Single unified CLI** for all deal operations (CRUD, marketplace, transfers)
-- **Single unified API** for all deal operations
-
-**Smart Contract Updates:**
-- Contract renamed from "Loan" to "ARDA" for generic branding
-- Internal functions use deal terminology (`verifyDealProof`, `DealBatchPublicValues`)
-- Same security and functionality, updated terminology
-
-**Maintained Compatibility:**
-- Business logic and validation rules unchanged
+### Terminology Migration
+- System converted from "loan" to "deal" terminology
 - Database field `loan_status` kept for internal compatibility
-- ZK proof structure and verification unchanged
-- Same privacy guarantees and regulatory compliance
+- All APIs use "deal" terminology
+- Smart contract renamed from "Loan" to "ARDA"
 
-### Migration Impact
+### ZK Privacy Model
+- **Deal amounts and payments** - Private via batch processing
+- **Company identities** - Visible (deals are company-to-company)
+- **Batch processing** - Groups transactions for privacy
+- **Proof verification** - On-chain via ARDA contract
 
-**What Changed:**
-- All user-facing terminology (APIs, CLI, documentation)
-- Database table and column names
-- Function and variable names throughout codebase
-- Smart contract name and internal references
-
-**What Stayed the Same:**
-- Business logic and transaction validation
-- Zero-knowledge proof generation and verification
-- Privacy guarantees and regulatory compliance features
-- Database relationships and constraints
-- Performance characteristics and scalability
-- Security model and access controls
-
-**Backward Compatibility:**
-- CLI includes legacy commands with deprecation warnings
-- Database migration handles the schema transition
-- No breaking changes to core functionality
-
-See [`docs/README.md`](docs/README.md) for the complete documentation hub.
+See `docs/README.md` for complete documentation hub.
