@@ -278,52 +278,6 @@ app:
   tolerations: []
   affinity: {}
 
-# Ingress configuration
-ingress:
-  enabled: true
-  className: "alb"  # Using ALB ingress that was working before
-  
-  annotations:
-    # ALB ingress annotations (matching working SigNoz pattern)
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
-    alb.ingress.kubernetes.io/ssl-redirect: '443'
-    alb.ingress.kubernetes.io/load-balancer-name: arda-credit-alb
-    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:788391084262:certificate/4b588a3b-134e-49dc-9a2d-79d96427ead1
-    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "30"
-    alb.ingress.kubernetes.io/healthcheck-path: /api/v1/health
-    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
-    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
-    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
-    
-    # External DNS for automatic Route53 management
-    external-dns.alpha.kubernetes.io/hostname: app.stag.aws.arda.xyz
-  
-  hosts:
-    - host: app.stag.aws.arda.xyz
-      paths:
-        - path: /api
-          pathType: Prefix
-          service:
-            name: server
-            port: 8080
-        - path: /api-docs
-          pathType: Prefix
-          service:
-            name: server
-            port: 8080
-        - path: /
-          pathType: Prefix
-          service:
-            name: app
-            port: 80
-  
-  tls:
-    - secretName: arda-credit-tls
-      hosts:
-        - app.stag.aws.arda.xyz
-
 # Application secrets - supports both external secrets (.env) and direct values
 secrets:
   # For production: use external secret created from .env

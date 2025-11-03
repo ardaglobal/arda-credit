@@ -60,3 +60,6 @@ baml-service/.env
 baml-service/.env.local
 baml-service/npm-debug.log
 baml-service/yarn-error.log
+
+#Ignore cursor AI rules
+.cursor/rules/codacy.mdc
