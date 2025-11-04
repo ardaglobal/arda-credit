@@ -13,6 +13,7 @@
 //! - `credit`: Credit line management
 //! - `finance`: Financial transactions and withdrawals
 //! - `ai`: AI-powered features
+//! - `taxonomy`: Arda taxonomy document management (credit agreements, fee letters, etc.)
 
 pub mod ai;
 pub mod auth;
@@ -22,6 +23,7 @@ pub mod deals;
 pub mod document_rag;
 pub mod faucet;
 pub mod finance;
+pub mod taxonomy;
 pub mod users;
 
 // Re-export all handler functions for backward compatibility

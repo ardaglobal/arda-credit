@@ -590,6 +590,120 @@ pub const DOCUMENT_ASK: &str = api_path!("/documents/ask");
 pub const DOCUMENT_ASK_STREAM: &str = api_path!("/documents/ask/stream");
 
 // ============================================================================
+// TAXONOMY PATHS - Arda Document Management
+// ============================================================================
+
+/// Credit agreements list endpoint
+pub const TAXONOMY_CREDIT_AGREEMENTS: &str = api_path!("/taxonomy/credit-agreements");
+
+/// Credit agreement by ID endpoint
+pub const TAXONOMY_CREDIT_AGREEMENT_BY_ID: &str = api_path!("/taxonomy/credit-agreements/{id}");
+
+/// Credit agreements batch create endpoint
+pub const TAXONOMY_CREDIT_AGREEMENTS_BATCH: &str = api_path!("/taxonomy/credit-agreements/batch");
+
+/// Fee letters list endpoint
+pub const TAXONOMY_FEE_LETTERS: &str = api_path!("/taxonomy/fee-letters");
+
+/// Fee letter by ID endpoint
+pub const TAXONOMY_FEE_LETTER_BY_ID: &str = api_path!("/taxonomy/fee-letters/{id}");
+
+/// Fee letters batch create endpoint
+pub const TAXONOMY_FEE_LETTERS_BATCH: &str = api_path!("/taxonomy/fee-letters/batch");
+
+/// Legal opinions list endpoint
+pub const TAXONOMY_LEGAL_OPINIONS: &str = api_path!("/taxonomy/legal-opinions");
+
+/// Legal opinion by ID endpoint
+pub const TAXONOMY_LEGAL_OPINION_BY_ID: &str = api_path!("/taxonomy/legal-opinions/{id}");
+
+/// Legal opinions batch create endpoint
+pub const TAXONOMY_LEGAL_OPINIONS_BATCH: &str = api_path!("/taxonomy/legal-opinions/batch");
+
+/// Security agreements list endpoint
+pub const TAXONOMY_SECURITY_AGREEMENTS: &str = api_path!("/taxonomy/security-agreements");
+
+/// Security agreement by ID endpoint
+pub const TAXONOMY_SECURITY_AGREEMENT_BY_ID: &str = api_path!("/taxonomy/security-agreements/{id}");
+
+/// Security agreements batch create endpoint
+pub const TAXONOMY_SECURITY_AGREEMENTS_BATCH: &str =
+    api_path!("/taxonomy/security-agreements/batch");
+
+/// UCC financing statements list endpoint
+pub const TAXONOMY_UCC_FINANCING_STATEMENTS: &str = api_path!("/taxonomy/ucc-financing-statements");
+
+/// UCC financing statement by ID endpoint
+pub const TAXONOMY_UCC_FINANCING_STATEMENT_BY_ID: &str =
+    api_path!("/taxonomy/ucc-financing-statements/{id}");
+
+/// UCC financing statements batch create endpoint
+pub const TAXONOMY_UCC_FINANCING_STATEMENTS_BATCH: &str =
+    api_path!("/taxonomy/ucc-financing-statements/batch");
+
+/// Account control agreements list endpoint
+pub const TAXONOMY_ACCOUNT_CONTROL_AGREEMENTS: &str =
+    api_path!("/taxonomy/account-control-agreements");
+
+/// Account control agreement by ID endpoint
+pub const TAXONOMY_ACCOUNT_CONTROL_AGREEMENT_BY_ID: &str =
+    api_path!("/taxonomy/account-control-agreements/{id}");
+
+/// Account control agreements batch create endpoint
+pub const TAXONOMY_ACCOUNT_CONTROL_AGREEMENTS_BATCH: &str =
+    api_path!("/taxonomy/account-control-agreements/batch");
+
+/// Guaranties list endpoint
+pub const TAXONOMY_GUARANTIES: &str = api_path!("/taxonomy/guaranties");
+
+/// Guaranty by ID endpoint
+pub const TAXONOMY_GUARANTY_BY_ID: &str = api_path!("/taxonomy/guaranties/{id}");
+
+/// Guaranties batch create endpoint
+pub const TAXONOMY_GUARANTIES_BATCH: &str = api_path!("/taxonomy/guaranties/batch");
+
+/// Assignment & assumption agreements list endpoint
+pub const TAXONOMY_ASSIGNMENT_ASSUMPTION_AGREEMENTS: &str =
+    api_path!("/taxonomy/assignment-assumption-agreements");
+
+/// Assignment & assumption agreement by ID endpoint
+pub const TAXONOMY_ASSIGNMENT_ASSUMPTION_AGREEMENT_BY_ID: &str =
+    api_path!("/taxonomy/assignment-assumption-agreements/{id}");
+
+/// Assignment & assumption agreements batch create endpoint
+pub const TAXONOMY_ASSIGNMENT_ASSUMPTION_AGREEMENTS_BATCH: &str =
+    api_path!("/taxonomy/assignment-assumption-agreements/batch");
+
+/// Participation agreements list endpoint
+pub const TAXONOMY_PARTICIPATION_AGREEMENTS: &str = api_path!("/taxonomy/participation-agreements");
+
+/// Participation agreement by ID endpoint
+pub const TAXONOMY_PARTICIPATION_AGREEMENT_BY_ID: &str =
+    api_path!("/taxonomy/participation-agreements/{id}");
+
+/// Participation agreements batch create endpoint
+pub const TAXONOMY_PARTICIPATION_AGREEMENTS_BATCH: &str =
+    api_path!("/taxonomy/participation-agreements/batch");
+
+/// SSI records list endpoint
+pub const TAXONOMY_SSI_RECORDS: &str = api_path!("/taxonomy/ssi-records");
+
+/// SSI record by ID endpoint
+pub const TAXONOMY_SSI_RECORD_BY_ID: &str = api_path!("/taxonomy/ssi-records/{id}");
+
+/// SSI records batch create endpoint
+pub const TAXONOMY_SSI_RECORDS_BATCH: &str = api_path!("/taxonomy/ssi-records/batch");
+
+/// Secondary trades list endpoint
+pub const TAXONOMY_SECONDARY_TRADES: &str = api_path!("/taxonomy/secondary-trades");
+
+/// Secondary trade by ID endpoint
+pub const TAXONOMY_SECONDARY_TRADE_BY_ID: &str = api_path!("/taxonomy/secondary-trades/{id}");
+
+/// Secondary trades batch create endpoint
+pub const TAXONOMY_SECONDARY_TRADES_BATCH: &str = api_path!("/taxonomy/secondary-trades/batch");
+
+// ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================
 

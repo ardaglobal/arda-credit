@@ -1,0 +1,348 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE account_control_agreements SET\n            document_id = $2,\n            security_agreement_id = $3,\n            credit_agreement_id = $4,\n            agreement_type = $5,\n            doc_hash = $6,\n            debtor_name = $7,\n            secured_party = $8,\n            bank_name = $9,\n            bank_identifier = $10,\n            accounts_covered = $11,\n            total_accounts_count = $12,\n            control_level = $13,\n            control_trigger_event = $14,\n            control_activated = $15,\n            activation_date = $16,\n            activation_trigger = $17,\n            debtor_withdrawal_rights = $18,\n            sweeps_permitted = $19,\n            sweep_terms = $20,\n            setoff_rights_waived = $21,\n            notice_required_for_control = $22,\n            notice_period_days = $23,\n            notice_delivery_method = $24,\n            ucc9_control_perfected = $25,\n            perfection_date = $26,\n            control_method = $27,\n            effective_date = $28,\n            termination_date = $29,\n            termination_conditions = $30,\n            automatic_termination = $31,\n            bank_acknowledgment_received = $32,\n            bank_compliance_confirmed = $33,\n            bank_fees = $34,\n            prior_liens_exist = $35,\n            prior_liens_description = $36,\n            subordination_agreements = $37,\n            collateral_account = $38,\n            lockbox_account = $39,\n            collections_account = $40,\n            linked_to_cash_management = $41,\n            cash_management_system = $42,\n            notes = $43,\n            metadata = $44,\n            updated_by = $45\n        WHERE id = $1\n        RETURNING\n            id, document_id, security_agreement_id, credit_agreement_id, agreement_type,\n            doc_hash, debtor_name, secured_party, bank_name, bank_identifier,\n            accounts_covered, total_accounts_count, control_level, control_trigger_event,\n            control_activated, activation_date, activation_trigger, debtor_withdrawal_rights,\n            sweeps_permitted, sweep_terms, setoff_rights_waived, notice_required_for_control,\n            notice_period_days, notice_delivery_method, ucc9_control_perfected, perfection_date,\n            control_method, effective_date, termination_date, termination_conditions,\n            automatic_termination, bank_acknowledgment_received, bank_compliance_confirmed,\n            bank_fees, prior_liens_exist, prior_liens_description, subordination_agreements,\n            collateral_account, lockbox_account, collections_account, linked_to_cash_management,\n            cash_management_system, notes, metadata,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, updated_by\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "security_agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "credit_agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "agreement_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "doc_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "debtor_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "secured_party",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "bank_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "bank_identifier",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "accounts_covered",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 11,
+        "name": "total_accounts_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 12,
+        "name": "control_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "control_trigger_event",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "control_activated",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "activation_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 16,
+        "name": "activation_trigger",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "debtor_withdrawal_rights",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
+        "name": "sweeps_permitted",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 19,
+        "name": "sweep_terms",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 20,
+        "name": "setoff_rights_waived",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 21,
+        "name": "notice_required_for_control",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 22,
+        "name": "notice_period_days",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 23,
+        "name": "notice_delivery_method",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 24,
+        "name": "ucc9_control_perfected",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 25,
+        "name": "perfection_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 26,
+        "name": "control_method",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 27,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 28,
+        "name": "termination_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 29,
+        "name": "termination_conditions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 30,
+        "name": "automatic_termination",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 31,
+        "name": "bank_acknowledgment_received",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 32,
+        "name": "bank_compliance_confirmed",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 33,
+        "name": "bank_fees",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 34,
+        "name": "prior_liens_exist",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 35,
+        "name": "prior_liens_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 36,
+        "name": "subordination_agreements",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 37,
+        "name": "collateral_account",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 38,
+        "name": "lockbox_account",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 39,
+        "name": "collections_account",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 40,
+        "name": "linked_to_cash_management",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 41,
+        "name": "cash_management_system",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 42,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 43,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 44,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 45,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 46,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 47,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Jsonb",
+        "Int4",
+        "Varchar",
+        "Text",
+        "Bool",
+        "Date",
+        "Text",
+        "Text",
+        "Bool",
+        "Text",
+        "Bool",
+        "Bool",
+        "Int4",
+        "Text",
+        "Bool",
+        "Date",
+        "Varchar",
+        "Date",
+        "Date",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Numeric",
+        "Bool",
+        "Text",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Varchar",
+        "Text",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "218c535c7e9b50d30200b404b2e7cffcef538fee90e58991bcf9f8f4e4f7d1ed"
+}

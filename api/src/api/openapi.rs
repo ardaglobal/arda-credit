@@ -302,6 +302,94 @@ fn default_limit() -> u32 {
         // Contract configuration endpoints
         crate::handlers::core::contract::get_contract_config,
         crate::handlers::core::contract::get_transaction_updates,
+
+        // Taxonomy endpoints - Credit Agreements
+        crate::handlers::taxonomy::credit_agreements::list_credit_agreements_handler,
+        crate::handlers::taxonomy::credit_agreements::get_credit_agreement_handler,
+        crate::handlers::taxonomy::credit_agreements::create_credit_agreement_handler,
+        crate::handlers::taxonomy::credit_agreements::create_credit_agreements_batch_handler,
+        crate::handlers::taxonomy::credit_agreements::update_credit_agreement_handler,
+        crate::handlers::taxonomy::credit_agreements::delete_credit_agreement_handler,
+
+        // Taxonomy endpoints - Fee Letters
+        crate::handlers::taxonomy::fee_letters::list_fee_letters_handler,
+        crate::handlers::taxonomy::fee_letters::get_fee_letter_handler,
+        crate::handlers::taxonomy::fee_letters::create_fee_letter_handler,
+        crate::handlers::taxonomy::fee_letters::create_fee_letters_batch_handler,
+        crate::handlers::taxonomy::fee_letters::update_fee_letter_handler,
+        crate::handlers::taxonomy::fee_letters::delete_fee_letter_handler,
+
+        // Taxonomy endpoints - Legal Opinions
+        crate::handlers::taxonomy::legal_opinions::list_legal_opinions_handler,
+        crate::handlers::taxonomy::legal_opinions::get_legal_opinion_handler,
+        crate::handlers::taxonomy::legal_opinions::create_legal_opinion_handler,
+        crate::handlers::taxonomy::legal_opinions::create_legal_opinions_batch_handler,
+        crate::handlers::taxonomy::legal_opinions::update_legal_opinion_handler,
+        crate::handlers::taxonomy::legal_opinions::delete_legal_opinion_handler,
+
+        // Taxonomy endpoints - Security Agreements
+        crate::handlers::taxonomy::security_agreements::list_security_agreements_handler,
+        crate::handlers::taxonomy::security_agreements::get_security_agreement_handler,
+        crate::handlers::taxonomy::security_agreements::create_security_agreement_handler,
+        crate::handlers::taxonomy::security_agreements::create_security_agreements_batch_handler,
+        crate::handlers::taxonomy::security_agreements::update_security_agreement_handler,
+        crate::handlers::taxonomy::security_agreements::delete_security_agreement_handler,
+
+        // Taxonomy endpoints - UCC Financing Statements
+        crate::handlers::taxonomy::ucc_financing_statements::list_ucc_financing_statements_handler,
+        crate::handlers::taxonomy::ucc_financing_statements::get_ucc_financing_statement_handler,
+        crate::handlers::taxonomy::ucc_financing_statements::create_ucc_financing_statement_handler,
+        crate::handlers::taxonomy::ucc_financing_statements::create_ucc_financing_statements_batch_handler,
+        crate::handlers::taxonomy::ucc_financing_statements::update_ucc_financing_statement_handler,
+        crate::handlers::taxonomy::ucc_financing_statements::delete_ucc_financing_statement_handler,
+
+        // Taxonomy endpoints - Account Control Agreements
+        crate::handlers::taxonomy::account_control_agreements::list_account_control_agreements_handler,
+        crate::handlers::taxonomy::account_control_agreements::get_account_control_agreement_handler,
+        crate::handlers::taxonomy::account_control_agreements::create_account_control_agreement_handler,
+        crate::handlers::taxonomy::account_control_agreements::create_account_control_agreements_batch_handler,
+        crate::handlers::taxonomy::account_control_agreements::update_account_control_agreement_handler,
+        crate::handlers::taxonomy::account_control_agreements::delete_account_control_agreement_handler,
+
+        // Taxonomy endpoints - Guaranties
+        crate::handlers::taxonomy::guaranties::list_guaranties_handler,
+        crate::handlers::taxonomy::guaranties::get_guaranty_handler,
+        crate::handlers::taxonomy::guaranties::create_guaranty_handler,
+        crate::handlers::taxonomy::guaranties::create_guaranties_batch_handler,
+        crate::handlers::taxonomy::guaranties::update_guaranty_handler,
+        crate::handlers::taxonomy::guaranties::delete_guaranty_handler,
+
+        // Taxonomy endpoints - Assignment & Assumption Agreements
+        crate::handlers::taxonomy::assignments::list_assignment_assumption_agreements_handler,
+        crate::handlers::taxonomy::assignments::get_assignment_assumption_agreement_handler,
+        crate::handlers::taxonomy::assignments::create_assignment_assumption_agreement_handler,
+        crate::handlers::taxonomy::assignments::create_assignment_assumption_agreements_batch_handler,
+        crate::handlers::taxonomy::assignments::update_assignment_assumption_agreement_handler,
+        crate::handlers::taxonomy::assignments::delete_assignment_assumption_agreement_handler,
+
+        // Taxonomy endpoints - Participation Agreements
+        crate::handlers::taxonomy::participations::list_participation_agreements_handler,
+        crate::handlers::taxonomy::participations::get_participation_agreement_handler,
+        crate::handlers::taxonomy::participations::create_participation_agreement_handler,
+        crate::handlers::taxonomy::participations::create_participation_agreements_batch_handler,
+        crate::handlers::taxonomy::participations::update_participation_agreement_handler,
+        crate::handlers::taxonomy::participations::delete_participation_agreement_handler,
+
+        // Taxonomy endpoints - SSI Records
+        crate::handlers::taxonomy::ssi_records::list_ssi_records_handler,
+        crate::handlers::taxonomy::ssi_records::get_ssi_record_handler,
+        crate::handlers::taxonomy::ssi_records::create_ssi_record_handler,
+        crate::handlers::taxonomy::ssi_records::create_ssi_records_batch_handler,
+        crate::handlers::taxonomy::ssi_records::update_ssi_record_handler,
+        crate::handlers::taxonomy::ssi_records::delete_ssi_record_handler,
+
+        // Taxonomy endpoints - Secondary Trades
+        crate::handlers::taxonomy::secondary_trades::list_secondary_trades_handler,
+        crate::handlers::taxonomy::secondary_trades::get_secondary_trade_handler,
+        crate::handlers::taxonomy::secondary_trades::create_secondary_trade_handler,
+        crate::handlers::taxonomy::secondary_trades::create_secondary_trades_batch_handler,
+        crate::handlers::taxonomy::secondary_trades::update_secondary_trade_handler,
+        crate::handlers::taxonomy::secondary_trades::delete_secondary_trade_handler,
     ),
     tags(
         // Primary API Groups (9 main groups + Dev)
@@ -314,6 +402,17 @@ fn default_limit() -> u32 {
         (name = "State", description = "Blockchain state management, batch processing, ZK proof generation, transaction history, and contract integration"),
         (name = "Admin", description = "Administrative operations including KYC approval, withdrawal management, and platform oversight"),
         (name = "Payments", description = "Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines"),
+        (name = "Taxonomy - Credit Agreements", description = "Credit agreement documents with full document attributes, facility structure, pricing, and covenants"),
+        (name = "Taxonomy - Fee Letters", description = "Fee letter documents with confidential fee structures and schedules"),
+        (name = "Taxonomy - Legal Opinions", description = "Legal opinion documents covering enforceability, authority, and perfection"),
+        (name = "Taxonomy - Security Agreements", description = "Security agreement documents with collateral and perfection details"),
+        (name = "Taxonomy - UCC Financing Statements", description = "UCC financing statement filings for perfecting security interests"),
+        (name = "Taxonomy - Account Control Agreements", description = "Deposit and securities account control agreements (DACA/ACA/SACA) for perfecting security interests"),
+        (name = "Taxonomy - Guaranties", description = "Guaranty agreements where third parties guarantee borrower obligations"),
+        (name = "Taxonomy - Assignment & Assumption Agreements", description = "Assignment and assumption agreements for transferring loan interests between lenders"),
+        (name = "Taxonomy - Participation Agreements", description = "Participation agreements for economic interest transfers where grantor remains lender of record"),
+        (name = "Taxonomy - SSI Records", description = "Standard Settlement Instructions for deal settlements, supporting both traditional banking and digital asset custody"),
+        (name = "Taxonomy - Secondary Trades", description = "Secondary market trade documents with trade execution, pricing, settlement, and transfer details"),
         (name = "Dev", description = "Development and testing utilities: health checks, API info, faucet operations (local/staging only)")
     ),
     components(schemas(
@@ -481,6 +580,96 @@ fn default_limit() -> u32 {
         VerifyMagicLinkResponse,
         UserInfo,
         MagicLinkErrorResponse,
+
+        // Taxonomy schemas - Credit Agreements
+        crate::handlers::taxonomy::credit_agreements::CreditAgreementResponse,
+        crate::handlers::taxonomy::credit_agreements::CreateCreditAgreementApiRequest,
+        crate::handlers::taxonomy::credit_agreements::UpdateCreditAgreementApiRequest,
+        crate::handlers::taxonomy::credit_agreements::CreditAgreementListParams,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::credit_agreements::CreditAgreementResponse>,
+        crate::handlers::taxonomy::common::DeleteResponse,
+        crate::handlers::taxonomy::common::BatchOperationResponse,
+        crate::handlers::taxonomy::common::BatchError,
+
+        // Taxonomy schemas - Fee Letters
+        crate::handlers::taxonomy::fee_letters::FeeLetterResponse,
+        crate::handlers::taxonomy::fee_letters::CreateFeeLetterApiRequest,
+        crate::handlers::taxonomy::fee_letters::UpdateFeeLetterApiRequest,
+        crate::handlers::taxonomy::fee_letters::FeeLetterListParams,
+        crate::handlers::taxonomy::fee_letters::BatchCreateFeeLettersRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::fee_letters::FeeLetterResponse>,
+
+        // Taxonomy schemas - Legal Opinions
+        crate::handlers::taxonomy::legal_opinions::LegalOpinionResponse,
+        crate::handlers::taxonomy::legal_opinions::CreateLegalOpinionApiRequest,
+        crate::handlers::taxonomy::legal_opinions::UpdateLegalOpinionApiRequest,
+        crate::handlers::taxonomy::legal_opinions::LegalOpinionListParams,
+        crate::handlers::taxonomy::legal_opinions::BatchCreateLegalOpinionsRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::legal_opinions::LegalOpinionResponse>,
+
+        // Taxonomy schemas - Security Agreements
+        crate::handlers::taxonomy::security_agreements::SecurityAgreementResponse,
+        crate::handlers::taxonomy::security_agreements::CreateSecurityAgreementApiRequest,
+        crate::handlers::taxonomy::security_agreements::UpdateSecurityAgreementApiRequest,
+        crate::handlers::taxonomy::security_agreements::SecurityAgreementListParams,
+        crate::handlers::taxonomy::security_agreements::BatchCreateSecurityAgreementsRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::security_agreements::SecurityAgreementResponse>,
+
+        // Taxonomy schemas - UCC Financing Statements
+        crate::handlers::taxonomy::ucc_financing_statements::UccFinancingStatementResponse,
+        crate::handlers::taxonomy::ucc_financing_statements::CreateUccFinancingStatementApiRequest,
+        crate::handlers::taxonomy::ucc_financing_statements::UpdateUccFinancingStatementApiRequest,
+        crate::handlers::taxonomy::ucc_financing_statements::UccFinancingStatementListParams,
+        crate::handlers::taxonomy::ucc_financing_statements::BatchCreateUccFinancingStatementsRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::ucc_financing_statements::UccFinancingStatementResponse>,
+
+        // Taxonomy schemas - Account Control Agreements
+        crate::handlers::taxonomy::account_control_agreements::AccountControlAgreementResponse,
+        crate::handlers::taxonomy::account_control_agreements::CreateAccountControlAgreementApiRequest,
+        crate::handlers::taxonomy::account_control_agreements::UpdateAccountControlAgreementApiRequest,
+        crate::handlers::taxonomy::account_control_agreements::AccountControlAgreementListParams,
+        crate::handlers::taxonomy::account_control_agreements::BatchCreateAccountControlAgreementsRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::account_control_agreements::AccountControlAgreementResponse>,
+
+        // Taxonomy schemas - Guaranties
+        crate::handlers::taxonomy::guaranties::GuarantyResponse,
+        crate::handlers::taxonomy::guaranties::CreateGuarantyApiRequest,
+        crate::handlers::taxonomy::guaranties::UpdateGuarantyApiRequest,
+        crate::handlers::taxonomy::guaranties::GuarantyListParams,
+        crate::handlers::taxonomy::guaranties::BatchCreateGuarantiesRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::guaranties::GuarantyResponse>,
+
+        // Taxonomy schemas - Assignment & Assumption Agreements
+        crate::handlers::taxonomy::assignments::AssignmentAssumptionAgreementResponse,
+        crate::handlers::taxonomy::assignments::CreateAssignmentAssumptionAgreementApiRequest,
+        crate::handlers::taxonomy::assignments::UpdateAssignmentAssumptionAgreementApiRequest,
+        crate::handlers::taxonomy::assignments::AssignmentAssumptionAgreementListParams,
+        crate::handlers::taxonomy::assignments::BatchCreateAssignmentAssumptionAgreementsRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::assignments::AssignmentAssumptionAgreementResponse>,
+
+
+        // Taxonomy schemas - Participation Agreements
+        crate::handlers::taxonomy::participations::ParticipationAgreementResponse,
+        crate::handlers::taxonomy::participations::CreateParticipationAgreementApiRequest,
+        crate::handlers::taxonomy::participations::UpdateParticipationAgreementApiRequest,
+        crate::handlers::taxonomy::participations::ParticipationAgreementListParams,
+        crate::handlers::taxonomy::participations::BatchCreateParticipationAgreementsRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::participations::ParticipationAgreementResponse>,
+        // Taxonomy schemas - SSI Records
+        crate::handlers::taxonomy::ssi_records::SsiRecordResponse,
+        crate::handlers::taxonomy::ssi_records::CreateSsiRecordApiRequest,
+        crate::handlers::taxonomy::ssi_records::UpdateSsiRecordApiRequest,
+        crate::handlers::taxonomy::ssi_records::SsiRecordListParams,
+        crate::handlers::taxonomy::ssi_records::BatchCreateSsiRecordsRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::ssi_records::SsiRecordResponse>,
+
+        // Taxonomy schemas - Secondary Trades
+        crate::handlers::taxonomy::secondary_trades::SecondaryTradeResponse,
+        crate::handlers::taxonomy::secondary_trades::CreateSecondaryTradeApiRequest,
+        crate::handlers::taxonomy::secondary_trades::UpdateSecondaryTradeApiRequest,
+        crate::handlers::taxonomy::secondary_trades::SecondaryTradeListParams,
+        crate::handlers::taxonomy::secondary_trades::BatchCreateSecondaryTradesRequest,
+        crate::handlers::taxonomy::common::PaginatedResponse<crate::handlers::taxonomy::secondary_trades::SecondaryTradeResponse>,
 
         // REMOVE these old schemas (password-based auth removed):
         // LoginRequest, (DELETED)

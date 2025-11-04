@@ -1,0 +1,159 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE fee_letters SET\n            document_id = $2,\n            credit_agreement_id = $3,\n            doc_hash_fee_letter = $4,\n            fee_components = $5,\n            confidentiality_flag = $6,\n            upfront_fee_pct = $7,\n            original_issue_discount_pct = $8,\n            unused_commitment_fee_bps = $9,\n            agency_fee_amount = $10,\n            amendment_fee_amount = $11,\n            fee_payment_schedule = $12,\n            fee_calculation_basis = $13,\n            effective_date = $14,\n            expiry_date = $15,\n            notes = $16,\n            metadata = $17,\n            updated_by = $18\n        WHERE id = $1\n        RETURNING\n            id, document_id, credit_agreement_id, doc_hash_fee_letter, fee_components,\n            confidentiality_flag, upfront_fee_pct, original_issue_discount_pct,\n            unused_commitment_fee_bps, agency_fee_amount, amendment_fee_amount,\n            fee_payment_schedule, fee_calculation_basis, effective_date, expiry_date,\n            notes, metadata,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, updated_by\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "credit_agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "doc_hash_fee_letter",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "fee_components",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "confidentiality_flag",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "upfront_fee_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "original_issue_discount_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "unused_commitment_fee_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "agency_fee_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 10,
+        "name": "amendment_fee_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 11,
+        "name": "fee_payment_schedule",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "fee_calculation_basis",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 14,
+        "name": "expiry_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 15,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 19,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 20,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Varchar",
+        "Jsonb",
+        "Bool",
+        "Numeric",
+        "Numeric",
+        "Int4",
+        "Numeric",
+        "Numeric",
+        "Text",
+        "Text",
+        "Date",
+        "Date",
+        "Text",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "2404c10cbaa121c20e018d854b3a0626d948bf29aa54e62bd4f88898ce0fbc79"
+}

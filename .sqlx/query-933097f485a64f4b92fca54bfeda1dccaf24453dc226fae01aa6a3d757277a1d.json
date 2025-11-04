@@ -1,0 +1,278 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE credit_agreements SET\n            document_id = $2,\n            version = $3,\n            execution_status = $4,\n            executed_pdf_hash = $5,\n            bundle_hash = $6,\n            effective_date = $7,\n            maturity_date = $8,\n            closing_date = $9,\n            governing_law = $10,\n            borrower_legal_name = $11,\n            borrower_external_id = $12,\n            agent_or_lender = $13,\n            collateral_agent = $14,\n            guarantors_present = $15,\n            guarantor_names = $16,\n            facility_type = $17,\n            committed_amount = $18,\n            currency = $19,\n            draw_rules = $20,\n            repayment_type = $21,\n            amortization_schedule = $22,\n            reference_rate = $23,\n            margin_bps = $24,\n            floor_bps = $25,\n            secured_flag = $26,\n            collateral_scope_summary = $27,\n            financial_covenants = $28,\n            use_of_proceeds = $29,\n            accordion_provision = $30,\n            prepayment_terms = $31,\n            default_provisions = $32,\n            deal_state = $33,\n            metadata = $34,\n            updated_by = $35\n        WHERE id = $1\n        RETURNING\n            id, document_id, version, execution_status, executed_pdf_hash, bundle_hash,\n            effective_date, maturity_date, closing_date,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            governing_law, borrower_legal_name, borrower_external_id, agent_or_lender,\n            collateral_agent, guarantors_present, guarantor_names, facility_type,\n            committed_amount, currency, draw_rules, repayment_type, amortization_schedule,\n            reference_rate, margin_bps, floor_bps, secured_flag, collateral_scope_summary,\n            financial_covenants, use_of_proceeds, accordion_provision, prepayment_terms,\n            default_provisions, deal_state, metadata, created_by, updated_by\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "version",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "execution_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "executed_pdf_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "bundle_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 7,
+        "name": "maturity_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 8,
+        "name": "closing_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "governing_law",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "borrower_legal_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "borrower_external_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "agent_or_lender",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "collateral_agent",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "guarantors_present",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 17,
+        "name": "guarantor_names",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 18,
+        "name": "facility_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 19,
+        "name": "committed_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 20,
+        "name": "currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 21,
+        "name": "draw_rules",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 22,
+        "name": "repayment_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 23,
+        "name": "amortization_schedule",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 24,
+        "name": "reference_rate",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 25,
+        "name": "margin_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 26,
+        "name": "floor_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 27,
+        "name": "secured_flag",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 28,
+        "name": "collateral_scope_summary",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 29,
+        "name": "financial_covenants",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 30,
+        "name": "use_of_proceeds",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 31,
+        "name": "accordion_provision",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 32,
+        "name": "prepayment_terms",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 33,
+        "name": "default_provisions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 34,
+        "name": "deal_state",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 35,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 36,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 37,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Date",
+        "Date",
+        "Date",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Bool",
+        "TextArray",
+        "Varchar",
+        "Numeric",
+        "Varchar",
+        "Text",
+        "Varchar",
+        "Jsonb",
+        "Varchar",
+        "Int4",
+        "Int4",
+        "Bool",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Varchar",
+        "Jsonb",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "933097f485a64f4b92fca54bfeda1dccaf24453dc226fae01aa6a3d757277a1d"
+}
