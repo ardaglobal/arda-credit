@@ -1,0 +1,184 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, document_id, credit_agreement_id, doc_hash_legal_opinion, opinion_firms,\n            lead_opinion_firm, scopes, governing_laws, primary_governing_law,\n            reliance_language_present, beneficiaries, opinion_date, effective_date,\n            limitations, assumptions, full_opinion_delivered, disclosure_schedules_attached,\n            bring_down_opinion_id, is_bring_down, original_opinion_id, coverage_status,\n            gaps_or_qualifications, notes, metadata,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, updated_by\n        FROM legal_opinions WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "credit_agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "doc_hash_legal_opinion",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 4,
+        "name": "opinion_firms",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 5,
+        "name": "lead_opinion_firm",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "scopes",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 7,
+        "name": "governing_laws",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 8,
+        "name": "primary_governing_law",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "reliance_language_present",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 10,
+        "name": "beneficiaries",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 11,
+        "name": "opinion_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 12,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 13,
+        "name": "limitations",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "assumptions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "full_opinion_delivered",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 16,
+        "name": "disclosure_schedules_attached",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 17,
+        "name": "bring_down_opinion_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 18,
+        "name": "is_bring_down",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 19,
+        "name": "original_opinion_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 20,
+        "name": "coverage_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 21,
+        "name": "gaps_or_qualifications",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 22,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 23,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 24,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 25,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 26,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 27,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4683549d96a48f34beadfceedef050a87d3a2d5e6ff9e0d7f9ab7f05e551259c"
+}

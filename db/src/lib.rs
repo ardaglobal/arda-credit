@@ -57,6 +57,7 @@
 pub mod ads;
 pub mod business;
 pub mod processing;
+pub mod taxonomy;
 
 // Core infrastructure modules
 pub mod db;
@@ -90,6 +91,84 @@ pub use business::documents::{
     save_extracted_document_data, update_document, update_document_ingestion_status,
     update_ingestion_job_status, CreateDocumentRequest, DealDocument, DocumentIngestionJob,
     DocumentStats, IngestionStatus, JobStatus, StorageType, UpdateDocumentRequest,
+};
+
+// Re-export taxonomy operations
+pub use taxonomy::credit_agreements::{
+    create_credit_agreement, create_credit_agreements_batch, delete_credit_agreement,
+    get_credit_agreement_by_document_id, get_credit_agreement_by_id, list_credit_agreements,
+    update_credit_agreement, CreateCreditAgreementRequest, CreditAgreement,
+    UpdateCreditAgreementRequest,
+};
+
+pub use taxonomy::fee_letters::{
+    create_fee_letter, create_fee_letters_batch, delete_fee_letter, get_fee_letter_by_document_id,
+    get_fee_letter_by_id, list_fee_letters, update_fee_letter, CreateFeeLetterRequest, FeeLetter,
+    UpdateFeeLetterRequest,
+};
+
+pub use taxonomy::legal_opinions::{
+    create_legal_opinion, create_legal_opinions_batch, delete_legal_opinion,
+    get_legal_opinion_by_document_id, get_legal_opinion_by_id, list_legal_opinions,
+    update_legal_opinion, CreateLegalOpinionRequest, LegalOpinion, UpdateLegalOpinionRequest,
+};
+
+pub use taxonomy::security_agreements::{
+    create_security_agreement, create_security_agreements_batch, delete_security_agreement,
+    get_security_agreement_by_document_id, get_security_agreement_by_id, list_security_agreements,
+    update_security_agreement, CreateSecurityAgreementRequest, SecurityAgreement,
+    UpdateSecurityAgreementRequest,
+};
+
+pub use taxonomy::ucc_financing_statements::{
+    create_ucc_financing_statement, create_ucc_financing_statements_batch,
+    delete_ucc_financing_statement, get_ucc_financing_statement_by_document_id,
+    get_ucc_financing_statement_by_id, list_ucc_financing_statements,
+    update_ucc_financing_statement, CreateUccFinancingStatementRequest, UccFinancingStatement,
+    UpdateUccFinancingStatementRequest,
+};
+
+pub use taxonomy::account_control_agreements::{
+    create_account_control_agreement, create_account_control_agreements_batch,
+    delete_account_control_agreement, get_account_control_agreement_by_document_id,
+    get_account_control_agreement_by_id, list_account_control_agreements,
+    update_account_control_agreement, AccountControlAgreement,
+    CreateAccountControlAgreementRequest, UpdateAccountControlAgreementRequest,
+};
+
+pub use taxonomy::guaranties::{
+    create_guaranties_batch, create_guaranty, delete_guaranty, get_guaranty_by_document_id,
+    get_guaranty_by_id, list_guaranties, update_guaranty, CreateGuarantyRequest, Guaranty,
+    UpdateGuarantyRequest,
+};
+
+pub use taxonomy::assignments::{
+    create_assignment_assumption_agreement, create_assignment_assumption_agreements_batch,
+    delete_assignment_assumption_agreement, get_assignment_assumption_agreement_by_document_id,
+    get_assignment_assumption_agreement_by_id, list_assignment_assumption_agreements,
+    update_assignment_assumption_agreement, AssignmentAssumptionAgreement,
+    CreateAssignmentAssumptionAgreementRequest, UpdateAssignmentAssumptionAgreementRequest,
+};
+
+pub use taxonomy::participations::{
+    create_participation_agreement, create_participation_agreements_batch,
+    delete_participation_agreement, get_participation_agreement_by_document_id,
+    get_participation_agreement_by_id, list_participation_agreements,
+    update_participation_agreement, CreateParticipationAgreementRequest, ParticipationAgreement,
+    UpdateParticipationAgreementRequest,
+};
+
+pub use taxonomy::ssi_records::{
+    create_ssi_record, create_ssi_records_batch, delete_ssi_record, get_ssi_record_by_document_id,
+    get_ssi_record_by_id, list_ssi_records, update_ssi_record, CreateSsiRecordRequest, SsiRecord,
+    UpdateSsiRecordRequest,
+};
+
+pub use taxonomy::secondary_trades::{
+    create_secondary_trade, create_secondary_trades_batch, delete_secondary_trade,
+    get_secondary_trade_by_id, get_secondary_trade_by_trade_id, list_secondary_trades,
+    update_secondary_trade, CreateSecondaryTradeRequest, SecondaryTrade,
+    UpdateSecondaryTradeRequest,
 };
 
 // Re-export batch processing types and functions

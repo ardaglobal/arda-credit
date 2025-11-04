@@ -1,0 +1,430 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, document_id, credit_agreement_id, trade_id, doc_hash, participation_type,\n            grantor, grantor_entity_id, grantor_remains_lender_of_record, participant,\n            participant_entity_id, borrower_name, facility_reference, participation_percentage,\n            participation_amount, grantor_total_commitment, grantor_outstanding_principal,\n            purchase_price, purchase_price_percentage, funded_at_closing, funding_mechanism,\n            payments_flow, payment_terms, participant_rights, no_privity_with_borrower,\n            participant_has_voting_rights, borrower_consent_required, borrower_consent_obtained,\n            borrower_knowledge_of_participation, agent_notification_required, agent_notified,\n            pro_rata_sharing, principal_sharing_percentage, interest_sharing_percentage,\n            fee_sharing_percentage, grantor_pays_participant, settlement_frequency,\n            participant_credit_risk, participant_funding_risk, setoff_rights, netting_provisions,\n            grantor_representations, participant_representations, participant_assignment_rights,\n            requires_grantor_consent_to_assign, is_sub_participation, parent_participation_id,\n            confidential_agreement, disclosure_restrictions, trade_date, settlement_date,\n            effective_date, termination_date, termination_conditions, participant_kyc_completed,\n            participant_kyc_date, participant_eligible, agreement_status, cash_settled,\n            participation_active, total_payments_received, total_payments_to_participant,\n            notes, special_terms, metadata,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, updated_by\n        FROM participation_agreements WHERE document_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "credit_agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "trade_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "doc_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "participation_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "grantor",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "grantor_entity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 8,
+        "name": "grantor_remains_lender_of_record",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "participant",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "participant_entity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 11,
+        "name": "borrower_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "facility_reference",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "participation_percentage",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 14,
+        "name": "participation_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 15,
+        "name": "grantor_total_commitment",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 16,
+        "name": "grantor_outstanding_principal",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 17,
+        "name": "purchase_price",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 18,
+        "name": "purchase_price_percentage",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 19,
+        "name": "funded_at_closing",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 20,
+        "name": "funding_mechanism",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 21,
+        "name": "payments_flow",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "payment_terms",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 23,
+        "name": "participant_rights",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 24,
+        "name": "no_privity_with_borrower",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 25,
+        "name": "participant_has_voting_rights",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 26,
+        "name": "borrower_consent_required",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 27,
+        "name": "borrower_consent_obtained",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 28,
+        "name": "borrower_knowledge_of_participation",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 29,
+        "name": "agent_notification_required",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 30,
+        "name": "agent_notified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 31,
+        "name": "pro_rata_sharing",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 32,
+        "name": "principal_sharing_percentage",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 33,
+        "name": "interest_sharing_percentage",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 34,
+        "name": "fee_sharing_percentage",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 35,
+        "name": "grantor_pays_participant",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 36,
+        "name": "settlement_frequency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 37,
+        "name": "participant_credit_risk",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 38,
+        "name": "participant_funding_risk",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 39,
+        "name": "setoff_rights",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 40,
+        "name": "netting_provisions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 41,
+        "name": "grantor_representations",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 42,
+        "name": "participant_representations",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 43,
+        "name": "participant_assignment_rights",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 44,
+        "name": "requires_grantor_consent_to_assign",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 45,
+        "name": "is_sub_participation",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 46,
+        "name": "parent_participation_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 47,
+        "name": "confidential_agreement",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 48,
+        "name": "disclosure_restrictions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 49,
+        "name": "trade_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 50,
+        "name": "settlement_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 51,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 52,
+        "name": "termination_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 53,
+        "name": "termination_conditions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 54,
+        "name": "participant_kyc_completed",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 55,
+        "name": "participant_kyc_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 56,
+        "name": "participant_eligible",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 57,
+        "name": "agreement_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 58,
+        "name": "cash_settled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 59,
+        "name": "participation_active",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 60,
+        "name": "total_payments_received",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 61,
+        "name": "total_payments_to_participant",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 62,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 63,
+        "name": "special_terms",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 64,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 65,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 66,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 67,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 68,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "019d07a90c25e5b96a82eb0c33b5407421763ff03e464394c65ad7275267d5a8"
+}

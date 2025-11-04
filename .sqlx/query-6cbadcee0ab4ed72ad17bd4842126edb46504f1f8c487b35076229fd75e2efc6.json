@@ -1,0 +1,161 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO fee_letters (\n            id, document_id, credit_agreement_id, doc_hash_fee_letter, fee_components,\n            confidentiality_flag, upfront_fee_pct, original_issue_discount_pct,\n            unused_commitment_fee_bps, agency_fee_amount, amendment_fee_amount,\n            fee_payment_schedule, fee_calculation_basis, effective_date, expiry_date,\n            notes, metadata, created_at, updated_at, created_by\n        )\n        VALUES (\n            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20\n        )\n        RETURNING\n            id, document_id, credit_agreement_id, doc_hash_fee_letter, fee_components,\n            confidentiality_flag, upfront_fee_pct, original_issue_discount_pct,\n            unused_commitment_fee_bps, agency_fee_amount, amendment_fee_amount,\n            fee_payment_schedule, fee_calculation_basis, effective_date, expiry_date,\n            notes, metadata,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, updated_by\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "credit_agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "doc_hash_fee_letter",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "fee_components",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 5,
+        "name": "confidentiality_flag",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "upfront_fee_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "original_issue_discount_pct",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "unused_commitment_fee_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "agency_fee_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 10,
+        "name": "amendment_fee_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 11,
+        "name": "fee_payment_schedule",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "fee_calculation_basis",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 14,
+        "name": "expiry_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 15,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 19,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 20,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Varchar",
+        "Jsonb",
+        "Bool",
+        "Numeric",
+        "Numeric",
+        "Int4",
+        "Numeric",
+        "Numeric",
+        "Text",
+        "Text",
+        "Date",
+        "Date",
+        "Text",
+        "Jsonb",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "6cbadcee0ab4ed72ad17bd4842126edb46504f1f8c487b35076229fd75e2efc6"
+}
