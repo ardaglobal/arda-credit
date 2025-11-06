@@ -56,19 +56,6 @@ server:
       memory: 512Mi
 ```
 
-### App Configuration
-```yaml
-app:
-  image:
-    registry: "localhost"
-    repository: "arda-platform-app"
-    tag: "local-dev"
-    pullPolicy: Never
-  service:
-    type: NodePort
-    nodePort: 30000
-```
-
 ### Secrets (Development Values)
 ```yaml
 secrets:
