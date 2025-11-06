@@ -160,49 +160,6 @@ server:
   persistence:
     enabled: false
 
-# Frontend App configuration - use real app from GHCR
-app:
-  enabled: true
-  
-  # Use production app image from GHCR (real frontend)
-  image:
-    registry: "ghcr.io/ardaglobal"
-    repository: "arda-platform-app" 
-    tag: "latest"
-    pullPolicy: Always
-  
-  replicaCount: 1
-  
-  # Expose via NodePort for direct access
-  service:
-    type: NodePort
-    port: 80
-    targetPort: 80
-    nodePort: 30000
-  
-  # Minimal resources
-  resources:
-    limits:
-      cpu: 100m
-      memory: 128Mi
-    requests:
-      cpu: 50m
-      memory: 64Mi
-  
-  # Disable autoscaling and PDB for local development
-  autoscaling:
-    enabled: false
-  
-  podDisruptionBudget:
-    enabled: false
-    
-  podAntiAffinity:
-    enabled: false
-
-# Ingress configuration - disabled for NodePort access
-ingress:
-  enabled: false
-
 # Use secrets created from .env variables
 # The setup script creates 'arda-credit-secrets' from .env values
 secrets:

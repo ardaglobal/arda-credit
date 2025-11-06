@@ -33,7 +33,6 @@ helm dependency update ./helm/charts/arda-credit
 # Deploy with bundled PostgreSQL (namespace auto-created)
 helm install arda-credit ./helm/charts/arda-credit \
   --set postgresql.auth.password=your-secure-password \
-  --set ingress.hosts[0].host=your-domain.com \
   --namespace arda-credit
 
 # Create GHCR authentication secret (for private container registry)
@@ -57,8 +56,6 @@ kubectl create secret generic arda-credit-secrets \
 helm install arda-credit ./helm/charts/arda-credit \
   --set postgresql.auth.password=your-secure-password \
   --set server.autoscaling.enabled=true \
-  --set app.autoscaling.enabled=true \
-  --set ingress.hosts[0].host=your-domain.com \
   --namespace arda-credit
 ```
 
@@ -72,7 +69,6 @@ helm install arda-credit ./helm/charts/arda-credit \
   --set postgresql.enabled=false \
   --set postgresql.external.host=your-postgres-host \
   --set postgresql.external.existingSecret=your-postgres-secret \
-  --set ingress.hosts[0].host=your-domain.com \
   --namespace arda-credit
 ```
 
@@ -89,14 +85,10 @@ Key configuration options in `values.yaml`:
 | `server.environment` | Server environment (local/staging/sandbox/production) | `"production"` |
 | `server.config.rustLog` | Rust logging level | `"info"` |
 | `server.config.serverPort` | Server port | `"8080"` |
-| **App Configuration** |
-| `app.replicaCount` | Number of app replicas | `1` |
-| `app.image.repository` | Frontend app image name | `"arda-platform-app"` |
 | **Autoscaling** |
 | `server.autoscaling.enabled` | Enable server autoscaling | `false` |
 | `server.autoscaling.minReplicas` | Min server replicas | `2` |
 | `server.autoscaling.maxReplicas` | Max server replicas | `10` |
-| `app.autoscaling.enabled` | Enable app autoscaling | `false` |
 | **High Availability** |
 | `server.podDisruptionBudget.enabled` | Enable server PDB | `true` |
 | `server.podAntiAffinity.enabled` | Enable pod anti-affinity | `true` |
@@ -107,10 +99,6 @@ Key configuration options in `values.yaml`:
 | **Database** |
 | `postgresql.enabled` | Use bundled PostgreSQL | `true` |
 | `postgresql.auth.password` | PostgreSQL password | `"change-me-in-production"` |
-| **Ingress** |
-| `ingress.enabled` | Enable ingress | `true` |
-| `ingress.className` | Ingress class (nginx/alb) | `"nginx"` |
-| `ingress.hosts[0].host` | Ingress hostname | `arda-credit.example.com` |
 | **Anvil (Local Ethereum Devnet)** |
 | `anvil.enabled` | Enable Anvil service | `false` |
 | `anvil.chainId` | Ethereum chain ID | `"31337"` |
@@ -121,40 +109,19 @@ Key configuration options in `values.yaml`:
 
 ## EKS Deployment
 
-For AWS EKS deployments with ALB and ACM:
+For AWS EKS deployments:
 
 ```bash
-# 1. Install AWS Load Balancer Controller (required for ALB)
-helm repo add eks https://aws.github.io/eks-charts
-helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-  -n kube-system \
-  --set clusterName=your-cluster-name \
-  --set serviceAccount.create=false \
-  --set serviceAccount.name=aws-load-balancer-controller \
-  --set region=us-east-1 \
-  --set vpcId=vpc-xxxxxxxx
-
-# 2. Deploy with ALB configuration  
 helm install arda-credit ./helm/charts/arda-credit \
   --set namespaceCreate=false \
-  --set ingress.className=alb \
-  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/scheme=internet-facing' \
-  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/target-type=ip' \
-  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/listen-ports=\[{\"HTTP\": 80}, {\"HTTPS\": 443}\]' \
-  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/ssl-redirect=443' \
-  --set-string 'ingress.annotations.alb\.ingress\.kubernetes\.io/certificate-arn=arn:aws:acm:region:account:certificate/cert-id' \
-  --set-string 'ingress.annotations.external-dns\.alpha\.kubernetes\.io/hostname=app.yourdomain.com' \
-  --set ingress.hosts[0].host=app.yourdomain.com \
   --set postgresql.primary.persistence.storageClass=gp3 \
   --namespace arda-credit \
   --create-namespace
 ```
 
 **EKS Prerequisites:**
-- AWS Load Balancer Controller installed with proper IAM role (IRSA)  
-- Subnets tagged for ALB controller: `kubernetes.io/role/elb=1` (public subnets)
-- External-DNS (optional, for automatic Route53 management)
-- ACM certificate for your domain
+- EBS CSI driver for persistent volumes
+- Appropriate IAM roles and policies
 
 ## Production Deployment
 
@@ -165,10 +132,8 @@ For production environments, enable additional features:
 helm install arda-credit ./helm/charts/arda-credit \
   --set postgresql.auth.password=secure-random-password \
   --set server.autoscaling.enabled=true \
-  --set app.autoscaling.enabled=true \
   --set server.podDisruptionBudget.enabled=true \
   --set server.podAntiAffinity.type=hard \
-  --set ingress.hosts[0].host=arda-credit.production.com \
   --namespace arda-credit-prod \
   --create-namespace
 ```
@@ -239,26 +204,20 @@ kubectl create secret generic arda-credit-secrets \
 
 ### API Connectivity Issues
 
-If you're seeing "Failed to fetch" errors when the frontend tries to call API endpoints:
+If you're experiencing API connectivity issues:
 
-1. **Check ingress routing**:
+1. **Verify API endpoint**:
    ```bash
-   kubectl get ingress -n arda-credit
-   kubectl describe ingress arda-credit -n arda-credit
+   # Test server service directly
+   kubectl run test-pod --image=curlimages/curl --rm -it --restart=Never -- \
+     curl http://arda-credit-server:8080/api/v1/health
    ```
 
-2. **Verify API routing**:
+2. **Check server logs**:
    ```bash
-   # Test API endpoint directly
-   curl -H "Host: your-domain.com" http://ingress-controller-ip/api/v1/health
-
-   # Check if requests are reaching the server
    kubectl logs -f deployment/arda-credit-server -n arda-credit
    ```
 
-3. **Frontend API calls**: Ensure your frontend makes relative API calls like `/api/v1/health` instead of hardcoded localhost URLs.
-
-4. **CORS issues**: The nginx proxy in the app deployment handles CORS headers. Check app logs for CORS-related errors.
 
 ### General Troubleshooting
 
@@ -271,7 +230,6 @@ kubectl describe pod <pod-name> -n arda-credit
 ### View logs
 ```bash
 kubectl logs -f deployment/arda-credit-server -n arda-credit
-kubectl logs -f deployment/arda-platform-app -n arda-credit
 ```
 
 ### Check autoscaling
@@ -286,27 +244,18 @@ kubectl describe hpa arda-credit-server -n arda-credit
 kubectl run test-pod --image=busybox --rm -it --restart=Never -- sh
 # Inside pod:
 wget -O- http://arda-credit-server:8080/api/v1/health
-
-# Test app service
-wget -O- http://arda-platform-app:80
 ```
 
-## Testing the API Routing
+## Testing the API
 
-After deployment, test the API routing setup:
+After deployment, test the API setup:
 
 ```bash
 # 1. Check all resources are created
 kubectl get all -n arda-credit
 
-# 2. Test API endpoint through ingress
-curl -H "Host: your-domain.com" https://your-ingress-ip/api/v1/health
-
-# 3. Test frontend through ingress
-curl -H "Host: your-domain.com" https://your-ingress-ip/
-
-# 4. Check nginx proxy configuration in app pod
-kubectl exec -it deployment/arda-platform-app -n arda-credit -- cat /etc/nginx/conf.d/default.conf
+# 2. Test API endpoint
+curl http://arda-credit-server:8080/api/v1/health
 ```
 
 ## Upgrading

@@ -107,7 +107,6 @@ kubectl describe deployment arda-credit-server
 
 # Access logs
 kubectl logs -f deployment/arda-credit-server
-kubectl logs -f deployment/arda-platform-app
 ```
 
 ### Database Access
@@ -129,7 +128,6 @@ kubectl port-forward svc/arda-credit-postgresql 5432:5432
 
 ### Helm Values (values-local.yaml)
 - **Server Image**: `kind-registry:5000/arda-credit:local-dev` (local registry)
-- **App Image**: `ghcr.io/ardaglobal/arda-platform-app:latest` (production frontend)
 - **Resources**: Minimal CPU/memory for local development  
 - **Storage**: Ephemeral (no persistence) for fast cleanup
 - **Services**: NodePort type for direct access

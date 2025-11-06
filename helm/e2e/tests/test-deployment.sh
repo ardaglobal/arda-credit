@@ -9,7 +9,6 @@ CLUSTER_NAME="arda-credit-e2e"
 KUBECTL_CONTEXT="kind-${CLUSTER_NAME}"
 NAMESPACE="arda-credit"
 API_BASE_URL="http://localhost:8080"
-APP_BASE_URL="http://localhost:3000"
 
 # Colors for output
 RED='\033[0;31m'
@@ -166,28 +165,8 @@ test_server() {
     fi
 }
 
-# Test 4: Arda Credit App deployment
-test_app() {
-    log_info "Testing Arda Credit App deployment..."
-    
-    # Check app pod is running
-    if kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app --field-selector=status.phase=Running --no-headers | grep -q app; then
-        test_passed "App pod is running"
-    else
-        test_failed "App pod is not running"
-        kubectl get pods --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" -l app.kubernetes.io/name=arda-credit,app.kubernetes.io/component=app || true
-        return
-    fi
-    
-    # Check app service
-    if kubectl get service --context="${KUBECTL_CONTEXT}" -n "${NAMESPACE}" arda-platform-app >/dev/null 2>&1; then
-        test_passed "App service exists"
-    else
-        test_failed "App service not found"
-    fi
-}
 
-# Test 5: API health endpoint
+# Test 4: API health endpoint
 test_api_health() {
     log_info "Testing API health endpoint..."
     
@@ -219,19 +198,8 @@ test_api_health() {
     fi
 }
 
-# Test 6: Frontend accessibility
-test_frontend() {
-    log_info "Testing frontend accessibility..."
-    
-    # Test if frontend is serving content
-    if curl -f -s "${APP_BASE_URL}" >/dev/null; then
-        test_passed "Frontend is accessible"
-    else
-        test_failed "Frontend is not accessible at ${APP_BASE_URL}"
-    fi
-}
 
-# Test 7: Service discovery and networking
+# Test 5: Service discovery and networking
 test_networking() {
     log_info "Testing internal service networking..."
     
@@ -253,7 +221,7 @@ test_networking() {
     fi
 }
 
-# Test 8: Resource usage
+# Test 6: Resource usage
 test_resources() {
     log_info "Testing resource usage..."
     
@@ -278,7 +246,7 @@ test_resources() {
     fi
 }
 
-# Test 9: Logs validation
+# Test 7: Logs validation
 test_logs() {
     log_info "Testing application logs..."
     
@@ -313,7 +281,6 @@ display_summary() {
         log_success "🎉 All tests passed! Arda Credit deployment is healthy."
         echo
         log_info "🌐 Access URLs:"
-        echo "  Frontend: ${APP_BASE_URL}"
         echo "  API: ${API_BASE_URL}"
         echo "  Health: ${API_BASE_URL}/api/v1/health"
         echo
@@ -344,9 +311,7 @@ main() {
     test_cluster_health
     test_postgresql
     test_server
-    test_app
     test_api_health
-    test_frontend
     test_networking
     test_resources
     test_logs
@@ -367,9 +332,8 @@ correctly in the local Kind cluster and all services are functioning.
 
 Tests include:
   - Cluster health and node status
-  - PostgreSQL deployment and connectivity  
+  - PostgreSQL deployment and connectivity
   - Arda Credit server deployment and API health
-  - Frontend application accessibility
   - Internal networking and service discovery
   - Resource usage and logs validation
 

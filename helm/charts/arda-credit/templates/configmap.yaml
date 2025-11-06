@@ -18,61 +18,7 @@ data:
   MAGIC_BASE_URL: {{ .Values.server.config.magicBaseUrl | quote }}
   EMAIL_ENABLED: {{ .Values.server.config.emailEnabled | quote }}
   EMAIL_DEBUG_MODE: {{ .Values.server.config.emailDebugMode | quote }}
-  
-  # App configuration
-  NODE_ENV: "production"
 
-  # Nginx configuration for proxying API requests
-  nginx.conf: |
-    server {
-        listen 80;
-        server_name _;
-        
-        # Set document root for static frontend files
-        root /usr/share/nginx/html;
-        index index.html;
-
-        # Proxy API requests to the server service
-        location /api/ {
-            proxy_pass http://{{ include "arda-credit.fullname" . }}-server:{{ .Values.server.service.port }};
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-
-            # Handle CORS
-            add_header 'Access-Control-Allow-Origin' '*' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-
-            # Handle preflight requests
-            if ($request_method = 'OPTIONS') {
-                add_header 'Access-Control-Allow-Origin' '*' always;
-                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
-                add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
-                add_header 'Access-Control-Max-Age' 1728000;
-                add_header 'Content-Type' 'text/plain charset=UTF-8';
-                add_header 'Content-Length' 0;
-                return 204;
-            }
-        }
-
-        # Serve static files and handle client-side routing (SPA)
-        location / {
-            try_files $uri $uri/ /index.html;
-            add_header Cache-Control "no-cache, no-store, must-revalidate";
-            add_header Pragma "no-cache";
-            add_header Expires "0";
-        }
-
-        # Health check endpoint
-        location /health {
-            access_log off;
-            return 200 "healthy\n";
-            add_header Content-Type text/plain;
-        }
-    }
-  
   # Database configuration (non-sensitive)
   {{- if .Values.postgresql.enabled }}
   POSTGRES_HOST: "{{ include "arda-credit.fullname" . }}-postgresql"

@@ -96,7 +96,6 @@ cleanup_docker_images() {
     # Remove local development images
     local images_to_remove=(
         "localhost/arda-credit:local-dev"
-        "localhost/arda-platform-app:local-dev"
     )
 
     for image in "${images_to_remove[@]}"; do
