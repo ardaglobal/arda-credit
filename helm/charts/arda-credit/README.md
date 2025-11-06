@@ -204,20 +204,17 @@ kubectl create secret generic arda-credit-secrets \
 
 ### API Connectivity Issues
 
-If you're seeing "Failed to fetch" errors when the frontend tries to call API endpoints:
+If you're experiencing API connectivity issues:
 
-1. **Check ingress routing**:
+1. **Verify API endpoint**:
    ```bash
-   kubectl get ingress -n arda-credit
-   kubectl describe ingress arda-credit -n arda-credit
+   # Test server service directly
+   kubectl run test-pod --image=curlimages/curl --rm -it --restart=Never -- \
+     curl http://arda-credit-server:8080/api/v1/health
    ```
 
-2. **Verify API routing**:
+2. **Check server logs**:
    ```bash
-   # Test API endpoint directly
-   curl -H "Host: your-domain.com" http://ingress-controller-ip/api/v1/health
-
-   # Check if requests are reaching the server
    kubectl logs -f deployment/arda-credit-server -n arda-credit
    ```
 

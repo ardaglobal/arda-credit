@@ -54,6 +54,11 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Chart version: ${VERSION}"
 
+      - name: Update Helm dependencies
+        run: |
+          helm dependency update helm/charts/arda-credit
+          echo "✅ Chart dependencies updated"
+
       - name: Lint Helm chart
         run: |
           helm lint helm/charts/arda-credit --strict

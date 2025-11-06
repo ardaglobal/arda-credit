@@ -166,7 +166,7 @@ test_server() {
 }
 
 
-# Test 5: API health endpoint
+# Test 4: API health endpoint
 test_api_health() {
     log_info "Testing API health endpoint..."
     
@@ -199,7 +199,7 @@ test_api_health() {
 }
 
 
-# Test 7: Service discovery and networking
+# Test 5: Service discovery and networking
 test_networking() {
     log_info "Testing internal service networking..."
     
@@ -221,7 +221,7 @@ test_networking() {
     fi
 }
 
-# Test 8: Resource usage
+# Test 6: Resource usage
 test_resources() {
     log_info "Testing resource usage..."
     
@@ -246,7 +246,7 @@ test_resources() {
     fi
 }
 
-# Test 9: Logs validation
+# Test 7: Logs validation
 test_logs() {
     log_info "Testing application logs..."
     
