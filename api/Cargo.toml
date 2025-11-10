@@ -120,7 +120,7 @@ prometheus                  = { workspace = true }
 
 # Document ingestion dependencies
 # PDF processing
-lopdf       = "0.34" # PDF parsing and text extraction
+lopdf       = "0.38" # PDF parsing and text extraction
 pdf-extract = "0.10" # Alternative PDF extraction
 
 # Excel/CSV processing
