@@ -9,7 +9,7 @@ name = "server"
 path = "src/bin/server.rs"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-io-uring = { version = "0.7.10", optional = true }
+io-uring = { version = "0.7.11", optional = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 tikv-jemallocator = { version = "0.6.1", optional = true }
@@ -73,7 +73,7 @@ tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 reqwest = { workspace = true, features = [ "json" ] }
 
 # Authentication dependencies
-jsonwebtoken = { version = "10.1", features = [ "aws_lc_rs" ] } # JWT token generation/validation
+jsonwebtoken = { version = "10.2", features = [ "aws_lc_rs" ] } # JWT token generation/validation
 validator    = { workspace = true, features = [ "derive" ] }    # Email validation
 
 # AWS SES Integration
