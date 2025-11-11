@@ -182,9 +182,6 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
         team_invitation_service: None,
         email_rate_limiter: None,
         withdrawal_executor: None,
-        document_service: None,
-        document_storage_service: None,
-        surrealdb_service: None,
     }
 }
 
@@ -268,9 +265,6 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
         withdrawal_executor: None,
         metrics_handle: None,
         email_rate_limiter: Some(email_rate_limiter),
-        document_service: None,
-        document_storage_service: None,
-        surrealdb_service: None,
     }
 }
 

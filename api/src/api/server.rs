@@ -70,7 +70,7 @@ impl Default for ApiServerConfig {
             enable_compression: true,
             enable_cors: true,
             request_timeout_seconds: 30,
-            max_request_size_bytes: 100 * 1024 * 1024, // 100MB (for document uploads)
+            max_request_size_bytes: 100 * 1024 * 1024, // 100MB
             cors_origins: vec!["*".to_string()],
             rate_limit_per_minute: 100,
         }
@@ -151,85 +151,12 @@ impl ApiServer {
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
 
-        // Initialize document storage service
-        info!("📁 Initializing document storage service");
-        let document_storage_config =
-            crate::services::document_storage::DocumentStorageConfig::default();
-        let document_storage_service = std::sync::Arc::new(
-            crate::services::document_storage::DocumentStorageService::new(document_storage_config),
-        );
-
         // Initialize Prometheus metrics
         info!("📊 Initializing Prometheus metrics");
         let metrics_handle = crate::utils::metrics::MetricsHandle::new().map_err(|e| {
             warn!("Failed to initialize metrics: {}", e);
             e
         })?;
-
-        // Initialize SurrealDB service for document storage
-        info!("🌐 Initializing SurrealDB service");
-        let surrealdb_service = match crate::services::document_ingestion::surrealdb_service::SurrealDBService::from_env().await {
-            Ok(service) => {
-                info!("✅ SurrealDB service initialized successfully");
-                // Initialize schema on startup
-                if let Err(e) = service.init_schema().await {
-                    warn!("⚠️  Failed to initialize SurrealDB schema: {}", e);
-                    warn!("💡 Schema initialization is optional, continuing without it");
-                }
-                Some(Arc::new(service))
-            }
-            Err(e) => {
-                warn!("⚠️  Failed to initialize SurrealDB service: {}", e);
-                warn!("💡 Set SURREALDB_URL, SURREALDB_USERNAME, and SURREALDB_PASSWORD to enable document storage");
-                None
-            }
-        };
-
-        // Initialize job queue worker if SurrealDB is available
-        if let Some(ref surreal_service) = surrealdb_service {
-            info!("🔄 Initializing document ingestion job queue worker");
-
-            // Initialize embedding service
-            match crate::services::document_ingestion::EmbeddingService::from_env() {
-                Ok(embedding_service) => {
-                    info!("✅ Embedding service initialized successfully");
-                    let embedding_service = Arc::new(embedding_service);
-
-                    // Initialize ingestion orchestrator
-                    info!("🔧 Creating ingestion orchestrator...");
-                    let orchestrator = Arc::new(
-                        crate::services::document_ingestion::IngestionOrchestrator::new(
-                            surreal_service.clone(),
-                            embedding_service,
-                        ),
-                    );
-
-                    // Initialize and start job queue worker
-                    info!("⚙️  Starting job queue worker...");
-                    let job_config =
-                        crate::services::document_ingestion::JobQueueConfig::from_env();
-                    let mut worker = crate::services::document_ingestion::JobQueueWorker::new(
-                        surreal_service.clone(),
-                        job_config,
-                        orchestrator,
-                    );
-
-                    // Start the worker in the background
-                    let _shutdown_tx = worker.start();
-                    info!("✅ Document ingestion job queue worker started successfully");
-
-                    // Note: We're not storing the shutdown_tx or worker handle in state
-                    // The worker will run for the lifetime of the application
-                    // In production, you may want to add graceful shutdown handling
-                }
-                Err(e) => {
-                    warn!("⚠️  Failed to initialize embedding service: {}", e);
-                    warn!("💡 Document processing will not be available - set MODAL_EMBEDDING_URL or OPENAI_API_KEY");
-                }
-            }
-        } else {
-            info!("ℹ️  SurrealDB service not available - document processing disabled");
-        }
 
         // Create API state
         let state = ApiState {
@@ -243,11 +170,8 @@ impl ApiServer {
             withdrawal_service,
             balance_service,
             withdrawal_executor: None, // Not configured in this constructor
-            document_service: None,    // Document service not configured in basic constructor
-            document_storage_service: Some(document_storage_service),
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
-            surrealdb_service,        // SurrealDB service initialized from environment
         };
 
         let server = Self { config, state };
@@ -282,14 +206,6 @@ impl ApiServer {
         // Initialize withdrawal and balance services
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
-
-        // Initialize document storage service
-        info!("📁 Initializing document storage service");
-        let document_storage_config =
-            crate::services::document_storage::DocumentStorageConfig::default();
-        let document_storage_service = std::sync::Arc::new(
-            crate::services::document_storage::DocumentStorageService::new(document_storage_config),
-        );
 
         // Initialize simple withdrawal executor service if Ethereum config is available
         let withdrawal_executor = if let Some(executor_config) =
@@ -384,61 +300,6 @@ impl ApiServer {
             e
         })?;
 
-        // Initialize SurrealDB service for document storage
-        info!("🌐 Initializing SurrealDB service");
-        let surrealdb_service = match crate::services::document_ingestion::surrealdb_service::SurrealDBService::from_env().await {
-            Ok(service) => {
-                info!("✅ SurrealDB service initialized successfully");
-                // Initialize schema on startup
-                if let Err(e) = service.init_schema().await {
-                    warn!("⚠️  Failed to initialize SurrealDB schema: {}", e);
-                    warn!("💡 Schema initialization is optional, continuing without it");
-                }
-                Some(Arc::new(service))
-            }
-            Err(e) => {
-                warn!("⚠️  Failed to initialize SurrealDB service: {}", e);
-                warn!("💡 Set SURREALDB_URL, SURREALDB_USERNAME, and SURREALDB_PASSWORD to enable document storage");
-                None
-            }
-        };
-
-        // Start document ingestion worker if SurrealDB is available
-        if let Some(ref surreal_db) = surrealdb_service {
-            // Try to initialize embedding service (supports both Modal and OpenAI)
-            match crate::services::document_ingestion::embedding_service::EmbeddingService::from_env(
-            ) {
-                Ok(embedding_service) => {
-                    info!("🚀 Starting document ingestion worker");
-
-                    let embedding_service = Arc::new(embedding_service);
-
-                    // Create ingestion orchestrator
-                    let orchestrator = Arc::new(crate::services::document_ingestion::ingestion_orchestrator::IngestionOrchestrator::new(
-                        Arc::clone(surreal_db),
-                        embedding_service,
-                    ));
-
-                    // Create and start job queue worker
-                    let config = crate::services::document_ingestion::job_queue_worker::JobQueueConfig::from_env();
-                    let mut worker = crate::services::document_ingestion::job_queue_worker::JobQueueWorker::new(
-                        Arc::clone(surreal_db),
-                        config,
-                        orchestrator as Arc<dyn crate::services::document_ingestion::job_queue_worker::JobProcessor>,
-                    );
-
-                    worker.start();
-                    info!("✅ Document ingestion worker started successfully");
-                }
-                Err(e) => {
-                    warn!("⚠️  Failed to initialize embedding service: {}", e);
-                    warn!(
-                        "💡 Set MODAL_EMBEDDING_URL or OPENAI_API_KEY to enable document ingestion"
-                    );
-                }
-            }
-        }
-
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
@@ -450,11 +311,8 @@ impl ApiServer {
             withdrawal_service,
             balance_service,
             withdrawal_executor,
-            document_service: None, // Document service not configured in this constructor
-            document_storage_service: Some(document_storage_service),
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
-            surrealdb_service,        // SurrealDB service initialized from environment
         };
 
         Ok(Self { config, state })
@@ -553,9 +411,6 @@ impl ApiServer {
             withdrawal_executor: self.state.withdrawal_executor.clone(),
             metrics_handle: self.state.metrics_handle.clone(),
             email_rate_limiter: Some(email_rate_limiter),
-            document_service: None,
-            document_storage_service: self.state.document_storage_service.clone(),
-            surrealdb_service: self.state.surrealdb_service.clone(),
         };
 
         // Use REST API routes (includes health endpoints and state)

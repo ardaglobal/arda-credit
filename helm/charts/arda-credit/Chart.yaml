@@ -2,7 +2,7 @@ apiVersion: v2
 name: arda-credit
 description: Arda Credit - Privacy-preserving loan vApp built on SP1 zero-knowledge proofs
 type: application
-version: 0.9.0
+version: 0.10.0
 appVersion: "latest"
 
 keywords:

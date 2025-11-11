@@ -84,15 +84,6 @@ pub use business::transfers::{
     TransferValidationRequest,
 };
 
-// Re-export document operations
-pub use business::documents::{
-    create_document, create_ingestion_job, delete_document, get_deal_document_stats,
-    get_document_by_id, get_documents_by_deal_id, get_pending_ingestion_jobs,
-    save_extracted_document_data, update_document, update_document_ingestion_status,
-    update_ingestion_job_status, CreateDocumentRequest, DealDocument, DocumentIngestionJob,
-    DocumentStats, IngestionStatus, JobStatus, StorageType, UpdateDocumentRequest,
-};
-
 // Re-export taxonomy operations
 pub use taxonomy::credit_agreements::{
     create_credit_agreement, create_credit_agreements_batch, delete_credit_agreement,

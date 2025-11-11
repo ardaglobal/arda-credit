@@ -14,11 +14,11 @@ docker-compose up -d
 This will start:
 - **PostgreSQL** on port 5432
 
-**For tracing, we use SigNoz Cloud:**
-- Set `SIGNOZ_INGESTION_KEY` in your `.env` file
-- Use SigNoz Cloud endpoint in `OTEL_EXPORTER_OTLP_ENDPOINT`
-- View traces in your SigNoz Cloud dashboard
-- Same setup works for both local development and production
+**For tracing and monitoring:**
+- Set `ENABLE_OPENTELEMETRY=true` in your `.env` file
+- Metrics collected via OpenTelemetry Collector
+- PostgreSQL metrics via prometheus-postgres-exporter
+- Debug output to logs for local development
 
 ### 2. Configure Environment
 
@@ -45,7 +45,7 @@ Test the health endpoint:
 curl http://0.0.0.0:8080/api/v1/health
 ```
 
-View traces in your SigNoz Cloud dashboard (if OpenTelemetry is enabled)
+View traces and metrics in logs (if OpenTelemetry is enabled)
 
 ## Development Workflow
 
@@ -54,7 +54,7 @@ View traces in your SigNoz Cloud dashboard (if OpenTelemetry is enabled)
 2. `make server` (runs API server with debug logging)
 3. Make your changes
 4. Test with `curl` or your frontend
-5. View traces in SigNoz Cloud dashboard if needed
+5. View traces and metrics in logs if needed
 
 ### Stopping Services
 ```bash
@@ -92,7 +92,6 @@ make initDB    # Runs migrations and generates SQLx cache
 |---------|------|---------|-----|
 | Arda Credit API | 8080 | Main application | http://0.0.0.0:8080 |
 | PostgreSQL | 5432 | Database | 0.0.0.0:5432 |
-| SigNoz Cloud | 443 | Trace visualization | Your SigNoz Cloud dashboard |
 
 ## Troubleshooting
 
@@ -110,10 +109,9 @@ docker-compose restart postgres
 
 ### OpenTelemetry Issues
 - Check that `ENABLE_OPENTELEMETRY=true` in your `.env` file
-- Verify `SIGNOZ_INGESTION_KEY` is set correctly
-- Ensure `OTEL_EXPORTER_OTLP_ENDPOINT` points to your SigNoz Cloud region
-- Check your SigNoz Cloud dashboard for traces
 - Look for OpenTelemetry initialization messages in server logs
+- Check that traces and metrics are output to debug logs
+- Verify PostgreSQL metrics exporter is accessible (if using Kubernetes)
 
 ### Port Conflicts
 If you get port binding errors, check what's using the ports:
@@ -124,12 +122,11 @@ lsof -i :5432
 
 ## Production Differences
 
-- **Development**: PostgreSQL in Docker, API server via `make server`
-- **Production**: Everything deployed to Kubernetes
-- **Tracing**: SigNoz Cloud for both development and production (consistent setup)
+- **Development**: PostgreSQL in Docker, API server via `make server`, metrics to debug logs
+- **Production**: Everything deployed to Kubernetes with full monitoring
 
 This setup gives you:
 - ✅ Fast iteration (no container rebuilds for API changes)
 - ✅ Minimal local infrastructure (just PostgreSQL)
-- ✅ Consistent tracing across all environments
-- ✅ Production-like observability without complexity
+- ✅ Debug logging for local development
+- ✅ Production-ready monitoring in Kubernetes
