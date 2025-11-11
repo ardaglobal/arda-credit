@@ -41,13 +41,13 @@ postgresql:
       annotations:
         "helm.sh/resource-policy": "keep"
 
-    # Initialize monitoring user for SigNoz integration
+    # Initialize monitoring user for metrics collection
     initdb:
       scripts:
         01-create-monitoring-user.sql: |
-          -- Create monitoring user with proper permissions for SigNoz PostgreSQL monitoring
+          -- Create monitoring user with proper permissions for PostgreSQL monitoring
           -- This script runs during PostgreSQL initialization and survives pod restarts
-          
+
           DO $$
           BEGIN
               -- Create monitoring user (ignore error if already exists)
@@ -60,13 +60,13 @@ postgresql:
               END;
           END
           $$;
-          
-          -- Grant required permissions for PostgreSQL 10+ (per SigNoz documentation)
+
+          -- Grant required permissions for PostgreSQL 10+
           GRANT pg_monitor TO monitoring;
           GRANT SELECT ON pg_stat_database TO monitoring;
-          
+
           -- Log successful setup
-          \echo 'Monitoring user configured successfully for SigNoz integration'
+          \echo 'Monitoring user configured successfully'
     
     resources:
       limits:
@@ -226,8 +226,7 @@ secrets:
     ethereumContractAddress: "0x..."
     ethereumWalletPrivateKey: "0x..."
     ethereumDeployerAddress: "0x..."
-    signozIngestionKey: "your-signoz-ingestion-key"
-    
+
     # AWS/SES Configuration for Magic Link Authentication
     # AWS credentials for SES access (sensitive)
     awsAccessKeyId: "your-aws-access-key-id"
@@ -360,15 +359,12 @@ monitoring:
     
     # Configuration for collecting metrics from multiple sources
     config:
-      # Environment variables for SigNoz integration
+      # Environment variables
       env:
         # PostgreSQL connection details
         POSTGRESQL_ENDPOINT: ""  # Will be templated from postgresql configuration
-        POSTGRESQL_USERNAME: ""  # Will be templated from postgresql.auth.username  
+        POSTGRESQL_USERNAME: ""  # Will be templated from postgresql.auth.username
         POSTGRESQL_PASSWORD: ""  # Will be templated from postgresql.auth.password
-        # SigNoz Cloud configuration
-        OTLP_DESTINATION_ENDPOINT: "ingest.us.signoz.cloud:443"
-        SIGNOZ_INGESTION_KEY: ""  # Must be provided via secrets
       
       # Collection pipelines configuration
       receivers:
@@ -417,31 +413,6 @@ monitoring:
               action: upsert
       
       exporters:
-        # Export to SigNoz Cloud (PostgreSQL metrics)
-        otlp/signoz:
-          endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
-          tls:
-            insecure: false
-          headers:
-            "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
-        
-        # Export to SigNoz Cloud (Arda Credit traces)
-        otlp/arda-credit:
-          endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
-          tls:
-            insecure: false
-          headers:
-            "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
-          retry_on_failure:
-            enabled: true
-            initial_interval: 5s
-            max_interval: 30s
-            max_elapsed_time: 300s
-          sending_queue:
-            enabled: true
-            queue_size: 5000
-            num_consumers: 10
-        
         # Debug exporter for local testing
         debug:
           verbosity: detailed
@@ -452,18 +423,12 @@ monitoring:
           metrics/postgresql:
             receivers: [postgresql, prometheus/postgres-exporter]
             processors: [resourcedetection/system, resource]
-            exporters: [otlp/signoz]
-          
+            exporters: [debug]
+
           # Arda Credit traces pipeline
           traces/arda-credit:
             receivers: [otlp, jaeger, zipkin]
             processors: [memory_limiter, batch]
-            exporters: [otlp/arda-credit, debug]
-          
-          # Debug pipeline for local development
-          metrics/debug:
-            receivers: [postgresql, prometheus/postgres-exporter]  
-            processors: [resourcedetection/system, resource]
             exporters: [debug]
     
     # Service configuration
@@ -538,13 +503,6 @@ opentelemetry-collector:
       value: "change-me-in-production"
     - name: POSTGRESQL_DATABASE
       value: "arda_credit_db"
-    - name: OTLP_DESTINATION_ENDPOINT
-      value: "ingest.us.signoz.cloud:443"
-    - name: SIGNOZ_INGESTION_KEY
-      valueFrom:
-        secretKeyRef:
-          name: arda-credit-secrets
-          key: signoz-ingestion-key
 
   config:
     receivers:
@@ -597,22 +555,6 @@ opentelemetry-collector:
         send_batch_size: 1024
 
     exporters:
-      otlp/signoz:
-        endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
-        tls:
-          insecure: false
-        headers:
-          "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
-        retry_on_failure:
-          enabled: true
-          initial_interval: 5s
-          max_interval: 30s
-          max_elapsed_time: 300s
-        sending_queue:
-          enabled: true
-          num_consumers: 10
-          queue_size: 5000
-      
       debug:
         verbosity: detailed
 
@@ -624,17 +566,17 @@ opentelemetry-collector:
         metrics/postgresql:
           receivers: [postgresql]
           processors: [resourcedetection/system]
-          exporters: [otlp/signoz, debug]
-        
+          exporters: [debug]
+
         metrics/postgres-exporter:
           receivers: [prometheus/postgres-exporter]
           processors: [resourcedetection/system]
-          exporters: [otlp/signoz, debug]
-        
+          exporters: [debug]
+
         traces/arda-credit:
           receivers: [otlp, jaeger, zipkin]
           processors: [memory_limiter, batch]
-          exporters: [otlp/signoz, debug]
+          exporters: [debug]
 
   resources:
     limits:

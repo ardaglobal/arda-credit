@@ -304,21 +304,7 @@ EOF
     # Create arda-credit-secrets for Helm lookup (external to Helm management)
     if [ -n "${SINDRI_API_KEY:-}" ]; then
         log_info "Creating arda-credit-secrets from environment variables for Helm lookup..."
-        
-        # Validate SigNoz key if provided
-        local signoz_key="${SIGNOZ_INGESTION_KEY:-test-signoz-key}"
-        if [ "${signoz_key}" != "test-signoz-key" ] && [ -n "${signoz_key}" ]; then
-            if curl -X POST https://ingest.us.signoz.cloud:443/v1/metrics \
-                -H "signoz-ingestion-key: ${signoz_key}" \
-                -H "Content-Type: application/x-protobuf" \
-                --data-binary "" --max-time 10 >/dev/null 2>&1; then
-                log_success "SigNoz ingestion key validated successfully"
-            else
-                log_warning "SigNoz ingestion key validation failed, using test key"
-                signoz_key="test-signoz-key"
-            fi
-        fi
-        
+
         # For local development, use Anvil service URL; otherwise use ETHEREUM_RPC_URL from .env
         local RPC_URL="${ETHEREUM_RPC_URL:-http://arda-credit-anvil:8545}"
 
@@ -328,7 +314,6 @@ EOF
             --from-literal=ethereum-contract-address="${ETHEREUM_CONTRACT_ADDRESS:-0x0}" \
             --from-literal=ethereum-wallet-private-key="${ETHEREUM_WALLET_PRIVATE_KEY:-0x0}" \
             --from-literal=ethereum-deployer-address="${ETHEREUM_DEPLOYER_ADDRESS:-0x0}" \
-            --from-literal=signoz-ingestion-key="${signoz_key}" \
             --from-literal=aws-access-key-id="${AWS_ACCESS_KEY_ID:-test-aws-access-key-id}" \
             --from-literal=aws-secret-access-key="${AWS_SECRET_ACCESS_KEY:-test-aws-secret-access-key}" \
             --from-literal=email-from="${EMAIL_FROM:-no-reply@example.local}" \
@@ -344,7 +329,6 @@ EOF
             --from-literal=ethereum-contract-address="0x1234567890123456789012345678901234567890" \
             --from-literal=ethereum-wallet-private-key="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" \
             --from-literal=ethereum-deployer-address="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266" \
-            --from-literal=signoz-ingestion-key="test-signoz-key" \
             --from-literal=aws-access-key-id="test-aws-access-key-id" \
             --from-literal=aws-secret-access-key="test-aws-secret-access-key" \
             --from-literal=email-from="no-reply@example.local" \
@@ -468,8 +452,8 @@ configure_postgresql_monitoring() {
             RAISE NOTICE 'Monitoring user created as fallback';
         END
         \$\$;
-        
-        -- Ensure required permissions for PostgreSQL 10+ (SigNoz requirements)
+
+        -- Ensure required permissions for PostgreSQL 10+
         GRANT pg_monitor TO monitoring;
         GRANT SELECT ON pg_stat_database TO monitoring;
         
