@@ -1,10 +1,9 @@
 //! Company handlers
 //!
 //! This module contains handlers for company operations including
-//! investor profiles, companies, memberships, wallet addresses, and document management.
+//! investor profiles, companies, memberships, and wallet addresses.
 
 pub mod companies;
-pub mod documents;
 pub mod memberships;
 pub mod wallets;
 
@@ -12,6 +11,3 @@ pub mod wallets;
 pub use companies::*;
 pub use memberships::*;
 pub use wallets::*;
-
-// Company documents module is accessible but not glob re-exported to avoid conflicts with deals::documents
-// Access via companies::documents::* instead

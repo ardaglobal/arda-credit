@@ -4,14 +4,71 @@
 //! and team management functionality for originators and investors.
 
 use crate::services::auth::Claims;
-use arda_credit_lib::{CompanyType, KybStatus, TeamRole};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
+use std::fmt;
 use thiserror::Error;
 use tracing::{error, info};
 use uuid::Uuid;
 use validator::Validate;
+
+/// Company types in the system
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum CompanyType {
+    Originator = 1,
+    Investor = 2,
+}
+
+impl fmt::Display for CompanyType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CompanyType::Originator => write!(f, "originator"),
+            CompanyType::Investor => write!(f, "investor"),
+        }
+    }
+}
+
+/// KYB (Know Your Business) status for company compliance
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum KybStatus {
+    NotSubmitted = 0,
+    Pending = 1,
+    Approved = 2,
+    Rejected = 3,
+}
+
+impl fmt::Display for KybStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            KybStatus::NotSubmitted => write!(f, "not_submitted"),
+            KybStatus::Pending => write!(f, "pending"),
+            KybStatus::Approved => write!(f, "approved"),
+            KybStatus::Rejected => write!(f, "rejected"),
+        }
+    }
+}
+
+/// Team member roles within companies
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[repr(u8)]
+pub enum TeamRole {
+    Admin = 1, // Full document access, upload, download, delete
+    Write = 2, // Upload, download, approve documents, no deletion
+    Read = 3,  // View and download only, no upload capabilities
+}
+
+impl fmt::Display for TeamRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TeamRole::Admin => write!(f, "admin"),
+            TeamRole::Write => write!(f, "write"),
+            TeamRole::Read => write!(f, "read"),
+        }
+    }
+}
 
 /// Company service errors
 #[derive(Debug, Error)]

@@ -11,7 +11,7 @@
 use api::{init_tracing, shutdown_telemetry, ApiConfig, ApiServer, ApiServerConfig};
 use arda_credit_db::init_db;
 use clap::Parser;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 /// Command line arguments for the server
 #[derive(Parser, Debug)]
@@ -33,7 +33,7 @@ struct Args {
     #[arg(long, default_value = "50", value_parser = clap::value_parser!(u32))]
     max_batch_size: u32,
 
-    /// Maximum request size in bytes (100MB for document uploads)
+    /// Maximum request size in bytes (100MB)
     #[arg(long, default_value = "104857600")]
     max_request_size: usize,
 
@@ -119,46 +119,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Create router
     let app = server.create_router().await;
-
-    // Warm up embedding service for Modal cold start mitigation
-    info!("🔥 Starting embedding service warmup...");
-    match api::services::EmbeddingService::from_env() {
-        Ok(embedding_service) => {
-            // Initial warmup
-            let service_for_initial = embedding_service.clone();
-            tokio::spawn(async move {
-                if let Err(e) = service_for_initial.warmup().await {
-                    warn!(
-                        "Initial embedding service warmup encountered an error: {}",
-                        e
-                    );
-                }
-            });
-
-            // Periodic warmup to keep Modal servers warm (every 10 seconds)
-            info!("🔄 Starting periodic warmup task (every 10s) to keep Modal warm");
-            tokio::spawn(async move {
-                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
-                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
-                loop {
-                    interval.tick().await;
-
-                    if let Err(e) = embedding_service.warmup().await {
-                        // Log at debug level to avoid spamming logs
-                        tracing::debug!("Periodic warmup failed: {}", e);
-                    }
-                }
-            });
-        }
-        Err(e) => {
-            warn!(
-                "⚠️  Could not initialize embedding service for warmup: {}",
-                e
-            );
-            warn!("This is OK if embeddings are not configured for this environment");
-        }
-    }
 
     // Bind address
     let bind_address = server.bind_address();

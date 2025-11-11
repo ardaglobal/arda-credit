@@ -194,7 +194,7 @@ impl LlmService {
     }
 
     /// Call LLM with intelligent fallback for OpenRouter
-    async fn call_llm_with_fallback(
+    pub async fn call_llm_with_fallback(
         &self,
         request: LlmRequest,
     ) -> Result<LlmResponse, Box<dyn std::error::Error>> {

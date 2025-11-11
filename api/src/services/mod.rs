@@ -5,7 +5,7 @@
 //! - Authentication and authorization
 //! - Balance and withdrawal services
 //! - Batch processing
-//! - Company and document services
+//! - Company services
 //! - Email services
 //! - KYC services
 //! - Magic link authentication
@@ -19,18 +19,10 @@ pub mod balance_service;
 pub mod batch_processor;
 pub mod company_service;
 pub mod deployment_config;
-pub mod document_ingestion;
-pub mod document_ingestion_orchestrator;
-pub mod document_service;
-pub mod document_storage;
 pub mod email_service;
-pub mod hybrid_search_service;
 pub mod kyc_service;
 pub mod llm_integration;
 pub mod magic_link_service;
-pub mod modal_embedding_service;
-pub mod openrouter_service;
-pub mod rag_service;
 pub mod session_service;
 pub mod simple_withdrawal_executor;
 pub mod team_invitation_service;
@@ -46,10 +38,6 @@ pub use company_service::{
     BeneficialOwnerInfo, CompanyRegistrationRequest, CompanyResponseDto, CompanyService,
     CompanyServiceError, KybSubmissionRequest, TeamInvitationRequest, TeamMemberPermissions,
     TeamMemberResponseDto,
-};
-pub use document_service::DocumentService;
-pub use document_storage::{
-    DocumentStorageConfig, DocumentStorageService, StorageBackend, UploadedFile,
 };
 pub use email_service::EmailService;
 pub use kyc_service::{KycValidationResult, KycValidationService};
@@ -81,24 +69,4 @@ pub use ai_notification_service::{
 
 pub use llm_integration::{
     ChatPrompt, DocumentAnalysisPrompt, LlmProvider, LlmRequest, LlmResponse, LlmService,
-};
-
-// Re-export OpenRouter and RAG services
-pub use openrouter_service::{ChatMessage, CompletionResult, OpenRouterService};
-pub use rag_service::{RagQuery, RagResult, RagService, Source};
-
-// Re-export hybrid search and Modal services
-pub use hybrid_search_service::{HybridSearchConfig, HybridSearchQuery, HybridSearchService};
-pub use modal_embedding_service::{ModalEmbeddingService, UnifiedEmbeddingService};
-
-// Re-export LLM extraction types from document_ingestion module
-pub use document_ingestion::{
-    CollateralType, CurrencyCode, DealCollateral, DealCovenants, DealFinancialTerms, DealParties,
-    DealType, Document, DocumentEmbedding, DocumentMetadata, EmbeddingService, ExtractedDealData,
-    InterestRateType, LlmExtractionService, PaymentFrequency, SearchResult, SurrealDBService,
-};
-
-// Re-export document ingestion orchestrator
-pub use document_ingestion_orchestrator::{
-    DocumentIngestionOrchestrator, DocumentIngestionRequest, DocumentIngestionResult,
 };
