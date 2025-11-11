@@ -141,7 +141,6 @@ create_external_secret() {
         --from-literal=ethereum-contract-address="${ETHEREUM_CONTRACT_ADDRESS}" \
         --from-literal=ethereum-wallet-private-key="${ETHEREUM_WALLET_PRIVATE_KEY}" \
         --from-literal=ethereum-deployer-address="${ETHEREUM_DEPLOYER_ADDRESS}" \
-        --from-literal=signoz-ingestion-key="${SIGNOZ_INGESTION_KEY}" \
         --namespace="$NAMESPACE"
     
     kubectl annotate secret "$EXTERNAL_SECRET_NAME" -n "$NAMESPACE" "helm.sh/resource-policy=keep" --overwrite
@@ -501,15 +500,13 @@ setup_kind_namespace_and_secrets() {
     local eth_contract="${ETHEREUM_CONTRACT_ADDRESS:-0x1234567890123456789012345678901234567890}"
     local eth_private_key="${ETHEREUM_WALLET_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
     local eth_deployer="${ETHEREUM_DEPLOYER_ADDRESS:-0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266}"
-    local signoz_key="${SIGNOZ_INGESTION_KEY:-test-signoz-key}"
-    
+
     kubectl create secret generic "$EXTERNAL_SECRET_NAME" \
         --from-literal=sindri-api-key="$sindri_key" \
         --from-literal=ethereum-rpc-url="$eth_rpc" \
         --from-literal=ethereum-contract-address="$eth_contract" \
         --from-literal=ethereum-wallet-private-key="$eth_private_key" \
         --from-literal=ethereum-deployer-address="$eth_deployer" \
-        --from-literal=signoz-ingestion-key="$signoz_key" \
         --namespace="$NAMESPACE" \
         --context="$context"
     

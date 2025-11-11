@@ -42,24 +42,4 @@ data:
   POSTGRESQL_USERNAME: {{ .Values.postgresql.external.username | b64enc }}
   POSTGRESQL_PASSWORD: {{ .Values.postgresql.external.password | b64enc }}
   {{- end }}
-  
-  # SigNoz configuration
-  OTLP_DESTINATION_ENDPOINT: {{ .Values.monitoring.otelCollector.config.env.OTLP_DESTINATION_ENDPOINT | b64enc }}
-  # Get SIGNOZ_INGESTION_KEY from the arda-credit-secrets created by setup script
-  {{- if .Values.secrets.existingSecret }}
-  {{- $existingSecret := lookup "v1" "Secret" .Release.Namespace .Values.secrets.existingSecret }}
-  {{- if and $existingSecret $existingSecret.data }}
-  {{- if index $existingSecret.data "signoz-ingestion-key" }}
-  SIGNOZ_INGESTION_KEY: {{ index $existingSecret.data "signoz-ingestion-key" }}
-  {{- else }}
-  SIGNOZ_INGESTION_KEY: {{ "test-signoz-key" | b64enc }}
-  {{- end }}
-  {{- else }}
-  # Fallback when existing secret not found
-  SIGNOZ_INGESTION_KEY: {{ "test-signoz-key" | b64enc }}
-  {{- end }}
-  {{- else }}
-  # No existing secret configured
-  SIGNOZ_INGESTION_KEY: {{ "test-signoz-key" | b64enc }}
-  {{- end }}
 {{- end }}

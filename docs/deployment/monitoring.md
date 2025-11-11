@@ -1,23 +1,23 @@
 # OpenTelemetry Setup Guide
 
-This guide explains how to set up OpenTelemetry tracing for the Arda Credit API using SigNoz Cloud for both local development and production environments. For security setup and production deployment, see [`docs/deployment/security-production.md`](../deployment/security-production.md).
+This guide explains how to set up OpenTelemetry tracing and monitoring for the Arda Credit API. For security setup and production deployment, see [`docs/deployment/security-production.md`](../deployment/security-production.md).
 
 ## Overview
 
-### Unified SigNoz Cloud Setup
+The monitoring stack collects metrics and traces from the Arda Credit API and PostgreSQL database using OpenTelemetry.
+
+### Setup
 
 1. **Start the background services:**
    ```bash
    docker-compose up -d
    ```
-   This starts PostgreSQL only.
+   This starts PostgreSQL.
 
 2. **Set environment variables in your `.env` file:**
    ```bash
    ENABLE_OPENTELEMETRY=true
    OTEL_SERVICE_NAME=arda-credit-api
-   OTEL_EXPORTER_OTLP_ENDPOINT=https://ingest.{region}.signoz.cloud:443
-   SIGNOZ_INGESTION_KEY=your-signoz-ingestion-key
    ```
 
 3. **Run the Arda Credit API server:**
@@ -25,11 +25,10 @@ This guide explains how to set up OpenTelemetry tracing for the Arda Credit API 
    make server
    ```
 
-4. **View traces in SigNoz Cloud:**
-   - Open your SigNoz Cloud dashboard
-   - Navigate to the traces section
-   - Filter by service name "arda-credit-api"
-   - View your application traces
+4. **View metrics:**
+   - Metrics are collected via OpenTelemetry Collector
+   - PostgreSQL metrics via prometheus-postgres-exporter
+   - Traces and metrics output to debug exporter (logs)
 
 5. **Test the setup:**
    ```bash
@@ -38,28 +37,26 @@ This guide explains how to set up OpenTelemetry tracing for the Arda Credit API 
 
 ## Architecture
 
-### Simplified Architecture (Both Development & Production)
+### Monitoring Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐
-│   Arda Credit   │───▶│   SigNoz Cloud   │
-│      API        │    │   (Port 443)     │
-│ (make server)   │    │                  │
-└─────────────────┘    └──────────────────┘
+┌─────────────────┐    ┌──────────────────────┐
+│   Arda Credit   │───▶│  OpenTelemetry       │
+│      API        │    │  Collector           │
+│ (make server)   │    │  (Debug Exporter)    │
+└─────────────────┘    └──────────────────────┘
          │
          ▼
-┌──────────────────┐
-│    PostgreSQL    │
-│  (Docker:5432)   │
-│ (Dev only)       │
-└──────────────────┘
+┌──────────────────┐    ┌──────────────────────┐
+│    PostgreSQL    │───▶│  Postgres Exporter   │
+│  (Docker:5432)   │    │  (Prometheus)        │
+└──────────────────┘    └──────────────────────┘
 ```
 
-**Benefits:**
-- ✅ **Consistent setup** - Same tracing for dev and prod
-- ✅ **Minimal complexity** - No local collector/Jaeger to manage  
-- ✅ **Team visibility** - Everyone sees traces in the same place
-- ✅ **Persistent data** - Traces don't disappear on restart
+**Components:**
+- **OpenTelemetry Collector** - Collects traces and metrics
+- **Postgres Exporter** - Exports PostgreSQL metrics
+- **Debug Exporter** - Outputs metrics to logs for local development
 
 ## Services and Ports
 
@@ -69,13 +66,14 @@ This guide explains how to set up OpenTelemetry tracing for the Arda Credit API 
 |---------|------|---------|
 | Arda Credit API | 8080 | Main application |
 | PostgreSQL | 5432 | Database |
-| SigNoz Cloud | 443 | Trace visualization |
+| Postgres Exporter | 9187 | PostgreSQL metrics |
+| OTEL Collector | 4317 | OTLP receiver |
 
 ### URLs
 
 - **Application**: http://0.0.0.0:8080
-- **SigNoz Dashboard**: Your SigNoz Cloud URL
 - **Database**: 0.0.0.0:5432
+- **Postgres Metrics**: http://localhost:9187/metrics (via port-forward)
 
 ## Configuration Files
 
@@ -87,24 +85,24 @@ Minimal background services for development:
 ### `.env`
 Environment configuration:
 - `ENABLE_OPENTELEMETRY=true` - Enable tracing
-- `OTEL_SERVICE_NAME=arda-credit-api` - Service name in SigNoz
-- `OTEL_EXPORTER_OTLP_ENDPOINT` - SigNoz Cloud endpoint
-- `SIGNOZ_INGESTION_KEY` - Your SigNoz Cloud API key
+- `OTEL_SERVICE_NAME=arda-credit-api` - Service name
+
+### Helm Chart
+For Kubernetes deployment, the OpenTelemetry Collector is configured in:
+- `helm/charts/arda-credit/values.yaml` - Main collector configuration
+- `helm/e2e/values/values-local.yaml` - Local testing configuration
 
 ## Troubleshooting
 
 ### Issue: Server hangs on shutdown
-**Solution**: The updated `shutdown_telemetry()` function now includes a 5-second timeout to prevent hanging.
+**Solution**: The `shutdown_telemetry()` function includes a 5-second timeout to prevent hanging.
 
-### Issue: No traces visible in SigNoz Cloud
+### Issue: No metrics visible
 **Possible causes**:
 1. `ENABLE_OPENTELEMETRY=false` - Set to `true`
-2. Missing `SIGNOZ_INGESTION_KEY` - Set your SigNoz ingestion key
-3. Wrong endpoint format - Should be `https://ingest.{region}.signoz.cloud:443`
-4. Invalid ingestion key - Check your SigNoz Cloud settings
-5. Network connectivity issues - Check internet connection
-6. Application not generating traces - Make requests to trigger spans
-7. Server not running - Run `make server`
+2. Application not generating traces - Make requests to trigger spans
+3. Server not running - Run `make server`
+4. Check collector logs for errors
 
 ### Debugging Steps
 
@@ -112,14 +110,13 @@ Environment configuration:
    ```bash
    # Look for OpenTelemetry initialization messages
    make server
-   # Should see: "✅ OpenTelemetry tracer initialized for SigNoz Cloud"
+   # Should see: "✅ OpenTelemetry tracer initialized"
    ```
 
 2. **Verify configuration**:
    ```bash
    # Check if tracing is enabled
    curl http://0.0.0.0:8080/api/v1/health
-   # Look for traces in your SigNoz Cloud dashboard
    ```
 
 3. **Test trace generation**:
@@ -128,14 +125,20 @@ Environment configuration:
    for i in {1..5}; do curl http://0.0.0.0:8080/api/v1/health; done
    ```
 
+4. **Check PostgreSQL metrics**:
+   ```bash
+   # Port-forward to access metrics
+   kubectl port-forward svc/arda-credit-prometheus-postgres-exporter 9187:9187 -n arda-credit
+   # View metrics
+   curl http://localhost:9187/metrics
+   ```
+
 ## Environment Variables Reference
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENABLE_OPENTELEMETRY` | `false` | Enable/disable tracing |
 | `OTEL_SERVICE_NAME` | `arda-credit-api` | Service name in traces |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4317` | OTLP endpoint |
-| `SIGNOZ_INGESTION_KEY` | (empty) | SigNoz Cloud ingestion key |
 
 ## Disabling Telemetry
 
@@ -152,6 +155,6 @@ All other OpenTelemetry configuration will be ignored, and the application will 
 - OpenTelemetry adds minimal overhead when properly configured
 - Batching is enabled to reduce network calls
 - Memory limits are set to prevent resource exhaustion
-- Sampling can be configured in the collector for high-traffic scenarios
+- Debug exporter is suitable for local development only
 
 For questions or issues, refer to the main project documentation or create an issue in the repository.
