@@ -20,12 +20,6 @@ This file provides guidance to AI agents when working with code in this reposito
 - **Deal Marketplace** - List deals for sale, browse, and purchase
 - **Deal Transfers** - Transfer ownership between investors with validation
 
-**Document Management:**
-- **Document Upload** - PDF, DOCX, XLSX support with S3 storage
-- **LLM Extraction** - Automated field extraction from 8+ document types
-- **AI Analysis** - Document Q&A, chat interface, RAG search
-- **Structured Storage** - Specialized tables for credit agreements, term sheets, etc.
-
 **Financial Operations:**
 - **USDC Deposits** - Direct deposits to smart contract with auto-balance tracking
 - **USDC Withdrawals** - Balance verification and blockchain execution
@@ -41,11 +35,11 @@ This file provides guidance to AI agents when working with code in this reposito
 **Three-Component Architecture:**
 1. **Smart Contracts** (`contracts/`) - On-chain proof verification and state management
 2. **ZKVM Program** (`program/`) - Zero-knowledge transaction processing
-3. **Web Server** (Main repo) - API, document processing, and orchestration
+3. **Web Server** (Main repo) - API server and orchestration
 
 **Component Structure:**
 - **`api/`** - REST API server with Swagger docs
-- **`db/`** - PostgreSQL with specialized document tables
+- **`db/`** - PostgreSQL with deal and transaction data
 - **`contracts/`** - Solidity contracts (ARDA, MockUSDC, ARDAFaucet)
 - **`program/`** - SP1 zkVM program for batch processing
 - **`lib/`** - Shared computation logic (zkVM compatible)
@@ -234,52 +228,6 @@ struct UsdcWithdrawal {
 }
 ```
 
-## Document System
-
-### Supported Document Types
-
-The system supports 8+ specialized document types with LLM extraction:
-
-1. **Credit Agreement** (52 fields) - Core deal terms, parties, pricing, covenants
-2. **Term Sheet** (39 fields) - Pre-agreement indicative terms
-3. **Security Agreement** (30+ fields) - Collateral details, perfection, priority
-4. **Fee Letter** (10+ fields) - Fee structures and payment schedules
-5. **Legal Opinion** (15+ fields) - Legal enforceability opinions
-6. **Guaranty** (40+ fields) - Guarantor obligations and coverage
-7. **SSI** (20+ fields) - Standard Settlement Instructions for payments
-8. **Secondary Trading** (30+ fields) - Secondary market trade details
-
-### Document Processing Pipeline
-
-**Location**: `api/src/services/document_ingestion/`
-
-```rust
-// 1. Extract document data using LLM
-let extraction_service = LlmExtractionService::from_env()?;
-let extracted_data = extraction_service
-    .extract_credit_agreement_comprehensive(&document_text)
-    .await?;
-
-// 2. Map to database record
-let db_record = map_credit_agreement_to_db(
-    &extracted_data,
-    "CA-2025-001",
-    Some(uuid),
-)?;
-
-// 3. Insert into specialized table (credit_agreements, fee_letters, etc.)
-```
-
-**Database Tables**: `db/migrations/020-030_*.sql`
-
-All document tables include:
-- UUID primary keys
-- Foreign key references to parent credit agreements
-- Document hashing (SHA-256) for tamper evidence
-- Audit timestamps (created_at, updated_at)
-- JSONB metadata fields for flexible data
-- GIN indexes for fast querying
-
 ## Common Development Patterns
 
 ### Adding New Deal Operations
@@ -394,7 +342,6 @@ cargo check --workspace     # Works without PostgreSQL
 - **Deals**: `POST /api/v1/deal`, `GET /api/v1/deals`, `GET /api/v1/deal/{id}`
 - **Marketplace**: `GET /api/v1/deals/for-sale`, `POST /api/v1/deal/{id}/list-for-sale`
 - **Transfers**: `POST /api/v1/deal/{id}/transfer`, `GET /api/v1/deal/{id}/transfers`
-- **Documents**: `POST /api/v1/document/upload`, `GET /api/v1/documents/{id}/analyze`
 - **Financial**: `GET /api/v1/balance/{address}`, `POST /api/v1/withdrawal`
 
 ## Documentation References

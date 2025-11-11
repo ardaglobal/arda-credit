@@ -518,78 +518,6 @@ pub const COMPANY_WALLET_PERMISSION_BY_ID: &str =
     api_path!("/companies/{company_id}/wallets/permissions/{permission_id}");
 
 // ============================================================================
-// DEAL DOCUMENT MANAGEMENT PATHS
-// ============================================================================
-
-/// Upload document to deal
-pub const DEAL_DOCUMENT_UPLOAD: &str = api_path!("/deals/{deal_id}/documents");
-
-/// List documents for a deal
-pub const DEAL_DOCUMENTS: &str = api_path!("/deals/{deal_id}/documents");
-
-/// Get deal document by ID
-pub const DEAL_DOCUMENT_BY_ID: &str = api_path!("/documents/{document_id}");
-
-/// Download deal document
-pub const DEAL_DOCUMENT_DOWNLOAD: &str = api_path!("/documents/{document_id}/download");
-
-/// Update deal document metadata
-pub const DEAL_DOCUMENT_UPDATE: &str = api_path!("/documents/{document_id}");
-
-/// Delete deal document
-pub const DEAL_DOCUMENT_DELETE: &str = api_path!("/documents/{document_id}");
-
-/// Get deal document statistics
-pub const DEAL_DOCUMENT_STATS: &str = api_path!("/deals/{deal_id}/documents/stats");
-
-// ============================================================================
-// DOCUMENT MANAGEMENT PATHS (COMPANY)
-// ============================================================================
-
-/// Upload document to company
-pub const DOCUMENT_UPLOAD: &str = api_path!("/companies/{company_id}/documents/upload");
-
-/// Download document from company
-pub const DOCUMENT_DOWNLOAD: &str =
-    api_path!("/companies/{company_id}/documents/{document_id}/download");
-
-/// Get document metadata
-pub const DOCUMENT_BY_ID: &str = api_path!("/companies/{company_id}/documents/{document_id}");
-
-/// List company documents
-pub const DOCUMENTS: &str = api_path!("/companies/{company_id}/documents");
-
-/// Approve document
-pub const DOCUMENT_APPROVE: &str =
-    api_path!("/companies/{company_id}/documents/{document_id}/approve");
-
-/// Reject document
-pub const DOCUMENT_REJECT: &str =
-    api_path!("/companies/{company_id}/documents/{document_id}/reject");
-
-/// Verify document integrity
-pub const DOCUMENT_VERIFY: &str =
-    api_path!("/companies/{company_id}/documents/{document_id}/verify");
-
-/// Get document audit logs
-pub const DOCUMENT_AUDIT: &str = api_path!("/companies/{company_id}/documents/audit");
-
-/// Document service health check
-pub const DOCUMENT_HEALTH: &str = api_path!("/documents/health");
-
-/// Document ingestion status (for job queue polling)
-pub const DOCUMENT_STATUS: &str = api_path!("/documents/{document_id}/status");
-
-/// Vector similarity search
-pub const DOCUMENT_SEARCH: &str = api_path!("/documents/search");
-
-/// RAG query - Ask questions about documents
-pub const DOCUMENT_ASK: &str = api_path!("/documents/ask");
-
-/// RAG query - Ask questions about documents with streaming response
-pub const DOCUMENT_ASK_STREAM: &str = api_path!("/documents/ask/stream");
-
-// ============================================================================
 // TAXONOMY PATHS - Arda Document Management
 // ============================================================================
 
@@ -987,52 +915,6 @@ pub fn pool_transaction_history_path(pool_id: &str) -> String {
     replace_param(POOL_TRANSACTION_HISTORY, "pool_id", pool_id)
 }
 
-// Document Management Helper Functions
-/// Build document upload path with company_id parameter
-pub fn document_upload_path(company_id: &str) -> String {
-    replace_param(DOCUMENT_UPLOAD, "company_id", company_id)
-}
-
-/// Build document download path with company_id and document_id parameters
-pub fn document_download_path(company_id: &str, document_id: &str) -> String {
-    let path = replace_param(DOCUMENT_DOWNLOAD, "company_id", company_id);
-    replace_param(&path, "document_id", document_id)
-}
-
-/// Build document by ID path with company_id and document_id parameters
-pub fn document_by_id_path(company_id: &str, document_id: &str) -> String {
-    let path = replace_param(DOCUMENT_BY_ID, "company_id", company_id);
-    replace_param(&path, "document_id", document_id)
-}
-
-/// Build documents path with company_id parameter
-pub fn documents_path(company_id: &str) -> String {
-    replace_param(DOCUMENTS, "company_id", company_id)
-}
-
-/// Build document approve path with company_id and document_id parameters
-pub fn document_approve_path(company_id: &str, document_id: &str) -> String {
-    let path = replace_param(DOCUMENT_APPROVE, "company_id", company_id);
-    replace_param(&path, "document_id", document_id)
-}
-
-/// Build document reject path with company_id and document_id parameters
-pub fn document_reject_path(company_id: &str, document_id: &str) -> String {
-    let path = replace_param(DOCUMENT_REJECT, "company_id", company_id);
-    replace_param(&path, "document_id", document_id)
-}
-
-/// Build document verify path with company_id and document_id parameters
-pub fn document_verify_path(company_id: &str, document_id: &str) -> String {
-    let path = replace_param(DOCUMENT_VERIFY, "company_id", company_id);
-    replace_param(&path, "document_id", document_id)
-}
-
-/// Build document audit path with company_id parameter
-pub fn document_audit_path(company_id: &str) -> String {
-    replace_param(DOCUMENT_AUDIT, "company_id", company_id)
-}
-
 // ============================================================================
 // PATH LISTS FOR DOCUMENTATION
 // ============================================================================
@@ -1406,57 +1288,6 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
             path: TRANSACTION_UPDATES_SSE.to_string(),
             description: "Get real-time transaction updates via Server-Sent Events (SSE)"
                 .to_string(),
-        },
-        // Document Management Endpoints
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: DOCUMENT_UPLOAD.to_string(),
-            description: "Upload document to company".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: DOCUMENT_DOWNLOAD.to_string(),
-            description: "Download document from company".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: DOCUMENT_BY_ID.to_string(),
-            description: "Get document metadata".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "DELETE".to_string(),
-            path: DOCUMENT_BY_ID.to_string(),
-            description: "Delete document from company".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: DOCUMENTS.to_string(),
-            description: "List company documents".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: DOCUMENT_APPROVE.to_string(),
-            description: "Approve document".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: DOCUMENT_REJECT.to_string(),
-            description: "Reject document".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: DOCUMENT_VERIFY.to_string(),
-            description: "Verify document integrity".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: DOCUMENT_AUDIT.to_string(),
-            description: "Get document audit logs".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: DOCUMENT_HEALTH.to_string(),
-            description: "Document service health check".to_string(),
         },
     ]
 }

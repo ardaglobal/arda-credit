@@ -19,6 +19,7 @@ sha2         = { workspace = true }
 uuid         = { workspace = true }
 
 # SP1 dependencies (for host-side proof operations)
+chrono  = { workspace = true, optional = true }
 metrics = { workspace = true, optional = true }
 sindri  = { workspace = true, features = [ "sp1-v5" ], optional = true }
 sp1-sdk = { workspace = true, optional = true }
@@ -28,25 +29,7 @@ tracing = { workspace = true, optional = true }
 # CLI dependencies
 clap = { workspace = true, features = [ "derive" ], optional = true }
 
-# AWS S3 and document storage dependencies
-aws-config  = { workspace = true, optional = true }
-aws-sdk-kms = { workspace = true, optional = true }
-aws-sdk-s3  = { workspace = true, optional = true }
-chrono      = { workspace = true, optional = true }
-mime        = { workspace = true, optional = true }
-mime_guess  = { workspace = true, optional = true }
-validator   = { workspace = true, optional = true }
-
 [features]
-clap = [ "dep:clap" ]
+clap    = [ "dep:clap" ]
 default = [  ]
-document_storage = [
-    "dep:aws-config",
-    "dep:aws-sdk-kms",
-    "dep:aws-sdk-s3",
-    "dep:chrono",
-    "dep:mime",
-    "dep:mime_guess",
-    "dep:validator",
-]
-sp1 = [ "dep:metrics", "dep:sindri", "dep:sp1-sdk", "dep:tokio", "dep:tracing" ]
+sp1     = [ "dep:chrono", "dep:metrics", "dep:sindri", "dep:sp1-sdk", "dep:tokio", "dep:tracing" ]

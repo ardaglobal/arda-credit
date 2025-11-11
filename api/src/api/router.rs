@@ -32,7 +32,6 @@ use crate::handlers::{
     UserDetailsResponse,
 };
 use crate::services::batch_processor::BatchProcessorHandle;
-use crate::services::document_service::DocumentService;
 use crate::services::session_service::SessionService;
 use crate::services::{BalanceVerificationService, WithdrawalTransactionService};
 use arda_credit_db::{IndexedMerkleTreeADS, User};
@@ -101,10 +100,6 @@ pub struct ApiState {
         Option<crate::services::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
     pub metrics_handle: Option<Arc<crate::utils::metrics::MetricsHandle>>,
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
-    pub document_service: Option<Arc<DocumentService>>,
-    pub document_storage_service:
-        Option<Arc<crate::services::document_storage::DocumentStorageService>>,
-    pub surrealdb_service: Option<Arc<crate::services::document_ingestion::SurrealDBService>>,
 }
 
 /// Configuration for API server
@@ -366,35 +361,6 @@ pub fn create_router(state: ApiState) -> Router {
             get(crate::handlers::deals::deals::get_deal_stats_endpoint),
         )
         // ========================================================================
-        // DEAL DOCUMENT ENDPOINTS
-        // ========================================================================
-        .route(
-            paths::DEAL_DOCUMENT_UPLOAD,
-            post(crate::handlers::deals::documents::upload_document),
-        )
-        .route(
-            paths::DEAL_DOCUMENTS,
-            get(crate::handlers::deals::documents::list_documents),
-        )
-        .route(
-            paths::DEAL_DOCUMENT_BY_ID,
-            get(crate::handlers::deals::documents::get_document),
-        )
-        // PUT endpoint removed - documents must be managed through deal context
-        // Use POST /api/v1/deals/{deal_id}/documents to upload new documents
-        .route(
-            paths::DEAL_DOCUMENT_BY_ID,
-            delete(crate::handlers::deals::documents::delete_document_handler),
-        )
-        .route(
-            paths::DEAL_DOCUMENT_DOWNLOAD,
-            get(crate::handlers::deals::documents::download_document),
-        )
-        .route(
-            paths::DEAL_DOCUMENT_STATS,
-            get(crate::handlers::deals::documents::get_document_stats),
-        )
-        // ========================================================================
         // DEAL MARKETPLACE ENDPOINTS (consolidated from separate marketplace)
         // ========================================================================
         .route(
@@ -533,22 +499,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::COMPANY_WALLET_PERMISSION_BY_ID,
             delete(company_handlers::revoke_wallet_permission),
-        )
-        // ========================================================================
-        // DOCUMENT RAG ENDPOINTS (AI-powered search and question answering)
-        // ========================================================================
-        // Document RAG endpoints (vector search + AI inference)
-        .route(
-            paths::DOCUMENT_SEARCH,
-            post(crate::handlers::document_rag::vector_search),
-        )
-        .route(
-            paths::DOCUMENT_ASK,
-            post(crate::handlers::document_rag::rag_query),
-        )
-        .route(
-            paths::DOCUMENT_ASK_STREAM,
-            post(crate::handlers::document_rag::rag_query_stream),
         )
         // Faucet endpoints (local/staging only)
         .route(

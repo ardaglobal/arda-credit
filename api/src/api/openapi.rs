@@ -225,20 +225,6 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::get_user_deal_transfer_history_endpoint,
         crate::handlers::deals::deals::validate_deal_transfer_endpoint,
 
-        // Deal Document endpoints
-        crate::handlers::deals::documents::upload_document,
-        crate::handlers::deals::documents::list_documents,
-        crate::handlers::deals::documents::get_document,
-        crate::handlers::deals::documents::download_document,
-        // update_document_metadata removed - documents managed through deal context only
-        crate::handlers::deals::documents::delete_document_handler,
-        crate::handlers::deals::documents::get_document_stats,
-
-        // Document RAG endpoints (AI-powered search and question answering)
-        crate::handlers::document_rag::vector_search,
-        crate::handlers::document_rag::rag_query,
-        crate::handlers::document_rag::rag_query_stream,
-
         // Withdrawal endpoints
         crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint,
@@ -505,20 +491,6 @@ fn default_limit() -> u32 {
         DealTransferResponse,
         ValidateDealTransferRequest,
         DealTransferValidationResponse,
-
-        // Deal Document types
-        crate::handlers::deals::documents::DealDocumentResponse,
-        crate::handlers::deals::documents::DocumentUploadResponse,
-        crate::handlers::deals::documents::DocumentListResponse,
-        crate::handlers::deals::documents::DocumentStatsResponse,
-
-        // Document RAG types (AI-powered search and question answering)
-        crate::handlers::document_rag::VectorSearchRequest,
-        crate::handlers::document_rag::VectorSearchResponse,
-        crate::handlers::document_rag::SearchResultDto,
-        crate::handlers::document_rag::RagQueryRequest,
-        crate::handlers::document_rag::RagQueryResponse,
-        crate::handlers::document_rag::SourceDto,
 
         // State management types
         BatchInfo,

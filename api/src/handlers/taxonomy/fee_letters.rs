@@ -10,7 +10,7 @@ use axum::{
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, instrument};
+use tracing::{info, instrument};
 use utoipa::{IntoParams, ToSchema};
 
 use arda_credit_db::{

@@ -20,7 +20,6 @@ pub mod auth;
 pub mod companies;
 pub mod core;
 pub mod deals;
-pub mod document_rag;
 pub mod faucet;
 pub mod finance;
 pub mod taxonomy;

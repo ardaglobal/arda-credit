@@ -9,7 +9,7 @@ use std::time::Duration;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::services::openrouter_service::{ChatMessage, OpenRouterService};
+use crate::services::llm_integration::{LlmProvider, LlmRequest, LlmService};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -307,10 +307,14 @@ Be specific, actionable, and highlight any significant changes that require atte
             None => return Err(anyhow::anyhow!("Previous version ID is required")),
         };
 
-        // Initialize OpenRouter service
-        let openrouter = OpenRouterService::from_env().context(
-            "Failed to initialize OpenRouter service. Ensure OPENROUTER_API_KEY is set.",
-        )?;
+        // Initialize LLM service (try OpenRouter first, fallback to other providers)
+        let llm_service = LlmService::new(LlmProvider::OpenRouter)
+            .or_else(|_| LlmService::new(LlmProvider::OpenAi))
+            .or_else(|_| LlmService::new(LlmProvider::Anthropic))
+            .map_err(|e| anyhow::anyhow!(
+                "Failed to initialize LLM service. Ensure at least one API key is set (OPENROUTER_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY). Error: {}",
+                e
+            ))?;
 
         // Get the appropriate prompt based on analysis type and focus areas
         let system_prompt = Self::get_analysis_prompt(analysis_type, focus_areas);
@@ -321,22 +325,19 @@ Be specific, actionable, and highlight any significant changes that require atte
             previous_content, current_content
         );
 
-        // Call OpenRouter to analyze the documents
-        let messages = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt,
-            },
-            ChatMessage {
-                role: "user".to_string(),
-                content: user_prompt,
-            },
-        ];
+        // Create LLM request
+        let llm_request = LlmRequest {
+            prompt: user_prompt,
+            context: None,
+            max_tokens: Some(4000),
+            temperature: Some(0.7),
+            system_prompt: Some(system_prompt),
+        };
 
-        let result = openrouter
-            .complete(messages, Some(0.7), Some(4000))
+        let result = llm_service
+            .call_llm_with_fallback(llm_request)
             .await
-            .context("Failed to get analysis from OpenRouter")?;
+            .map_err(|e| anyhow::anyhow!("Failed to get analysis from LLM service: {}", e))?;
 
         // Parse the JSON response
         let response: SimplifiedAnalysisResponse = serde_json::from_str(&result.content)
