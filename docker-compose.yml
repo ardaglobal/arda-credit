@@ -6,9 +6,8 @@
 # - Prometheus for metrics collection
 # - Grafana for metrics visualization
 #
-# For tracing, we use SigNoz Cloud for both local development and production.
-# This provides consistency across environments and eliminates the need for
-# local tracing infrastructure.
+# Tracing is handled via OpenTelemetry with debug logging for local development.
+# In Kubernetes environments, metrics are collected via the OTEL Collector.
 #
 # Run your Arda Credit API server separately with: cargo run --bin server
 

@@ -21,14 +21,14 @@ This microagent specializes in DevOps practices, CI/CD pipelines, infrastructure
 ### Infrastructure Components
 - **Containerization**: Docker configurations for all services
 - **Orchestration**: Kubernetes deployments and service management
-- **Monitoring**: OpenTelemetry integration with SigNoz Cloud
+- **Monitoring**: OpenTelemetry integration with debug logging
 - **Database**: PostgreSQL deployment and management
 
 ### Current Implementation Analysis
 - **Existing Workflows**: 5+ GitHub Actions workflows for different aspects
 - **Security Integration**: cargo-deny, rustsec audit, Dependabot
 - **Multi-Language Support**: Rust, Solidity (Foundry), JavaScript/TypeScript
-- **Monitoring Stack**: OpenTelemetry → OTEL Collector → SigNoz Cloud
+- **Monitoring Stack**: OpenTelemetry → OTEL Collector → Debug Exporter
 
 ## Specialized Responsibilities
 

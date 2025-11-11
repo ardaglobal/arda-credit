@@ -72,7 +72,6 @@ jobs:
             --set secrets.app.ethereumContractAddress=0x0000000000000000000000000000000000000000 \
             --set secrets.app.ethereumWalletPrivateKey=0x0000000000000000000000000000000000000000000000000000000000000000 \
             --set secrets.app.ethereumDeployerAddress=0x0000000000000000000000000000000000000000 \
-            --set secrets.app.signozIngestionKey=test-key \
             --set secrets.app.awsAccessKeyId=test-key \
             --set secrets.app.awsSecretAccessKey=test-secret \
             --set secrets.app.emailFrom=test@example.com \

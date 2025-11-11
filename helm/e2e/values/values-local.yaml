@@ -60,10 +60,8 @@ postgresql:
           -- Create test database with proper permissions
           CREATE DATABASE arda_credit_db_local;
           GRANT ALL PRIVILEGES ON DATABASE arda_credit_db_local TO postgres;
-          
-          -- Create monitoring user for SigNoz as per official requirements
-          -- https://signoz.io/docs/userguide/collect_metrics_and_logs/postgres/
-          -- Using credentials from .env: POSTGRESQL_MONITORING_USERNAME/PASSWORD
+
+          -- Create monitoring user for metrics collection
           CREATE USER monitoring WITH PASSWORD 'monitoring-password';
           GRANT pg_monitor TO monitoring;
           GRANT SELECT ON pg_stat_database TO monitoring;
@@ -176,7 +174,6 @@ secrets:
     ethereumContractAddress: "ethereum-contract-address"
     ethereumWalletPrivateKey: "ethereum-wallet-private-key"  # Must be set in external secret (use Anvil test key: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80)
     ethereumDeployerAddress: "ethereum-deployer-address"
-    signozIngestionKey: "signoz-ingestion-key"
     awsAccessKeyId: "aws-access-key-id"
     awsSecretAccessKey: "aws-secret-access-key"
     emailFrom: "email-from"
@@ -201,15 +198,10 @@ monitoring:
   # Enable PostgreSQL Prometheus Exporter for local monitoring
   postgresExporter:
     enabled: true
-  
-  # Enable OpenTelemetry Collector for SigNoz integration
+
+  # Enable OpenTelemetry Collector for metrics collection
   otelCollector:
     enabled: true
-    config:
-      env:
-        # SigNoz configuration (values loaded from .env file)
-        OTLP_DESTINATION_ENDPOINT: "ingest.us.signoz.cloud:443"
-        SIGNOZ_INGESTION_KEY: ""  # Will be set from environment variable in setup script
 
 # Direct configuration for prometheus-postgres-exporter subchart
 prometheus-postgres-exporter:
@@ -265,16 +257,6 @@ opentelemetry-collector:
         secretKeyRef:
           name: arda-credit-otel-collector-env
           key: POSTGRESQL_PASSWORD
-    - name: OTLP_DESTINATION_ENDPOINT
-      valueFrom:
-        secretKeyRef:
-          name: arda-credit-otel-collector-env
-          key: OTLP_DESTINATION_ENDPOINT
-    - name: SIGNOZ_INGESTION_KEY
-      valueFrom:
-        secretKeyRef:
-          name: arda-credit-otel-collector-env
-          key: SIGNOZ_INGESTION_KEY
 
   # Collector configuration with enhanced debugging
   config:
@@ -335,41 +317,6 @@ opentelemetry-collector:
         send_batch_size: 1024
 
     exporters:
-      # export to SigNoz cloud (exact match to SigNoz docs)
-      otlp/postgres:
-        endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
-        tls:
-          insecure: false
-        headers:
-          "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
-        # Enable debug logging for network issues
-        retry_on_failure:
-          enabled: true
-          initial_interval: 5s
-          max_interval: 30s
-          max_elapsed_time: 300s
-        sending_queue:
-          enabled: true
-          num_consumers: 10
-          queue_size: 5000
-      
-      # Export to SigNoz Cloud (Arda Credit traces)
-      otlp/arda-credit:
-        endpoint: "${env:OTLP_DESTINATION_ENDPOINT}"
-        tls:
-          insecure: false
-        headers:
-          "signoz-ingestion-key": "${env:SIGNOZ_INGESTION_KEY}"
-        retry_on_failure:
-          enabled: true
-          initial_interval: 5s
-          max_interval: 30s
-          max_elapsed_time: 300s
-        sending_queue:
-          enabled: true
-          queue_size: 5000
-          num_consumers: 10
-      
       # Debug exporter to see metrics in logs
       debug:
         verbosity: detailed
@@ -393,19 +340,19 @@ opentelemetry-collector:
           receivers: [postgresql]
           # note: remove this processor if the collector host is not running on the same host as the postgres instance
           processors: [resourcedetection/system]
-          exporters: [otlp/postgres, debug]
-        
+          exporters: [debug]
+
         # Separate pipeline for prometheus-postgres-exporter metrics
         metrics/postgres-exporter:
           receivers: [prometheus/postgres-exporter]
           processors: [resourcedetection/system]
-          exporters: [otlp/postgres, debug]
-        
+          exporters: [debug]
+
         # Arda Credit traces pipeline
         traces/arda-credit:
           receivers: [otlp, jaeger, zipkin]
           processors: [memory_limiter, batch]
-          exporters: [otlp/arda-credit, debug]
+          exporters: [debug]
 
   # Resource limits for local development
   resources:
