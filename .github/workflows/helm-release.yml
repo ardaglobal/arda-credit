@@ -88,7 +88,7 @@ jobs:
 
       - name: Upload chart artifact (for PRs)
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: helm-chart
           path: .helm-release/arda-credit-${{ steps.chart_version.outputs.version }}.tgz
