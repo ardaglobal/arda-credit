@@ -5,6 +5,7 @@ use axum::{
     Router,
 };
 use sqlx::PgPool;
+// Collections import removed - not needed for current implementation
 use tracing::instrument;
 use utoipa::{OpenApi, ToSchema};
 use utoipa_swagger_ui::SwaggerUi;
@@ -148,6 +149,16 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/metrics/health", get(metrics_health_handler))
         // OpenAPI documentation routes - Swagger UI handles both the UI and JSON spec
         .merge(swagger_ui())
+        // Individual API spec endpoints for each category (openapi.json handled by SwaggerUI)
+        .route("/api-docs/auth.json", get(get_auth_spec_handler))
+        .route("/api-docs/users.json", get(get_users_spec_handler))
+        .route("/api-docs/companies.json", get(get_companies_spec_handler))
+        .route("/api-docs/deals.json", get(get_deals_spec_handler))
+        .route("/api-docs/admin.json", get(get_admin_spec_handler))
+        .route("/api-docs/payments.json", get(get_payments_spec_handler))
+        .route("/api-docs/state.json", get(get_state_spec_handler))
+        .route("/api-docs/taxonomy.json", get(get_taxonomy_spec_handler))
+        .route("/api-docs/dev.json", get(get_dev_spec_handler))
         // Magic Link Authentication endpoints
         .route(paths::AUTH_MAGIC_LINK, post(request_magic_link))
         .route(paths::AUTH_VERIFY, post(verify_magic_link))
@@ -339,6 +350,10 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::DEALS_BY_USER_ID,
             get(crate::handlers::deals::deals::get_deals_by_user_id_endpoint),
+        )
+        .route(
+            paths::COMPANY_DEALS,
+            get(crate::handlers::deals::deals::get_deals_by_company_endpoint),
         )
         .route(
             paths::COMPANY_DRAFT_DEALS,
@@ -848,8 +863,223 @@ pub fn get_openapi_spec() -> utoipa::openapi::OpenApi {
 }
 
 /// Axum handler for serving the OpenAPI specification as JSON
-pub fn get_openapi_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+pub async fn get_openapi_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
+}
+
+/// Filter OpenAPI specification by specific tags (paths, tags, and schemas)
+fn filter_openapi_by_tags(
+    mut spec: utoipa::openapi::OpenApi,
+    allowed_tags: &[&str],
+) -> utoipa::openapi::OpenApi {
+    // Filter paths that have the specified tags
+    let filtered_paths: std::collections::BTreeMap<String, utoipa::openapi::path::PathItem> = spec
+        .paths
+        .paths
+        .into_iter()
+        .filter(|(_, path_item)| {
+            // Check if any operation in this path has one of the allowed tags
+            let operations = [
+                path_item.get.as_ref(),
+                path_item.post.as_ref(),
+                path_item.put.as_ref(),
+                path_item.delete.as_ref(),
+                path_item.patch.as_ref(),
+            ];
+
+            operations.into_iter().flatten().any(|op| {
+                op.tags.as_ref().map_or(false, |tags| {
+                    tags.iter().any(|tag| allowed_tags.contains(&tag.as_str()))
+                })
+            })
+        })
+        .collect();
+
+    spec.paths.paths = filtered_paths;
+
+    // Filter schemas based on category to keep individual files small
+    if let Some(components) = spec.components.as_mut() {
+        let original_schemas = components.schemas.clone();
+        components.schemas.clear();
+
+        // Define schema patterns for each category to minimize size
+        let schema_patterns = match allowed_tags {
+            tags if tags.contains(&"Auth") => vec![
+                "MagicLink",
+                "Auth",
+                "Login",
+                "Register",
+                "Invite",
+                "Verify",
+                "UserType",
+                "User",
+            ],
+            tags if tags.contains(&"Users") => vec![
+                "User",
+                "Identity",
+                "Kyc",
+                "Balance",
+                "Profile",
+                "Transaction",
+                "Address",
+            ],
+            tags if tags.contains(&"Companies") => vec![
+                "Company",
+                "Membership",
+                "Team",
+                "Wallet",
+                "Kyb",
+                "Investor",
+                "Permission",
+                "Invitation",
+            ],
+            tags if tags.contains(&"Deals") => vec![
+                "Deal",
+                "Loan",
+                "Marketplace",
+                "Transfer",
+                "Payment",
+                "Listing",
+                "Create",
+                "Update",
+                "List",
+            ],
+            tags if tags.contains(&"Admin") => vec![
+                "Admin",
+                "Kyc",
+                "Bulk",
+                "Platform",
+                "Statistics",
+                "Withdrawal",
+                "Pending",
+            ],
+            tags if tags.contains(&"Payments") => vec![
+                "Payment",
+                "Withdrawal",
+                "Transaction",
+                "Financial",
+                "Balance",
+                "Initiate",
+            ],
+            tags if tags.contains(&"State") => vec![
+                "State",
+                "Batch",
+                "Transaction",
+                "Contract",
+                "Proof",
+                "Current",
+                "Trigger",
+            ],
+            tags if tags.contains(&"Dev") => vec!["Faucet", "Network", "Health", "Info"],
+            _ => vec![
+                "Credit",
+                "Fee",
+                "Legal",
+                "Security",
+                "Ucc",
+                "Account",
+                "Guaranty",
+                "Assignment",
+                "Participation",
+                "Ssi",
+                "Secondary",
+                "Taxonomy",
+                "Delete",
+                "Paginated",
+                "Batch",
+            ], // Taxonomy catch-all
+        };
+
+        // Only include schemas that match the category patterns
+        for (name, schema) in &original_schemas {
+            if schema_patterns.iter().any(|pattern| {
+                name.contains(pattern) || name.to_lowercase().contains(&pattern.to_lowercase())
+            }) {
+                components.schemas.insert(name.clone(), schema.clone());
+            }
+        }
+
+        // Always include common/base schemas if they exist in original
+        let common_schemas = ["PaginationParams", "ApiError", "ErrorResponse", "UserType"];
+        for schema_name in common_schemas {
+            if let Some(schema) = original_schemas.get(schema_name) {
+                components
+                    .schemas
+                    .insert(schema_name.to_string(), schema.clone());
+            }
+        }
+    }
+
+    // Filter tags to only include the allowed ones
+    if let Some(ref mut tags) = spec.tags {
+        tags.retain(|tag| allowed_tags.contains(&tag.name.as_str()));
+    }
+
+    spec
+}
+
+/// Individual API spec handlers for each category
+pub async fn get_auth_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Auth"]);
+    Json(spec)
+}
+
+pub async fn get_users_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Users"]);
+    Json(spec)
+}
+
+pub async fn get_companies_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(
+        ApiDoc::openapi(),
+        &["Companies", "Company Memberships", "Company Wallets"],
+    );
+    Json(spec)
+}
+
+pub async fn get_deals_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Deals"]);
+    Json(spec)
+}
+
+pub async fn get_admin_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Admin"]);
+    Json(spec)
+}
+
+pub async fn get_payments_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Payments"]);
+    Json(spec)
+}
+
+pub async fn get_state_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["State"]);
+    Json(spec)
+}
+
+pub async fn get_taxonomy_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(
+        ApiDoc::openapi(),
+        &[
+            "Taxonomy - Credit Agreements",
+            "Taxonomy - Fee Letters",
+            "Taxonomy - Legal Opinions",
+            "Taxonomy - Security Agreements",
+            "Taxonomy - UCC Financing Statements",
+            "Taxonomy - Account Control Agreements",
+            "Taxonomy - Guaranties",
+            "Taxonomy - Assignment & Assumption Agreements",
+            "Taxonomy - Participation Agreements",
+            "Taxonomy - SSI Records",
+            "Taxonomy - Secondary Trades",
+        ],
+    );
+    Json(spec)
+}
+
+pub async fn get_dev_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Dev"]);
+    Json(spec)
 }
 
 /// Create a Swagger UI router

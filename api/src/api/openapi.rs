@@ -8,7 +8,114 @@
 use serde::Deserialize;
 use utoipa::{IntoParams, OpenApi, ToSchema};
 
-// Re-export types from handlers module
+// ============================================================================
+// API DOCUMENTATION CONSTANTS
+// ============================================================================
+
+/// Main API description with links to individual category specifications
+const API_DESCRIPTION: &str = r#"
+Arda API - Comprehensive credit deal management platform with document ingestion, AI analysis, and blockchain integration.
+
+## 🚀 Quick Access to Individual API Categories (Lightweight):
+
+• **[Auth](./auth.json)** (~2-3KB) - Authentication & authorization
+• **[Users](./users.json)** (~3-4KB) - User management & KYC
+• **[Companies](./companies.json)** (~6-8KB) - Company management & teams  
+• **[Deals](./deals.json)** (~8-10KB) - Deal lifecycle & marketplace ⭐
+• **[Admin](./admin.json)** (~4-5KB) - Administrative operations
+• **[Payments](./payments.json)** (~5-6KB) - Financial transactions
+• **[State](./state.json)** (~4-5KB) - Blockchain integration
+• **[Taxonomy](./taxonomy.json)** (~10-12KB) - Document management
+• **[Dev](./dev.json)** (~1-2KB) - Development utilities
+
+*Each category contains only relevant endpoints and schemas for ultra-fast loading.*
+
+## ✨ Key Features
+
+- **Anonymized Deal Views**: Use `?anon=true` on `/api/v1/deals` for market overview dashboards
+- **Company-Based Access Control**: Multi-tenant architecture with role-based permissions
+- **Document Management**: Comprehensive taxonomy with 11+ document types
+- **Blockchain Integration**: ZK proofs and authenticated data structures
+- **Magic Link Authentication**: Passwordless authentication with session management
+
+## 🛠️ Quick Start
+
+1. **Authentication**: `POST /api/v1/auth/magic-link` → `POST /api/v1/auth/verify`
+2. **List Deals**: `GET /api/v1/deals?anon=true&limit=50` (anonymized dashboard view)
+3. **Company Deals**: `GET /api/v1/deals?originator_id={company_id}` (portfolio view)
+4. **API Documentation**: Individual specs at `/api-docs/{category}.json`
+"#;
+
+/// Tag descriptions with focused API spec links
+const AUTH_TAG_DESC: &str = r#"
+Authentication, authorization, and invite code management
+
+📄 **Focused API Spec**: [/api-docs/auth.json](./auth.json) (~2-3KB - Auth endpoints & schemas only)
+"#;
+
+const USERS_TAG_DESC: &str = r#"
+User account management, KYC verification, balances, and transaction history
+
+📄 **Focused API Spec**: [/api-docs/users.json](./users.json) (~3-4KB - User endpoints & schemas only)
+"#;
+
+const COMPANIES_TAG_DESC: &str = r#"
+Originator and investor company profiles, documents, turnover tracking, and AI analysis
+
+📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas only)
+"#;
+
+const COMPANY_MEMBERSHIPS_TAG_DESC: &str = r#"
+Company team member management with originator/investor profile type support. Users can have multiple profiles (originator and investor) in the same company.
+
+📄 **Included in**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas)
+"#;
+
+const COMPANY_WALLETS_TAG_DESC: &str = r#"
+Company wallet address management with permission-based access control. Wallet addresses belong to companies with granular user permissions. Only admin users can authorize transactions.
+
+📄 **Included in**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas)
+"#;
+
+const DEALS_TAG_DESC: &str = r#"
+Deal lifecycle management, marketplace operations, ownership transfers, and payment processing. 
+
+**NEW**: Supports anonymized responses with `anon=true` parameter for dashboard views.
+
+📄 **Focused API Spec**: [/api-docs/deals.json](./deals.json) (~8-10KB - Deal endpoints & schemas only)
+"#;
+
+const STATE_TAG_DESC: &str = r#"
+Blockchain state management, batch processing, ZK proof generation, transaction history, and contract integration
+
+📄 **Focused API Spec**: [/api-docs/state.json](./state.json) (~4-5KB - State endpoints & schemas only)
+"#;
+
+const ADMIN_TAG_DESC: &str = r#"
+Administrative operations including KYC approval, withdrawal management, and platform oversight
+
+📄 **Focused API Spec**: [/api-docs/admin.json](./admin.json) (~4-5KB - Admin endpoints & schemas only)
+"#;
+
+const PAYMENTS_TAG_DESC: &str = r#"
+Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines
+
+📄 **Focused API Spec**: [/api-docs/payments.json](./payments.json) (~5-6KB - Payment endpoints & schemas only)
+"#;
+
+const TAXONOMY_TAG_DESC: &str = r#"
+Document taxonomy operations for structured credit document management.
+
+📄 **All Taxonomy Docs**: [/api-docs/taxonomy.json](./taxonomy.json) (~10-12KB - All 11 document types & schemas only)
+"#;
+
+const DEV_TAG_DESC: &str = r#"
+Development and testing utilities: health checks, API info, faucet operations (local/staging only)
+
+📄 **Focused API Spec**: [/api-docs/dev.json](./dev.json) (~1-2KB - Dev endpoints & schemas only)
+"#;
+
+// Re-export types from handlers module (keeping original structure)
 pub use crate::handlers::{
     get_current_user,
     logout_endpoint,
@@ -59,7 +166,6 @@ pub use crate::handlers::{
     ListIdentitiesResponse,
     ListPendingKycQuery,
     ListPendingKycResponse,
-    LogoutResponse,
     MarketplaceDealResponse,
     PaginatedFinancialTransactionsResponse,
     PaginationInfo,
@@ -141,7 +247,7 @@ fn default_limit() -> u32 {
     info(
         title = "Arda API",
         version = "v1",
-        description = "Arda API",
+        description = API_DESCRIPTION,
         contact(
             name = "Arda Global",
             email = "support@arda.xyz",
@@ -205,6 +311,7 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::create_deal_endpoint,
         crate::handlers::deals::deals::list_deals_endpoint,
         crate::handlers::deals::deals::get_deals_by_user_id_endpoint,
+        crate::handlers::deals::deals::get_deals_by_company_endpoint,
         crate::handlers::deals::deals::get_deal_details_endpoint,
         crate::handlers::deals::deals::get_deal_stats_endpoint,
         crate::handlers::deals::deals::update_deal_endpoint,
@@ -384,28 +491,28 @@ fn default_limit() -> u32 {
         crate::handlers::taxonomy::secondary_trades::delete_secondary_trade_handler,
     ),
     tags(
-        // Primary API Groups (9 main groups + Dev)
-        (name = "Auth", description = "Authentication, authorization, and invite code management"),
-        (name = "Users", description = "User account management, KYC verification, balances, and transaction history"),
-        (name = "Companies", description = "Originator and investor company profiles, documents, turnover tracking, and AI analysis"),
-        (name = "Company Memberships", description = "Company team member management with originator/investor profile type support. Users can have multiple profiles (originator and investor) in the same company."),
-        (name = "Company Wallets", description = "Company wallet address management with permission-based access control. Wallet addresses belong to companies with granular user permissions. Only admin users can authorize transactions."),
-        (name = "Deals", description = "Deal lifecycle management, marketplace operations, ownership transfers, and payment processing"),
-        (name = "State", description = "Blockchain state management, batch processing, ZK proof generation, transaction history, and contract integration"),
-        (name = "Admin", description = "Administrative operations including KYC approval, withdrawal management, and platform oversight"),
-        (name = "Payments", description = "Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines"),
-        (name = "Taxonomy - Credit Agreements", description = "Credit agreement documents with full document attributes, facility structure, pricing, and covenants"),
-        (name = "Taxonomy - Fee Letters", description = "Fee letter documents with confidential fee structures and schedules"),
-        (name = "Taxonomy - Legal Opinions", description = "Legal opinion documents covering enforceability, authority, and perfection"),
-        (name = "Taxonomy - Security Agreements", description = "Security agreement documents with collateral and perfection details"),
-        (name = "Taxonomy - UCC Financing Statements", description = "UCC financing statement filings for perfecting security interests"),
-        (name = "Taxonomy - Account Control Agreements", description = "Deposit and securities account control agreements (DACA/ACA/SACA) for perfecting security interests"),
-        (name = "Taxonomy - Guaranties", description = "Guaranty agreements where third parties guarantee borrower obligations"),
-        (name = "Taxonomy - Assignment & Assumption Agreements", description = "Assignment and assumption agreements for transferring loan interests between lenders"),
-        (name = "Taxonomy - Participation Agreements", description = "Participation agreements for economic interest transfers where grantor remains lender of record"),
-        (name = "Taxonomy - SSI Records", description = "Standard Settlement Instructions for deal settlements, supporting both traditional banking and digital asset custody"),
-        (name = "Taxonomy - Secondary Trades", description = "Secondary market trade documents with trade execution, pricing, settlement, and transfer details"),
-        (name = "Dev", description = "Development and testing utilities: health checks, API info, faucet operations (local/staging only)")
+        // Primary API Groups (9 main groups + Dev) - each with direct access to focused API spec
+        (name = "Auth", description = AUTH_TAG_DESC),
+        (name = "Users", description = USERS_TAG_DESC),
+        (name = "Companies", description = COMPANIES_TAG_DESC),
+        (name = "Company Memberships", description = COMPANY_MEMBERSHIPS_TAG_DESC),
+        (name = "Company Wallets", description = COMPANY_WALLETS_TAG_DESC),
+        (name = "Deals", description = DEALS_TAG_DESC),
+        (name = "State", description = STATE_TAG_DESC),
+        (name = "Admin", description = ADMIN_TAG_DESC),
+        (name = "Payments", description = PAYMENTS_TAG_DESC),
+        (name = "Taxonomy - Credit Agreements", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - Fee Letters", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - Legal Opinions", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - Security Agreements", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - UCC Financing Statements", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - Account Control Agreements", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - Guaranties", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - Assignment & Assumption Agreements", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - Participation Agreements", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - SSI Records", description = TAXONOMY_TAG_DESC),
+        (name = "Taxonomy - Secondary Trades", description = TAXONOMY_TAG_DESC),
+        (name = "Dev", description = DEV_TAG_DESC)
     ),
     components(schemas(
         // Authentication types
@@ -413,7 +520,6 @@ fn default_limit() -> u32 {
         RegisterUserResponse,
         UserDetailsResponse,
         UpdateUserRequest,
-        LogoutResponse,
         RegisterInvestorRequest,
         RegisterInvestorResponse,
         InvestorProfileQuery,

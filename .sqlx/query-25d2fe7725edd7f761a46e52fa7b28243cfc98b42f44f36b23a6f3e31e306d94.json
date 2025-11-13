@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM companies WHERE name LIKE '%Test Corp%' OR name LIKE '%Random Corp%'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "25d2fe7725edd7f761a46e52fa7b28243cfc98b42f44f36b23a6f3e31e306d94"
+}

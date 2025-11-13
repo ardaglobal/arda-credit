@@ -22,7 +22,7 @@ use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
 // Re-export types for OpenAPI documentation
-pub use crate::api::openapi::*;
+pub use crate::api::openapi::PaginationParams;
 
 // Explicitly import types needed (these will shadow the glob re-exports)
 use crate::config::types::ApiState;

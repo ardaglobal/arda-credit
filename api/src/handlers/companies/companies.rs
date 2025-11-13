@@ -128,13 +128,6 @@ pub async fn register_company_endpoint(
                     Json(format!("Validation error: {}", err)),
                 )
                     .into_response(),
-                crate::services::company_service::CompanyServiceError::CompanyAlreadyExists {
-                    ..
-                } => (
-                    StatusCode::CONFLICT,
-                    Json(format!("Company already exists: {}", err)),
-                )
-                    .into_response(),
                 _ => (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json("Internal server error"),

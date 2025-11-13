@@ -108,9 +108,9 @@ pub struct CreateDealRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DealDetailsResponse {
     // was LoanDetailsResponse
-    pub deal_id: String,             // was loan_id, now deal_id
-    pub originator_id: String,       // was borrower_id
-    pub investor_id: Option<String>, // was lender_id - now optional for draft deals
+    pub deal_id: String,               // was loan_id, now deal_id
+    pub originator_id: Option<String>, // was borrower_id - optional for anonymized responses
+    pub investor_id: Option<String>, // was lender_id - optional for draft deals and anonymized responses
     pub principal_amount: String,
     pub outstanding_balance: String,
     pub interest_rate_bps: u16,
@@ -141,6 +141,9 @@ pub struct ListDealsQuery {
     pub industry: Option<String>,      // Filter by industry sector
     pub limit: Option<i32>,
     pub offset: Option<i32>,
+    /// Anonymize response by hiding company identifiers (originator_id, investor_id)
+    #[schema(example = false)]
+    pub anon: Option<bool>,
 }
 
 /// List deals response (converted from ListLoansResponse)
@@ -559,7 +562,7 @@ pub async fn create_deal_endpoint(
     let response = DealDetailsResponse {
         // was LoanDetailsResponse
         deal_id: deal.id.to_string(), // was loan_id, now deal_id
-        originator_id: deal.originator_id.to_string(), // was borrower_id
+        originator_id: Some(deal.originator_id.to_string()), // was borrower_id
         investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
         principal_amount: deal.principal_amount.to_string(),
         outstanding_balance: deal.outstanding_balance.to_string(),
@@ -588,13 +591,16 @@ pub async fn create_deal_endpoint(
     Ok(Json(response))
 }
 
-/// List deals with optional filtering (converted from list_loans_endpoint)
+/// List deals with optional filtering and anonymization (converted from list_loans_endpoint)
+///
+/// When `anon=true` is specified, company identifiers (originator_id, investor_id)
+/// are excluded from the response to provide anonymized market overview data.
 #[utoipa::path(
     get,
     path = "/api/v1/deals",
     params(ListDealsQuery),  // was ListLoansQuery
     responses(
-        (status = 200, description = "List of deals", body = ListDealsResponse),  // was loans
+        (status = 200, description = "List of deals (anonymized when anon=true)", body = ListDealsResponse),  // was loans
         (status = 500, description = "Internal server error")
     ),
     tag = "Deals"  // was "Loans"
@@ -651,6 +657,9 @@ pub async fn list_deals_endpoint(
         )
     })?;
 
+    // Check if anonymized response is requested
+    let is_anonymized = query.anon.unwrap_or(false);
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = deals // was LoanDetailsResponse
         .into_iter()
@@ -664,33 +673,49 @@ pub async fn list_deals_endpoint(
                 }
             });
 
-            DealDetailsResponse {
+            let mut response = DealDetailsResponse {
                 // was loan, LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
-                originator_id: deal.originator_id.to_string(), // was borrower_id
-                investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
+                originator_id: None,
+                investor_id: None,
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
                 loan_status: deal.deal_status, // deal_status field
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
-                custom_deal_id: deal.custom_deal_id,
+                custom_deal_id: None,
                 status: deal.status,
                 industry: deal.industry,
-                document_ids: document_ids_response,
-                title: deal.title,
-                description: deal.description,
-                risk_level: deal.risk_level,
+                document_ids: None,
+                title: None,
+                description: None,
+                risk_level: None,
                 asset_class: deal.asset_class,
                 region: deal.region,
-                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                minimum_investment: None,
+            };
+
+            // Populate sensitive fields only if not anonymized
+            if !is_anonymized {
+                response.originator_id = Some(deal.originator_id.to_string());
+                response.investor_id = deal.investor_id.map(|id| id.to_string());
+                response.custom_deal_id = deal.custom_deal_id;
+                response.document_ids = document_ids_response;
+                response.title = deal.title;
+                response.description = deal.description;
+                response.risk_level = deal.risk_level;
+                response.minimum_investment = deal.minimum_investment.map(|d| d.to_string());
             }
+
+            response
         })
         .collect();
 
     let total_count = deal_responses.len();
-    let limit = query.limit.unwrap_or(100) as usize;
+    // Default to 50 items for frontend batch fetching (displays 25, fetches 50)
+    let default_limit = if is_anonymized { 50 } else { 100 };
+    let limit = query.limit.unwrap_or(default_limit) as usize;
     let has_more = total_count >= limit;
 
     let response = ListDealsResponse {
@@ -756,7 +781,7 @@ pub async fn get_deals_by_user_id_endpoint(
         .into_iter()
         .map(|deal| DealDetailsResponse {
             deal_id: deal.id.to_string(),
-            originator_id: deal.originator_id.to_string(),
+            originator_id: Some(deal.originator_id.to_string()),
             investor_id: deal.investor_id.map(|id| id.to_string()),
             principal_amount: deal.principal_amount.to_string(),
             outstanding_balance: deal.outstanding_balance.to_string(),
@@ -792,6 +817,109 @@ pub async fn get_deals_by_user_id_endpoint(
     info!(
         "✅ API: Found {} deals for user {}",
         response.total_count, user_id
+    );
+    Ok(Json(response))
+}
+
+/// Get all deals for a company (as originator or investor)
+#[utoipa::path(
+    get,
+    path = "/api/v1/company/{company_id}/deals",
+    params(
+        ("company_id" = String, Path, description = "Company ID to get deals for"),
+        ("limit" = Option<i32>, Query, description = "Maximum number of deals to return"),
+        ("offset" = Option<i32>, Query, description = "Offset for pagination"),
+        ("status" = Option<String>, Query, description = "Filter deals by status")
+    ),
+    responses(
+        (status = 200, description = "List of deals for the company", body = ListDealsResponse),
+        (status = 400, description = "Invalid company ID format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals"
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_deals_by_company_endpoint(
+    State(state): State<ApiState>,
+    Path(company_id): Path<String>,
+    Query(query): Query<ListDealsQuery>,
+) -> Result<Json<ListDealsResponse>, (StatusCode, String)> {
+    info!("📋 API: Getting deals for company: {}", company_id);
+
+    // Parse company ID
+    let company_uuid = uuid::Uuid::parse_str(&company_id).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid company ID format".to_string(),
+        )
+    })?;
+
+    let deals = arda_credit_db::get_deals_by_company_id(
+        &state.pool,
+        company_uuid,
+        query.limit.map(|l| l as i64),
+        query.offset.map(|o| o as i64),
+        query.status.as_deref(),
+    )
+    .await
+    .map_err(|e| {
+        error!("❌ Failed to get deals for company: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to get deals for company".to_string(),
+        )
+    })?;
+
+    // Convert to response format
+    let deal_responses: Vec<DealDetailsResponse> = deals
+        .into_iter()
+        .map(|deal| {
+            // Convert document IDs from JSON to Vec<String> for response
+            let document_ids_response = deal.document_ids.as_ref().and_then(|json| {
+                if let Ok(uuids) = serde_json::from_value::<Vec<uuid::Uuid>>(json.clone()) {
+                    Some(uuids.into_iter().map(|uuid| uuid.to_string()).collect())
+                } else {
+                    None
+                }
+            });
+
+            DealDetailsResponse {
+                deal_id: deal.id.to_string(),
+                originator_id: Some(deal.originator_id.to_string()),
+                investor_id: deal.investor_id.map(|id| id.to_string()),
+                principal_amount: deal.principal_amount.to_string(),
+                outstanding_balance: deal.outstanding_balance.to_string(),
+                interest_rate_bps: deal.interest_rate_bps as u16,
+                loan_status: deal.deal_status,
+                originated_at: deal.originated_at,
+                last_updated: Some(deal.updated_at),
+                custom_deal_id: deal.custom_deal_id,
+                status: deal.status,
+                industry: deal.industry,
+                document_ids: document_ids_response,
+                title: deal.title,
+                description: deal.description,
+                risk_level: deal.risk_level,
+                asset_class: deal.asset_class,
+                region: deal.region,
+                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+            }
+        })
+        .collect();
+
+    let total_count = deal_responses.len();
+    let limit = query.limit.unwrap_or(100) as usize;
+    let has_more = total_count >= limit;
+
+    let response = ListDealsResponse {
+        deals: deal_responses,
+        total_count,
+        has_more,
+    };
+
+    info!(
+        "✅ API: Found {} deals for company {}",
+        response.total_count, company_id
     );
     Ok(Json(response))
 }
@@ -858,7 +986,7 @@ pub async fn get_draft_deals_by_company_endpoint(
 
             DealDetailsResponse {
                 deal_id: deal.id.to_string(),
-                originator_id: deal.originator_id.to_string(),
+                originator_id: Some(deal.originator_id.to_string()),
                 investor_id: deal.investor_id.map(|id| id.to_string()),
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
@@ -952,7 +1080,7 @@ pub async fn get_deal_details_endpoint(
             let response = DealDetailsResponse {
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
-                originator_id: deal.originator_id.to_string(), // was borrower_id
+                originator_id: Some(deal.originator_id.to_string()), // was borrower_id
                 investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
@@ -1207,7 +1335,7 @@ pub async fn update_deal_endpoint(
             let deal_details = DealDetailsResponse {
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
-                originator_id: deal.originator_id.to_string(), // was borrower_id
+                originator_id: Some(deal.originator_id.to_string()), // was borrower_id
                 investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
