@@ -419,6 +419,25 @@ pub fn create_router(state: ApiState) -> Router {
             get(crate::handlers::deals::deals::get_deal_payment_history_endpoint),
         )
         // ========================================================================
+        // LOAN TAPE ENDPOINTS
+        // ========================================================================
+        .route(
+            paths::LOAN_TAPE,
+            get(crate::handlers::loan_tape_handlers::list_loan_tape_handler),
+        )
+        .route(
+            paths::LOAN_TAPE_CREATE,
+            post(crate::handlers::loan_tape_handlers::create_loan_tape_handler),
+        )
+        .route(
+            paths::LOAN_TAPE_BULK,
+            post(crate::handlers::loan_tape_handlers::create_bulk_loan_tape_handler),
+        )
+        .route(
+            paths::LOAN_TAPE_BY_ID,
+            get(crate::handlers::loan_tape_handlers::get_loan_tape_handler),
+        )
+        // ========================================================================
         // CONTRACT CONFIGURATION ENDPOINTS
         // ========================================================================
         .route(

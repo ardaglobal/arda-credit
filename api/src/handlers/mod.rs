@@ -14,6 +14,7 @@
 //! - `finance`: Financial transactions and withdrawals
 //! - `ai`: AI-powered features
 //! - `taxonomy`: Arda taxonomy document management (credit agreements, fee letters, etc.)
+//! - `loan_tape_handlers`: Loan tape reporting and data export
 
 pub mod ai;
 pub mod auth;
@@ -22,6 +23,7 @@ pub mod core;
 pub mod deals;
 pub mod faucet;
 pub mod finance;
+pub mod loan_tape_handlers;
 pub mod taxonomy;
 pub mod users;
 
@@ -32,4 +34,5 @@ pub use core::*;
 pub use deals::*;
 pub use faucet::*;
 pub use finance::*;
+pub use loan_tape_handlers::*;
 pub use users::*;
