@@ -355,6 +355,80 @@ curl "http://localhost:8080/api/v1/deals?originator_id=USER_COMPANY_ID"
 cargo run --bin populate_deal_data -- --clear --count 8
 ```
 
+## Docker / Production Deployment
+
+The deal population scripts are included in the Docker image and can be executed on deployed instances.
+
+### Available Commands in Docker
+
+When you SSH into a deployed Docker container, you can use:
+
+```bash
+# Easy-to-use helper script (recommended)
+./docker-populate.sh deals-random 30              # Generate 30 random deals
+./docker-populate.sh deals-user alice@company.com 20  # Generate user-specific deals
+./docker-populate.sh deals-demo                    # Generate demo data (8 deals)
+./docker-populate.sh deals-frontend               # Generate frontend data (50 deals)
+./docker-populate.sh deals-clear                  # Clear existing deal data
+./docker-populate.sh legacy                       # Run legacy script
+
+# Direct binary execution (advanced)
+./populate_deal_data --count 25                   # Random deals
+./populate_deal_data --email user@example.com --count 15  # User deals
+./populate_test_data                               # Legacy script
+```
+
+### Docker Deployment Workflow
+
+1. **SSH into your deployed container:**
+   ```bash
+   docker exec -it <container-name> /bin/bash
+   # or
+   kubectl exec -it <pod-name> -- /bin/bash
+   ```
+
+2. **Check environment variables:**
+   ```bash
+   echo $DATABASE_URL  # Should show your production database URL
+   ```
+
+3. **Generate deal data:**
+   ```bash
+   # For demo purposes
+   ./docker-populate.sh deals-demo --clear
+   
+   # For frontend testing  
+   ./docker-populate.sh deals-frontend
+   
+   # For specific user testing
+   ./docker-populate.sh deals-user admin@yourcompany.com 10
+   ```
+
+4. **Verify data:**
+   ```bash
+   # Test the API from within the container
+   curl http://localhost:8080/api/v1/deals?limit=5
+   ```
+
+### Production Safety
+
+⚠️ **Important Notes for Production:**
+
+- **Always use `--clear` carefully** - it will delete existing deal data
+- **Test in staging first** before running on production
+- **Backup your database** before running population scripts
+- **Monitor resource usage** during large data generation
+- **Check logs** after running scripts for any errors
+
+### Environment Variables
+
+The scripts automatically use the `DATABASE_URL` environment variable that's already configured in your deployed container. No additional configuration needed.
+
+```bash
+# Debug mode for troubleshooting
+RUST_LOG=debug ./docker-populate.sh deals-random 5
+```
+
 ## Which Script to Use?
 
 - **Use `populate_deal_data`** (recommended) for:
