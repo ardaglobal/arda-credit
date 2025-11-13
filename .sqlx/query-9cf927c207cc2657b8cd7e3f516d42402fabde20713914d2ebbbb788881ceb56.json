@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            originator_id,\n            investor_id,\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            deal_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals\n        WHERE originator_id = $1\n          AND status = 'draft'\n        ORDER BY created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "query": "\n        SELECT\n            id,\n            originator_id,\n            investor_id,\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            deal_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment,\n            payment_frequency,\n            collateral_type,\n            collateral_value,\n            ltv_ratio,\n            credit_score,\n            dscr,\n            state_transition_hash,\n            proof_included\n        FROM deals\n        WHERE (originator_id = $1 OR investor_id = $1)\n          AND ($2::text IS NULL OR deal_status = $2)\n        ORDER BY created_at DESC\n        LIMIT $3 OFFSET $4\n        ",
   "describe": {
     "columns": [
       {
@@ -107,11 +107,52 @@
         "ordinal": 20,
         "name": "minimum_investment",
         "type_info": "Numeric"
+      },
+      {
+        "ordinal": 21,
+        "name": "payment_frequency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "collateral_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 23,
+        "name": "collateral_value",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 24,
+        "name": "ltv_ratio",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 25,
+        "name": "credit_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 26,
+        "name": "dscr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 27,
+        "name": "state_transition_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 28,
+        "name": "proof_included",
+        "type_info": "Bool"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
+        "Text",
         "Int8",
         "Int8"
       ]
@@ -137,8 +178,16 @@
       true,
       true,
       true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
       true
     ]
   },
-  "hash": "38a47e4d1cbd65904f415dbcaa210a19671d06b4d8d5253218b90ae9191c37fc"
+  "hash": "9cf927c207cc2657b8cd7e3f516d42402fabde20713914d2ebbbb788881ceb56"
 }

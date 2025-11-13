@@ -167,6 +167,8 @@ pub use db::{
     approve_withdrawal_request,
     // Invite code functions
     check_invite_code,
+    // Loan tape functions
+    count_loan_tape_records,
     // Financial transaction functions
     create_account_financial_transaction,
     // Batch functions
@@ -178,6 +180,7 @@ pub use db::{
     create_identity_with_password,
     // Investor profile functions
     create_investor_profile,
+    create_loan_tape_record,
     create_state_snapshot,
     // USDC Deposit functions
     create_usdc_deposit,
@@ -206,6 +209,8 @@ pub use db::{
     get_investor_profile_with_identity,
     get_invite_code_info,
     get_kyc_statistics,
+    get_loan_tape_record_by_id,
+    get_loan_tape_records,
     get_payments_by_deal,
     get_pending_transactions,
     get_pending_withdrawal_requests,
@@ -292,6 +297,7 @@ pub use db::{
     InviteCodeInfo,
     KycInvestorType,
     KycStatistics,
+    LoanTapeRecord,
     ProofBatch,
     RegisterResult,
     StateSnapshot,
