@@ -8,9 +8,15 @@ version = "0.1.0"
 name = "populate_test_data"
 path = "populate_test_data.rs"
 
+[[bin]]
+name = "populate_deal_data"
+path = "populate_deal_data.rs"
+
 [dependencies]
 chrono             = { workspace = true, features = [ "serde" ] }
+clap               = "4.0"
 db                 = { path = "../db" }
+rand               = "0.8"
 rust_decimal       = { workspace = true, features = [ "serde" ] }
 serde_json         = { workspace = true }
 sqlx               = { workspace = true }
