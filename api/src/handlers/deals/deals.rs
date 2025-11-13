@@ -108,9 +108,9 @@ pub struct CreateDealRequest {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DealDetailsResponse {
     // was LoanDetailsResponse
-    pub deal_id: String,             // was loan_id, now deal_id
-    pub originator_id: String,       // was borrower_id
-    pub investor_id: Option<String>, // was lender_id - now optional for draft deals
+    pub deal_id: String,               // was loan_id, now deal_id
+    pub originator_id: Option<String>, // was borrower_id - optional for anonymized responses
+    pub investor_id: Option<String>, // was lender_id - optional for draft deals and anonymized responses
     pub principal_amount: String,
     pub outstanding_balance: String,
     pub interest_rate_bps: u16,
@@ -141,6 +141,9 @@ pub struct ListDealsQuery {
     pub industry: Option<String>,      // Filter by industry sector
     pub limit: Option<i32>,
     pub offset: Option<i32>,
+    /// Anonymize response by hiding company identifiers (originator_id, investor_id)
+    #[schema(example = false)]
+    pub anon: Option<bool>,
 }
 
 /// List deals response (converted from ListLoansResponse)
@@ -559,7 +562,7 @@ pub async fn create_deal_endpoint(
     let response = DealDetailsResponse {
         // was LoanDetailsResponse
         deal_id: deal.id.to_string(), // was loan_id, now deal_id
-        originator_id: deal.originator_id.to_string(), // was borrower_id
+        originator_id: Some(deal.originator_id.to_string()), // was borrower_id
         investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
         principal_amount: deal.principal_amount.to_string(),
         outstanding_balance: deal.outstanding_balance.to_string(),
@@ -588,13 +591,16 @@ pub async fn create_deal_endpoint(
     Ok(Json(response))
 }
 
-/// List deals with optional filtering (converted from list_loans_endpoint)
+/// List deals with optional filtering and anonymization (converted from list_loans_endpoint)
+///
+/// When `anon=true` is specified, company identifiers (originator_id, investor_id)
+/// are excluded from the response to provide anonymized market overview data.
 #[utoipa::path(
     get,
     path = "/api/v1/deals",
     params(ListDealsQuery),  // was ListLoansQuery
     responses(
-        (status = 200, description = "List of deals", body = ListDealsResponse),  // was loans
+        (status = 200, description = "List of deals (anonymized when anon=true)", body = ListDealsResponse),  // was loans
         (status = 500, description = "Internal server error")
     ),
     tag = "Deals"  // was "Loans"
@@ -651,6 +657,9 @@ pub async fn list_deals_endpoint(
         )
     })?;
 
+    // Check if anonymized response is requested
+    let is_anonymized = query.anon.unwrap_or(false);
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = deals // was LoanDetailsResponse
         .into_iter()
@@ -667,8 +676,17 @@ pub async fn list_deals_endpoint(
             DealDetailsResponse {
                 // was loan, LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
-                originator_id: deal.originator_id.to_string(), // was borrower_id
-                investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
+                // Conditionally include company IDs based on anonymization
+                originator_id: if is_anonymized {
+                    None
+                } else {
+                    Some(deal.originator_id.to_string())
+                },
+                investor_id: if is_anonymized {
+                    None
+                } else {
+                    deal.investor_id.map(|id| id.to_string())
+                },
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
@@ -690,7 +708,9 @@ pub async fn list_deals_endpoint(
         .collect();
 
     let total_count = deal_responses.len();
-    let limit = query.limit.unwrap_or(100) as usize;
+    // Default to 50 items for frontend batch fetching (displays 25, fetches 50)
+    let default_limit = if is_anonymized { 50 } else { 100 };
+    let limit = query.limit.unwrap_or(default_limit) as usize;
     let has_more = total_count >= limit;
 
     let response = ListDealsResponse {
@@ -756,7 +776,7 @@ pub async fn get_deals_by_user_id_endpoint(
         .into_iter()
         .map(|deal| DealDetailsResponse {
             deal_id: deal.id.to_string(),
-            originator_id: deal.originator_id.to_string(),
+            originator_id: Some(deal.originator_id.to_string()),
             investor_id: deal.investor_id.map(|id| id.to_string()),
             principal_amount: deal.principal_amount.to_string(),
             outstanding_balance: deal.outstanding_balance.to_string(),
@@ -858,7 +878,7 @@ pub async fn get_draft_deals_by_company_endpoint(
 
             DealDetailsResponse {
                 deal_id: deal.id.to_string(),
-                originator_id: deal.originator_id.to_string(),
+                originator_id: Some(deal.originator_id.to_string()),
                 investor_id: deal.investor_id.map(|id| id.to_string()),
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
@@ -952,7 +972,7 @@ pub async fn get_deal_details_endpoint(
             let response = DealDetailsResponse {
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
-                originator_id: deal.originator_id.to_string(), // was borrower_id
+                originator_id: Some(deal.originator_id.to_string()), // was borrower_id
                 investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
@@ -1207,7 +1227,7 @@ pub async fn update_deal_endpoint(
             let deal_details = DealDetailsResponse {
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
-                originator_id: deal.originator_id.to_string(), // was borrower_id
+                originator_id: Some(deal.originator_id.to_string()), // was borrower_id
                 investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),

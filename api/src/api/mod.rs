@@ -17,7 +17,7 @@ pub mod router;
 pub mod server;
 
 // Re-export commonly used items
-pub use openapi::*;
+pub use openapi::{ApiDoc, PaginationParams};
 // Note: ErrorResponse from pool_api is NOT re-exported to avoid ambiguity with handlers
 pub use router::{create_router, ApiConfig, ApiState};
 pub use server::{ApiServer, ApiServerBuilder, ApiServerConfig};
