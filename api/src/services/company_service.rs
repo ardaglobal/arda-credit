@@ -91,7 +91,6 @@ pub enum CompanyServiceError {
     #[error("Access denied: {message}")]
     AccessDenied { message: String },
 
-
     #[error("KYB not approved for company: {company_id}")]
     KybNotApproved { company_id: Uuid },
 

@@ -197,6 +197,9 @@ pub const DEALS_STATS: &str = api_path!("/deals/stats");
 /// Deals by user ID - get all deals for a user (as originator or investor)
 pub const DEALS_BY_USER_ID: &str = api_path!("/deals/{user_id}");
 
+/// Company deals - get all deals for a company (as originator or investor)
+pub const COMPANY_DEALS: &str = api_path!("/company/{company_id}/deals");
+
 /// Draft deals by company ID - get all draft deals for a company
 pub const COMPANY_DRAFT_DEALS: &str = api_path!("/company/{company_id}/deals/draft");
 
