@@ -673,37 +673,42 @@ pub async fn list_deals_endpoint(
                 }
             });
 
-            DealDetailsResponse {
+            let mut response = DealDetailsResponse {
                 // was loan, LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
-                // Conditionally include company IDs based on anonymization
-                originator_id: if is_anonymized {
-                    None
-                } else {
-                    Some(deal.originator_id.to_string())
-                },
-                investor_id: if is_anonymized {
-                    None
-                } else {
-                    deal.investor_id.map(|id| id.to_string())
-                },
+                originator_id: None,
+                investor_id: None,
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
                 loan_status: deal.deal_status, // deal_status field
                 originated_at: deal.originated_at,
                 last_updated: Some(deal.updated_at),
-                custom_deal_id: deal.custom_deal_id,
+                custom_deal_id: None,
                 status: deal.status,
                 industry: deal.industry,
-                document_ids: document_ids_response,
-                title: deal.title,
-                description: deal.description,
-                risk_level: deal.risk_level,
+                document_ids: None,
+                title: None,
+                description: None,
+                risk_level: None,
                 asset_class: deal.asset_class,
                 region: deal.region,
-                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                minimum_investment: None,
+            };
+
+            // Populate sensitive fields only if not anonymized
+            if !is_anonymized {
+                response.originator_id = Some(deal.originator_id.to_string());
+                response.investor_id = deal.investor_id.map(|id| id.to_string());
+                response.custom_deal_id = deal.custom_deal_id;
+                response.document_ids = document_ids_response;
+                response.title = deal.title;
+                response.description = deal.description;
+                response.risk_level = deal.risk_level;
+                response.minimum_investment = deal.minimum_investment.map(|d| d.to_string());
             }
+
+            response
         })
         .collect();
 

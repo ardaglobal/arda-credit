@@ -91,8 +91,6 @@ pub enum CompanyServiceError {
     #[error("Access denied: {message}")]
     AccessDenied { message: String },
 
-    #[error("Company already exists for user: {user_id}")]
-    CompanyAlreadyExists { user_id: Uuid },
 
     #[error("KYB not approved for company: {company_id}")]
     KybNotApproved { company_id: Uuid },
@@ -281,15 +279,8 @@ impl CompanyService {
             return Err(CompanyServiceError::UserNotFound { user_id });
         }
 
-        // Check if user already has a company
-        let existing_company =
-            sqlx::query!("SELECT id FROM companies WHERE created_by = $1", user_id)
-                .fetch_optional(&self.db_pool)
-                .await?;
-
-        if existing_company.is_some() {
-            return Err(CompanyServiceError::CompanyAlreadyExists { user_id });
-        }
+        // Users are allowed to create multiple companies
+        // The company_memberships table manages the actual admin relationships
 
         // Parse and validate company type
         let company_type = self.parse_company_type(&request.company_type)?;
