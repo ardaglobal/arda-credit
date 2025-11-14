@@ -24,7 +24,7 @@ use db::{
         batch_upsert_market_value_metrics, batch_upsert_pie_chart_metrics, clear_all_metrics,
         CreateMarketValueMetricRequest, CreatePieChartMetricRequest,
     },
-    create_deal, create_identity, get_identity_by_email, init_db_with_url, list_deals, Deal, User,
+    create_identity, get_identity_by_email, init_db_with_url, list_deals, Deal, User,
 };
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use rust_decimal::Decimal;
@@ -393,6 +393,14 @@ async fn create_deal_with_custom_dates(
         asset_class: asset_class.map(|s| s.to_string()),
         region: region.map(|s| s.to_string()),
         minimum_investment,
+        payment_frequency: None,
+        collateral_type: None,
+        collateral_value: None,
+        ltv_ratio: None,
+        credit_score: None,
+        dscr: None,
+        state_transition_hash: None,
+        proof_included: false,
     };
 
     Ok(deal)

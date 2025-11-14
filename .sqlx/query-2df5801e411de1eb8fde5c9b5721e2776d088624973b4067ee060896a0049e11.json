@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id,\n            originator_id,    -- Company ID of originator\n            investor_id,      -- Company ID of investor (optional)\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            deal_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment\n        FROM deals  -- was loans\n        WHERE ($1::text IS NULL OR deal_status = $1)\n          AND ($2::uuid IS NULL OR originator_id = $2)  -- Company ID filter\n          AND ($3::uuid IS NULL OR investor_id = $3)    -- Company ID filter\n          AND ($4::text IS NULL OR industry = $4)\n        ORDER BY created_at DESC\n        LIMIT $5 OFFSET $6\n        ",
+  "query": "\n        SELECT\n            id,\n            originator_id,\n            investor_id,\n            principal_amount,\n            outstanding_balance,\n            interest_rate_bps,\n            deal_status,\n            originated_at,\n            maturity_date,\n            created_at,\n            updated_at,\n            custom_deal_id,\n            status,\n            industry,\n            document_ids,\n            title,\n            description,\n            risk_level,\n            asset_class,\n            region,\n            minimum_investment,\n            payment_frequency,\n            collateral_type,\n            collateral_value,\n            ltv_ratio,\n            credit_score,\n            dscr,\n            state_transition_hash,\n            proof_included\n        FROM deals\n        WHERE originator_id = $1\n          AND status = 'draft'\n        ORDER BY created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
   "describe": {
     "columns": [
       {
@@ -107,14 +107,51 @@
         "ordinal": 20,
         "name": "minimum_investment",
         "type_info": "Numeric"
+      },
+      {
+        "ordinal": 21,
+        "name": "payment_frequency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "collateral_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 23,
+        "name": "collateral_value",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 24,
+        "name": "ltv_ratio",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 25,
+        "name": "credit_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 26,
+        "name": "dscr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 27,
+        "name": "state_transition_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 28,
+        "name": "proof_included",
+        "type_info": "Bool"
       }
     ],
     "parameters": {
       "Left": [
-        "Text",
         "Uuid",
-        "Uuid",
-        "Text",
         "Int8",
         "Int8"
       ]
@@ -140,8 +177,16 @@
       true,
       true,
       true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
       true
     ]
   },
-  "hash": "cca07fd95e832902b5538eb17540c066be6a93156d48ddbbe65e144c1a262797"
+  "hash": "2df5801e411de1eb8fde5c9b5721e2776d088624973b4067ee060896a0049e11"
 }

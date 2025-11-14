@@ -1,0 +1,228 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            d.id as loan_id,\n            d.custom_deal_id as deal_id,\n            d.originator_id,\n            oc.name as originator_name,\n            oc.kyb_status as originator_kyb_status,\n            d.investor_id,\n            ic.name as investor_name,\n            ic.kyb_status as investor_kyb_status,\n            d.principal_amount,\n            d.outstanding_balance,\n            d.interest_rate_bps,\n            CAST(d.interest_rate_bps AS DECIMAL) / 100.0 as interest_rate_apr,\n            d.deal_status as loan_status,\n            d.originated_at,\n            d.maturity_date,\n            CASE\n                WHEN d.maturity_date IS NOT NULL\n                THEN EXTRACT(DAY FROM d.maturity_date - NOW())::INTEGER\n                ELSE NULL\n            END as days_to_maturity,\n            d.payment_frequency,\n            (\n                SELECT MAX(dp.processed_at)\n                FROM deal_payments dp\n                WHERE dp.deal_id = d.id\n            ) as last_payment_date,\n            (\n                SELECT dp.amount\n                FROM deal_payments dp\n                WHERE dp.deal_id = d.id\n                ORDER BY dp.processed_at DESC\n                LIMIT 1\n            ) as last_payment_amount,\n            (\n                SELECT COUNT(*)\n                FROM deal_payments dp\n                WHERE dp.deal_id = d.id\n            ) as \"total_payments_made!\",\n            (\n                SELECT COALESCE(SUM(dp.amount), 0)\n                FROM deal_payments dp\n                WHERE dp.deal_id = d.id\n                AND dp.payment_type = 'interest'\n            ) as \"total_interest_paid!\",\n            d.collateral_type,\n            d.collateral_value,\n            d.ltv_ratio,\n            d.risk_level,\n            d.asset_class,\n            d.region,\n            oc.industry as borrower_industry,\n            d.credit_score,\n            d.dscr,\n            d.title as deal_title,\n            d.state_transition_hash,\n            d.proof_included,\n            d.created_at,\n            d.updated_at\n        FROM deals d\n        LEFT JOIN companies oc ON d.originator_id = oc.id\n        LEFT JOIN companies ic ON d.investor_id = ic.id\n        WHERE ($1::TEXT IS NULL OR d.deal_status = $1)\n        ORDER BY d.originated_at DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "loan_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "deal_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "originator_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "originator_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "originator_kyb_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "investor_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "investor_kyb_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "principal_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 9,
+        "name": "outstanding_balance",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 10,
+        "name": "interest_rate_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 11,
+        "name": "interest_rate_apr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 12,
+        "name": "loan_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "originated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "maturity_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "days_to_maturity",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 16,
+        "name": "payment_frequency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 17,
+        "name": "last_payment_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "last_payment_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 19,
+        "name": "total_payments_made!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 20,
+        "name": "total_interest_paid!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 21,
+        "name": "collateral_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "collateral_value",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 23,
+        "name": "ltv_ratio",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 24,
+        "name": "risk_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 25,
+        "name": "asset_class",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 26,
+        "name": "region",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 27,
+        "name": "borrower_industry",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 28,
+        "name": "credit_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 29,
+        "name": "dscr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 30,
+        "name": "deal_title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 31,
+        "name": "state_transition_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 32,
+        "name": "proof_included",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 33,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 34,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null,
+      false,
+      true,
+      true,
+      null,
+      true,
+      null,
+      null,
+      null,
+      null,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "31ecd1c6632e008a22e290e682593f08607299b56e268acb001d9377dcfc7c0a"
+}
