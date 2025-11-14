@@ -171,12 +171,16 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
             enable_debug_endpoints: true,
             metrics_refresh_enabled: false, // Disabled in tests
             metrics_refresh_interval_hours: 24,
+            metrics_cache_ttl_seconds: 3600,
+            metrics_cache_max_entries: 10000,
+            metrics_cache_enabled: true,
         },
         batch_processor: None,
         ads_service,
         withdrawal_service,
         balance_service,
         metrics_handle: None, // No metrics in tests
+        metrics_cache: std::sync::Arc::new(crate::services::MetricsCache::default()),
         session_service: Arc::new(crate::services::session_service::SessionService::new(
             pool.clone(),
         )),
@@ -258,6 +262,9 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
             enable_debug_endpoints: true,
             metrics_refresh_enabled: false, // Disabled in tests
             metrics_refresh_interval_hours: 24,
+            metrics_cache_ttl_seconds: 3600,
+            metrics_cache_max_entries: 10000,
+            metrics_cache_enabled: true,
         },
         batch_processor: None,
         ads_service,
@@ -269,6 +276,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
         withdrawal_executor: None,
         metrics_handle: None,
         email_rate_limiter: Some(email_rate_limiter),
+        metrics_cache: std::sync::Arc::new(crate::services::MetricsCache::default()),
     }
 }
 

@@ -7,6 +7,7 @@
 //! - Converting raw deal data into cached metric structures
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use arda_credit_db::{
     batch_upsert_market_value_metrics, batch_upsert_pie_chart_metrics, clear_all_metrics,
@@ -17,13 +18,16 @@ use chrono::{NaiveDate, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Postgres, Transaction};
-use tracing::{error, info, instrument};
+use tracing::{debug, error, info, instrument};
 use uuid::Uuid;
+
+use super::metrics_cache::{MarketValueCacheKey, MetricsCache, PieChartCacheKey};
 
 /// Metrics calculation service
 #[derive(Debug, Clone)]
 pub struct MetricsService {
     pool: PgPool,
+    cache: Option<Arc<MetricsCache>>,
 }
 
 /// Market value query parameters
@@ -33,6 +37,7 @@ pub struct MarketValueQuery {
     pub filter_by: String,       // all | originator | investor
     pub entity_id: Option<Uuid>, // company_id when filter_by is originator or investor
     pub time_range: String,      // all_time | last_year
+    pub force_refresh: bool,     // bypass cache and recalculate
 }
 
 /// Pie chart query parameters
@@ -42,6 +47,7 @@ pub struct PieChartQuery {
     pub filter_by: String,       // all | originator | investor
     pub entity_id: Option<Uuid>, // company_id when filter_by is originator or investor
     pub time_range: String,      // all_time | last_year
+    pub force_refresh: bool,     // bypass cache and recalculate
 }
 
 /// Market value response data point
@@ -85,21 +91,52 @@ pub enum MetricsError {
 type MetricsResult<T> = Result<T, MetricsError>;
 
 impl MetricsService {
+    /// Create new metrics service without caching
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self { pool, cache: None }
+    }
+
+    /// Create new metrics service with caching support
+    pub fn with_cache(pool: PgPool, cache: Arc<MetricsCache>) -> Self {
+        Self {
+            pool,
+            cache: Some(cache),
+        }
+    }
+
+    /// Check if caching is enabled
+    pub fn has_cache(&self) -> bool {
+        self.cache.is_some()
     }
 
     // ========================================================================
     // PUBLIC API METHODS
     // ========================================================================
 
-    /// Get market value time series data
+    /// Get market value time series data with caching support
     #[instrument(skip(self), level = "info")]
     pub async fn get_market_value_data(
         &self,
         query: MarketValueQuery,
     ) -> MetricsResult<Vec<MarketValueDataPoint>> {
         self.validate_market_value_query(&query)?;
+
+        // For 'all' filter, continue using pre-calculated database metrics (legacy behavior)
+        if query.filter_by == "all" {
+            return self.get_precomputed_market_value_data(&query).await;
+        }
+
+        // For entity-specific queries, use caching and on-demand calculation
+        self.get_cached_market_value_data(query).await
+    }
+
+    /// Get pre-computed market value data from database (for 'all' filter)
+    #[instrument(skip(self), level = "debug")]
+    async fn get_precomputed_market_value_data(
+        &self,
+        query: &MarketValueQuery,
+    ) -> MetricsResult<Vec<MarketValueDataPoint>> {
+        debug!("Using pre-computed database metrics for 'all' filter");
 
         let start_date = if query.time_range == "last_year" {
             Some(self.get_one_year_ago_date())
@@ -129,13 +166,126 @@ impl MetricsService {
         Ok(data_points)
     }
 
-    /// Get pie chart distribution data
+    /// Get cached or calculate market value data on-demand
+    #[instrument(skip(self), level = "info")]
+    async fn get_cached_market_value_data(
+        &self,
+        query: MarketValueQuery,
+    ) -> MetricsResult<Vec<MarketValueDataPoint>> {
+        let cache_key = MarketValueCacheKey::new(
+            query.growth_type.clone(),
+            query.filter_by.clone(),
+            query.entity_id,
+            query.time_range.clone(),
+        );
+
+        // Check cache first (if not force refresh and cache is available)
+        if !query.force_refresh {
+            if let Some(ref cache) = self.cache {
+                if let Some(cached_data) = cache.get_market_value(&cache_key).await {
+                    info!(
+                        "Returning cached market value data for key: {} ({} data points)",
+                        cache_key,
+                        cached_data.len()
+                    );
+                    return Ok(cached_data);
+                }
+            }
+        } else {
+            info!(
+                "Force refresh requested, bypassing cache for key: {}",
+                cache_key
+            );
+        }
+
+        // Cache miss or force refresh - calculate on demand
+        info!(
+            "Cache miss, calculating market value data on-demand for key: {}",
+            cache_key
+        );
+        let data = self.calculate_market_value_on_demand(&query).await?;
+
+        // Store in cache if available
+        if let Some(ref cache) = self.cache {
+            cache.put_market_value(cache_key, data.clone()).await;
+        }
+
+        info!(
+            "Calculated and cached {} market value data points",
+            data.len()
+        );
+        Ok(data)
+    }
+
+    /// Calculate market value data on-demand from deal data
+    #[instrument(skip(self), level = "debug")]
+    async fn calculate_market_value_on_demand(
+        &self,
+        query: &MarketValueQuery,
+    ) -> MetricsResult<Vec<MarketValueDataPoint>> {
+        debug!("Calculating market value metrics on-demand");
+
+        // Get all deals for calculation (using high limit to avoid pagination)
+        let deals_result =
+            list_deals(&self.pool, Some(1_000_000), None, None, None, None, None).await?;
+        let deals = &deals_result.deals;
+
+        debug!("Retrieved {} deals for calculation", deals.len());
+
+        // Filter deals by time range first
+        let time_filtered_deals = self.filter_deals_for_time_range(deals, &query.time_range);
+
+        debug!(
+            "After time filtering: {} deals remain",
+            time_filtered_deals.len()
+        );
+
+        // Calculate time series using existing logic
+        let metrics = self.calculate_market_value_time_series(
+            &time_filtered_deals,
+            &query.growth_type,
+            &query.filter_by,
+            query.entity_id,
+        )?;
+
+        // Convert to data points
+        let data_points: Vec<MarketValueDataPoint> = metrics
+            .into_iter()
+            .map(|m| MarketValueDataPoint {
+                date: m.date_value,
+                cumulative_value: m.cumulative_value.to_string(),
+                deal_count: m.deal_count,
+            })
+            .collect();
+
+        debug!("Generated {} market value data points", data_points.len());
+        Ok(data_points)
+    }
+
+    /// Get pie chart distribution data with caching support
     #[instrument(skip(self), level = "info")]
     pub async fn get_pie_chart_data(
         &self,
         query: PieChartQuery,
     ) -> MetricsResult<Vec<PieChartDataPoint>> {
         self.validate_pie_chart_query(&query)?;
+
+        // For 'all' filter, continue using pre-calculated database metrics (legacy behavior)
+        if query.filter_by == "all" {
+            return self.get_precomputed_pie_chart_data(&query).await;
+        }
+
+        // For entity-specific queries, use caching and on-demand calculation
+        self.get_cached_pie_chart_data(query).await
+    }
+
+    /// Get pre-computed pie chart data from database (for 'all' filter)
+    #[instrument(skip(self), level = "debug")]
+    async fn get_precomputed_pie_chart_data(
+        &self,
+        query: &PieChartQuery,
+    ) -> MetricsResult<Vec<PieChartDataPoint>> {
+        debug!("Using pre-computed database metrics for 'all' filter");
 
         let metrics = get_pie_chart_metrics(
             &self.pool,
@@ -156,6 +306,101 @@ impl MetricsService {
             })
             .collect();
 
+        Ok(data_points)
+    }
+
+    /// Get cached or calculate pie chart data on-demand
+    #[instrument(skip(self), level = "info")]
+    async fn get_cached_pie_chart_data(
+        &self,
+        query: PieChartQuery,
+    ) -> MetricsResult<Vec<PieChartDataPoint>> {
+        let cache_key = PieChartCacheKey::new(
+            query.chart_type.clone(),
+            query.filter_by.clone(),
+            query.entity_id,
+            query.time_range.clone(),
+        );
+
+        // Check cache first (if not force refresh and cache is available)
+        if !query.force_refresh {
+            if let Some(ref cache) = self.cache {
+                if let Some(cached_data) = cache.get_pie_chart(&cache_key).await {
+                    info!(
+                        "Returning cached pie chart data for key: {} ({} data points)",
+                        cache_key,
+                        cached_data.len()
+                    );
+                    return Ok(cached_data);
+                }
+            }
+        } else {
+            info!(
+                "Force refresh requested, bypassing cache for key: {}",
+                cache_key
+            );
+        }
+
+        // Cache miss or force refresh - calculate on demand
+        info!(
+            "Cache miss, calculating pie chart data on-demand for key: {}",
+            cache_key
+        );
+        let data = self.calculate_pie_chart_on_demand(&query).await?;
+
+        // Store in cache if available
+        if let Some(ref cache) = self.cache {
+            cache.put_pie_chart(cache_key, data.clone()).await;
+        }
+
+        info!("Calculated and cached {} pie chart data points", data.len());
+        Ok(data)
+    }
+
+    /// Calculate pie chart data on-demand from deal data
+    #[instrument(skip(self), level = "debug")]
+    async fn calculate_pie_chart_on_demand(
+        &self,
+        query: &PieChartQuery,
+    ) -> MetricsResult<Vec<PieChartDataPoint>> {
+        debug!("Calculating pie chart metrics on-demand");
+
+        // Get all deals for calculation (using high limit to avoid pagination)
+        let deals_result =
+            list_deals(&self.pool, Some(1_000_000), None, None, None, None, None).await?;
+        let deals = &deals_result.deals;
+
+        debug!("Retrieved {} deals for calculation", deals.len());
+
+        // Filter deals by time range first
+        let time_filtered_deals = self.filter_deals_for_time_range(deals, &query.time_range);
+
+        debug!(
+            "After time filtering: {} deals remain",
+            time_filtered_deals.len()
+        );
+
+        // Calculate pie chart using existing logic
+        let metrics = self.calculate_pie_chart_distribution(
+            &time_filtered_deals,
+            &query.chart_type,
+            &query.filter_by,
+            query.entity_id,
+            &query.time_range,
+        )?;
+
+        // Convert to data points
+        let data_points: Vec<PieChartDataPoint> = metrics
+            .into_iter()
+            .map(|m| PieChartDataPoint {
+                category: m.category,
+                value: m.value.to_string(),
+                percentage: m.percentage.to_string(),
+                deal_count: m.deal_count,
+            })
+            .collect();
+
+        debug!("Generated {} pie chart data points", data_points.len());
         Ok(data_points)
     }
 

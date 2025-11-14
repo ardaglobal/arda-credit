@@ -34,7 +34,7 @@ use crate::handlers::{
 };
 use crate::services::batch_processor::BatchProcessorHandle;
 use crate::services::session_service::SessionService;
-use crate::services::{BalanceVerificationService, WithdrawalTransactionService};
+use crate::services::{BalanceVerificationService, MetricsCache, WithdrawalTransactionService};
 use arda_credit_db::{IndexedMerkleTreeADS, User};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -101,6 +101,7 @@ pub struct ApiState {
         Option<crate::services::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
     pub metrics_handle: Option<Arc<crate::utils::metrics::MetricsHandle>>,
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
+    pub metrics_cache: Arc<MetricsCache>,
 }
 
 /// Configuration for API server
@@ -112,6 +113,9 @@ pub struct ApiConfig {
     pub enable_debug_endpoints: bool,
     pub metrics_refresh_enabled: bool,
     pub metrics_refresh_interval_hours: u64,
+    pub metrics_cache_ttl_seconds: u64,
+    pub metrics_cache_max_entries: usize,
+    pub metrics_cache_enabled: bool,
 }
 
 impl Default for ApiConfig {
@@ -129,6 +133,18 @@ impl Default for ApiConfig {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(24),
+            metrics_cache_ttl_seconds: std::env::var("METRICS_CACHE_TTL_SECONDS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3600), // 1 hour default
+            metrics_cache_max_entries: std::env::var("METRICS_CACHE_MAX_ENTRIES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10000),
+            metrics_cache_enabled: std::env::var("METRICS_CACHE_ENABLED")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(true),
         }
     }
 }
@@ -204,6 +220,14 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::METRICS_REFRESH,
             post(crate::handlers::metrics::refresh_metrics),
+        )
+        .route(
+            paths::METRICS_CACHE_STATS,
+            get(crate::handlers::metrics::get_cache_stats),
+        )
+        .route(
+            paths::METRICS_CACHE_MANAGE,
+            post(crate::handlers::metrics::manage_cache),
         )
         .route(
             paths::INVITE_CODE_GENERATE,

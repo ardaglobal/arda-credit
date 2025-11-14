@@ -45,6 +45,10 @@ pub struct MarketValueParams {
     /// Time range: 'all_time' or 'last_year'
     #[param(example = "all_time")]
     pub time_range: String,
+
+    /// Force cache refresh and recalculate data
+    #[param(example = "false")]
+    pub force_refresh: Option<bool>,
 }
 
 /// Query parameters for pie chart metrics
@@ -64,6 +68,10 @@ pub struct PieChartParams {
     /// Time range: 'all_time' or 'last_year'
     #[param(example = "all_time")]
     pub time_range: String,
+
+    /// Force cache refresh and recalculate data
+    #[param(example = "false")]
+    pub force_refresh: Option<bool>,
 }
 
 /// Market value response
@@ -120,6 +128,43 @@ pub struct MetricsErrorResponse {
     pub details: Option<String>,
 }
 
+/// Cache management request parameters
+#[derive(Debug, Serialize, Deserialize, IntoParams, ToSchema)]
+pub struct CacheManagementParams {
+    /// Operation to perform: 'stats', 'cleanup', 'invalidate_all', or 'invalidate_entity'
+    #[param(example = "stats")]
+    pub operation: String,
+
+    /// Entity ID for 'invalidate_entity' operation
+    pub entity_id: Option<Uuid>,
+}
+
+/// Cache statistics response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CacheStatsResponse {
+    pub success: bool,
+    pub market_value_hits: u64,
+    pub market_value_misses: u64,
+    pub pie_chart_hits: u64,
+    pub pie_chart_misses: u64,
+    pub total_entries: usize,
+    pub cleanup_runs: u64,
+    pub entries_evicted: u64,
+    pub market_value_hit_ratio: f64,
+    pub pie_chart_hit_ratio: f64,
+    pub overall_hit_ratio: f64,
+    pub cache_enabled: bool,
+}
+
+/// Cache management response
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CacheManagementResponse {
+    pub success: bool,
+    pub operation: String,
+    pub message: String,
+    pub entries_affected: Option<usize>,
+}
+
 // ============================================================================
 // HANDLER FUNCTIONS
 // ============================================================================
@@ -155,10 +200,12 @@ pub async fn get_market_value(
         filter_by: params.filter_by.clone(),
         entity_id: params.entity_id,
         time_range: params.time_range.clone(),
+        force_refresh: params.force_refresh.unwrap_or(false),
     };
 
-    // Create metrics service
-    let metrics_service = MetricsService::new(state.pool.clone());
+    // Create metrics service with caching support
+    let metrics_service =
+        MetricsService::with_cache(state.pool.clone(), state.metrics_cache.clone());
 
     // Get data
     match metrics_service.get_market_value_data(query).await {
@@ -224,10 +271,12 @@ pub async fn get_pie_chart_data(
         filter_by: params.filter_by.clone(),
         entity_id: params.entity_id,
         time_range: params.time_range.clone(),
+        force_refresh: params.force_refresh.unwrap_or(false),
     };
 
-    // Create metrics service
-    let metrics_service = MetricsService::new(state.pool.clone());
+    // Create metrics service with caching support
+    let metrics_service =
+        MetricsService::with_cache(state.pool.clone(), state.metrics_cache.clone());
 
     // Get data
     match metrics_service.get_pie_chart_data(query).await {
@@ -319,5 +368,129 @@ pub async fn refresh_metrics(
                 }),
             ))
         }
+    }
+}
+
+/// Get cache statistics
+#[utoipa::path(
+    get,
+    path = "/api/v1/metrics/cache/stats",
+    responses(
+        (status = 200, description = "Cache statistics retrieved successfully", body = CacheStatsResponse),
+        (status = 401, description = "Unauthorized access"),
+        (status = 500, description = "Internal server error", body = MetricsErrorResponse)
+    ),
+    tag = "Metrics",
+    summary = "Get cache statistics",
+    description = "Retrieve detailed statistics about the metrics cache performance and usage."
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn get_cache_stats(
+    State(state): State<ApiState>,
+) -> Result<Json<CacheStatsResponse>, (StatusCode, Json<MetricsErrorResponse>)> {
+    info!("Retrieving cache statistics");
+
+    let stats = state.metrics_cache.get_stats().await;
+
+    Ok(Json(CacheStatsResponse {
+        success: true,
+        market_value_hits: stats.market_value_hits,
+        market_value_misses: stats.market_value_misses,
+        pie_chart_hits: stats.pie_chart_hits,
+        pie_chart_misses: stats.pie_chart_misses,
+        total_entries: stats.total_entries,
+        cleanup_runs: stats.cleanup_runs,
+        entries_evicted: stats.entries_evicted,
+        market_value_hit_ratio: stats.market_value_hit_ratio(),
+        pie_chart_hit_ratio: stats.pie_chart_hit_ratio(),
+        overall_hit_ratio: stats.overall_hit_ratio(),
+        cache_enabled: true,
+    }))
+}
+
+/// Manage metrics cache
+#[utoipa::path(
+    post,
+    path = "/api/v1/metrics/cache/manage",
+    params(CacheManagementParams),
+    responses(
+        (status = 200, description = "Cache operation completed successfully", body = CacheManagementResponse),
+        (status = 400, description = "Invalid operation or parameters", body = MetricsErrorResponse),
+        (status = 401, description = "Unauthorized access"),
+        (status = 500, description = "Internal server error", body = MetricsErrorResponse)
+    ),
+    tag = "Metrics",
+    summary = "Manage metrics cache",
+    description = "Perform cache management operations: cleanup expired entries, invalidate all entries, or invalidate specific entity entries."
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn manage_cache(
+    State(state): State<ApiState>,
+    Query(params): Query<CacheManagementParams>,
+) -> Result<Json<CacheManagementResponse>, (StatusCode, Json<MetricsErrorResponse>)> {
+    info!(
+        "Performing cache management operation: {}",
+        params.operation
+    );
+
+    match params.operation.as_str() {
+        "cleanup" => {
+            state.metrics_cache.cleanup_expired_entries().await;
+            let stats = state.metrics_cache.get_stats().await;
+
+            Ok(Json(CacheManagementResponse {
+                success: true,
+                operation: "cleanup".to_string(),
+                message: "Cache cleanup completed successfully".to_string(),
+                entries_affected: Some(stats.total_entries),
+            }))
+        }
+        "invalidate_all" => {
+            let stats_before = state.metrics_cache.get_stats().await;
+            state.metrics_cache.invalidate_all().await;
+
+            Ok(Json(CacheManagementResponse {
+                success: true,
+                operation: "invalidate_all".to_string(),
+                message: "All cache entries invalidated successfully".to_string(),
+                entries_affected: Some(stats_before.total_entries),
+            }))
+        }
+        "invalidate_entity" => {
+            let entity_id = params.entity_id.ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(MetricsErrorResponse {
+                        success: false,
+                        error: "Invalid operation".to_string(),
+                        details: Some(
+                            "entity_id is required for invalidate_entity operation".to_string(),
+                        ),
+                    }),
+                )
+            })?;
+
+            state.metrics_cache.invalidate_entity(entity_id).await;
+
+            Ok(Json(CacheManagementResponse {
+                success: true,
+                operation: "invalidate_entity".to_string(),
+                message: format!(
+                    "Cache entries for entity {} invalidated successfully",
+                    entity_id
+                ),
+                entries_affected: None, // Could track this in the future
+            }))
+        }
+        _ => Err((
+            StatusCode::BAD_REQUEST,
+            Json(MetricsErrorResponse {
+                success: false,
+                error: "Invalid operation".to_string(),
+                details: Some(
+                    "Supported operations: cleanup, invalidate_all, invalidate_entity".to_string(),
+                ),
+            }),
+        )),
     }
 }

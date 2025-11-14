@@ -73,6 +73,25 @@ fn trigger_metrics_refresh_async(state: &ApiState) {
             info!("📊 Triggered async metrics refresh after deal operation");
         }
     }
+
+    // Invalidate all cache entries since a deal operation may affect various metrics
+    invalidate_metrics_cache(state);
+}
+
+/// Invalidate metrics cache entries after deal operations
+fn invalidate_metrics_cache(state: &ApiState) {
+    let cache = state.metrics_cache.clone();
+    tokio::spawn(async move {
+        match tokio::time::timeout(std::time::Duration::from_secs(5), cache.invalidate_all()).await
+        {
+            Ok(_) => {
+                info!("🗑️  Invalidated metrics cache after deal operation");
+            }
+            Err(_) => {
+                warn!("⚠️  Cache invalidation timed out after deal operation");
+            }
+        }
+    });
 }
 
 // ============================================================================
