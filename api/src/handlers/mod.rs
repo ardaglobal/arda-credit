@@ -22,6 +22,7 @@ pub mod core;
 pub mod deals;
 pub mod faucet;
 pub mod finance;
+pub mod metrics;
 pub mod taxonomy;
 pub mod users;
 
@@ -32,4 +33,5 @@ pub use core::*;
 pub use deals::*;
 pub use faucet::*;
 pub use finance::*;
+pub use metrics::*;
 pub use users::*;

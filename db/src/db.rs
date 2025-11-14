@@ -2076,6 +2076,13 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
 }
 
 /// List deals with optional filtering (was list_loans)
+/// Result struct for paginated deal queries
+#[derive(Debug, Clone)]
+pub struct DealsWithCount {
+    pub deals: Vec<Deal>,
+    pub total_count: i64,
+}
+
 pub async fn list_deals(
     // was list_loans
     pool: &PgPool,
@@ -2085,8 +2092,28 @@ pub async fn list_deals(
     originator_id: Option<uuid::Uuid>, // was borrower_id
     investor_id: Option<uuid::Uuid>,   // was lender_id
     industry: Option<&str>,
-) -> Result<Vec<Deal>, sqlx::Error> {
+) -> Result<DealsWithCount, sqlx::Error> {
     // was Loan
+    // First, get the total count of deals matching the filters
+    let count_result = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM deals
+        WHERE ($1::text IS NULL OR deal_status = $1)
+          AND ($2::uuid IS NULL OR originator_id = $2)
+          AND ($3::uuid IS NULL OR investor_id = $3)
+          AND ($4::text IS NULL OR industry = $4)
+        "#,
+        status,
+        originator_id,
+        investor_id,
+        industry
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let total_count = count_result.count.unwrap_or(0);
+
     // Use a unified query with optional filtering
     let rows = sqlx::query!(
         r#"
@@ -2130,7 +2157,7 @@ pub async fn list_deals(
     .fetch_all(pool)
     .await?;
 
-    let result: Vec<Deal> = rows // was Loan
+    let deals: Vec<Deal> = rows // was Loan
         .into_iter()
         .map(|row| Deal {
             // was Loan
@@ -2158,7 +2185,7 @@ pub async fn list_deals(
         })
         .collect();
 
-    Ok(result)
+    Ok(DealsWithCount { deals, total_count })
 }
 
 /// Get deals by company ID (company can be either originator or investor)
@@ -2169,7 +2196,23 @@ pub async fn get_deals_by_company_id(
     limit: Option<i64>,
     offset: Option<i64>,
     status: Option<&str>,
-) -> Result<Vec<Deal>, sqlx::Error> {
+) -> Result<DealsWithCount, sqlx::Error> {
+    // First, get the total count of deals matching the filters
+    let count_result = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM deals
+        WHERE (originator_id = $1 OR investor_id = $1)
+          AND ($2::text IS NULL OR deal_status = $2)
+        "#,
+        company_id,
+        status
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let total_count = count_result.count.unwrap_or(0);
+
     let rows = sqlx::query!(
         r#"
         SELECT
@@ -2208,7 +2251,7 @@ pub async fn get_deals_by_company_id(
     .fetch_all(pool)
     .await?;
 
-    let result: Vec<Deal> = rows
+    let deals: Vec<Deal> = rows
         .into_iter()
         .map(|row| Deal {
             id: row.id,
@@ -2235,7 +2278,7 @@ pub async fn get_deals_by_company_id(
         })
         .collect();
 
-    Ok(result)
+    Ok(DealsWithCount { deals, total_count })
 }
 
 /// Get draft deals for a company (where status = 'draft')
@@ -2245,7 +2288,22 @@ pub async fn get_draft_deals_by_company_id(
     company_id: uuid::Uuid,
     limit: Option<i64>,
     offset: Option<i64>,
-) -> Result<Vec<Deal>, sqlx::Error> {
+) -> Result<DealsWithCount, sqlx::Error> {
+    // First, get the total count of draft deals for the company
+    let count_result = sqlx::query!(
+        r#"
+        SELECT COUNT(*) as count
+        FROM deals
+        WHERE originator_id = $1
+          AND status = 'draft'
+        "#,
+        company_id
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let total_count = count_result.count.unwrap_or(0);
+
     let rows = sqlx::query!(
         r#"
         SELECT
@@ -2283,7 +2341,7 @@ pub async fn get_draft_deals_by_company_id(
     .fetch_all(pool)
     .await?;
 
-    let result: Vec<Deal> = rows
+    let deals: Vec<Deal> = rows
         .into_iter()
         .map(|row| Deal {
             id: row.id,
@@ -2310,7 +2368,7 @@ pub async fn get_draft_deals_by_company_id(
         })
         .collect();
 
-    Ok(result)
+    Ok(DealsWithCount { deals, total_count })
 }
 
 /// Legacy function - Get deals by user ID by looking up their company membership
@@ -2321,7 +2379,7 @@ pub async fn get_deals_by_user_id(
     limit: Option<i64>,
     offset: Option<i64>,
     status: Option<&str>,
-) -> Result<Vec<Deal>, sqlx::Error> {
+) -> Result<DealsWithCount, sqlx::Error> {
     // Get the user's active company memberships
     let company_ids: Vec<uuid::Uuid> = sqlx::query_scalar(
         r#"
@@ -2335,7 +2393,10 @@ pub async fn get_deals_by_user_id(
     .await?;
 
     if company_ids.is_empty() {
-        return Ok(Vec::new());
+        return Ok(DealsWithCount {
+            deals: Vec::new(),
+            total_count: 0,
+        });
     }
 
     // For simplicity, get deals from the first company

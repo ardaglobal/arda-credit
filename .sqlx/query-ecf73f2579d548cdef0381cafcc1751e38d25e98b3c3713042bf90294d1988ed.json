@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM metrics_market_value_daily WHERE date_value < $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Date"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ecf73f2579d548cdef0381cafcc1751e38d25e98b3c3713042bf90294d1988ed"
+}

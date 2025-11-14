@@ -1,25 +1,35 @@
 #!/usr/bin/env cargo run --bin populate_deal_data --
 //! Deal data population script for the Arda Credit database
 //!
-//! This script creates realistic deal data for testing the deals API endpoint.
+//! This script creates realistic deal data for testing the deals API endpoint
+//! and automatically refreshes the metrics cache for dashboard visualization.
 //! It supports two modes:
 //! - Random mode: Generate random deals with random companies (no --email)
 //! - User mode: Generate deals for a specific user's companies (with --email)
 //!
+//! After generating deals, the script automatically calculates and caches:
+//! - Market value time series (both market growth and Arda growth)
+//! - Pie chart distributions (industry, region, asset class breakdowns)
+//!
 //! Run with: cargo run --bin populate_deal_data
 
+use chrono::NaiveDate;
 use chrono::{Duration, Utc};
 use clap::{Arg, Command};
 use db::{
     business::company::{
         create_company, create_membership, Company, CompanyRole, CreateCompanyRequest, ProfileType,
     },
-    create_deal, create_identity, get_identity_by_email, init_db_with_url, Deal, User,
+    business::metrics::{
+        batch_upsert_market_value_metrics, batch_upsert_pie_chart_metrics, clear_all_metrics,
+        CreateMarketValueMetricRequest, CreatePieChartMetricRequest,
+    },
+    create_deal, create_identity, get_identity_by_email, init_db_with_url, list_deals, Deal, User,
 };
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use rust_decimal::Decimal;
 use serde_json::json;
-use std::{env, str::FromStr};
+use std::{collections::HashMap, env, str::FromStr};
 use uuid::Uuid;
 
 // ============================================================================
@@ -39,7 +49,7 @@ const MIN_OUTSTANDING_BALANCE_PCT: u32 = 60; // 60% of principal
 const MAX_OUTSTANDING_BALANCE_PCT: u32 = 95; // 95% of principal
 const MIN_MATURITY_MONTHS: i64 = 12; // 1 year
 const MAX_MATURITY_MONTHS: i64 = 60; // 5 years
-const MAX_DAYS_AGO_ORIGINATED: i64 = 90; // 0-3 months ago
+const MAX_DAYS_AGO_ORIGINATED: i64 = 365; // 0-1 year ago
 
 // Company generation
 const MIN_RANDOM_COMPANIES: usize = 6;
@@ -145,6 +155,249 @@ const COMPANY_PREFIXES: &[&str] = &[
     "Future",
 ];
 
+/// Refresh all metrics data after deal population
+async fn refresh_metrics_data(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    let mut tx = pool.begin().await?;
+
+    // Clear existing metrics
+    clear_all_metrics(&mut tx).await?;
+
+    // Get ALL deals for calculation (set high limit to avoid pagination issues)
+    let deals_result = list_deals(pool, Some(1_000_000), None, None, None, None, None).await?;
+    let deals = &deals_result.deals;
+
+    if deals.is_empty() {
+        println!("ℹ️ No deals found, skipping metrics calculation");
+        tx.commit().await?;
+        return Ok(());
+    }
+
+    println!("📊 Calculating metrics for {} deals", deals.len());
+
+    // Calculate market value metrics
+    let market_value_metrics = calculate_market_value_metrics(deals)?;
+    let inserted_market = batch_upsert_market_value_metrics(&mut tx, market_value_metrics).await?;
+
+    // Calculate pie chart metrics
+    let pie_chart_metrics = calculate_pie_chart_metrics(deals)?;
+    let inserted_pie = batch_upsert_pie_chart_metrics(&mut tx, pie_chart_metrics).await?;
+
+    tx.commit().await?;
+
+    println!(
+        "✅ Refreshed metrics: {} market value points, {} pie chart points",
+        inserted_market, inserted_pie
+    );
+
+    Ok(())
+}
+
+/// Calculate market value time series metrics for all deals
+fn calculate_market_value_metrics(
+    deals: &[Deal],
+) -> Result<Vec<CreateMarketValueMetricRequest>, Box<dyn std::error::Error>> {
+    let mut metrics = Vec::new();
+
+    // Calculate for both growth types
+    for growth_type in ["market_growth", "arda_growth"] {
+        // Group deals by date
+        let mut daily_totals: HashMap<NaiveDate, (Decimal, i32)> = HashMap::new();
+
+        for deal in deals {
+            let date = match growth_type {
+                "market_growth" => deal.originated_at.date_naive(),
+                "arda_growth" => deal.created_at.date_naive(),
+                _ => continue,
+            };
+
+            let entry = daily_totals.entry(date).or_insert((Decimal::ZERO, 0));
+            entry.0 += deal.principal_amount;
+            entry.1 += 1;
+        }
+
+        // Convert to cumulative time series
+        let mut sorted_dates: Vec<_> = daily_totals.keys().cloned().collect();
+        sorted_dates.sort();
+
+        let mut cumulative_value = Decimal::ZERO;
+        let mut cumulative_count = 0;
+
+        for date in sorted_dates {
+            let (daily_value, daily_count) = daily_totals[&date];
+            cumulative_value += daily_value;
+            cumulative_count += daily_count;
+
+            metrics.push(CreateMarketValueMetricRequest {
+                date_value: date,
+                growth_type: growth_type.to_string(),
+                filter_type: "all".to_string(),
+                entity_id: None,
+                cumulative_value,
+                deal_count: cumulative_count,
+            });
+        }
+    }
+
+    Ok(metrics)
+}
+
+/// Calculate pie chart distribution metrics for all deals
+fn calculate_pie_chart_metrics(
+    deals: &[Deal],
+) -> Result<Vec<CreatePieChartMetricRequest>, Box<dyn std::error::Error>> {
+    let mut metrics = Vec::new();
+
+    let chart_types = ["industry", "region", "asset_class"];
+    let time_ranges = ["all_time", "last_year"];
+
+    for chart_type in chart_types {
+        for time_range in time_ranges {
+            // Filter deals for time range
+            let filtered_deals: Vec<_> = if time_range == "last_year" {
+                let cutoff = chrono::Utc::now() - chrono::Duration::days(365);
+                deals
+                    .iter()
+                    .filter(|d| d.originated_at >= cutoff)
+                    .cloned()
+                    .collect()
+            } else {
+                deals.to_vec()
+            };
+
+            // Group deals by category
+            let mut category_totals: HashMap<String, (Decimal, i32)> = HashMap::new();
+            let mut total_value = Decimal::ZERO;
+
+            for deal in &filtered_deals {
+                let category = match chart_type {
+                    "industry" => deal.industry.as_deref().unwrap_or("Unknown").to_string(),
+                    "region" => deal.region.as_deref().unwrap_or("Unknown").to_string(),
+                    "asset_class" => deal.asset_class.as_deref().unwrap_or("Unknown").to_string(),
+                    _ => continue,
+                };
+
+                let entry = category_totals
+                    .entry(category)
+                    .or_insert((Decimal::ZERO, 0));
+                entry.0 += deal.principal_amount;
+                entry.1 += 1;
+                total_value += deal.principal_amount;
+            }
+
+            // Calculate percentages and create metrics
+            for (category, (value, count)) in category_totals {
+                let percentage = if total_value > Decimal::ZERO {
+                    (value / total_value * Decimal::from(100)).round_dp(2)
+                } else {
+                    Decimal::ZERO
+                };
+
+                metrics.push(CreatePieChartMetricRequest {
+                    chart_type: chart_type.to_string(),
+                    filter_type: "all".to_string(),
+                    entity_id: None,
+                    time_range: time_range.to_string(),
+                    category,
+                    value,
+                    percentage,
+                    deal_count: count,
+                });
+            }
+        }
+    }
+
+    Ok(metrics)
+}
+
+/// Create a deal with custom originated_at and created_at timestamps
+async fn create_deal_with_custom_dates(
+    pool: &sqlx::PgPool,
+    originator_id: Uuid,
+    investor_id: Option<Uuid>,
+    principal_amount: Decimal,
+    interest_rate_bps: i32,
+    maturity_date: Option<chrono::DateTime<Utc>>,
+    deal_status: Option<&str>,
+    custom_deal_id: Option<&str>,
+    status: Option<&str>,
+    industry: Option<&str>,
+    document_ids: Option<&serde_json::Value>,
+    title: Option<&str>,
+    description: Option<&str>,
+    risk_level: Option<&str>,
+    asset_class: Option<&str>,
+    region: Option<&str>,
+    minimum_investment: Option<Decimal>,
+    originated_at: chrono::DateTime<Utc>,
+    created_at: chrono::DateTime<Utc>,
+) -> Result<Deal, sqlx::Error> {
+    let id = Uuid::new_v4();
+    let default_json = serde_json::Value::Array(vec![]);
+    let doc_ids = document_ids.unwrap_or(&default_json);
+
+    sqlx::query!(
+        r#"
+        INSERT INTO deals (
+            id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, deal_status, maturity_date, originated_at, created_at, updated_at,
+            custom_deal_id, status, industry, document_ids,
+            title, description, risk_level, asset_class, region, minimum_investment
+        )
+        VALUES (
+            $1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $9,
+            $10, $11, $12, $13,
+            $14, $15, $16, $17, $18, $19
+        )
+        "#,
+        id,
+        originator_id,
+        investor_id,
+        principal_amount,
+        interest_rate_bps,
+        deal_status.unwrap_or("originated"),
+        maturity_date,
+        originated_at,
+        created_at,
+        custom_deal_id,
+        status.unwrap_or("draft"),
+        industry,
+        doc_ids,
+        title,
+        description,
+        risk_level,
+        asset_class,
+        region,
+        minimum_investment
+    )
+    .execute(pool)
+    .await?;
+
+    let deal = Deal {
+        id,
+        originator_id,
+        investor_id,
+        principal_amount,
+        outstanding_balance: principal_amount,
+        interest_rate_bps,
+        deal_status: deal_status.unwrap_or("originated").to_string(),
+        originated_at,
+        maturity_date,
+        created_at,
+        updated_at: created_at,
+        custom_deal_id: custom_deal_id.map(|s| s.to_string()),
+        status: status.unwrap_or("draft").to_string(),
+        industry: industry.map(|s| s.to_string()),
+        document_ids: Some(doc_ids.clone()),
+        title: title.map(|s| s.to_string()),
+        description: description.map(|s| s.to_string()),
+        risk_level: risk_level.map(|s| s.to_string()),
+        asset_class: asset_class.map(|s| s.to_string()),
+        region: region.map(|s| s.to_string()),
+        minimum_investment,
+    };
+
+    Ok(deal)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
@@ -152,7 +405,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Parse command line arguments
     let matches = Command::new("Deal Data Populator")
-        .about("Generate realistic deal data for testing")
+        .about("Generate realistic deal data for testing and refresh metrics cache")
         .arg(
             Arg::new("email")
                 .long("email")
@@ -211,8 +464,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🎉 Deal data population completed successfully!");
     println!("\n📊 Test your data:");
     println!("GET http://localhost:8080/api/v1/deals");
+    println!("\n📈 Test your metrics:");
+    println!("GET http://localhost:8080/api/v1/metrics/market-value?growth_type=market_growth&filter_by=all&time_range=all_time");
+    println!("GET http://localhost:8080/api/v1/metrics/pie-charts?chart_type=industry&filter_by=all&time_range=all_time");
     if let Some(user_email) = email {
-        println!("👤 User-specific deals:");
+        println!("\n👤 User-specific deals:");
         println!(
             "GET http://localhost:8080/api/v1/deals?email={}",
             user_email
@@ -230,6 +486,14 @@ async fn clear_existing_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
         .await?;
     sqlx::query!("DELETE FROM deals").execute(pool).await?;
 
+    // Clear metrics data (must be done before deleting companies due to FK constraints)
+    sqlx::query!("DELETE FROM metrics_market_value_daily")
+        .execute(pool)
+        .await?;
+    sqlx::query!("DELETE FROM metrics_pie_chart_data")
+        .execute(pool)
+        .await?;
+
     // Optionally clear test companies (keep real user companies)
     sqlx::query!("DELETE FROM company_memberships WHERE company_id IN (SELECT id FROM companies WHERE name LIKE '%Test Corp%' OR name LIKE '%Random Corp%')")
         .execute(pool)
@@ -240,7 +504,7 @@ async fn clear_existing_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    println!("✅ Cleared existing deal and test company data");
+    println!("✅ Cleared existing deal, metrics, and test company data");
     Ok(())
 }
 
@@ -305,6 +569,12 @@ async fn generate_user_deals(
     }
 
     println!("✅ Created {} deals for user {}", count, email);
+
+    // Refresh metrics after creating deals
+    println!("📊 Refreshing metrics data...");
+    refresh_metrics_data(pool).await?;
+    println!("✅ Metrics data refreshed successfully");
+
     Ok(())
 }
 
@@ -337,6 +607,12 @@ async fn generate_random_deals(
     }
 
     println!("✅ Generated {} random deals", count);
+
+    // Refresh metrics after creating deals
+    println!("📊 Refreshing metrics data...");
+    refresh_metrics_data(pool).await?;
+    println!("✅ Metrics data refreshed successfully");
+
     Ok(())
 }
 
@@ -498,8 +774,8 @@ async fn create_realistic_deal(
         principal_amount * Decimal::from_str(&format!("0.{}", percentage)).unwrap()
     };
 
-    // Create the deal
-    let deal = create_deal(
+    // Create the deal with custom timestamps
+    let deal = create_deal_with_custom_dates(
         pool,
         originator_id,
         investor_id,
@@ -523,7 +799,9 @@ async fn create_realistic_deal(
         Some(selected_risk),
         Some(ASSET_CLASSES.choose(&mut rng).unwrap()),
         Some(REGIONS.choose(&mut rng).unwrap()),
-        None, // minimum_investment
+        None,          // minimum_investment
+        originated_at, // custom originated_at
+        originated_at, // set created_at to same as originated_at
     )
     .await?;
 

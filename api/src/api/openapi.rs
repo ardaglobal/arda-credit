@@ -109,6 +109,12 @@ Document taxonomy operations for structured credit document management.
 📄 **All Taxonomy Docs**: [/api-docs/taxonomy.json](./taxonomy.json) (~10-12KB - All 11 document types & schemas only)
 "#;
 
+const METRICS_TAG_DESC: &str = r#"
+Market metrics and analytics endpoints for dashboard visualizations including market value charts and distribution analytics.
+
+📄 **Focused API Spec**: [/api-docs/metrics.json](./metrics.json) (~2-3KB - Metrics endpoints & schemas only)
+"#;
+
 const DEV_TAG_DESC: &str = r#"
 Development and testing utilities: health checks, API info, faucet operations (local/staging only)
 
@@ -483,6 +489,11 @@ fn default_limit() -> u32 {
         crate::handlers::taxonomy::secondary_trades::create_secondary_trades_batch_handler,
         crate::handlers::taxonomy::secondary_trades::update_secondary_trade_handler,
         crate::handlers::taxonomy::secondary_trades::delete_secondary_trade_handler,
+
+        // Metrics endpoints
+        crate::handlers::metrics::get_market_value,
+        crate::handlers::metrics::get_pie_chart_data,
+        crate::handlers::metrics::refresh_metrics,
     ),
     tags(
         // Primary API Groups (9 main groups + Dev) - each with direct access to focused API spec
@@ -506,6 +517,7 @@ fn default_limit() -> u32 {
         (name = "Taxonomy - Participation Agreements", description = TAXONOMY_TAG_DESC),
         (name = "Taxonomy - SSI Records", description = TAXONOMY_TAG_DESC),
         (name = "Taxonomy - Secondary Trades", description = TAXONOMY_TAG_DESC),
+        (name = "Metrics", description = METRICS_TAG_DESC),
         (name = "Dev", description = DEV_TAG_DESC)
     ),
     components(schemas(
@@ -572,6 +584,18 @@ fn default_limit() -> u32 {
         AccountFinancialTransactionResponse,
         UnifiedFinancialTransactionResponse,
         FinancialSummaryResponse,
+
+        // Metrics types
+        crate::handlers::metrics::MarketValueParams,
+        crate::handlers::metrics::PieChartParams,
+        crate::handlers::metrics::MarketValueResponse,
+        crate::handlers::metrics::MarketValueMetadata,
+        crate::handlers::metrics::PieChartResponse,
+        crate::handlers::metrics::PieChartMetadata,
+        crate::handlers::metrics::MetricsRefreshResponse,
+        crate::handlers::metrics::MetricsErrorResponse,
+        crate::services::metrics_service::MarketValueDataPoint,
+        crate::services::metrics_service::PieChartDataPoint,
 
         // Deal types (consolidated - includes marketplace and transfer operations)
         CreateDealRequest,

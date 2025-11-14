@@ -58,6 +58,24 @@ use arda_credit_db::{
 use uuid::Uuid;
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Trigger async metrics refresh after deal operations
+///
+/// This function sends a non-blocking command to the background batch processor
+/// to refresh metrics. The API response is not delayed by the metrics refresh.
+fn trigger_metrics_refresh_async(state: &ApiState) {
+    if let Some(batch_processor) = &state.batch_processor {
+        if let Err(e) = batch_processor.refresh_metrics() {
+            warn!("Failed to trigger async metrics refresh: {}", e);
+        } else {
+            info!("📊 Triggered async metrics refresh after deal operation");
+        }
+    }
+}
+
+// ============================================================================
 // DEAL MANAGEMENT TYPES (MOVED FROM rest.rs)
 // ============================================================================
 
@@ -151,8 +169,8 @@ pub struct ListDealsQuery {
 pub struct ListDealsResponse {
     // was ListLoansResponse
     pub deals: Vec<DealDetailsResponse>, // was loans
-    pub total_count: usize,
-    pub has_more: bool,
+    /// Total number of deals in the database matching the filters (not just the returned count)
+    pub total_count: i64,
 }
 
 /// Deal statistics response (converted from LoanStatsResponse)
@@ -587,6 +605,9 @@ pub async fn create_deal_endpoint(
     metrics::histogram!("function_execution_duration_seconds", "function" => "create_deal")
         .record(duration.as_secs_f64());
 
+    // Trigger async metrics refresh if enabled
+    trigger_metrics_refresh_async(&state);
+
     info!("✅ Deal created successfully: {}", response.deal_id); // updated log message
     Ok(Json(response))
 }
@@ -638,7 +659,7 @@ pub async fn list_deals_endpoint(
         None
     };
 
-    let deals = list_deals(
+    let result = list_deals(
         // was list_loans
         &state.pool,
         query.limit.map(|l| l as i64),
@@ -661,7 +682,8 @@ pub async fn list_deals_endpoint(
     let is_anonymized = query.anon.unwrap_or(false);
 
     // Convert to response format
-    let deal_responses: Vec<DealDetailsResponse> = deals // was LoanDetailsResponse
+    let deal_responses: Vec<DealDetailsResponse> = result
+        .deals // was LoanDetailsResponse
         .into_iter()
         .map(|deal| {
             // Convert document IDs from JSON to Vec<String> for response
@@ -712,20 +734,17 @@ pub async fn list_deals_endpoint(
         })
         .collect();
 
-    let total_count = deal_responses.len();
-    // Default to 50 items for frontend batch fetching (displays 25, fetches 50)
-    let default_limit = if is_anonymized { 50 } else { 100 };
-    let limit = query.limit.unwrap_or(default_limit) as usize;
-    let has_more = total_count >= limit;
-
     let response = ListDealsResponse {
         // was ListLoansResponse
         deals: deal_responses, // was loans
-        total_count,
-        has_more,
+        total_count: result.total_count,
     };
 
-    info!("✅ API: Listed {} deals", response.total_count); // updated log message
+    info!(
+        "✅ API: Listed {} of {} total deals",
+        response.deals.len(),
+        response.total_count
+    ); // updated log message
     Ok(Json(response))
 }
 
@@ -760,7 +779,7 @@ pub async fn get_deals_by_user_id_endpoint(
         )
     })?;
 
-    let deals = get_deals_by_user_id(
+    let result = get_deals_by_user_id(
         &state.pool,
         user_uuid,
         query.limit.map(|l| l as i64),
@@ -777,7 +796,8 @@ pub async fn get_deals_by_user_id_endpoint(
     })?;
 
     // Convert to response format
-    let deal_responses: Vec<DealDetailsResponse> = deals
+    let deal_responses: Vec<DealDetailsResponse> = result
+        .deals
         .into_iter()
         .map(|deal| DealDetailsResponse {
             deal_id: deal.id.to_string(),
@@ -804,19 +824,16 @@ pub async fn get_deals_by_user_id_endpoint(
         })
         .collect();
 
-    let total_count = deal_responses.len();
-    let limit = query.limit.unwrap_or(100) as usize;
-    let has_more = total_count >= limit;
-
     let response = ListDealsResponse {
         deals: deal_responses,
-        total_count,
-        has_more,
+        total_count: result.total_count,
     };
 
     info!(
-        "✅ API: Found {} deals for user {}",
-        response.total_count, user_id
+        "✅ API: Found {} of {} total deals for user {}",
+        response.deals.len(),
+        response.total_count,
+        user_id
     );
     Ok(Json(response))
 }
@@ -854,7 +871,7 @@ pub async fn get_deals_by_company_endpoint(
         )
     })?;
 
-    let deals = arda_credit_db::get_deals_by_company_id(
+    let result = arda_credit_db::get_deals_by_company_id(
         &state.pool,
         company_uuid,
         query.limit.map(|l| l as i64),
@@ -871,7 +888,8 @@ pub async fn get_deals_by_company_endpoint(
     })?;
 
     // Convert to response format
-    let deal_responses: Vec<DealDetailsResponse> = deals
+    let deal_responses: Vec<DealDetailsResponse> = result
+        .deals
         .into_iter()
         .map(|deal| {
             // Convert document IDs from JSON to Vec<String> for response
@@ -907,19 +925,16 @@ pub async fn get_deals_by_company_endpoint(
         })
         .collect();
 
-    let total_count = deal_responses.len();
-    let limit = query.limit.unwrap_or(100) as usize;
-    let has_more = total_count >= limit;
-
     let response = ListDealsResponse {
         deals: deal_responses,
-        total_count,
-        has_more,
+        total_count: result.total_count,
     };
 
     info!(
-        "✅ API: Found {} deals for company {}",
-        response.total_count, company_id
+        "✅ API: Found {} of {} total deals for company {}",
+        response.deals.len(),
+        response.total_count,
+        company_id
     );
     Ok(Json(response))
 }
@@ -956,7 +971,7 @@ pub async fn get_draft_deals_by_company_endpoint(
         )
     })?;
 
-    let deals = arda_credit_db::get_draft_deals_by_company_id(
+    let result = arda_credit_db::get_draft_deals_by_company_id(
         &state.pool,
         company_uuid,
         query.limit.map(|l| l as i64),
@@ -972,7 +987,8 @@ pub async fn get_draft_deals_by_company_endpoint(
     })?;
 
     // Convert to response format
-    let deal_responses: Vec<DealDetailsResponse> = deals
+    let deal_responses: Vec<DealDetailsResponse> = result
+        .deals
         .into_iter()
         .map(|deal| {
             // Convert document IDs from JSON to Vec<String> for response
@@ -1008,19 +1024,16 @@ pub async fn get_draft_deals_by_company_endpoint(
         })
         .collect();
 
-    let total_count = deal_responses.len();
-    let limit = query.limit.unwrap_or(100) as usize;
-    let has_more = total_count >= limit;
-
     let response = ListDealsResponse {
         deals: deal_responses,
-        total_count,
-        has_more,
+        total_count: result.total_count,
     };
 
     info!(
-        "✅ API: Found {} draft deals for company {}",
-        response.total_count, company_id
+        "✅ API: Found {} of {} total draft deals for company {}",
+        response.deals.len(),
+        response.total_count,
+        company_id
     );
     Ok(Json(response))
 }
@@ -1363,6 +1376,9 @@ pub async fn update_deal_endpoint(
                 deal_details, // was loan_details
             };
 
+            // Trigger async metrics refresh if enabled
+            trigger_metrics_refresh_async(&state);
+
             info!("✅ API: Deal updated successfully: {}", deal_id); // updated log message
             Ok(Json(response))
         }
@@ -1415,6 +1431,9 @@ pub async fn delete_deal_endpoint(
         deleted_at: Utc::now(),
         final_status: "closed".to_string(),
     };
+
+    // Trigger async metrics refresh if enabled
+    trigger_metrics_refresh_async(&_state);
 
     info!("✅ API: Deal closed successfully"); // updated log message
     Ok(Json(response))

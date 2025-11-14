@@ -169,6 +169,8 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
             version: "1.0.0".to_string(),
             max_batch_size: 10,
             enable_debug_endpoints: true,
+            metrics_refresh_enabled: false, // Disabled in tests
+            metrics_refresh_interval_hours: 24,
         },
         batch_processor: None,
         ads_service,
@@ -254,6 +256,8 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
             version: "1.0.0".to_string(),
             max_batch_size: 50,
             enable_debug_endpoints: true,
+            metrics_refresh_enabled: false, // Disabled in tests
+            metrics_refresh_interval_hours: 24,
         },
         batch_processor: None,
         ads_service,
