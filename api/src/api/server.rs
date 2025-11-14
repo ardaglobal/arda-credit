@@ -158,6 +158,15 @@ impl ApiServer {
             e
         })?;
 
+        // Initialize metrics cache
+        info!("📊 Initializing metrics cache");
+        let cache_config = crate::services::MetricsCacheConfig {
+            ttl: std::time::Duration::from_secs(config.api_config.metrics_cache_ttl_seconds),
+            max_entries: config.api_config.metrics_cache_max_entries,
+            enable_stats: config.api_config.metrics_cache_enabled,
+        };
+        let metrics_cache = Arc::new(crate::services::MetricsCache::new(cache_config));
+
         // Create API state
         let state = ApiState {
             pool,
@@ -172,6 +181,7 @@ impl ApiServer {
             withdrawal_executor: None, // Not configured in this constructor
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
+            metrics_cache,
         };
 
         let server = Self { config, state };
@@ -300,6 +310,15 @@ impl ApiServer {
             e
         })?;
 
+        // Initialize metrics cache
+        info!("📊 Initializing metrics cache");
+        let cache_config = crate::services::MetricsCacheConfig {
+            ttl: std::time::Duration::from_secs(config.api_config.metrics_cache_ttl_seconds),
+            max_entries: config.api_config.metrics_cache_max_entries,
+            enable_stats: config.api_config.metrics_cache_enabled,
+        };
+        let metrics_cache = Arc::new(crate::services::MetricsCache::new(cache_config));
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
@@ -313,6 +332,7 @@ impl ApiServer {
             withdrawal_executor,
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
+            metrics_cache,
         };
 
         Ok(Self { config, state })
@@ -411,6 +431,7 @@ impl ApiServer {
             withdrawal_executor: self.state.withdrawal_executor.clone(),
             metrics_handle: self.state.metrics_handle.clone(),
             email_rate_limiter: Some(email_rate_limiter),
+            metrics_cache: self.state.metrics_cache.clone(),
         };
 
         // Use REST API routes (includes health endpoints and state)

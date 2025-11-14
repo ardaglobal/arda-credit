@@ -24,6 +24,7 @@ pub mod deals;
 pub mod faucet;
 pub mod finance;
 pub mod loan_tape_handlers;
+pub mod metrics;
 pub mod taxonomy;
 pub mod users;
 
@@ -35,4 +36,5 @@ pub use deals::*;
 pub use faucet::*;
 pub use finance::*;
 pub use loan_tape_handlers::*;
+pub use metrics::*;
 pub use users::*;

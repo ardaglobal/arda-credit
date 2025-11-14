@@ -87,12 +87,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
-    // Create API configuration
+    // Create API configuration (using defaults for metrics settings from env vars)
     let api_config = ApiConfig {
-        server_name: "Batch Processing API".to_string(),
-        version: "1.0.0".to_string(),
         max_batch_size: args.max_batch_size,
         enable_debug_endpoints: args.debug,
+        ..Default::default()
     };
 
     // Create server configuration

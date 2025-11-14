@@ -34,7 +34,7 @@ use crate::handlers::{
 };
 use crate::services::batch_processor::BatchProcessorHandle;
 use crate::services::session_service::SessionService;
-use crate::services::{BalanceVerificationService, WithdrawalTransactionService};
+use crate::services::{BalanceVerificationService, MetricsCache, WithdrawalTransactionService};
 use arda_credit_db::{IndexedMerkleTreeADS, User};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -101,6 +101,7 @@ pub struct ApiState {
         Option<crate::services::simple_withdrawal_executor::SimpleWithdrawalExecutorHandle>,
     pub metrics_handle: Option<Arc<crate::utils::metrics::MetricsHandle>>,
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
+    pub metrics_cache: Arc<MetricsCache>,
 }
 
 /// Configuration for API server
@@ -110,6 +111,11 @@ pub struct ApiConfig {
     pub version: String,
     pub max_batch_size: u32,
     pub enable_debug_endpoints: bool,
+    pub metrics_refresh_enabled: bool,
+    pub metrics_refresh_interval_hours: u64,
+    pub metrics_cache_ttl_seconds: u64,
+    pub metrics_cache_max_entries: usize,
+    pub metrics_cache_enabled: bool,
 }
 
 impl Default for ApiConfig {
@@ -119,6 +125,26 @@ impl Default for ApiConfig {
             version: "1.0.0".to_string(),
             max_batch_size: 50,
             enable_debug_endpoints: false,
+            metrics_refresh_enabled: std::env::var("METRICS_REFRESH_ENABLED")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(true),
+            metrics_refresh_interval_hours: std::env::var("METRICS_REFRESH_INTERVAL_HOURS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(24),
+            metrics_cache_ttl_seconds: std::env::var("METRICS_CACHE_TTL_SECONDS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3600), // 1 hour default
+            metrics_cache_max_entries: std::env::var("METRICS_CACHE_MAX_ENTRIES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10000),
+            metrics_cache_enabled: std::env::var("METRICS_CACHE_ENABLED")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(true),
         }
     }
 }
@@ -158,6 +184,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/api-docs/payments.json", get(get_payments_spec_handler))
         .route("/api-docs/state.json", get(get_state_spec_handler))
         .route("/api-docs/taxonomy.json", get(get_taxonomy_spec_handler))
+        .route("/api-docs/metrics.json", get(get_metrics_spec_handler))
         .route("/api-docs/dev.json", get(get_dev_spec_handler))
         // Magic Link Authentication endpoints
         .route(paths::AUTH_MAGIC_LINK, post(request_magic_link))
@@ -180,6 +207,27 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::ADMIN_PLATFORM_METRICS,
             get(crate::handlers::users::admin::get_platform_metrics_endpoint),
+        )
+        // Metrics endpoints
+        .route(
+            paths::METRICS_MARKET_VALUE,
+            get(crate::handlers::metrics::get_market_value),
+        )
+        .route(
+            paths::METRICS_PIE_CHARTS,
+            get(crate::handlers::metrics::get_pie_chart_data),
+        )
+        .route(
+            paths::METRICS_REFRESH,
+            post(crate::handlers::metrics::refresh_metrics),
+        )
+        .route(
+            paths::METRICS_CACHE_STATS,
+            get(crate::handlers::metrics::get_cache_stats),
+        )
+        .route(
+            paths::METRICS_CACHE_MANAGE,
+            post(crate::handlers::metrics::manage_cache),
         )
         .route(
             paths::INVITE_CODE_GENERATE,
@@ -970,6 +1018,9 @@ fn filter_openapi_by_tags(
                 "Current",
                 "Trigger",
             ],
+            tags if tags.contains(&"Metrics") => {
+                vec!["Metrics", "Market", "Pie", "Chart", "Value", "Refresh"]
+            }
             tags if tags.contains(&"Dev") => vec!["Faucet", "Network", "Health", "Info"],
             _ => vec![
                 "Credit",
@@ -1074,6 +1125,11 @@ pub async fn get_taxonomy_spec_handler() -> Json<utoipa::openapi::OpenApi> {
             "Taxonomy - Secondary Trades",
         ],
     );
+    Json(spec)
+}
+
+pub async fn get_metrics_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Metrics"]);
     Json(spec)
 }
 

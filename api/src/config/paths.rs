@@ -481,6 +481,25 @@ pub const CONTRACT_CONFIG: &str = api_path!("/contract/config");
 pub const TRANSACTION_UPDATES_SSE: &str = api_path!("/transactions/updates");
 
 // ============================================================================
+// METRICS PATHS
+// ============================================================================
+
+/// Get market value time series data
+pub const METRICS_MARKET_VALUE: &str = api_path!("/metrics/market-value");
+
+/// Get pie chart distribution data
+pub const METRICS_PIE_CHARTS: &str = api_path!("/metrics/pie-charts");
+
+/// Refresh all metrics data
+pub const METRICS_REFRESH: &str = api_path!("/metrics/refresh");
+
+/// Get metrics cache statistics
+pub const METRICS_CACHE_STATS: &str = api_path!("/metrics/cache/stats");
+
+/// Manage metrics cache
+pub const METRICS_CACHE_MANAGE: &str = api_path!("/metrics/cache/manage");
+
+// ============================================================================
 // COMPANY MANAGEMENT PATHS
 // ============================================================================
 

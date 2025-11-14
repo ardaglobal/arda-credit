@@ -8,11 +8,13 @@
 
 pub mod company;
 pub mod marketplace;
+pub mod metrics;
 pub mod transfers;
 pub mod wallet;
 
 // Re-export commonly used types
 pub use company::*;
 pub use marketplace::*;
+pub use metrics::*;
 pub use transfers::*;
 pub use wallet::*;

@@ -23,6 +23,8 @@ pub mod email_service;
 pub mod kyc_service;
 pub mod llm_integration;
 pub mod magic_link_service;
+pub mod metrics_cache;
+pub mod metrics_service;
 pub mod session_service;
 pub mod simple_withdrawal_executor;
 pub mod team_invitation_service;
@@ -69,4 +71,13 @@ pub use ai_notification_service::{
 
 pub use llm_integration::{
     ChatPrompt, DocumentAnalysisPrompt, LlmProvider, LlmRequest, LlmResponse, LlmService,
+};
+
+pub use metrics_cache::{
+    CacheStats, MarketValueCacheKey, MetricsCache, MetricsCacheConfig, PieChartCacheKey,
+};
+
+pub use metrics_service::{
+    MarketValueDataPoint, MarketValueQuery, MetricsError, MetricsService, PieChartDataPoint,
+    PieChartQuery, RefreshResult,
 };
