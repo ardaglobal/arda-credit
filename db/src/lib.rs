@@ -84,6 +84,15 @@ pub use business::transfers::{
     TransferValidationRequest,
 };
 
+// Re-export metrics operations
+pub use business::metrics::{
+    batch_upsert_market_value_metrics, batch_upsert_pie_chart_metrics, clear_all_metrics,
+    delete_old_market_value_metrics, delete_pie_chart_metrics, get_market_value_metrics,
+    get_pie_chart_metrics, upsert_market_value_metric, upsert_pie_chart_metric,
+    CreateMarketValueMetricRequest, CreatePieChartMetricRequest, MetricsMarketValueDaily,
+    MetricsPieChartData,
+};
+
 // Re-export taxonomy operations
 pub use taxonomy::credit_agreements::{
     create_credit_agreement, create_credit_agreements_batch, delete_credit_agreement,
@@ -292,6 +301,7 @@ pub use db::{
     DealPayment,
     DealPaymentStatus,
     DealTransactionDb,
+    DealsWithCount,
     IncomingTransaction,
     InvestorProfile,
     InviteCodeInfo,

@@ -45,6 +45,12 @@ pub struct BatchProcessorConfig {
 
     /// Minimum time between batches to avoid too frequent processing
     pub min_batch_interval_seconds: u64,
+
+    /// Interval for metrics refresh in hours (default: 24 hours - daily)
+    pub metrics_refresh_interval_hours: u64,
+
+    /// Whether to enable metrics refresh
+    pub metrics_refresh_enabled: bool,
 }
 
 impl Default for BatchProcessorConfig {
@@ -55,6 +61,8 @@ impl Default for BatchProcessorConfig {
             max_batch_size: 50,
             enabled: true,
             min_batch_interval_seconds: 5, // Minimum 5 seconds between batches
+            metrics_refresh_interval_hours: 24, // Daily metrics refresh
+            metrics_refresh_enabled: true,
         }
     }
 }
@@ -63,6 +71,8 @@ impl From<&ApiConfig> for BatchProcessorConfig {
     fn from(api_config: &ApiConfig) -> Self {
         Self {
             max_batch_size: api_config.max_batch_size,
+            metrics_refresh_enabled: api_config.metrics_refresh_enabled,
+            metrics_refresh_interval_hours: api_config.metrics_refresh_interval_hours,
             ..Default::default()
         }
     }
@@ -77,6 +87,9 @@ impl From<&ApiConfig> for BatchProcessorConfig {
 pub enum BatchProcessorCommand {
     /// Trigger manual batch processing
     TriggerBatch,
+
+    /// Trigger manual metrics refresh
+    RefreshMetrics,
 
     /// Stop the batch processor
     Stop,
@@ -135,6 +148,13 @@ impl BatchProcessorHandle {
         self.command_tx
             .send(BatchProcessorCommand::TriggerBatch)
             .map_err(|e| format!("Failed to send trigger command: {}", e))
+    }
+
+    /// Trigger manual metrics refresh
+    pub fn refresh_metrics(&self) -> Result<(), String> {
+        self.command_tx
+            .send(BatchProcessorCommand::RefreshMetrics)
+            .map_err(|e| format!("Failed to send metrics refresh command: {}", e))
     }
 
     /// Stop the batch processor
@@ -208,6 +228,16 @@ impl BackgroundBatchProcessor {
         let mut timer = interval(Duration::from_secs(self.config.timer_interval_seconds));
         let mut last_batch_time = Instant::now();
 
+        // Setup metrics refresh timer if enabled
+        let mut metrics_timer = if self.config.metrics_refresh_enabled {
+            Some(interval(Duration::from_secs(
+                self.config.metrics_refresh_interval_hours * 3600,
+            )))
+        } else {
+            None
+        };
+        let mut _last_metrics_refresh = Instant::now();
+
         loop {
             tokio::select! {
                 // Handle timer-based triggers
@@ -229,6 +259,29 @@ impl BackgroundBatchProcessor {
                     }
                 }
 
+                // Handle metrics refresh timer
+                _ = async {
+                    match &mut metrics_timer {
+                        Some(timer) => timer.tick().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if self.config.metrics_refresh_enabled {
+                        info!("📊 Daily metrics refresh triggered");
+                        match self.process_metrics_refresh("timer").await {
+                            Ok(result) => {
+                                _last_metrics_refresh = Instant::now();
+                                info!("✅ Metrics refresh completed: {} market points, {} pie chart points",
+                                    result.market_value_points, result.pie_chart_points);
+                            }
+                            Err(e) => {
+                                error!("❌ Scheduled metrics refresh failed: {}", e);
+                                self.increment_errors().await;
+                            }
+                        }
+                    }
+                }
+
                 // Handle commands
                 Some(command) = self.command_rx.recv() => {
                     match command {
@@ -244,6 +297,21 @@ impl BackgroundBatchProcessor {
                                 }
                                 Err(e) => {
                                     error!("Manual trigger batch processing failed: {}", e);
+                                    self.increment_errors().await;
+                                }
+                            }
+                        }
+
+                        BatchProcessorCommand::RefreshMetrics => {
+                            info!("📊 Manual metrics refresh trigger received");
+                            match self.process_metrics_refresh("manual").await {
+                                Ok(result) => {
+                                    _last_metrics_refresh = Instant::now();
+                                    info!("✅ Manual metrics refresh completed: {} market points, {} pie chart points",
+                                        result.market_value_points, result.pie_chart_points);
+                                }
+                                Err(e) => {
+                                    error!("❌ Manual metrics refresh failed: {}", e);
                                     self.increment_errors().await;
                                 }
                             }
@@ -1164,6 +1232,43 @@ impl BackgroundBatchProcessor {
             Err(e) => {
                 error!("❌ Failed to submit batch {} to contract: {}", batch.id, e);
                 Err(format!("Smart contract submission failed: {}", e))
+            }
+        }
+    }
+
+    /// Process metrics refresh
+    async fn process_metrics_refresh(
+        &self,
+        trigger_type: &str,
+    ) -> Result<crate::services::RefreshResult, String> {
+        use crate::services::MetricsService;
+
+        info!(
+            "📊 Processing metrics refresh (triggered by: {})",
+            trigger_type
+        );
+        let start_time = Instant::now();
+
+        let metrics_service = MetricsService::new(self.pool.clone());
+
+        match metrics_service.refresh_all_metrics().await {
+            Ok(result) => {
+                let processing_duration = start_time.elapsed();
+                info!(
+                    "✅ Metrics refresh completed in {:?}: {} market value points, {} pie chart points",
+                    processing_duration,
+                    result.market_value_points,
+                    result.pie_chart_points
+                );
+                Ok(result)
+            }
+            Err(e) => {
+                let processing_duration = start_time.elapsed();
+                error!(
+                    "❌ Metrics refresh failed after {:?}: {}",
+                    processing_duration, e
+                );
+                Err(format!("Metrics refresh failed: {}", e))
             }
         }
     }
