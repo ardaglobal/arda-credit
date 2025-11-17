@@ -1,0 +1,20 @@
+name: Deploy to Easypanel
+
+on:
+  workflow_call:
+    secrets:
+      EASYPANEL_DEPLOY_TOKEN:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trigger Easypanel Deployment
+        run: |
+          curl -X POST \
+            https://panel.arda.xyz/api/deploy/${{ secrets.EASYPANEL_DEPLOY_TOKEN }}
