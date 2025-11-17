@@ -54,13 +54,11 @@ COPY --from=builder /app/target/release/populate_deal_data ./populate_deal_data
 COPY --from=builder /app/target/release/populate_test_data ./populate_test_data
 COPY --from=builder /usr/local/cargo/bin/sqlx ./sqlx
 COPY --from=builder /app/db/migrations ./migrations
-# Copy population helper script
-COPY --from=builder /app/docker-populate.sh ./docker-populate.sh
 # Copy cast from Foundry for faucet functionality
 COPY --from=foundry /usr/local/bin/cast /usr/local/bin/cast
 
 # Ensure binaries are executable and set ownership
-RUN chmod +x /usr/local/bin/cast ./server ./populate_deal_data ./populate_test_data ./sqlx ./docker-populate.sh && \
+RUN chmod +x /usr/local/bin/cast ./server ./populate_deal_data ./populate_test_data ./sqlx && \
     chown -R appuser:appuser /app
 
 USER appuser
