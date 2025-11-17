@@ -4670,6 +4670,14 @@ pub async fn create_loan_tape_record(
     let id = uuid::Uuid::new_v4();
     let now = Utc::now();
 
+    // Set status based on investor_id presence to satisfy constraint
+    // deals_finalized_investor_check requires investor_id for finalized status
+    let status = if investor_id.is_none() {
+        "draft"
+    } else {
+        "finalized"
+    };
+
     sqlx::query!(
         r#"
         INSERT INTO deals (
@@ -4684,10 +4692,10 @@ pub async fn create_loan_tape_record(
         VALUES (
             $1, $2, $3, $4, $5,
             $6, $7, $8, $9,
-            $10, $10, $11, 'finalized',
-            $12, $13, $14, $15, $16,
-            $17, $18, $19, $20, $21, $22, $23,
-            $24, $25,
+            $10, $10, $11, $12,
+            $13, $14, $15, $16, $17,
+            $18, $19, $20, $21, $22, $23, $24,
+            $25, $26,
             '[]'::jsonb, NULL
         )
         "#,
@@ -4702,6 +4710,7 @@ pub async fn create_loan_tape_record(
         maturity_date,
         now,
         custom_deal_id,
+        status,
         title,
         description,
         payment_frequency,
