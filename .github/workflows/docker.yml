@@ -93,3 +93,10 @@ jobs:
           platforms: linux/amd64
           cache-from: type=s3,region=us-east-1,bucket=codebuild-s3-cache-arda,prefix=output/arda-credit,mode=max
           cache-to: type=s3,region=us-east-1,bucket=codebuild-s3-cache-arda,prefix=output/arda-credit,mode=max
+
+  deploy-easypanel:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/easypanel.yml
+    secrets:
+      EASYPANEL_DEPLOY_TOKEN: ${{ secrets.EASYPANEL_DEPLOY_TOKEN }}
