@@ -84,32 +84,15 @@ pub struct BulkLoanTapeResponse {
     responses(
         (status = 201, description = "Loan tape record created successfully", body = LoanTapeResponse),
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
-        (status = 401, description = "Unauthorized - authentication required", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse),
-    ),
-    security(
-        ("bearer" = [])
     ),
     tag = "Loan Tape"
 )]
-#[instrument(skip(state, headers))]
+#[instrument(skip(state))]
 pub async fn create_loan_tape_handler(
     State(state): State<ApiState>,
-    headers: HeaderMap,
     Json(req): Json<CreateLoanTapeRequest>,
 ) -> Result<(StatusCode, Json<LoanTapeResponse>), (StatusCode, Json<ErrorResponse>)> {
-    // Authenticate user
-    let _user = extract_current_user(&headers).ok_or_else(|| {
-        error!("Authentication failed: missing or invalid session");
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Unauthorized".to_string(),
-                details: Some("Missing or invalid session token".to_string()),
-            }),
-        )
-    })?;
-
     info!(
         "Creating loan tape record: originator={}, investor={:?}, amount={}",
         req.originator_id, req.investor_id, req.principal_amount
@@ -209,32 +192,15 @@ pub async fn create_loan_tape_handler(
     responses(
         (status = 201, description = "Loan tape records created successfully", body = BulkLoanTapeResponse),
         (status = 400, description = "Invalid request parameters", body = ErrorResponse),
-        (status = 401, description = "Unauthorized - authentication required", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse),
-    ),
-    security(
-        ("bearer" = [])
     ),
     tag = "Loan Tape"
 )]
-#[instrument(skip(state, headers))]
+#[instrument(skip(state))]
 pub async fn create_bulk_loan_tape_handler(
     State(state): State<ApiState>,
-    headers: HeaderMap,
     Json(req): Json<BulkCreateLoanTapeRequest>,
 ) -> Result<(StatusCode, Json<BulkLoanTapeResponse>), (StatusCode, Json<ErrorResponse>)> {
-    // Authenticate user
-    let _user = extract_current_user(&headers).ok_or_else(|| {
-        error!("Authentication failed: missing or invalid session");
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Unauthorized".to_string(),
-                details: Some("Missing or invalid session token".to_string()),
-            }),
-        )
-    })?;
-
     if req.records.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
