@@ -29,7 +29,7 @@ RUN cargo build --release --bin server
 
 # Build scripts binaries
 WORKDIR /app/scripts
-RUN cargo build --release --bin populate_deal_data --bin populate_test_data
+RUN cargo build --release --bin populate_deal_data
 
 # Install sqlx CLI
 RUN cargo install --version 0.7.4 sqlx-cli --no-default-features --features postgres,rustls
@@ -51,14 +51,13 @@ WORKDIR /app
 # Copy binaries and migrations
 COPY --from=builder /app/target/release/server ./server
 COPY --from=builder /app/target/release/populate_deal_data ./populate_deal_data
-COPY --from=builder /app/target/release/populate_test_data ./populate_test_data
 COPY --from=builder /usr/local/cargo/bin/sqlx ./sqlx
 COPY --from=builder /app/db/migrations ./migrations
 # Copy cast from Foundry for faucet functionality
 COPY --from=foundry /usr/local/bin/cast /usr/local/bin/cast
 
 # Ensure binaries are executable and set ownership
-RUN chmod +x /usr/local/bin/cast ./server ./populate_deal_data ./populate_test_data ./sqlx && \
+RUN chmod +x /usr/local/bin/cast ./server ./populate_deal_data ./sqlx && \
     chown -R appuser:appuser /app
 
 USER appuser
