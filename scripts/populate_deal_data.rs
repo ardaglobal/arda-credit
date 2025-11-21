@@ -163,7 +163,8 @@ async fn refresh_metrics_data(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::er
     clear_all_metrics(&mut tx).await?;
 
     // Get ALL deals for calculation (set high limit to avoid pagination issues)
-    let deals_result = list_deals(pool, Some(1_000_000), None, None, None, None, None).await?;
+    let deals_result =
+        list_deals(pool, Some(1_000_000), None, None, None, None, None, None).await?;
     let deals = &deals_result.deals;
 
     if deals.is_empty() {
@@ -375,6 +376,8 @@ async fn create_deal_with_custom_dates(
         id,
         originator_id,
         investor_id,
+        borrower_id: None,         // Optional third-party borrower
+        borrower_legal_name: None, // Borrower company legal name
         principal_amount,
         outstanding_balance: principal_amount,
         interest_rate_bps,
