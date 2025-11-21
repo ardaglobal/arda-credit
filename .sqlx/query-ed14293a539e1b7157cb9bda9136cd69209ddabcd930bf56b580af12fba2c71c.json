@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE deals  -- was loans\n        SET\n            principal_amount = $2,\n            outstanding_balance = $3,\n            interest_rate_bps = $4,\n            deal_status = $5,\n            maturity_date = $6,\n            borrower_id = $8,\n            custom_deal_id = $9,\n            status = $10,\n            title = $11,\n            description = $12,\n            risk_level = $13,\n            asset_class = $14,\n            region = $15,\n            minimum_investment = $16,\n            updated_at = $7\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Numeric",
+        "Numeric",
+        "Int4",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ed14293a539e1b7157cb9bda9136cd69209ddabcd930bf56b580af12fba2c71c"
+}

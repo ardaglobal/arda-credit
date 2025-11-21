@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            dl.listing_id,\n            dl.deal_id,              -- was loan_id, now deal_id\n            dl.seller_id,\n            dl.asking_price,\n            dl.description,\n            dl.listed_at,\n            dl.expires_at,\n            dl.status as listing_status,\n            d.originator_id,         -- was borrower_id\n            d.investor_id,           -- was lender_id\n            d.principal_amount,\n            d.outstanding_balance,\n            d.interest_rate_bps,\n            d.deal_status,\n            d.originated_at,\n            d.maturity_date\n        FROM deal_listings dl       -- was loan_listings\n        JOIN deals d ON dl.deal_id = d.id  -- was loans, loan_id\n        WHERE dl.status != 'delisted'  -- Exclude manually delisted listings\n          AND ($1::text IS NULL OR dl.status = $1)\n        ORDER BY dl.listed_at DESC\n        LIMIT $2\n        ",
+  "query": "\n        SELECT\n            dl.listing_id,\n            dl.deal_id,              -- was loan_id, now deal_id\n            dl.seller_id,\n            dl.asking_price,\n            dl.description,\n            dl.listed_at,\n            dl.expires_at,\n            dl.status as listing_status,\n            d.originator_id,         -- was borrower_id\n            d.investor_id,           -- was lender_id\n            d.borrower_id,           -- Company ID of borrower (optional)\n            bc.company_name as borrower_legal_name,  -- Borrower company legal name\n            d.principal_amount,\n            d.outstanding_balance,\n            d.interest_rate_bps,\n            d.deal_status,\n            d.originated_at,\n            d.maturity_date\n        FROM deal_listings dl       -- was loan_listings\n        JOIN deals d ON dl.deal_id = d.id  -- was loans, loan_id\n        LEFT JOIN companies bc ON d.borrower_id = bc.id\n        WHERE dl.status != 'delisted'  -- Exclude manually delisted listings\n          AND ($1::text IS NULL OR dl.status = $1)\n        ORDER BY dl.listed_at DESC\n        LIMIT $2\n        ",
   "describe": {
     "columns": [
       {
@@ -55,31 +55,41 @@
       },
       {
         "ordinal": 10,
+        "name": "borrower_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 11,
+        "name": "borrower_legal_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
         "name": "principal_amount",
         "type_info": "Numeric"
       },
       {
-        "ordinal": 11,
+        "ordinal": 13,
         "name": "outstanding_balance",
         "type_info": "Numeric"
       },
       {
-        "ordinal": 12,
+        "ordinal": 14,
         "name": "interest_rate_bps",
         "type_info": "Int4"
       },
       {
-        "ordinal": 13,
+        "ordinal": 15,
         "name": "deal_status",
         "type_info": "Varchar"
       },
       {
-        "ordinal": 14,
+        "ordinal": 16,
         "name": "originated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 15,
+        "ordinal": 17,
         "name": "maturity_date",
         "type_info": "Timestamptz"
       }
@@ -101,6 +111,8 @@
       false,
       false,
       true,
+      true,
+      true,
       false,
       false,
       false,
@@ -109,5 +121,5 @@
       true
     ]
   },
-  "hash": "e04cf2cbfff016de536c2b19227ea6316ec7d1b64680e78cdb1047bb29c48705"
+  "hash": "d9cd4bbee11fd743211a6399483023b8b9bbcb41c14ab7b841a6ea888d7db2fc"
 }

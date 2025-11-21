@@ -27,19 +27,18 @@ WORKDIR /app/api
 ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin server
 
-# Build scripts binaries
+# Build scripts binaries and install sqlx CLI
 WORKDIR /app/scripts
-RUN cargo build --release --bin populate_deal_data
-
-# Install sqlx CLI
-RUN cargo install --version 0.7.4 sqlx-cli --no-default-features --features postgres,rustls
+RUN cargo build --release --bin populate_deal_data && \
+    cargo install --version 0.7.4 sqlx-cli --no-default-features --features postgres,rustls
 
 # Foundry stage - for copying cast binary
-FROM ghcr.io/foundry-rs/foundry:latest AS foundry
+FROM ghcr.io/foundry-rs/foundry:nightly-ca67d7f870a3abf306d25b87aa2b8cbf7faa6e01 AS foundry
 
 # Runtime stage - includes sqlx for migrations and cast for faucet
 FROM debian:bookworm-slim
 
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \

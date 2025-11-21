@@ -151,7 +151,6 @@ docker-lint:
 	@command -v hadolint >/dev/null 2>&1 || { echo "❌ hadolint not found. Run 'make install' to install dependencies."; exit 1; }
 	hadolint Dockerfile
 	hadolint Dockerfile.contract-deployer
-	hadolint Dockerfile.data-populator
 	@echo "✅ Dockerfile linting completed"
 
 ## docker-lint-fix: Lint and show suggestions to fix Dockerfile issues

@@ -1,12 +1,13 @@
 # Contract Deployer Init Container
 # Used to deploy contracts to Anvil in local/staging Kubernetes environments
 
-FROM ghcr.io/foundry-rs/foundry:latest
+FROM ghcr.io/foundry-rs/foundry:nightly-ca67d7f870a3abf306d25b87aa2b8cbf7faa6e01
 
 # Switch to root to install packages, then switch back
 USER root
 
 # Install jq for JSON parsing (foundry image is Ubuntu-based)
+# hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     && rm -rf /var/lib/apt/lists/*

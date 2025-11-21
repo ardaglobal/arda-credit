@@ -226,8 +226,17 @@ impl MetricsService {
         debug!("Calculating market value metrics on-demand");
 
         // Get all deals for calculation (using high limit to avoid pagination)
-        let deals_result =
-            list_deals(&self.pool, Some(1_000_000), None, None, None, None, None).await?;
+        let deals_result = list_deals(
+            &self.pool,
+            Some(1_000_000),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
         let deals = &deals_result.deals;
 
         debug!("Retrieved {} deals for calculation", deals.len());
@@ -366,8 +375,17 @@ impl MetricsService {
         debug!("Calculating pie chart metrics on-demand");
 
         // Get all deals for calculation (using high limit to avoid pagination)
-        let deals_result =
-            list_deals(&self.pool, Some(1_000_000), None, None, None, None, None).await?;
+        let deals_result = list_deals(
+            &self.pool,
+            Some(1_000_000),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
         let deals = &deals_result.deals;
 
         debug!("Retrieved {} deals for calculation", deals.len());
@@ -500,8 +518,17 @@ impl MetricsService {
         let mut total_inserted = 0;
 
         // Get ALL deals for calculation (set high limit to avoid pagination issues)
-        let deals_result =
-            list_deals(&self.pool, Some(1_000_000), None, None, None, None, None).await?;
+        let deals_result = list_deals(
+            &self.pool,
+            Some(1_000_000),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
         let deals = &deals_result.deals;
 
         // Calculate for different filter combinations
@@ -542,8 +569,17 @@ impl MetricsService {
         let mut total_inserted = 0;
 
         // Get ALL deals for calculation (set high limit to avoid pagination issues)
-        let deals_result =
-            list_deals(&self.pool, Some(1_000_000), None, None, None, None, None).await?;
+        let deals_result = list_deals(
+            &self.pool,
+            Some(1_000_000),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
         let deals = &deals_result.deals;
 
         let chart_types = vec!["industry", "region", "asset_class"];
