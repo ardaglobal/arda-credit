@@ -459,6 +459,71 @@ pub async fn create_company(pool: &PgPool, request: &CreateCompanyRequest) -> Db
     Ok(company)
 }
 
+/// Get or create a company by UUID and/or name
+///
+/// This function implements "upsert" logic with unique name enforcement:
+/// 1. If a company with the provided UUID exists, return it
+/// 2. If a company with the provided company_name exists, return it (ignoring provided UUID)
+/// 3. If neither exists, create a new company with the provided UUID and name
+///
+/// This ensures unique company names while allowing flexible UUID references.
+pub async fn get_or_create_company(
+    pool: &PgPool,
+    company_uuid: Uuid,
+    company_name: &str,
+) -> DbResult<Company> {
+    // First, try to find by UUID
+    if let Ok(company) = get_company_by_id(pool, company_uuid).await {
+        return Ok(company);
+    }
+
+    // Second, try to find by company_name (enforces unique names)
+    let existing_by_name = sqlx::query_as::<_, Company>(
+        r#"
+        SELECT id, name, description, status, metadata, created_at, updated_at
+        FROM companies
+        WHERE company_name = $1
+        "#,
+    )
+    .bind(company_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| DbError::TransactionFailed(format!("Failed to lookup company by name: {}", e)))?;
+
+    if let Some(company) = existing_by_name {
+        return Ok(company);
+    }
+
+    // Third, create new company with provided UUID and name
+    let company = sqlx::query_as::<_, Company>(
+        r#"
+        INSERT INTO companies (id, name, company_name, description, metadata, status)
+        VALUES ($1, $2, $3, $4, $5, 'active')
+        RETURNING id, name, description, status, metadata, created_at, updated_at
+        "#,
+    )
+    .bind(company_uuid)
+    .bind(company_name) // Use company_name for both name and company_name
+    .bind(company_name)
+    .bind(Some(format!("Auto-created from deal for {}", company_name)))
+    .bind(serde_json::json!({"auto_created": true}))
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        // Check if it's a unique constraint violation
+        if e.to_string().contains("duplicate key value") {
+            DbError::TransactionFailed(format!(
+                "Company with name '{}' already exists",
+                company_name
+            ))
+        } else {
+            DbError::TransactionFailed(format!("Failed to create company: {}", e))
+        }
+    })?;
+
+    Ok(company)
+}
+
 /// Get company by ID
 pub async fn get_company_by_id(pool: &PgPool, company_id: Uuid) -> DbResult<Company> {
     let company = sqlx::query_as::<_, Company>(
