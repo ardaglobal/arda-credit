@@ -315,6 +315,7 @@ fn default_limit() -> u32 {
 
         // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
         crate::handlers::deals::deals::create_deal_endpoint,
+        crate::handlers::deals::document_extraction::process_document_extraction,
         crate::handlers::deals::deals::list_deals_endpoint,
         crate::handlers::deals::deals::get_deals_by_user_id_endpoint,
         crate::handlers::deals::deals::get_deals_by_company_endpoint,

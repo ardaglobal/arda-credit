@@ -279,6 +279,71 @@ curl -X POST http://0.0.0.0:8080/api/v1/batch/trigger \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
+### Document-Based Deal Creation (OCR Workflow)
+**NEW**: This workflow supports document upload where OCR extraction is done by a separate service,
+and the backend creates companies and associates the user with their selected company.
+
+**Flow**: Frontend → OCR Service → Frontend → Backend
+
+```bash
+# Process OCR-extracted company data
+curl -X POST http://0.0.0.0:8080/api/v1/deals/process-document-extraction \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "document_reference": "https://ocr-service.com/documents/abc123",
+    "originator": {
+      "legal_name": "Acme Corp",
+      "industry": "Technology",
+      "jurisdiction": "Delaware"
+    },
+    "investor": {
+      "legal_name": "Investment Fund LLC",
+      "industry": "Finance"
+    },
+    "borrower": {
+      "legal_name": "BorrowerCo Inc"
+    },
+    "user_association": {
+      "company_role": "originator",
+      "profile_type": "originator"
+    },
+    "deal_terms": {
+      "principal_amount": "100000.00",
+      "interest_rate_bps": 500,
+      "term_days": 365
+    }
+  }'
+```
+
+**Response includes:**
+- Created/looked-up companies with IDs
+- User membership details (admin role, active status)
+- Pre-filled deal data for frontend to display
+
+**Features:**
+- Auto-creates companies if they don't exist
+- Links user to selected company as admin
+- Idempotent (re-running with same data won't duplicate)
+- Supports optional borrower entity
+- Returns pre-filled deal data for user confirmation
+
+**Then create the deal:**
+```bash
+# Use pre-filled data to create deal (user confirms on frontend)
+curl -X POST http://0.0.0.0:8080/api/v1/deal \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "originator_id": "uuid-from-response",
+    "investor_id": "uuid-from-response",
+    "borrower_id": "uuid-from-response",
+    "principal_amount": "100000.00",
+    "interest_rate_bps": 500,
+    "term_days": 365
+  }'
+```
+
 ### Deal Marketplace
 ```bash
 # List deal for sale
@@ -340,6 +405,7 @@ cargo check --workspace     # Works without PostgreSQL
 - **Users**: `POST /api/v1/user`, `GET /api/v1/user/{id}`
 - **Companies**: `POST /api/v1/company`, `GET /api/v1/companies`
 - **Deals**: `POST /api/v1/deal`, `GET /api/v1/deals`, `GET /api/v1/deal/{id}`
+- **Document Extraction**: `POST /api/v1/deals/process-document-extraction` (NEW - OCR workflow)
 - **Marketplace**: `GET /api/v1/deals/for-sale`, `POST /api/v1/deal/{id}/list-for-sale`
 - **Transfers**: `POST /api/v1/deal/{id}/transfer`, `GET /api/v1/deal/{id}/transfers`
 - **Financial**: `GET /api/v1/balance/{address}`, `POST /api/v1/withdrawal`

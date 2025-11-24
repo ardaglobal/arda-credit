@@ -41,8 +41,8 @@ const DEFAULT_DEAL_COUNT_STR: &str = "25";
 const DEFAULT_DATABASE_URL: &str = "postgresql://postgres:password@127.0.0.1:5432/arda_credit_db";
 
 // Deal generation parameters
-const MIN_PRINCIPAL_AMOUNT: u32 = 50_000_000;
-const MAX_PRINCIPAL_AMOUNT: u32 = 5_000_000_000;
+const MIN_PRINCIPAL_AMOUNT: u64 = 50_000_000;
+const MAX_PRINCIPAL_AMOUNT: u64 = 5_000_000_000;
 const MIN_INTEREST_RATE_BPS: i32 = 400; // 4% APR
 const MAX_INTEREST_RATE_BPS: i32 = 1200; // 12% APR
 const MIN_OUTSTANDING_BALANCE_PCT: u32 = 60; // 60% of principal
