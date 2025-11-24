@@ -31,7 +31,13 @@ use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
     // Marketplace functions (consolidated)
     browse_marketplace_deals, // was browse_marketplace_loans
-    cancel_transfer,          // was cancel_transfer
+    // get_marketplace_deal_stats, // was get_marketplace_loan_stats - TODO: implement if needed
+    // get_user_deal_transfer_history, // was get_user_transfer_history (if exists) - TODO: implement if needed
+
+    // Company functions
+    business::company::get_or_create_company,
+
+    cancel_transfer, // was cancel_transfer
     // ... other imports
     create_deal,         // was create_loan
     create_deal_listing, // was create_payment
@@ -44,9 +50,6 @@ use arda_credit_db::{
     remove_deal_listing,           // was remove_loan_listing
     update_deal,                   // was update_loan
     validate_transfer_eligibility, // was validate_transfer_eligibility
-    // get_marketplace_deal_stats, // was get_marketplace_loan_stats - TODO: implement if needed
-    // get_user_deal_transfer_history, // was get_user_transfer_history (if exists) - TODO: implement if needed
-
     // Enums for validation
     DealNegotiationStatus,
     DealPaymentStatus,
@@ -99,25 +102,66 @@ fn invalidate_metrics_cache(state: &ApiState) {
 // ============================================================================
 
 /// Create new deal request (converted from CreateLoanRequest)
+///
+/// ## Auto-Create Companies Feature
+/// Companies can be automatically created or looked up during deal creation:
+/// - If `originator_name` is provided, the system will look up or create the originator company
+/// - If `investor_name` is provided, the system will look up or create the investor company
+/// - If `borrower_name` is provided, the system will look up or create the borrower company
+///
+/// The system enforces unique company names:
+/// - If a company with the provided name already exists, that company will be used
+/// - If no company exists with that name, a new company will be created
+/// - Companies are identified by both UUID and name for flexible referencing
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[schema(example = json!({
     "originator_id": "123e4567-e89b-12d3-a456-426614174000",
-    "investor_id": null,
+    "originator_name": "Acme Real Estate LLC",
+    "investor_id": "987fcdeb-51a2-43d7-b987-123456789abc",
+    "investor_name": "Capital Investors Fund",
+    "borrower_id": null,
+    "borrower_name": null,
     "principal_amount": "50000",
     "interest_rate_bps": 500,
     "term_days": 365,
     "loan_status": "originated",
     "status": "draft",
-    "title": "Real Estate Development Deal - Brooklyn"
+    "title": "Real Estate Development Deal - Brooklyn",
+    "description": "Commercial real estate development opportunity in Brooklyn",
+    "risk_level": "medium",
+    "asset_class": "commercial_real_estate"
 }))]
 pub struct CreateDealRequest {
     // was CreateLoanRequest
-    pub originator_id: String,       // was borrower_id
-    pub investor_id: Option<String>, // was lender_id - now optional for draft deals
-    pub borrower_id: Option<String>, // Company ID of the borrower (optional third party)
-    pub principal_amount: String,    // Amount in cents as string
-    pub interest_rate_bps: u16,      // Interest rate in basis points
-    pub term_days: Option<u32>,      // Optional deal term
+    /// UUID of the originating company (required)
+    #[schema(example = "123e4567-e89b-12d3-a456-426614174000")]
+    pub originator_id: String,
+
+    /// Company name for originator (optional). If provided, system will look up or auto-create the company with this name.
+    #[schema(example = "Acme Real Estate LLC")]
+    pub originator_name: Option<String>,
+
+    /// UUID of the investing company (optional for draft deals)
+    #[schema(example = "987fcdeb-51a2-43d7-b987-123456789abc")]
+    pub investor_id: Option<String>,
+
+    /// Company name for investor (optional). If provided, system will look up or auto-create the company with this name.
+    #[schema(example = "Capital Investors Fund")]
+    pub investor_name: Option<String>,
+
+    /// UUID of the borrower company (optional third party)
+    #[schema(example = "456e7890-a123-45b6-c789-012345678def")]
+    pub borrower_id: Option<String>,
+
+    /// Company name for borrower (optional). If provided, system will look up or auto-create the company with this name.
+    #[schema(example = "Brooklyn Development Corp")]
+    pub borrower_name: Option<String>,
+
+    /// Principal amount in cents (e.g., "50000" for $500.00)
+    #[schema(example = "50000")]
+    pub principal_amount: String, // Amount in cents as string
+    pub interest_rate_bps: u16, // Interest rate in basis points
+    pub term_days: Option<u32>, // Optional deal term
 
     /// Payment status. Valid values: originated, active, paid_off, closed, defaulted
     #[schema(example = "originated")]
@@ -431,14 +475,25 @@ pub struct DealTransferValidationResponse {
 // ============================================================================
 
 /// Create a new deal (converted from create_loan_endpoint)
+///
+/// ## Auto-Create Companies
+/// This endpoint can automatically create or lookup companies during deal creation.
+/// If `originator_name`, `investor_name`, or `borrower_name` are provided in the request,
+/// the system will:
+/// 1. Check if a company with the provided UUID exists
+/// 2. Check if a company with the provided name exists (enforces unique names)
+/// 3. Create a new company if neither exists
+/// 4. Use the resulting company UUID for the deal
+///
+/// This allows seamless deal creation from document extraction without pre-registering companies.
 #[utoipa::path(
     post,
     path = "/api/v1/deal",  // will be updated in paths later
     request_body = CreateDealRequest,
     responses(
-        (status = 201, description = "Deal created successfully", body = DealDetailsResponse),
-        (status = 400, description = "Invalid request"),
-        (status = 500, description = "Internal server error")
+        (status = 201, description = "Deal created successfully. Companies may have been auto-created.", body = DealDetailsResponse),
+        (status = 400, description = "Invalid request - check UUID format or field validation"),
+        (status = 500, description = "Internal server error - may indicate company creation failure")
     ),
     tag = "Deals"  // was "Loans"
 )]
@@ -578,14 +633,85 @@ pub async fn create_deal_endpoint(
         }
     }
 
+    // Auto-create or lookup companies if company names are provided
+    // This ensures companies exist before creating the deal
+    let final_originator_id = if let Some(ref originator_name) = request.originator_name {
+        info!(
+            "🏢 Looking up or creating originator company: {}",
+            originator_name
+        );
+        get_or_create_company(&state.pool, originator_id, originator_name)
+            .await
+            .map_err(|e| {
+                error!("❌ Failed to create/lookup originator company: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create/lookup originator company: {}", e),
+                )
+            })?
+            .id
+    } else {
+        originator_id
+    };
+
+    let final_investor_id = if let Some(investor_uuid) = investor_id {
+        if let Some(ref investor_name) = request.investor_name {
+            info!(
+                "🏢 Looking up or creating investor company: {}",
+                investor_name
+            );
+            Some(
+                get_or_create_company(&state.pool, investor_uuid, investor_name)
+                    .await
+                    .map_err(|e| {
+                        error!("❌ Failed to create/lookup investor company: {}", e);
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to create/lookup investor company: {}", e),
+                        )
+                    })?
+                    .id,
+            )
+        } else {
+            Some(investor_uuid)
+        }
+    } else {
+        None
+    };
+
+    let final_borrower_id = if let Some(borrower_uuid) = borrower_id {
+        if let Some(ref borrower_name) = request.borrower_name {
+            info!(
+                "🏢 Looking up or creating borrower company: {}",
+                borrower_name
+            );
+            Some(
+                get_or_create_company(&state.pool, borrower_uuid, borrower_name)
+                    .await
+                    .map_err(|e| {
+                        error!("❌ Failed to create/lookup borrower company: {}", e);
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to create/lookup borrower company: {}", e),
+                        )
+                    })?
+                    .id,
+            )
+        } else {
+            Some(borrower_uuid)
+        }
+    } else {
+        None
+    };
+
     // Create deal in database
     // Note: originator_id, investor_id, and borrower_id now reference companies directly
     let deal = create_deal(
         // was create_loan
         &state.pool,
-        originator_id, // Company ID of the originator (was borrower_id)
-        investor_id,   // Company ID of the investor (was lender_id) - optional for draft deals
-        borrower_id,   // Company ID of the borrower (optional third party)
+        final_originator_id, // Company ID of the originator (was borrower_id)
+        final_investor_id, // Company ID of the investor (was lender_id) - optional for draft deals
+        final_borrower_id, // Company ID of the borrower (optional third party)
         principal_amount,
         request.interest_rate_bps as i32,
         maturity_date,
