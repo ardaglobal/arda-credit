@@ -209,6 +209,9 @@ pub const DEAL_AUDIT_TRAIL: &str = api_path!("/deal/{deal_id}/audit-trail");
 /// Deal lifecycle summary - was LOAN_LIFECYCLE_SUMMARY
 pub const DEAL_LIFECYCLE_SUMMARY: &str = api_path!("/deal/{deal_id}/lifecycle-summary");
 
+/// Process document extraction - create companies and pre-fill deal data
+pub const DEAL_PROCESS_DOCUMENT_EXTRACTION: &str = api_path!("/deals/process-document-extraction");
+
 // ============================================================================
 // LOAN TAPE PATHS
 // ============================================================================

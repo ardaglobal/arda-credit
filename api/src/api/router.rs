@@ -392,6 +392,10 @@ pub fn create_router(state: ApiState) -> Router {
             post(crate::handlers::deals::deals::create_deal_endpoint),
         )
         .route(
+            paths::DEAL_PROCESS_DOCUMENT_EXTRACTION,
+            post(crate::handlers::deals::document_extraction::process_document_extraction),
+        )
+        .route(
             paths::DEALS,
             get(crate::handlers::deals::deals::list_deals_endpoint),
         )
