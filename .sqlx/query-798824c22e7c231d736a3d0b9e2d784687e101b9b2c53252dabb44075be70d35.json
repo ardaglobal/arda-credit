@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO metrics_market_value_daily \n        (date_value, growth_type, filter_type, entity_id, cumulative_value, deal_count, calculated_at)\n        VALUES ($1, $2, $3, $4, $5, $6, $7)\n        ON CONFLICT (date_value, growth_type, filter_type, entity_id) \n        DO UPDATE SET \n            cumulative_value = EXCLUDED.cumulative_value,\n            deal_count = EXCLUDED.deal_count,\n            calculated_at = EXCLUDED.calculated_at,\n            updated_at = now()\n        RETURNING *\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "date_value",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 2,
+        "name": "growth_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "filter_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "entity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "cumulative_value",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "deal_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "calculated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Date",
+        "Varchar",
+        "Varchar",
+        "Uuid",
+        "Numeric",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "798824c22e7c231d736a3d0b9e2d784687e101b9b2c53252dabb44075be70d35"
+}

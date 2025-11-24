@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, user_address, total_withdrawn, total_withdrawn_usdc, withdrawal_count,\n            first_withdrawal_at, last_withdrawal_at, created_at, updated_at\n        FROM user_withdrawal_balances\n        WHERE user_address = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "total_withdrawn",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "total_withdrawn_usdc",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "withdrawal_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 5,
+        "name": "first_withdrawal_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "last_withdrawal_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "09cbad5c89d60a6921115f39fa9f9b18d543ab59e8df14402a8a3153d80c6994"
+}

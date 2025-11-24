@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO deals (\n            id, originator_id, investor_id, borrower_id, principal_amount, outstanding_balance, interest_rate_bps, deal_status, maturity_date, originated_at, created_at, updated_at,\n            custom_deal_id, status, industry, document_ids,\n            title, description, risk_level, asset_class, region, minimum_investment\n        )\n        VALUES (\n            $1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $9, $9,\n            $10, $11, $12, $13,\n            $14, $15, $16, $17, $18, $19\n        )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Int4",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Jsonb",
+        "Varchar",
+        "Text",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a925d865fd8591bc729c2083db9d5bd3d411403ac522f6c9125e520e5cf57814"
+}

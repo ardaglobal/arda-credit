@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM metrics_pie_chart_data WHERE chart_type = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "90b7442d2dd0c1605aabdd51ea5162cf6b2a2f6caf9c1a824c346b1b18bf4523"
+}

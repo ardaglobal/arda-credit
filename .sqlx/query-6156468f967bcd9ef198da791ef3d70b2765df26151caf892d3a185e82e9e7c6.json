@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT dt.deal_id, dt.from_investor_id, dt.to_investor_id, dt.transfer_status\n        FROM deal_transfers dt\n        WHERE dt.transfer_id = $1\n          AND (dt.from_investor_id = $2 OR dt.to_investor_id = $2)\n          AND dt.transfer_status = 'pending'\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "deal_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "from_investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "to_investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "transfer_status",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6156468f967bcd9ef198da791ef3d70b2765df26151caf892d3a185e82e9e7c6"
+}

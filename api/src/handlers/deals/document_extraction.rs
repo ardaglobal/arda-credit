@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::config::types::ApiState;
 use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::business::company::{
-    create_membership, get_or_create_company, get_user_membership, accept_membership, CompanyRole,
+    accept_membership, create_membership, get_or_create_company, get_user_membership, CompanyRole,
     ProfileType,
 };
 
@@ -251,19 +251,20 @@ pub async fn process_document_extraction(
     info!("📄 Processing document extraction for companies");
 
     // Extract authenticated user from session
-    let current_user = extract_current_user(&headers)
-        .ok_or((
-            StatusCode::UNAUTHORIZED,
-            "Authentication required".to_string(),
-        ))?;
+    let current_user = extract_current_user(&headers).ok_or((
+        StatusCode::UNAUTHORIZED,
+        "Authentication required".to_string(),
+    ))?;
 
-    info!(
-        "👤 User {} processing document extraction",
-        current_user.id
-    );
+    info!("👤 User {} processing document extraction", current_user.id);
 
     // Validate profile_type
-    let profile_type = match request.user_association.profile_type.to_lowercase().as_str() {
+    let profile_type = match request
+        .user_association
+        .profile_type
+        .to_lowercase()
+        .as_str()
+    {
         "originator" => ProfileType::Originator,
         "investor" => ProfileType::Investor,
         _ => {
@@ -295,19 +296,16 @@ pub async fn process_document_extraction(
         request.originator.legal_name
     );
     let originator_uuid = Uuid::new_v4(); // Will be used if company doesn't exist
-    let originator_company = get_or_create_company(
-        &state.pool,
-        originator_uuid,
-        &request.originator.legal_name,
-    )
-    .await
-    .map_err(|e| {
-        error!("❌ Failed to create/lookup originator company: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create/lookup originator company: {}", e),
-        )
-    })?;
+    let originator_company =
+        get_or_create_company(&state.pool, originator_uuid, &request.originator.legal_name)
+            .await
+            .map_err(|e| {
+                error!("❌ Failed to create/lookup originator company: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create/lookup originator company: {}", e),
+                )
+            })?;
 
     let originator_was_created = originator_company.id == originator_uuid;
     info!(
@@ -393,7 +391,12 @@ pub async fn process_document_extraction(
         "borrower" => {
             if let Some(ref borrower_data) = request.borrower {
                 (
-                    borrower_result.as_ref().unwrap().id.parse::<Uuid>().unwrap(),
+                    borrower_result
+                        .as_ref()
+                        .unwrap()
+                        .id
+                        .parse::<Uuid>()
+                        .unwrap(),
                     borrower_data.legal_name.clone(),
                 )
             } else {
@@ -472,7 +475,10 @@ pub async fn process_document_extraction(
             .deal_terms
             .as_ref()
             .and_then(|t| t.principal_amount.clone()),
-        interest_rate_bps: request.deal_terms.as_ref().and_then(|t| t.interest_rate_bps),
+        interest_rate_bps: request
+            .deal_terms
+            .as_ref()
+            .and_then(|t| t.interest_rate_bps),
         term_days: request.deal_terms.as_ref().and_then(|t| t.term_days),
         document_reference: request.document_reference.clone(),
     };

@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO deal_transfers (\n            transfer_id, deal_id, from_investor_id, to_investor_id,\n            purchase_price, transfer_status, transfer_date, notes\n        )\n        VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Timestamp",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "17e40d02c35ffc522272c71fa1aa17fd3b2884c606dcb99708792373db2c15a4"
+}

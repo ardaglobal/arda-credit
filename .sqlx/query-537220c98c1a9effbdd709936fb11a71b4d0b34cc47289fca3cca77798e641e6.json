@@ -1,0 +1,96 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO metrics_pie_chart_data \n        (chart_type, filter_type, entity_id, time_range, category, value, percentage, deal_count, calculated_at)\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)\n        ON CONFLICT (chart_type, filter_type, entity_id, time_range, category) \n        DO UPDATE SET \n            value = EXCLUDED.value,\n            percentage = EXCLUDED.percentage,\n            deal_count = EXCLUDED.deal_count,\n            calculated_at = EXCLUDED.calculated_at,\n            updated_at = now()\n        RETURNING *\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "chart_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "filter_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "entity_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "time_range",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "category",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "value",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "percentage",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 8,
+        "name": "deal_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "calculated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Varchar",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Numeric",
+        "Numeric",
+        "Int4",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "537220c98c1a9effbdd709936fb11a71b4d0b34cc47289fca3cca77798e641e6"
+}

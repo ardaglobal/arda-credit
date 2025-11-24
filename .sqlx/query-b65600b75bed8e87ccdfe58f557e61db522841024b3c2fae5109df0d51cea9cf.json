@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT can_manage_team FROM company_memberships WHERE user_id = $1 AND company_id = $2 AND status = 'active'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "can_manage_team",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "b65600b75bed8e87ccdfe58f557e61db522841024b3c2fae5109df0d51cea9cf"
+}

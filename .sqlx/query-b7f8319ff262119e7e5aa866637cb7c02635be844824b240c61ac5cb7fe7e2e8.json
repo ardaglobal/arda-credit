@@ -1,0 +1,204 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            d.id,\n            d.originator_id,\n            d.investor_id,\n            d.borrower_id,\n            bc.company_name as borrower_legal_name,\n            d.principal_amount,\n            d.outstanding_balance,\n            d.interest_rate_bps,\n            d.deal_status,\n            d.originated_at,\n            d.maturity_date,\n            d.created_at,\n            d.updated_at,\n            d.custom_deal_id,\n            d.status,\n            d.industry,\n            d.document_ids,\n            d.title,\n            d.description,\n            d.risk_level,\n            d.asset_class,\n            d.region,\n            d.minimum_investment,\n            d.payment_frequency,\n            d.collateral_type,\n            d.collateral_value,\n            d.ltv_ratio,\n            d.credit_score,\n            d.dscr,\n            d.state_transition_hash,\n            d.proof_included\n        FROM deals d\n        LEFT JOIN companies bc ON d.borrower_id = bc.id\n        WHERE d.originator_id = $1\n          AND d.status = 'draft'\n        ORDER BY d.created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "originator_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "borrower_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "borrower_legal_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "principal_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "outstanding_balance",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "interest_rate_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "deal_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "originated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "maturity_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "custom_deal_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "industry",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "document_ids",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 17,
+        "name": "title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 18,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "risk_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "asset_class",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 21,
+        "name": "region",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "minimum_investment",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 23,
+        "name": "payment_frequency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 24,
+        "name": "collateral_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 25,
+        "name": "collateral_value",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 26,
+        "name": "ltv_ratio",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 27,
+        "name": "credit_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 28,
+        "name": "dscr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 29,
+        "name": "state_transition_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 30,
+        "name": "proof_included",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "b7f8319ff262119e7e5aa866637cb7c02635be844824b240c61ac5cb7fe7e2e8"
+}

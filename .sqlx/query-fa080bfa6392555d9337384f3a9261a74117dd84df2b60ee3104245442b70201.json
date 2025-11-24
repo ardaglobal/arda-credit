@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO company_memberships (\n                id, user_id, company_id, role, status,\n                can_upload_documents, can_download_documents, can_delete_documents,\n                can_approve_documents, can_manage_team, can_view_audit_logs,\n                invited_by, invited_at, accepted_at\n            ) VALUES (\n                $1, $2, $3, $4, 'active',\n                $5, $6, $7, $8, $9, $10, $11, NOW(), NOW()\n            )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Varchar",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fa080bfa6392555d9337384f3a9261a74117dd84df2b60ee3104245442b70201"
+}

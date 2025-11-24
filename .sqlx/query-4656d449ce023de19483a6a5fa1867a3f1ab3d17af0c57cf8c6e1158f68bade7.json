@@ -1,0 +1,442 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            id, document_id, credit_agreement_id, deal_id, doc_hash, ssi_type,\n            seller_ssi_id, seller_beneficiary_name, seller_bank_name, seller_bank_identifier,\n            seller_swift_code, seller_aba_routing, seller_iban, seller_account_number,\n            seller_reference_text, seller_bank_address, seller_intermediary_bank, seller_intermediary_swift,\n            seller_custody_type, seller_custodian_name, seller_custodian_account_ref,\n            seller_wallet_address, seller_wallet_chain, seller_wallet_chain_id, seller_wallet_type,\n            buyer_ssi_id, buyer_beneficiary_name, buyer_bank_name, buyer_bank_identifier,\n            buyer_swift_code, buyer_aba_routing, buyer_iban, buyer_account_number,\n            buyer_reference_text, buyer_bank_address, buyer_intermediary_bank, buyer_intermediary_swift,\n            buyer_custody_type, buyer_custodian_name, buyer_custodian_account_ref,\n            buyer_wallet_address, buyer_wallet_chain, buyer_wallet_chain_id, buyer_wallet_type,\n            seller_ssi_verified, seller_ssi_verified_at, seller_ssi_verified_by,\n            buyer_ssi_verified, buyer_ssi_verified_at, buyer_ssi_verified_by,\n            ssi_status, effective_date, expiry_date, last_used_date, usage_count,\n            sanctions_screened, sanctions_screen_date, sanctions_screen_result,\n            aml_check_passed, aml_check_date, confidential, access_restricted_to,\n            settlement_currency, settlement_method, special_instructions, internal_notes,\n            metadata,\n            created_at, updated_at,\n            created_by, updated_by\n        FROM ssi_records WHERE document_id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "credit_agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "deal_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "doc_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "ssi_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "seller_ssi_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "seller_beneficiary_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "seller_bank_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "seller_bank_identifier",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "seller_swift_code",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 11,
+        "name": "seller_aba_routing",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "seller_iban",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "seller_account_number",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "seller_reference_text",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "seller_bank_address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 16,
+        "name": "seller_intermediary_bank",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 17,
+        "name": "seller_intermediary_swift",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 18,
+        "name": "seller_custody_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 19,
+        "name": "seller_custodian_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "seller_custodian_account_ref",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 21,
+        "name": "seller_wallet_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "seller_wallet_chain",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 23,
+        "name": "seller_wallet_chain_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 24,
+        "name": "seller_wallet_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 25,
+        "name": "buyer_ssi_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 26,
+        "name": "buyer_beneficiary_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 27,
+        "name": "buyer_bank_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 28,
+        "name": "buyer_bank_identifier",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 29,
+        "name": "buyer_swift_code",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 30,
+        "name": "buyer_aba_routing",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 31,
+        "name": "buyer_iban",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 32,
+        "name": "buyer_account_number",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 33,
+        "name": "buyer_reference_text",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 34,
+        "name": "buyer_bank_address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 35,
+        "name": "buyer_intermediary_bank",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 36,
+        "name": "buyer_intermediary_swift",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 37,
+        "name": "buyer_custody_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 38,
+        "name": "buyer_custodian_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 39,
+        "name": "buyer_custodian_account_ref",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 40,
+        "name": "buyer_wallet_address",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 41,
+        "name": "buyer_wallet_chain",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 42,
+        "name": "buyer_wallet_chain_id",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 43,
+        "name": "buyer_wallet_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 44,
+        "name": "seller_ssi_verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 45,
+        "name": "seller_ssi_verified_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 46,
+        "name": "seller_ssi_verified_by",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 47,
+        "name": "buyer_ssi_verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 48,
+        "name": "buyer_ssi_verified_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 49,
+        "name": "buyer_ssi_verified_by",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 50,
+        "name": "ssi_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 51,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 52,
+        "name": "expiry_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 53,
+        "name": "last_used_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 54,
+        "name": "usage_count",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 55,
+        "name": "sanctions_screened",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 56,
+        "name": "sanctions_screen_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 57,
+        "name": "sanctions_screen_result",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 58,
+        "name": "aml_check_passed",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 59,
+        "name": "aml_check_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 60,
+        "name": "confidential",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 61,
+        "name": "access_restricted_to",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 62,
+        "name": "settlement_currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 63,
+        "name": "settlement_method",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 64,
+        "name": "special_instructions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 65,
+        "name": "internal_notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 66,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 67,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 68,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 69,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 70,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4656d449ce023de19483a6a5fa1867a3f1ab3d17af0c57cf8c6e1158f68bade7"
+}

@@ -1,0 +1,407 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO guaranties (\n            id, document_id, credit_agreement_id, doc_hash, guarantor_name, guarantor_type,\n            guarantor_jurisdiction, guarantor_relationship, is_joint_guaranty, other_guarantors,\n            beneficiary, guarantee_type, coverage_scope, covers_principal, covers_interest,\n            covers_fees, covers_expenses, covers_amendments, is_capped, cap_amount, cap_currency,\n            cap_type, cap_formula, is_payment_guaranty, is_collection_guaranty, is_continuing,\n            revolving_guaranty, waivers_of_defenses, suretyship_defenses_waived,\n            notice_of_default_waived, notice_of_acceptance_waived, subrogation_rights,\n            subrogation_subordinated, subordination_provisions, secured_guaranty,\n            guarantor_security_description, guarantor_covenants, release_conditions,\n            automatic_release_trigger, partial_release_permitted, effective_date,\n            termination_date, governing_law, enforceability_opinion_received, opinion_reference,\n            corporate_authority_documents, guaranty_status, claims_filed, amount_claimed,\n            amount_recovered, notes, metadata, created_at, updated_at, created_by, updated_by\n        )\n        VALUES (\n            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,\n            $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34,\n            $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50,\n            $51, $52, $53, $54, $55, $56\n        )\n        RETURNING\n            id, document_id, credit_agreement_id, doc_hash, guarantor_name, guarantor_type,\n            guarantor_jurisdiction, guarantor_relationship, is_joint_guaranty, other_guarantors,\n            beneficiary, guarantee_type, coverage_scope, covers_principal, covers_interest,\n            covers_fees, covers_expenses, covers_amendments, is_capped, cap_amount, cap_currency,\n            cap_type, cap_formula, is_payment_guaranty, is_collection_guaranty, is_continuing,\n            revolving_guaranty, waivers_of_defenses, suretyship_defenses_waived,\n            notice_of_default_waived, notice_of_acceptance_waived, subrogation_rights,\n            subrogation_subordinated, subordination_provisions, secured_guaranty,\n            guarantor_security_description, guarantor_covenants, release_conditions,\n            automatic_release_trigger, partial_release_permitted, effective_date,\n            termination_date, governing_law, enforceability_opinion_received, opinion_reference,\n            corporate_authority_documents, guaranty_status, claims_filed, amount_claimed,\n            amount_recovered, notes, metadata,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, updated_by\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "document_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "credit_agreement_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "doc_hash",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "guarantor_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "guarantor_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "guarantor_jurisdiction",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "guarantor_relationship",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "is_joint_guaranty",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "other_guarantors",
+        "type_info": "TextArray"
+      },
+      {
+        "ordinal": 10,
+        "name": "beneficiary",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 11,
+        "name": "guarantee_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "coverage_scope",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
+        "name": "covers_principal",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 14,
+        "name": "covers_interest",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "covers_fees",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 16,
+        "name": "covers_expenses",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 17,
+        "name": "covers_amendments",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 18,
+        "name": "is_capped",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 19,
+        "name": "cap_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 20,
+        "name": "cap_currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 21,
+        "name": "cap_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "cap_formula",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 23,
+        "name": "is_payment_guaranty",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 24,
+        "name": "is_collection_guaranty",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 25,
+        "name": "is_continuing",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 26,
+        "name": "revolving_guaranty",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 27,
+        "name": "waivers_of_defenses",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 28,
+        "name": "suretyship_defenses_waived",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 29,
+        "name": "notice_of_default_waived",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 30,
+        "name": "notice_of_acceptance_waived",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 31,
+        "name": "subrogation_rights",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 32,
+        "name": "subrogation_subordinated",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 33,
+        "name": "subordination_provisions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 34,
+        "name": "secured_guaranty",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 35,
+        "name": "guarantor_security_description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 36,
+        "name": "guarantor_covenants",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 37,
+        "name": "release_conditions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 38,
+        "name": "automatic_release_trigger",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 39,
+        "name": "partial_release_permitted",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 40,
+        "name": "effective_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 41,
+        "name": "termination_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 42,
+        "name": "governing_law",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 43,
+        "name": "enforceability_opinion_received",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 44,
+        "name": "opinion_reference",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 45,
+        "name": "corporate_authority_documents",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 46,
+        "name": "guaranty_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 47,
+        "name": "claims_filed",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 48,
+        "name": "amount_claimed",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 49,
+        "name": "amount_recovered",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 50,
+        "name": "notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 51,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 52,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 53,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 54,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 55,
+        "name": "updated_by",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Bool",
+        "TextArray",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Numeric",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Text",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Text",
+        "Bool",
+        "Text",
+        "Bool",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Bool",
+        "Date",
+        "Date",
+        "Varchar",
+        "Bool",
+        "Varchar",
+        "Jsonb",
+        "Varchar",
+        "Bool",
+        "Numeric",
+        "Numeric",
+        "Text",
+        "Jsonb",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "cbdc2435fa9d011b93378e5d22c6bf62071d276874f991533546a56fc2893ebb"
+}
