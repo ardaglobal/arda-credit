@@ -120,7 +120,7 @@ prometheus                  = { workspace = true }
 
 [dev-dependencies]
 
-axum-test          = "18.2.1"
+axum-test          = "18.3.0"
 futures            = { workspace = true, features = [ "async-await" ] }
 tempfile           = "3.21"
 tracing-subscriber = { workspace = true }

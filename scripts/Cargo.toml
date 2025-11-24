@@ -10,7 +10,7 @@ path = "populate_deal_data.rs"
 
 [dependencies]
 chrono             = { workspace = true, features = [ "serde" ] }
-clap               = "4.0"
+clap               = "4.5"
 db                 = { path = "../db" }
 rand               = "0.8"
 rust_decimal       = { workspace = true, features = [ "serde" ] }
