@@ -541,6 +541,80 @@ pub async fn get_company_by_id(pool: &PgPool, company_id: Uuid) -> DbResult<Comp
     Ok(company)
 }
 
+/// Get company by name (case-sensitive exact match)
+pub async fn get_company_by_name(pool: &PgPool, company_name: &str) -> DbResult<Option<Company>> {
+    let company = sqlx::query_as::<_, Company>(
+        r#"
+        SELECT id, name, description, status, metadata, created_at, updated_at
+        FROM companies
+        WHERE name = $1
+        "#,
+    )
+    .bind(company_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| DbError::TransactionFailed(format!("Failed to query company by name: {}", e)))?;
+
+    Ok(company)
+}
+
+/// Create a company and immediately add a user as an active admin member
+///
+/// This is useful for loan tape uploads where the company doesn't exist yet
+/// and we want to associate the uploading user with the new company.
+pub async fn create_company_with_membership(
+    pool: &PgPool,
+    company_name: &str,
+    user_id: Uuid,
+    profile_type: ProfileType,
+) -> DbResult<(Company, CompanyMembership)> {
+    // Start transaction
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| DbError::TransactionFailed(format!("Failed to start transaction: {}", e)))?;
+
+    // Create company
+    let company = sqlx::query_as::<_, Company>(
+        r#"
+        INSERT INTO companies (name, description, metadata, status)
+        VALUES ($1, $2, $3, 'active')
+        RETURNING id, name, description, status, metadata, created_at, updated_at
+        "#,
+    )
+    .bind(company_name)
+    .bind(Some(format!("Auto-created from loan tape upload")))
+    .bind(serde_json::json!({"auto_created": true, "created_via": "loan_tape_upload"}))
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| DbError::TransactionFailed(format!("Failed to create company: {}", e)))?;
+
+    // Create membership with admin role and active status
+    let permissions = CompanyPermissions::admin_default().to_json();
+
+    let membership = sqlx::query_as::<_, CompanyMembership>(
+        r#"
+        INSERT INTO company_memberships (company_id, user_id, role, profile_type, status, invited_by, accepted_at, permissions)
+        VALUES ($1, $2, 'admin', $3, 'active', NULL, NOW(), $4)
+        RETURNING id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        "#,
+    )
+    .bind(company.id)
+    .bind(user_id)
+    .bind(profile_type.to_string())
+    .bind(&permissions)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| DbError::TransactionFailed(format!("Failed to create membership: {}", e)))?;
+
+    // Commit transaction
+    tx.commit()
+        .await
+        .map_err(|e| DbError::TransactionFailed(format!("Failed to commit transaction: {}", e)))?;
+
+    Ok((company, membership))
+}
+
 /// List all companies with optional status filter
 pub async fn list_companies(
     pool: &PgPool,

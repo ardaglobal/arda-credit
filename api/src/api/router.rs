@@ -478,10 +478,6 @@ pub fn create_router(state: ApiState) -> Router {
             get(crate::handlers::loan_tape_handlers::list_loan_tape_handler),
         )
         .route(
-            paths::LOAN_TAPE_CREATE,
-            post(crate::handlers::loan_tape_handlers::create_loan_tape_handler),
-        )
-        .route(
             paths::LOAN_TAPE_BULK,
             post(crate::handlers::loan_tape_handlers::create_bulk_loan_tape_handler),
         )

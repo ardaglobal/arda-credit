@@ -11,13 +11,13 @@ use validator::Validate;
 /// Request to create a single loan tape record
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct CreateLoanTapeRequest {
-    /// Originating company UUID
-    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
-    pub originator_id: Uuid,
+    /// Originating company name
+    #[schema(example = "TechFlow Solutions Inc")]
+    pub originator_name: String,
 
-    /// Investing company UUID (optional for draft deals)
-    #[schema(example = "550e8400-e29b-41d4-a716-446655440001")]
-    pub investor_id: Option<Uuid>,
+    /// Investing company name
+    #[schema(example = "Apex Credit Partners LP")]
+    pub investor_name: String,
 
     /// Principal amount of the deal
     #[schema(value_type = String, example = "2500000.00")]
@@ -107,6 +107,10 @@ pub struct CreateLoanTapeRequest {
 /// Request to create multiple loan tape records in bulk
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct BulkCreateLoanTapeRequest {
+    /// User ID of the uploader (must be associated with the consistent company)
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
+    pub user_id: Uuid,
+
     /// Array of loan tape records to create
     #[validate(length(min = 1, max = 100))]
     pub records: Vec<CreateLoanTapeRequest>,
