@@ -463,6 +463,7 @@ fn write_deals_to_csv(deals: Vec<DealCsvRow>) -> Result<String, Box<dyn std::err
 }
 
 /// Generate deal data for a specific user (CSV mode - no database operations)
+/// Creates a single-party portfolio with user as originator and random investors
 fn generate_user_deals_csv(
     email: &str,
     count: u32,
@@ -470,7 +471,7 @@ fn generate_user_deals_csv(
     let mut deals = Vec::new();
     let mut rng = thread_rng();
 
-    // Generate synthetic company names from email
+    // Generate synthetic company name from email for the ORIGINATOR (consistent party)
     let user_name = email.split('@').next().unwrap_or("User");
     let user_name_formatted = user_name
         .split('.')
@@ -484,54 +485,51 @@ fn generate_user_deals_csv(
         .collect::<Vec<_>>()
         .join(" ");
 
-    let investor_company_name = format!("{} Investor Corp", user_name_formatted);
     let originator_company_name = format!("{} Originator Corp", user_name_formatted);
 
-    // Create some additional random company names for pairing
-    let mut random_company_names = Vec::new();
-    for i in 0..5 {
+    // Create random investor company names (need enough variety)
+    let investor_count = (count / 3).max(5) as usize; // At least 5 investors
+    let mut investor_company_names = Vec::new();
+    for i in 0..investor_count {
         let prefix = COMPANY_PREFIXES.choose(&mut rng).unwrap();
         let suffix = COMPANY_TYPES.choose(&mut rng).unwrap();
-        random_company_names.push(format!("{} {} #{}", prefix, suffix, i + 1));
+        investor_company_names.push(format!("{} {} #{}", prefix, suffix, i + 1));
     }
 
-    // Generate deals with 50/50 split
-    let investor_deals = count / 2;
-    let originator_deals = count - investor_deals;
+    println!(
+        "🏢 Creating single-party portfolio: {} as originator with {} random investors",
+        originator_company_name,
+        investor_company_names.len()
+    );
 
-    println!("💰 Generating {} deals as investor", investor_deals);
-    for i in 0..investor_deals {
-        let originator_name = random_company_names.choose(&mut rng).unwrap().clone();
-        let deal = generate_csv_deal_row(
-            originator_name,
-            Some(investor_company_name.clone()),
-            &format!("User Investment Deal #{}", i + 1),
-            &mut rng,
-        )?;
-        deals.push(deal);
-    }
-
-    println!("🏢 Generating {} deals as originator", originator_deals);
-    for i in 0..originator_deals {
-        let investor_name = random_company_names.choose(&mut rng).unwrap().clone();
+    // Generate ALL deals with same originator, different investors
+    for i in 0..count {
+        let investor_name = investor_company_names.choose(&mut rng).unwrap().clone();
         let deal = generate_csv_deal_row(
             originator_company_name.clone(),
             Some(investor_name),
-            &format!("User Origination Deal #{}", i + 1),
+            &format!("Portfolio Deal #{}", i + 1),
             &mut rng,
         )?;
         deals.push(deal);
     }
+
+    println!(
+        "✅ Generated {} deals for single-party portfolio (originator: {})",
+        deals.len(),
+        originator_company_name
+    );
 
     Ok(deals)
 }
 
 /// Generate random deal data (CSV mode - no database operations)
+/// Creates a single-party portfolio with one consistent originator and random investors
 fn generate_random_deals_csv(count: u32) -> Result<Vec<DealCsvRow>, Box<dyn std::error::Error>> {
     let mut deals = Vec::new();
     let mut rng = thread_rng();
 
-    // Generate synthetic random company names
+    // Generate synthetic company names
     let company_count = (count / COMPANY_COUNT_DIVISOR).max(MIN_RANDOM_COMPANIES as u32) as usize;
     let mut company_names = Vec::new();
 
@@ -541,24 +539,36 @@ fn generate_random_deals_csv(count: u32) -> Result<Vec<DealCsvRow>, Box<dyn std:
         company_names.push(format!("{} {} #{}", prefix, suffix, i + 1));
     }
 
-    println!("💰 Generating {} random deals", count);
+    // Use first company as consistent originator
+    let originator_name = company_names[0].clone();
+
+    // Remaining companies are the investor pool
+    let investor_pool: Vec<String> = company_names.iter().skip(1).cloned().collect();
+
+    println!(
+        "🏢 Creating single-party portfolio: {} as originator with {} potential investors",
+        originator_name,
+        investor_pool.len()
+    );
+
+    // Generate ALL deals with same originator, random investors
     for i in 0..count {
-        let originator_name = company_names.choose(&mut rng).unwrap().clone();
-        let investor_candidates: Vec<_> = company_names
-            .iter()
-            .filter(|c| **c != originator_name)
-            .cloned()
-            .collect();
-        let investor_name = investor_candidates.choose(&mut rng).unwrap().clone();
+        let investor_name = investor_pool.choose(&mut rng).unwrap().clone();
 
         let deal = generate_csv_deal_row(
-            originator_name,
+            originator_name.clone(),
             Some(investor_name),
-            &format!("Random Deal #{}", i + 1),
+            &format!("Portfolio Deal #{}", i + 1),
             &mut rng,
         )?;
         deals.push(deal);
     }
+
+    println!(
+        "✅ Generated {} deals for single-party portfolio (originator: {})",
+        deals.len(),
+        originator_name
+    );
 
     Ok(deals)
 }
