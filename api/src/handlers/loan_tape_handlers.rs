@@ -76,18 +76,86 @@ pub struct BulkLoanTapeResponse {
 /// - Creates companies as needed (consistent + counterparties)
 /// - Creates all deal records
 ///
-/// Requirements:
+/// # Portfolio Requirements
 /// - All records must have the same originator OR same investor (single-party portfolio)
 /// - User must be a member of the consistent company (or it will be created)
+///
+/// # Workflow
+/// 1. Validates user_id exists
+/// 2. Auto-detects consistent party (originator or investor)
+/// 3. Gets or creates consistent company
+/// 4. Validates user membership (or creates if company is new)
+/// 5. Gets or creates all counterparty companies
+/// 6. Creates all deal records
+///
+/// # Examples
+///
+/// **Valid Portfolio (Originator):**
+/// All records have "TechFlow Inc" as originator, different investors.
+///
+/// **Valid Portfolio (Investor):**
+/// All records have "Apex Fund LP" as investor, different originators.
+///
+/// **Invalid Portfolio:**
+/// Multiple unique originators AND multiple unique investors (rejected with 400).
 #[utoipa::path(
     post,
     path = "/api/v1/loan-tape/bulk",
     request_body = BulkCreateLoanTapeRequest,
     responses(
-        (status = 201, description = "Loan tape records created successfully", body = BulkLoanTapeResponse),
-        (status = 400, description = "Invalid request - multi-party portfolio or validation failed", body = ErrorResponse),
-        (status = 403, description = "Forbidden - user not associated with consistent company", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse),
+        (status = 201, description = "Loan tape records created successfully", body = BulkLoanTapeResponse,
+            example = json!({
+                "success": true,
+                "created_count": 3,
+                "records": [
+                    {
+                        "loan_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "deal_id": "DL-20240115-001",
+                        "originator_id": "660e8400-e29b-41d4-a716-446655440001",
+                        "originator_name": "TechFlow Solutions Inc",
+                        "originator_kyb_status": "approved",
+                        "investor_id": "770e8400-e29b-41d4-a716-446655440002",
+                        "investor_name": "Apex Credit Partners LP",
+                        "investor_kyb_status": "not_submitted",
+                        "principal_amount": "2500000.00",
+                        "outstanding_balance": "2150000.00",
+                        "interest_rate_bps": 875,
+                        "interest_rate_apr": "8.75",
+                        "loan_status": "active",
+                        "originated_at": "2024-01-15T09:30:00Z",
+                        "maturity_date": "2027-01-15T00:00:00Z"
+                    }
+                ]
+            })
+        ),
+        (status = 400, description = "Invalid request - multi-party portfolio or validation failed", body = ErrorResponse,
+            examples(
+                ("Multi-party Portfolio" = (value = json!({
+                    "error": "Multi-party portfolio not supported",
+                    "details": "Upload must contain portfolio for a single party. Found 3 unique originators and 3 unique investors."
+                }))),
+                ("Invalid User" = (value = json!({
+                    "error": "Invalid user ID",
+                    "details": "User 550e8400-e29b-41d4-a716-446655440000 not found"
+                }))),
+                ("No Records" = (value = json!({
+                    "error": "No records provided",
+                    "details": "Request must contain at least one record"
+                })))
+            )
+        ),
+        (status = 403, description = "Forbidden - user not associated with consistent company", body = ErrorResponse,
+            example = json!({
+                "error": "User not authorized for this company",
+                "details": "User must be a member of company 'TechFlow Solutions Inc' with originator profile to upload its portfolio"
+            })
+        ),
+        (status = 500, description = "Internal server error", body = ErrorResponse,
+            example = json!({
+                "error": "Failed to create loan tape record",
+                "details": "Database transaction failed"
+            })
+        ),
     ),
     tag = "Loan Tape"
 )]
@@ -473,14 +541,53 @@ pub async fn create_bulk_loan_tape_handler(
 /// - Company information (originator/investor names and KYB status)
 /// - Computed metrics (APR, days to maturity)
 /// - Payment statistics (aggregated from deal_payments table)
+///
+/// # Query Parameters
+/// - `status`: Filter by deal status (e.g., "active", "paid_off", "closed")
+/// - `limit`: Maximum number of records to return (default: 20, max: 100)
+/// - `offset`: Number of records to skip for pagination (default: 0)
+///
+/// # Authentication
+/// Requires valid session token via Authorization header.
 #[utoipa::path(
     get,
     path = "/api/v1/loan-tape",
     params(ListLoanTapeQuery),
     responses(
-        (status = 200, description = "Loan tape records retrieved successfully", body = LoanTapeListResponse),
-        (status = 401, description = "Unauthorized - authentication required", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse),
+        (status = 200, description = "Loan tape records retrieved successfully", body = LoanTapeListResponse,
+            example = json!({
+                "records": [
+                    {
+                        "loan_id": "550e8400-e29b-41d4-a716-446655440000",
+                        "deal_id": "DL-20240115-001",
+                        "originator_name": "TechFlow Solutions Inc",
+                        "investor_name": "Apex Credit Partners LP",
+                        "principal_amount": "2500000.00",
+                        "outstanding_balance": "2150000.00",
+                        "interest_rate_bps": 875,
+                        "interest_rate_apr": "8.75",
+                        "loan_status": "active",
+                        "total_payments_made": 10
+                    }
+                ],
+                "total": 45,
+                "count": 20,
+                "offset": 0,
+                "limit": 20
+            })
+        ),
+        (status = 401, description = "Unauthorized - authentication required", body = ErrorResponse,
+            example = json!({
+                "error": "Unauthorized",
+                "details": "Missing or invalid session token"
+            })
+        ),
+        (status = 500, description = "Internal server error", body = ErrorResponse,
+            example = json!({
+                "error": "Failed to fetch records",
+                "details": "Database query failed"
+            })
+        ),
     ),
     security(
         ("bearer" = [])
@@ -555,18 +662,82 @@ pub async fn list_loan_tape_handler(
 
 /// Get a single loan tape record by ID
 ///
-/// Retrieves a complete loan tape record with all joined and computed fields.
+/// Retrieves a complete loan tape record with all joined and computed fields including:
+/// - Full company details (names, KYB status)
+/// - Financial metrics (APR, days to maturity)
+/// - Payment history (last payment, total payments, interest paid)
+/// - Risk assessment fields (credit score, DSCR, LTV ratio)
+/// - Blockchain tracking (state hash, proof inclusion)
+///
+/// # Path Parameters
+/// - `id`: Deal UUID to retrieve
+///
+/// # Authentication
+/// Requires valid session token via Authorization header.
 #[utoipa::path(
     get,
     path = "/api/v1/loan-tape/{id}",
     params(
-        ("id" = Uuid, Path, description = "Deal UUID")
+        ("id" = Uuid, Path, description = "Deal UUID", example = "550e8400-e29b-41d4-a716-446655440000")
     ),
     responses(
-        (status = 200, description = "Loan tape record retrieved successfully", body = LoanTapeRecord),
-        (status = 401, description = "Unauthorized - authentication required", body = ErrorResponse),
-        (status = 404, description = "Loan tape record not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse),
+        (status = 200, description = "Loan tape record retrieved successfully", body = LoanTapeRecord,
+            example = json!({
+                "loan_id": "550e8400-e29b-41d4-a716-446655440000",
+                "deal_id": "DL-20240115-001",
+                "originator_id": "660e8400-e29b-41d4-a716-446655440001",
+                "originator_name": "TechFlow Solutions Inc",
+                "originator_kyb_status": "approved",
+                "investor_id": "770e8400-e29b-41d4-a716-446655440002",
+                "investor_name": "Apex Credit Partners LP",
+                "investor_kyb_status": "approved",
+                "principal_amount": "2500000.00",
+                "outstanding_balance": "2150000.00",
+                "interest_rate_bps": 875,
+                "interest_rate_apr": "8.75",
+                "loan_status": "active",
+                "originated_at": "2024-01-15T09:30:00Z",
+                "maturity_date": "2027-01-15T00:00:00Z",
+                "days_to_maturity": 428,
+                "payment_frequency": "monthly",
+                "last_payment_date": "2024-11-15T00:00:00Z",
+                "last_payment_amount": "45833.33",
+                "total_payments_made": 10,
+                "total_interest_paid": "287500.00",
+                "collateral_type": "Equipment",
+                "collateral_value": "3500000.00",
+                "ltv_ratio": "0.7143",
+                "credit_score": 720,
+                "dscr": "1.45",
+                "risk_level": "medium",
+                "asset_class": "direct_lending",
+                "region": "north_america",
+                "borrower_industry": "software_saas",
+                "deal_title": "TechFlow Working Capital Facility",
+                "state_transition_hash": "0x7f8e9a2b1c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f",
+                "proof_included": true,
+                "created_at": "2024-01-15T09:30:00Z",
+                "updated_at": "2024-11-15T10:00:00Z"
+            })
+        ),
+        (status = 401, description = "Unauthorized - authentication required", body = ErrorResponse,
+            example = json!({
+                "error": "Unauthorized",
+                "details": "Missing or invalid session token"
+            })
+        ),
+        (status = 404, description = "Loan tape record not found", body = ErrorResponse,
+            example = json!({
+                "error": "Loan tape record not found",
+                "details": "No record found with ID: 550e8400-e29b-41d4-a716-446655440000"
+            })
+        ),
+        (status = 500, description = "Internal server error", body = ErrorResponse,
+            example = json!({
+                "error": "Failed to fetch record",
+                "details": "Database query failed"
+            })
+        ),
     ),
     security(
         ("bearer" = [])
