@@ -180,6 +180,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/api-docs/users.json", get(get_users_spec_handler))
         .route("/api-docs/companies.json", get(get_companies_spec_handler))
         .route("/api-docs/deals.json", get(get_deals_spec_handler))
+        .route("/api-docs/loan_tape.json", get(get_loan_tape_spec_handler))
         .route("/api-docs/admin.json", get(get_admin_spec_handler))
         .route("/api-docs/payments.json", get(get_payments_spec_handler))
         .route("/api-docs/state.json", get(get_state_spec_handler))
@@ -476,10 +477,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::LOAN_TAPE,
             get(crate::handlers::loan_tape_handlers::list_loan_tape_handler),
-        )
-        .route(
-            paths::LOAN_TAPE_CREATE,
-            post(crate::handlers::loan_tape_handlers::create_loan_tape_handler),
         )
         .route(
             paths::LOAN_TAPE_BULK,
@@ -1025,6 +1022,9 @@ fn filter_openapi_by_tags(
             tags if tags.contains(&"Metrics") => {
                 vec!["Metrics", "Market", "Pie", "Chart", "Value", "Refresh"]
             }
+            tags if tags.contains(&"Loan Tape") => {
+                vec!["LoanTape", "Loan", "Tape", "BulkLoan", "ListLoan"]
+            }
             tags if tags.contains(&"Dev") => vec!["Faucet", "Network", "Health", "Info"],
             _ => vec![
                 "Credit",
@@ -1094,6 +1094,11 @@ pub async fn get_companies_spec_handler() -> Json<utoipa::openapi::OpenApi> {
 
 pub async fn get_deals_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Deals"]);
+    Json(spec)
+}
+
+pub async fn get_loan_tape_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Loan Tape"]);
     Json(spec)
 }
 

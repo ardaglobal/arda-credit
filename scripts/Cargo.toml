@@ -11,9 +11,11 @@ path = "populate_deal_data.rs"
 [dependencies]
 chrono             = { workspace = true, features = [ "serde" ] }
 clap               = "4.0"
+csv                = "1.3"
 db                 = { path = "../db" }
 rand               = "0.8"
 rust_decimal       = { workspace = true, features = [ "serde" ] }
+serde              = { workspace = true, features = [ "derive" ] }
 serde_json         = { workspace = true }
 sqlx               = { workspace = true }
 tokio              = { workspace = true }

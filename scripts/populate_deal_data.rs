@@ -28,9 +28,36 @@ use db::{
 };
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use rust_decimal::Decimal;
+use serde::Serialize;
 use serde_json::json;
 use std::{collections::HashMap, env, str::FromStr};
 use uuid::Uuid;
+
+// ============================================================================
+// CSV EXPORT STRUCTURES
+// ============================================================================
+
+/// CSV row structure for exporting deal data
+#[derive(Debug, Clone, Serialize)]
+struct DealCsvRow {
+    originator_name: String,
+    investor_name: Option<String>,
+    borrower_name: Option<String>,
+    principal_amount: String,
+    outstanding_balance: String,
+    interest_rate_bps: i32,
+    deal_status: String,
+    originated_at: String,
+    maturity_date: Option<String>,
+    status: String,
+    industry: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    risk_level: Option<String>,
+    asset_class: Option<String>,
+    region: Option<String>,
+    minimum_investment: Option<String>,
+}
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -409,6 +436,244 @@ async fn create_deal_with_custom_dates(
     Ok(deal)
 }
 
+// ============================================================================
+// CSV EXPORT FUNCTIONS
+// ============================================================================
+
+/// Write deal data to a CSV file
+fn write_deals_to_csv(deals: Vec<DealCsvRow>) -> Result<String, Box<dyn std::error::Error>> {
+    // Generate timestamped filename
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H%M%S");
+    let filename = format!("loan_tape_{}.csv", timestamp);
+
+    println!("📝 Writing {} deals to {}", deals.len(), filename);
+
+    // Create CSV writer
+    let mut wtr = csv::Writer::from_path(&filename)?;
+
+    // Write all deals
+    for deal in deals {
+        wtr.serialize(deal)?;
+    }
+
+    wtr.flush()?;
+
+    println!("✅ CSV file created: {}", filename);
+    Ok(filename)
+}
+
+/// Generate deal data for a specific user (CSV mode - no database operations)
+/// Creates a single-party portfolio with user as originator and random investors
+fn generate_user_deals_csv(
+    email: &str,
+    count: u32,
+) -> Result<Vec<DealCsvRow>, Box<dyn std::error::Error>> {
+    let mut deals = Vec::new();
+    let mut rng = thread_rng();
+
+    // Generate synthetic company name from email for the ORIGINATOR (consistent party)
+    let user_name = email.split('@').next().unwrap_or("User");
+    let user_name_formatted = user_name
+        .split('.')
+        .map(|s| {
+            let mut chars = s.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let originator_company_name = format!("{} Originator Corp", user_name_formatted);
+
+    // Create random investor company names (need enough variety)
+    let investor_count = (count / 3).max(5) as usize; // At least 5 investors
+    let mut investor_company_names = Vec::new();
+    for i in 0..investor_count {
+        let prefix = COMPANY_PREFIXES.choose(&mut rng).unwrap();
+        let suffix = COMPANY_TYPES.choose(&mut rng).unwrap();
+        investor_company_names.push(format!("{} {} #{}", prefix, suffix, i + 1));
+    }
+
+    println!(
+        "🏢 Creating single-party portfolio: {} as originator with {} random investors",
+        originator_company_name,
+        investor_company_names.len()
+    );
+
+    // Generate ALL deals with same originator, different investors
+    for i in 0..count {
+        let investor_name = investor_company_names.choose(&mut rng).unwrap().clone();
+        let deal = generate_csv_deal_row(
+            originator_company_name.clone(),
+            Some(investor_name),
+            &format!("Portfolio Deal #{}", i + 1),
+            &mut rng,
+        )?;
+        deals.push(deal);
+    }
+
+    println!(
+        "✅ Generated {} deals for single-party portfolio (originator: {})",
+        deals.len(),
+        originator_company_name
+    );
+
+    Ok(deals)
+}
+
+/// Generate random deal data (CSV mode - no database operations)
+/// Creates a single-party portfolio with one consistent originator and random investors
+fn generate_random_deals_csv(count: u32) -> Result<Vec<DealCsvRow>, Box<dyn std::error::Error>> {
+    let mut deals = Vec::new();
+    let mut rng = thread_rng();
+
+    // Generate synthetic company names
+    let company_count = (count / COMPANY_COUNT_DIVISOR).max(MIN_RANDOM_COMPANIES as u32) as usize;
+    let mut company_names = Vec::new();
+
+    for i in 0..company_count {
+        let prefix = COMPANY_PREFIXES.choose(&mut rng).unwrap();
+        let suffix = COMPANY_TYPES.choose(&mut rng).unwrap();
+        company_names.push(format!("{} {} #{}", prefix, suffix, i + 1));
+    }
+
+    // Use first company as consistent originator
+    let originator_name = company_names[0].clone();
+
+    // Remaining companies are the investor pool
+    let investor_pool: Vec<String> = company_names.iter().skip(1).cloned().collect();
+
+    println!(
+        "🏢 Creating single-party portfolio: {} as originator with {} potential investors",
+        originator_name,
+        investor_pool.len()
+    );
+
+    // Generate ALL deals with same originator, random investors
+    for i in 0..count {
+        let investor_name = investor_pool.choose(&mut rng).unwrap().clone();
+
+        let deal = generate_csv_deal_row(
+            originator_name.clone(),
+            Some(investor_name),
+            &format!("Portfolio Deal #{}", i + 1),
+            &mut rng,
+        )?;
+        deals.push(deal);
+    }
+
+    println!(
+        "✅ Generated {} deals for single-party portfolio (originator: {})",
+        deals.len(),
+        originator_name
+    );
+
+    Ok(deals)
+}
+
+/// Generate a single CSV deal row with realistic randomized data
+fn generate_csv_deal_row(
+    originator_name: String,
+    investor_name: Option<String>,
+    title_prefix: &str,
+    rng: &mut impl Rng,
+) -> Result<DealCsvRow, Box<dyn std::error::Error>> {
+    // Realistic principal amounts
+    let principal_amount =
+        Decimal::from(rng.gen_range(MIN_PRINCIPAL_AMOUNT..=MAX_PRINCIPAL_AMOUNT));
+
+    // Interest rates
+    let interest_rate_bps = rng.gen_range(MIN_INTEREST_RATE_BPS..=MAX_INTEREST_RATE_BPS);
+
+    // Deal statuses with realistic distribution
+    let deal_statuses = [
+        ("active", DEAL_STATUS_ACTIVE_WEIGHT),
+        ("originated", DEAL_STATUS_ORIGINATED_WEIGHT),
+        ("paid_off", DEAL_STATUS_PAID_OFF_WEIGHT),
+        ("closed", DEAL_STATUS_CLOSED_WEIGHT),
+    ];
+
+    let total_weight: u32 = deal_statuses.iter().map(|(_, weight)| weight).sum();
+    let random_weight = rng.gen_range(0..total_weight);
+    let mut cumulative_weight = 0;
+    let mut selected_status = "active";
+
+    for (status, weight) in &deal_statuses {
+        cumulative_weight += weight;
+        if random_weight < cumulative_weight {
+            selected_status = status;
+            break;
+        }
+    }
+
+    // Risk levels distribution
+    let risk_levels = [
+        ("low", RISK_LEVEL_LOW_WEIGHT),
+        ("medium", RISK_LEVEL_MEDIUM_WEIGHT),
+        ("high", RISK_LEVEL_HIGH_WEIGHT),
+    ];
+    let risk_total: u32 = risk_levels.iter().map(|(_, w)| w).sum();
+    let risk_rand = rng.gen_range(0..risk_total);
+    let mut risk_cumulative = 0;
+    let mut selected_risk = "medium";
+
+    for (risk, weight) in &risk_levels {
+        risk_cumulative += weight;
+        if risk_rand < risk_cumulative {
+            selected_risk = risk;
+            break;
+        }
+    }
+
+    // Calculate dates
+    let maturity_months = rng.gen_range(MIN_MATURITY_MONTHS..=MAX_MATURITY_MONTHS);
+    let originated_at = Utc::now() - Duration::days(rng.gen_range(0..=MAX_DAYS_AGO_ORIGINATED));
+    let maturity_date = originated_at + Duration::days(maturity_months * 30);
+
+    // Outstanding balance (percentage of principal for active deals, 0 for paid_off/closed)
+    let outstanding_balance = if selected_status == "paid_off" || selected_status == "closed" {
+        Decimal::ZERO
+    } else {
+        let percentage = rng.gen_range(MIN_OUTSTANDING_BALANCE_PCT..=MAX_OUTSTANDING_BALANCE_PCT);
+        principal_amount * Decimal::from_str(&format!("0.{}", percentage)).unwrap()
+    };
+
+    let industry = INDUSTRIES.choose(rng).unwrap();
+    let asset_class = ASSET_CLASSES.choose(rng).unwrap();
+    let region = REGIONS.choose(rng).unwrap();
+
+    let description = format!(
+        "{} deal in {} sector with {} risk profile. Principal: ${}, Rate: {}% APR",
+        asset_class,
+        industry,
+        selected_risk,
+        principal_amount,
+        (interest_rate_bps as f64) / 100.0
+    );
+
+    Ok(DealCsvRow {
+        originator_name,
+        investor_name,
+        borrower_name: None,
+        principal_amount: principal_amount.to_string(),
+        outstanding_balance: outstanding_balance.to_string(),
+        interest_rate_bps,
+        deal_status: selected_status.to_string(),
+        originated_at: originated_at.to_rfc3339(),
+        maturity_date: Some(maturity_date.to_rfc3339()),
+        status: "active".to_string(),
+        industry: Some(industry.to_string()),
+        title: Some(title_prefix.to_string()),
+        description: Some(description),
+        risk_level: Some(selected_risk.to_string()),
+        asset_class: Some(asset_class.to_string()),
+        region: Some(region.to_string()),
+        minimum_investment: None,
+    })
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
@@ -438,14 +703,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Clear existing deal data before generating new data")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("csv")
+                .long("csv")
+                .help("Export to CSV instead of writing to database")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     let email = matches.get_one::<String>("email");
     let count = *matches.get_one::<u32>("count").unwrap();
     let clear_data = matches.get_flag("clear");
+    let csv_mode = matches.get_flag("csv");
 
     println!("🚀 Starting deal data population...");
 
+    // CSV mode: Generate and export to CSV without database operations
+    if csv_mode {
+        println!("📊 CSV Export Mode: No database operations will be performed");
+
+        let deals = match email {
+            Some(user_email) => {
+                println!("👤 User mode: Generating deals for {}", user_email);
+                generate_user_deals_csv(user_email, count)?
+            }
+            None => {
+                println!("🎲 Random mode: Generating {} random deals", count);
+                generate_random_deals_csv(count)?
+            }
+        };
+
+        let filename = write_deals_to_csv(deals)?;
+
+        println!("🎉 CSV export completed successfully!");
+        println!("\n📁 Output file: {}", filename);
+        println!("\n💡 Next steps:");
+        println!("   1. Upload this CSV to your frontend application");
+        println!("   2. The frontend will map the data to your database");
+        println!("   3. View the portfolio information in your profile");
+
+        return Ok(());
+    }
+
+    // Database mode: Traditional behavior (create deals in database)
     // Get database URL from environment
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());

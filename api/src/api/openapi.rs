@@ -22,6 +22,7 @@ Arda API - Comprehensive credit deal management platform with document ingestion
 • **[Users](./users.json)** (~3-4KB) - User management & KYC
 • **[Companies](./companies.json)** (~6-8KB) - Company management & teams  
 • **[Deals](./deals.json)** (~8-10KB) - Deal lifecycle & marketplace ⭐
+• **[Loan Tape](./loan_tape.json)** (~3-4KB) - Portfolio upload & management ⭐
 • **[Admin](./admin.json)** (~4-5KB) - Administrative operations
 • **[Payments](./payments.json)** (~5-6KB) - Financial transactions
 • **[State](./state.json)** (~4-5KB) - Blockchain integration
@@ -113,6 +114,18 @@ const METRICS_TAG_DESC: &str = r#"
 Market metrics and analytics endpoints for dashboard visualizations including market value charts and distribution analytics.
 
 📄 **Focused API Spec**: [/api-docs/metrics.json](./metrics.json) (~2-3KB - Metrics endpoints & schemas only)
+"#;
+
+const LOAN_TAPE_TAG_DESC: &str = r#"
+Loan tape portfolio upload and management. Upload CSV portfolios (converted to JSON) for single-party (originator or investor) with automatic company creation and validation.
+
+**Features:**
+- Auto-detects consistent party (originator/investor)
+- Creates companies automatically if they don't exist
+- Validates user-company associations
+- Supports bulk upload only (no single record endpoint)
+
+📄 **Focused API Spec**: [/api-docs/loan_tape.json](./loan_tape.json) (~3-4KB - Loan tape endpoints & schemas only)
 "#;
 
 const DEV_TAG_DESC: &str = r#"
@@ -328,7 +341,6 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::get_deal_payment_history_endpoint,
 
         // Loan Tape endpoints
-        crate::handlers::loan_tape_handlers::create_loan_tape_handler,
         crate::handlers::loan_tape_handlers::create_bulk_loan_tape_handler,
         crate::handlers::loan_tape_handlers::list_loan_tape_handler,
         crate::handlers::loan_tape_handlers::get_loan_tape_handler,
@@ -503,13 +515,14 @@ fn default_limit() -> u32 {
         crate::handlers::metrics::refresh_metrics,
     ),
     tags(
-        // Primary API Groups (9 main groups + Dev) - each with direct access to focused API spec
+        // Primary API Groups (10 main groups + Dev) - each with direct access to focused API spec
         (name = "Auth", description = AUTH_TAG_DESC),
         (name = "Users", description = USERS_TAG_DESC),
         (name = "Companies", description = COMPANIES_TAG_DESC),
         (name = "Company Memberships", description = COMPANY_MEMBERSHIPS_TAG_DESC),
         (name = "Company Wallets", description = COMPANY_WALLETS_TAG_DESC),
         (name = "Deals", description = DEALS_TAG_DESC),
+        (name = "Loan Tape", description = LOAN_TAPE_TAG_DESC),
         (name = "State", description = STATE_TAG_DESC),
         (name = "Admin", description = ADMIN_TAG_DESC),
         (name = "Payments", description = PAYMENTS_TAG_DESC),
@@ -635,7 +648,6 @@ fn default_limit() -> u32 {
         crate::dto::loan_tape_dto::LoanTapeRecord,
         crate::dto::loan_tape_dto::LoanTapeListResponse,
         crate::handlers::loan_tape_handlers::ListLoanTapeQuery,
-        crate::handlers::loan_tape_handlers::LoanTapeResponse,
         crate::handlers::loan_tape_handlers::BulkLoanTapeResponse,
         crate::handlers::loan_tape_handlers::ErrorResponse,
 
