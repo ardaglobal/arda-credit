@@ -874,6 +874,43 @@ pub fn create_router(state: ApiState) -> Router {
             paths::TAXONOMY_SECONDARY_TRADE_BY_ID,
             delete(crate::handlers::taxonomy::secondary_trades::delete_secondary_trade_handler),
         )
+        // Collateral
+        .route(
+            paths::TAXONOMY_COLLATERAL,
+            get(crate::handlers::taxonomy::collateral::list_collateral_handler),
+        )
+        .route(
+            paths::TAXONOMY_COLLATERAL,
+            post(crate::handlers::taxonomy::collateral::create_collateral_handler),
+        )
+        .route(
+            paths::TAXONOMY_COLLATERAL_BATCH,
+            post(crate::handlers::taxonomy::collateral::create_collateral_batch_handler),
+        )
+        .route(
+            paths::TAXONOMY_COLLATERAL_BY_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_handler),
+        )
+        .route(
+            paths::TAXONOMY_COLLATERAL_BY_ID,
+            put(crate::handlers::taxonomy::collateral::update_collateral_handler),
+        )
+        .route(
+            paths::TAXONOMY_COLLATERAL_BY_ID,
+            delete(crate::handlers::taxonomy::collateral::delete_collateral_handler),
+        )
+        .route(
+            paths::TAXONOMY_COLLATERAL_WITH_DUPLICATES,
+            get(crate::handlers::taxonomy::collateral::get_collateral_with_duplicates_handler),
+        )
+        .route(
+            paths::TAXONOMY_COLLATERAL_BY_CUSTOM_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler),
+        )
+        .route(
+            paths::TAXONOMY_COLLATERAL_BY_DEAL_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler),
+        )
         // Set maximum request body size to 100MB for document uploads
         // Default Axum limit is 2MB which is too small for PDFs
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100MB

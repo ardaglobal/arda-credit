@@ -673,6 +673,24 @@ pub const TAXONOMY_SECONDARY_TRADE_BY_ID: &str = api_path!("/taxonomy/secondary-
 /// Secondary trades batch create endpoint
 pub const TAXONOMY_SECONDARY_TRADES_BATCH: &str = api_path!("/taxonomy/secondary-trades/batch");
 
+/// Collateral list endpoint
+pub const TAXONOMY_COLLATERAL: &str = api_path!("/taxonomy/collateral");
+
+/// Collateral by ID endpoint
+pub const TAXONOMY_COLLATERAL_BY_ID: &str = api_path!("/taxonomy/collateral/{id}");
+
+/// Collateral by custom ID endpoint
+pub const TAXONOMY_COLLATERAL_BY_CUSTOM_ID: &str = api_path!("/taxonomy/collateral/custom/{custom_id}");
+
+/// Collateral by deal ID endpoint
+pub const TAXONOMY_COLLATERAL_BY_DEAL_ID: &str = api_path!("/taxonomy/collateral/deal/{deal_id}");
+
+/// Collateral with duplicates endpoint
+pub const TAXONOMY_COLLATERAL_WITH_DUPLICATES: &str = api_path!("/taxonomy/collateral/{id}/duplicates");
+
+/// Collateral batch create endpoint
+pub const TAXONOMY_COLLATERAL_BATCH: &str = api_path!("/taxonomy/collateral/batch");
+
 // ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================

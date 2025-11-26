@@ -185,6 +185,10 @@ pub struct CreateDealRequest {
     pub asset_class: Option<String>,
     pub region: Option<String>,
     pub minimum_investment: Option<String>,
+    
+    /// UUID of collateral asset (optional)
+    #[schema(example = "789e0123-b456-78c9-d012-345678901abc")]
+    pub collateral_id: Option<String>,
 }
 
 /// Deal details response (converted from LoanDetailsResponse)
@@ -214,6 +218,9 @@ pub struct DealDetailsResponse {
     pub asset_class: Option<String>,
     pub region: Option<String>,
     pub minimum_investment: Option<String>,
+    
+    /// UUID of collateral asset (optional)
+    pub collateral_id: Option<String>,
 }
 
 /// List deals query parameters (converted from ListLoansQuery)
@@ -283,6 +290,9 @@ pub struct UpdateDealRequest {
     pub asset_class: Option<Option<String>>,
     pub region: Option<Option<String>>,
     pub minimum_investment: Option<Option<String>>,
+    
+    /// UUID of collateral asset (optional), Option<Option<T>> to handle NULL
+    pub collateral_id: Option<Option<String>>,
 }
 
 /// Update deal response (converted from UpdateLoanResponse)
@@ -705,6 +715,19 @@ pub async fn create_deal_endpoint(
         None
     };
 
+    // Parse collateral_id if provided
+    let collateral_uuid = if let Some(coll_id_str) = &request.collateral_id {
+        Some(Uuid::parse_str(coll_id_str).map_err(|e| {
+            error!("❌ Invalid collateral ID format: {}", e);
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Invalid collateral ID format: {}", e),
+            )
+        })?)
+    } else {
+        None
+    };
+
     // Create deal in database
     // Note: originator_id, investor_id, and borrower_id now reference companies directly
     let deal = create_deal(
@@ -727,6 +750,7 @@ pub async fn create_deal_endpoint(
         request.asset_class.as_deref(),
         request.region.as_deref(),
         minimum_investment,
+        collateral_uuid, // Collateral UUID
     )
     .await
     .map_err(|e| {
@@ -770,6 +794,7 @@ pub async fn create_deal_endpoint(
         asset_class: deal.asset_class,
         region: deal.region,
         minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+        collateral_id: deal.collateral_id.map(|id| id.to_string()),
     };
 
     // Record function execution time

@@ -171,6 +171,14 @@ pub use taxonomy::secondary_trades::{
     UpdateSecondaryTradeRequest,
 };
 
+pub use taxonomy::collateral::{
+    check_for_duplicates, create_collateral, create_collateral_batch, delete_collateral,
+    get_collateral_by_custom_id, get_collateral_by_deal_id, get_collateral_by_id,
+    get_collateral_with_duplicates, list_collateral, update_collateral, Collateral,
+    CollateralCheck, CollateralWithDuplicates, CreateCollateralRequest,
+    UpdateCollateralRequest,
+};
+
 // Re-export batch processing types and functions
 pub use db::{
     approve_withdrawal_request,
