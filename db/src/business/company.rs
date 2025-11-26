@@ -1292,6 +1292,36 @@ pub async fn check_user_permission(
     Ok(false)
 }
 
+/// Check if user is a member of either the originator or investor company for a deal
+/// Returns true if the user is an active member of either company involved in the deal
+pub async fn is_user_member_of_deal_companies(
+    pool: &PgPool,
+    user_id: Uuid,
+    deal_id: Uuid,
+) -> DbResult<bool> {
+    let result = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1
+            FROM deals d
+            INNER JOIN company_memberships cm ON (
+                cm.company_id = d.originator_id
+                OR cm.company_id = d.investor_id
+            )
+            WHERE d.id = $1
+              AND cm.user_id = $2
+              AND cm.status = 'active'
+        )
+        "#,
+    )
+    .bind(deal_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(result)
+}
+
 /// Check if user has specific permission for a profile type
 pub async fn check_user_permission_for_profile(
     pool: &PgPool,

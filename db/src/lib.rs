@@ -196,6 +196,7 @@ pub use db::{
     // Withdrawal functions
     create_withdrawal,
     create_withdrawal_request,
+    delete_deal,
     delete_identity,
     generate_invite_code,
     get_all_batches,

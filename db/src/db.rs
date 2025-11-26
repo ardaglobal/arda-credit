@@ -2645,6 +2645,17 @@ pub async fn update_deal(
     get_deal_by_id(pool, id).await // was get_loan_by_id
 }
 
+/// Delete a deal by ID
+/// Returns true if the deal was deleted, false if it didn't exist
+/// CASCADE behavior will automatically delete related records (payments, listings, transfers, transactions)
+pub async fn delete_deal(pool: &PgPool, deal_id: uuid::Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!("DELETE FROM deals WHERE id = $1", deal_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
+}
+
 /// Record a deal payment - Simple implementation for now (was create_payment)
 pub async fn create_deal_payment(
     // was create_payment
