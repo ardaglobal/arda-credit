@@ -41,6 +41,7 @@ use arda_credit_db::{
     // ... other imports
     create_deal,         // was create_loan
     create_deal_listing, // was create_payment
+    delete_deal,         // Delete deal function
     // Transfer functions (consolidated)
     execute_deal_transfer,         // was execute_loan_transfer
     get_deal_by_id,                // was get_loan_by_id
@@ -1602,54 +1603,67 @@ pub async fn update_deal_endpoint(
     }
 }
 
-/// Delete/close deal (converted from delete_loan_endpoint)
+/// Delete deal (converted from delete_loan_endpoint)
 #[utoipa::path(
     delete,
-    path = "/api/v1/deal/{deal_id}",  // was loan_id, now deal_id
+    path = "/api/v1/deal/{deal_id}",
     responses(
-        (status = 200, description = "Deal closed successfully", body = DeleteDealResponse),  // was Loan
-        (status = 404, description = "Deal not found"),  // was Loan
+        (status = 200, description = "Deal deleted successfully", body = DeleteDealResponse),
+        (status = 400, description = "Invalid deal ID format"),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Not authorized to delete this deal"),
+        (status = 404, description = "Deal not found"),
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("deal_id" = String, Path, description = "Deal ID")  // was loan_id, now deal_id
+        ("deal_id" = String, Path, description = "Deal UUID")
     ),
-    tag = "Deals"  // was "Loans"
+    tag = "Deals"
 )]
-#[instrument(skip(_state), level = "info")]
+#[instrument(skip(state), level = "info")]
 pub async fn delete_deal_endpoint(
-    // was delete_loan_endpoint
-    State(_state): State<ApiState>,
-    Path(deal_id): Path<String>, // was loan_id, now deal_id
+    State(state): State<ApiState>,
+    Path(deal_id): Path<String>,
 ) -> Result<Json<DeleteDealResponse>, (StatusCode, String)> {
-    // was DeleteLoanResponse
-    info!("🗑️ API: Closing deal: deal_id={}", deal_id); // updated log message
+    info!("🗑️ API: Deleting deal: deal_id={}", deal_id);
 
-    let _deal_uuid = uuid::Uuid::parse_str(&deal_id).map_err(|_| {
-        // was loan_id, now deal_id
+    // Parse deal ID
+    let deal_uuid = uuid::Uuid::parse_str(&deal_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
-            "Invalid deal ID format".to_string(), // was loan ID
+            "Invalid deal ID format".to_string(),
         )
     })?;
 
-    // TODO: Implement deal closure with database integration
-    // For now, simulate successful closure
-    let _updated_rows = 1; // Simulate one row updated
+    // Check if deal exists
+    let deal = get_deal_by_id(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?;
 
-    let response = DeleteDealResponse {
-        // was DeleteLoanResponse
-        deal_id, // was loan_id, now deal_id
+    // Delete the deal (CASCADE will handle related records)
+    let deleted = delete_deal(&state.pool, deal_uuid).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete deal: {}", e),
+        )
+    })?;
+
+    if !deleted {
+        return Err((StatusCode::NOT_FOUND, "Deal not found".to_string()));
+    }
+
+    // 6. Trigger metrics refresh
+    trigger_metrics_refresh_async(&state);
+
+    info!("✅ API: Deal deleted successfully: deal_id={}", deal_id);
+
+    Ok(Json(DeleteDealResponse {
+        deal_id,
         deleted: true,
         deleted_at: Utc::now(),
-        final_status: "closed".to_string(),
-    };
-
-    // Trigger async metrics refresh if enabled
-    trigger_metrics_refresh_async(&_state);
-
-    info!("✅ API: Deal closed successfully"); // updated log message
-    Ok(Json(response))
+        final_status: deal.deal_status.clone(),
+    }))
 }
 
 /// Record a deal payment (converted from record_payment_endpoint)

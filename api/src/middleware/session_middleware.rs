@@ -7,7 +7,7 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use chrono::Utc;
 use serde_json::json;
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use crate::services::session_service::SessionError;
 
@@ -81,9 +81,9 @@ pub async fn session_auth_middleware(
         .await
     {
         Ok(identity) => {
-            debug!(
-                "Session valid for user: {} ({})",
-                identity.email, identity.user_type
+            info!(
+                "✅ Session valid for user: {} ({}) - path: {}",
+                identity.email, identity.user_type, path
             );
 
             // Add user information to request headers for downstream handlers
@@ -91,6 +91,11 @@ pub async fn session_auth_middleware(
             headers.insert("x-user-id", identity.id.to_string().parse().unwrap());
             headers.insert("x-user-email", identity.email.parse().unwrap());
             headers.insert("x-user-type", identity.user_type.parse().unwrap());
+
+            info!(
+                "📌 Added headers: x-user-id={}, x-user-email={}",
+                identity.id, identity.email
+            );
 
             Ok(next.run(request).await)
         }

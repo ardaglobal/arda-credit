@@ -445,24 +445,7 @@ impl ApiServer {
                 .with_state(api_state.clone())
         };
 
-        // TODO: Apply session authentication middleware (replaces JWT middleware)
-        // Currently commented out due to axum middleware complexity.
-        // Session authentication should be implemented at the handler level
-        // or using a different middleware approach.
-        // let api_state_arc = Arc::new(api_state.clone());
-        // let router = router.layer(axum::middleware::from_fn({
-        //     let api_state = Arc::clone(&api_state_arc);
-        //     move |cookies, mut request, next| {
-        //         let api_state = (*api_state).clone();
-        //         async move {
-        //             match session_auth_middleware(api_state, cookies, request, next).await {
-        //                 Ok(response) => response,
-        //                 Err(_) => create_unauthorized_response("Authentication error"),
-        //             }
-        //         }
-        //     }
-        // }));
-
+        // Session authentication middleware is now applied in router.rs
         // Add other middleware layers
         let router = self.add_middleware_with_state(router);
 

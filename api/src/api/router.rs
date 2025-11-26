@@ -877,6 +877,14 @@ pub fn create_router(state: ApiState) -> Router {
         // Set maximum request body size to 100MB for document uploads
         // Default Axum limit is 2MB which is too small for PDFs
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100MB
+        // Apply session authentication middleware BEFORE with_state
+        .layer(axum::middleware::from_fn({
+            let state_clone = state.clone();
+            move |cookies, request, next| {
+                let state = state_clone.clone();
+                crate::middleware::session_middleware::session_auth_middleware(state, cookies, request, next)
+            }
+        }))
         .with_state(state)
 }
 
