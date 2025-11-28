@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        UPDATE collateral_check_queue\n                        SET status = 'failed', retry_count = $1, last_error = $2\n                        WHERE id = $3\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0efcdbbae1e7774e478d5c0eec75516db31105abfec6f8eb05692382b89d2308"
+}

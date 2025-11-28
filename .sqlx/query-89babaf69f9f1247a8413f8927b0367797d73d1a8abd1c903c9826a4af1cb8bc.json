@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE collateral_checks\n            SET\n                check_status = 'completed',\n                potential_matches = $1,\n                match_score = 85.0\n            WHERE id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "UuidArray",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "89babaf69f9f1247a8413f8927b0367797d73d1a8abd1c903c9826a4af1cb8bc"
+}

@@ -59,8 +59,8 @@ pub use config::types::{ApiConfig, ApiState, UserType};
 pub use api::{create_router, ApiServer, ApiServerBuilder, ApiServerConfig};
 pub use services::{
     AuthError, AuthService, BalanceVerificationResult, BalanceVerificationService,
-    BatchCreationResult, BatchProcessorHandle, Claims, CompanyService, EmailService,
-    KycValidationResult, KycValidationService, MagicLinkService, SessionService,
+    BatchCreationResult, BatchProcessorHandle, Claims, CollateralDuplicateChecker, CompanyService,
+    EmailService, KycValidationResult, KycValidationService, MagicLinkService, SessionService,
     UnifiedBatchService, WithdrawalTransactionService,
 };
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM collateral_check_queue",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "2fcd8ce979fbf0c8a08ec5e87ebb107a63611c5186307befdae0acbf04ae4fe1"
+}

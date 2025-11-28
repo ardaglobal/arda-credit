@@ -8,21 +8,20 @@ use axum::{
     response::Json,
 };
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, instrument};
+use tracing::{info, instrument};
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 
 use arda_credit_db::{
     create_collateral, create_collateral_batch, delete_collateral, get_collateral_by_custom_id,
-    get_collateral_by_deal_id, get_collateral_by_id, get_collateral_with_duplicates,
-    list_collateral, update_collateral, Collateral, CollateralWithDuplicates,
-    CreateCollateralRequest as DbCreateRequest, UpdateCollateralRequest as DbUpdateRequest,
+    get_collateral_by_deal_id, get_collateral_by_id, get_collateral_matches,
+    get_collateral_with_duplicates, get_match_threshold, list_collateral, update_collateral,
+    Collateral, CollateralWithDuplicates, CreateCollateralRequest as DbCreateRequest,
+    UpdateCollateralRequest as DbUpdateRequest,
 };
 
 use crate::config::types::{ApiState, ErrorResponse};
 use crate::handlers::taxonomy::common::{
-    internal_error, not_found_error, parse_uuid, BatchError, BatchOperationResponse,
-    DeleteResponse, ListQueryParams, PaginatedResponse,
+    internal_error, not_found_error, parse_uuid, BatchOperationResponse, DeleteResponse,
 };
 use crate::middleware::session_middleware::extract_current_user;
 
@@ -49,6 +48,7 @@ pub struct CollateralResponse {
     pub address: Option<String>,
     pub custom_id: Option<String>,
     pub double_pledged: Option<String>,
+    pub has_potential_duplicates: Option<bool>,
     pub created_at: String,
     pub updated_at: String,
     pub metadata: Option<serde_json::Value>,
@@ -59,6 +59,40 @@ pub struct CollateralResponse {
 pub struct CollateralWithDuplicatesResponse {
     pub collateral: CollateralResponse,
     pub potential_duplicates: Vec<CollateralResponse>,
+}
+
+/// Collateral with matches response (includes scores)
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({
+    "collateral": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "name": "123 Main Street Property",
+        "collateral_type": "real_estate"
+    },
+    "matches": [
+        {
+            "matched_collateral": {
+                "id": "660f9511-f39c-52e5-b827-557766551111",
+                "name": "123 Main Street Building"
+            },
+            "match_score": "95.50",
+            "match_type": "fuzzy_name"
+        }
+    ],
+    "match_threshold": 50.0
+}))]
+pub struct CollateralWithMatchesResponse {
+    pub collateral: CollateralResponse,
+    pub matches: Vec<CollateralMatchResponse>,
+    pub match_threshold: f64,
+}
+
+/// Individual match with score
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct CollateralMatchResponse {
+    pub matched_collateral: CollateralResponse,
+    pub match_score: String, // Decimal as string
+    pub match_type: String,  // exact_name, custom_id, address, fuzzy_name
 }
 
 /// Create collateral request
@@ -122,6 +156,7 @@ fn collateral_to_response(collateral: Collateral) -> CollateralResponse {
         address: collateral.address,
         custom_id: collateral.custom_id,
         double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+        has_potential_duplicates: collateral.has_potential_duplicates,
         created_at: collateral.created_at.to_rfc3339(),
         updated_at: collateral.updated_at.to_rfc3339(),
         metadata: collateral.metadata,
@@ -150,14 +185,14 @@ fn collateral_with_duplicates_to_response(
 /// Creates a new collateral asset and initiates async duplicate detection.
 #[utoipa::path(
     post,
-    path = "/api/v1/taxonomy/collateral",
+    path = "/api/v1/collateral",
     request_body = CreateCollateralApiRequest,
     responses(
         (status = 201, description = "Collateral created successfully", body = CollateralResponse),
         (status = 400, description = "Invalid request", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state, headers))]
@@ -168,9 +203,10 @@ pub async fn create_collateral_handler(
 ) -> Result<(StatusCode, Json<CollateralResponse>), (StatusCode, Json<ErrorResponse>)> {
     info!("Creating collateral: {}", req.name);
 
-    let user = extract_current_user(&headers)
-        .await
-        .map_err(|e| internal_error(&format!("Failed to extract user: {}", e)))?;
+    let current_user = extract_current_user(&headers);
+    let user = current_user
+        .as_ref()
+        .ok_or_else(|| internal_error("extract_current_user", "User not authenticated"))?;
 
     let db_req = DbCreateRequest {
         name: req.name,
@@ -179,15 +215,18 @@ pub async fn create_collateral_handler(
         address: req.address,
         custom_id: req.custom_id,
         metadata: req.metadata,
-        created_by: Some(user.user_id),
+        created_by: Some(user.id),
     };
 
-    let collateral = create_collateral(&state.db_pool, db_req)
+    let collateral = create_collateral(&state.pool, db_req)
         .await
-        .map_err(|e| internal_error(&format!("Failed to create collateral: {}", e)))?;
+        .map_err(|e| internal_error("create_collateral", e))?;
 
     info!("Collateral created successfully: {}", collateral.id);
-    Ok((StatusCode::CREATED, Json(collateral_to_response(collateral))))
+    Ok((
+        StatusCode::CREATED,
+        Json(collateral_to_response(collateral)),
+    ))
 }
 
 /// Get collateral by ID
@@ -202,7 +241,7 @@ pub async fn create_collateral_handler(
         (status = 404, description = "Collateral not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state))]
@@ -210,13 +249,13 @@ pub async fn get_collateral_handler(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id)?;
+    let uuid = parse_uuid(&id, "collateral_id")?;
 
-    let collateral = get_collateral_by_id(&state.db_pool, uuid)
+    let collateral = get_collateral_by_id(&state.pool, uuid)
         .await
         .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => not_found_error(&format!("Collateral {}", id)),
-            _ => internal_error(&format!("Failed to get collateral: {}", e)),
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+            _ => internal_error("get_collateral", e),
         })?;
 
     Ok(Json(collateral_to_response(collateral)))
@@ -234,7 +273,7 @@ pub async fn get_collateral_handler(
         (status = 404, description = "Collateral not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state))]
@@ -242,16 +281,70 @@ pub async fn get_collateral_with_duplicates_handler(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> Result<Json<CollateralWithDuplicatesResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id)?;
+    let uuid = parse_uuid(&id, "collateral_id")?;
 
-    let data = get_collateral_with_duplicates(&state.db_pool, uuid)
+    let data = get_collateral_with_duplicates(&state.pool, uuid)
         .await
         .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => not_found_error(&format!("Collateral {}", id)),
-            _ => internal_error(&format!("Failed to get collateral: {}", e)),
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+            _ => internal_error("get_collateral", e),
         })?;
 
     Ok(Json(collateral_with_duplicates_to_response(data)))
+}
+
+/// Get collateral with all matches and scores
+#[utoipa::path(
+    get,
+    path = "/api/v1/taxonomy/collateral/{id}/matches",
+    params(
+        ("id" = String, Path, description = "Collateral UUID")
+    ),
+    responses(
+        (status = 200, description = "Collateral found with all matches", body = CollateralWithMatchesResponse),
+        (status = 404, description = "Collateral not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Collateral",
+    security(("bearer" = []))
+)]
+#[instrument(skip(state))]
+pub async fn get_collateral_with_matches_handler(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> Result<Json<CollateralWithMatchesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let uuid = parse_uuid(&id, "collateral_id")?;
+
+    // Get collateral
+    let collateral = get_collateral_by_id(&state.pool, uuid)
+        .await
+        .map_err(|e| match e {
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+            _ => internal_error("get_collateral", e),
+        })?;
+
+    // Get all matches with scores
+    let matches = get_collateral_matches(&state.pool, uuid)
+        .await
+        .map_err(|e| internal_error("get_collateral_matches", e))?;
+
+    // Get threshold
+    let threshold = get_match_threshold(&state.pool).await.unwrap_or(50.0);
+
+    let response = CollateralWithMatchesResponse {
+        collateral: collateral_to_response(collateral),
+        matches: matches
+            .into_iter()
+            .map(|m| CollateralMatchResponse {
+                matched_collateral: collateral_to_response(m.matched_collateral),
+                match_score: m.match_score.to_string(),
+                match_type: m.match_type,
+            })
+            .collect(),
+        match_threshold: threshold,
+    };
+
+    Ok(Json(response))
 }
 
 /// Get collateral by custom ID
@@ -266,7 +359,7 @@ pub async fn get_collateral_with_duplicates_handler(
         (status = 404, description = "Collateral not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state))]
@@ -274,13 +367,11 @@ pub async fn get_collateral_by_custom_id_handler(
     State(state): State<ApiState>,
     Path(custom_id): Path<String>,
 ) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let collateral = get_collateral_by_custom_id(&state.db_pool, &custom_id)
+    let collateral = get_collateral_by_custom_id(&state.pool, &custom_id)
         .await
         .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => {
-                not_found_error(&format!("Collateral with custom_id {}", custom_id))
-            }
-            _ => internal_error(&format!("Failed to get collateral: {}", e)),
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &custom_id),
+            _ => internal_error("get_collateral", e),
         })?;
 
     Ok(Json(collateral_to_response(collateral)))
@@ -298,7 +389,7 @@ pub async fn get_collateral_by_custom_id_handler(
         (status = 404, description = "Collateral not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state))]
@@ -306,11 +397,11 @@ pub async fn get_collateral_by_deal_id_handler(
     State(state): State<ApiState>,
     Path(deal_id): Path<String>,
 ) -> Result<Json<Option<CollateralResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&deal_id)?;
+    let uuid = parse_uuid(&deal_id, "deal_id")?;
 
-    let collateral = get_collateral_by_deal_id(&state.db_pool, uuid)
+    let collateral = get_collateral_by_deal_id(&state.pool, uuid)
         .await
-        .map_err(|e| internal_error(&format!("Failed to get collateral: {}", e)))?;
+        .map_err(|e| internal_error("get_collateral_by_deal_id", e))?;
 
     Ok(Json(collateral.map(collateral_to_response)))
 }
@@ -318,13 +409,13 @@ pub async fn get_collateral_by_deal_id_handler(
 /// List collateral with optional filtering
 #[utoipa::path(
     get,
-    path = "/api/v1/taxonomy/collateral",
+    path = "/api/v1/collateral",
     params(CollateralListQueryParams),
     responses(
         (status = 200, description = "List of collateral", body = Vec<CollateralResponse>),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state))]
@@ -333,22 +424,25 @@ pub async fn list_collateral_handler(
     Query(params): Query<CollateralListQueryParams>,
 ) -> Result<Json<Vec<CollateralResponse>>, (StatusCode, Json<ErrorResponse>)> {
     let created_by = if let Some(id_str) = params.created_by {
-        Some(parse_uuid(&id_str)?)
+        Some(parse_uuid(&id_str, "created_by")?)
     } else {
         None
     };
 
     let collateral_list = list_collateral(
-        &state.db_pool,
+        &state.pool,
         params.collateral_type,
         created_by,
         params.limit.unwrap_or(20),
         params.offset.unwrap_or(0),
     )
     .await
-    .map_err(|e| internal_error(&format!("Failed to list collateral: {}", e)))?;
+    .map_err(|e| internal_error("list_collateral", e))?;
 
-    let response = collateral_list.into_iter().map(collateral_to_response).collect();
+    let response = collateral_list
+        .into_iter()
+        .map(collateral_to_response)
+        .collect();
 
     Ok(Json(response))
 }
@@ -366,7 +460,7 @@ pub async fn list_collateral_handler(
         (status = 404, description = "Collateral not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state))]
@@ -375,7 +469,7 @@ pub async fn update_collateral_handler(
     Path(id): Path<String>,
     Json(req): Json<UpdateCollateralApiRequest>,
 ) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id)?;
+    let uuid = parse_uuid(&id, "collateral_id")?;
 
     let db_req = DbUpdateRequest {
         name: req.name,
@@ -386,11 +480,11 @@ pub async fn update_collateral_handler(
         metadata: req.metadata,
     };
 
-    let collateral = update_collateral(&state.db_pool, uuid, db_req)
+    let collateral = update_collateral(&state.pool, uuid, db_req)
         .await
         .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => not_found_error(&format!("Collateral {}", id)),
-            _ => internal_error(&format!("Failed to update collateral: {}", e)),
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+            _ => internal_error("update_collateral", e),
         })?;
 
     Ok(Json(collateral_to_response(collateral)))
@@ -408,7 +502,7 @@ pub async fn update_collateral_handler(
         (status = 404, description = "Collateral not found", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state))]
@@ -416,18 +510,19 @@ pub async fn delete_collateral_handler(
     State(state): State<ApiState>,
     Path(id): Path<String>,
 ) -> Result<Json<DeleteResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id)?;
+    let uuid = parse_uuid(&id, "collateral_id")?;
 
-    delete_collateral(&state.db_pool, uuid)
+    delete_collateral(&state.pool, uuid)
         .await
         .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => not_found_error(&format!("Collateral {}", id)),
-            _ => internal_error(&format!("Failed to delete collateral: {}", e)),
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+            _ => internal_error("delete_collateral", e),
         })?;
 
     Ok(Json(DeleteResponse {
         success: true,
         message: format!("Collateral {} deleted successfully", id),
+        id: id.clone(),
     }))
 }
 
@@ -441,7 +536,7 @@ pub async fn delete_collateral_handler(
         (status = 400, description = "Invalid request", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    tag = "Taxonomy - Collateral",
+    tag = "Collateral",
     security(("bearer" = []))
 )]
 #[instrument(skip(state, headers))]
@@ -452,9 +547,10 @@ pub async fn create_collateral_batch_handler(
 ) -> Result<(StatusCode, Json<BatchOperationResponse>), (StatusCode, Json<ErrorResponse>)> {
     info!("Creating collateral batch with {} items", requests.len());
 
-    let user = extract_current_user(&headers)
-        .await
-        .map_err(|e| internal_error(&format!("Failed to extract user: {}", e)))?;
+    let current_user = extract_current_user(&headers);
+    let user = current_user
+        .as_ref()
+        .ok_or_else(|| internal_error("extract_current_user", "User not authenticated"))?;
 
     let db_requests: Vec<DbCreateRequest> = requests
         .into_iter()
@@ -465,18 +561,21 @@ pub async fn create_collateral_batch_handler(
             address: req.address,
             custom_id: req.custom_id,
             metadata: req.metadata,
-            created_by: Some(user.user_id),
+            created_by: Some(user.id),
         })
         .collect();
 
-    let results = create_collateral_batch(&state.db_pool, db_requests)
+    let results = create_collateral_batch(&state.pool, db_requests)
         .await
-        .map_err(|e| internal_error(&format!("Failed to create collateral batch: {}", e)))?;
+        .map_err(|e| internal_error("create_collateral_batch", e))?;
+
+    let successful_ids: Vec<String> = results.iter().map(|c| c.id.to_string()).collect();
 
     let response = BatchOperationResponse {
-        success: true,
-        created_count: results.len(),
-        failed_count: 0,
+        success_count: results.len(),
+        error_count: 0,
+        total: results.len(),
+        successful_ids,
         errors: vec![],
     };
 

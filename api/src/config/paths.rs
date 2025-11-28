@@ -673,23 +673,30 @@ pub const TAXONOMY_SECONDARY_TRADE_BY_ID: &str = api_path!("/taxonomy/secondary-
 /// Secondary trades batch create endpoint
 pub const TAXONOMY_SECONDARY_TRADES_BATCH: &str = api_path!("/taxonomy/secondary-trades/batch");
 
+// ============================================================================
+// COLLATERAL PATHS
+// ============================================================================
+
 /// Collateral list endpoint
-pub const TAXONOMY_COLLATERAL: &str = api_path!("/taxonomy/collateral");
+pub const COLLATERAL: &str = api_path!("/collateral");
 
 /// Collateral by ID endpoint
-pub const TAXONOMY_COLLATERAL_BY_ID: &str = api_path!("/taxonomy/collateral/{id}");
+pub const COLLATERAL_BY_ID: &str = api_path!("/collateral/{id}");
 
 /// Collateral by custom ID endpoint
-pub const TAXONOMY_COLLATERAL_BY_CUSTOM_ID: &str = api_path!("/taxonomy/collateral/custom/{custom_id}");
+pub const COLLATERAL_BY_CUSTOM_ID: &str = api_path!("/collateral/custom/{custom_id}");
 
 /// Collateral by deal ID endpoint
-pub const TAXONOMY_COLLATERAL_BY_DEAL_ID: &str = api_path!("/taxonomy/collateral/deal/{deal_id}");
+pub const COLLATERAL_BY_DEAL_ID: &str = api_path!("/collateral/deal/{deal_id}");
 
-/// Collateral with duplicates endpoint
-pub const TAXONOMY_COLLATERAL_WITH_DUPLICATES: &str = api_path!("/taxonomy/collateral/{id}/duplicates");
+/// Collateral with duplicates endpoint (legacy - use matches instead)
+pub const COLLATERAL_WITH_DUPLICATES: &str = api_path!("/collateral/{id}/duplicates");
+
+/// Collateral with matches endpoint (includes scores)
+pub const COLLATERAL_WITH_MATCHES: &str = api_path!("/collateral/{id}/matches");
 
 /// Collateral batch create endpoint
-pub const TAXONOMY_COLLATERAL_BATCH: &str = api_path!("/taxonomy/collateral/batch");
+pub const COLLATERAL_BATCH: &str = api_path!("/collateral/batch");
 
 // ============================================================================
 // TRANSACTION HISTORY PATHS

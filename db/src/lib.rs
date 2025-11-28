@@ -174,9 +174,10 @@ pub use taxonomy::secondary_trades::{
 pub use taxonomy::collateral::{
     check_for_duplicates, create_collateral, create_collateral_batch, delete_collateral,
     get_collateral_by_custom_id, get_collateral_by_deal_id, get_collateral_by_id,
-    get_collateral_with_duplicates, list_collateral, update_collateral, Collateral,
-    CollateralCheck, CollateralWithDuplicates, CreateCollateralRequest,
-    UpdateCollateralRequest,
+    get_collateral_matches, get_collateral_with_duplicates, get_match_threshold, list_collateral,
+    process_duplicate_check, update_collateral, Collateral, CollateralCheck,
+    CollateralCheckQueueEntry, CollateralMatch, CollateralMatchDetail, CollateralWithDuplicates,
+    CollateralWithMatches, CreateCollateralRequest, UpdateCollateralRequest,
 };
 
 // Re-export batch processing types and functions

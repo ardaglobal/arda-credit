@@ -180,6 +180,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/api-docs/users.json", get(get_users_spec_handler))
         .route("/api-docs/companies.json", get(get_companies_spec_handler))
         .route("/api-docs/deals.json", get(get_deals_spec_handler))
+        .route("/api-docs/collateral.json", get(get_collateral_spec_handler))
         .route("/api-docs/loan_tape.json", get(get_loan_tape_spec_handler))
         .route("/api-docs/admin.json", get(get_admin_spec_handler))
         .route("/api-docs/payments.json", get(get_payments_spec_handler))
@@ -876,39 +877,43 @@ pub fn create_router(state: ApiState) -> Router {
         )
         // Collateral
         .route(
-            paths::TAXONOMY_COLLATERAL,
+            paths::COLLATERAL,
             get(crate::handlers::taxonomy::collateral::list_collateral_handler),
         )
         .route(
-            paths::TAXONOMY_COLLATERAL,
+            paths::COLLATERAL,
             post(crate::handlers::taxonomy::collateral::create_collateral_handler),
         )
         .route(
-            paths::TAXONOMY_COLLATERAL_BATCH,
+            paths::COLLATERAL_BATCH,
             post(crate::handlers::taxonomy::collateral::create_collateral_batch_handler),
         )
         .route(
-            paths::TAXONOMY_COLLATERAL_BY_ID,
+            paths::COLLATERAL_BY_ID,
             get(crate::handlers::taxonomy::collateral::get_collateral_handler),
         )
         .route(
-            paths::TAXONOMY_COLLATERAL_BY_ID,
+            paths::COLLATERAL_BY_ID,
             put(crate::handlers::taxonomy::collateral::update_collateral_handler),
         )
         .route(
-            paths::TAXONOMY_COLLATERAL_BY_ID,
+            paths::COLLATERAL_BY_ID,
             delete(crate::handlers::taxonomy::collateral::delete_collateral_handler),
         )
         .route(
-            paths::TAXONOMY_COLLATERAL_WITH_DUPLICATES,
+            paths::COLLATERAL_WITH_DUPLICATES,
             get(crate::handlers::taxonomy::collateral::get_collateral_with_duplicates_handler),
         )
         .route(
-            paths::TAXONOMY_COLLATERAL_BY_CUSTOM_ID,
+            paths::COLLATERAL_WITH_MATCHES,
+            get(crate::handlers::taxonomy::collateral::get_collateral_with_matches_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_CUSTOM_ID,
             get(crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler),
         )
         .route(
-            paths::TAXONOMY_COLLATERAL_BY_DEAL_ID,
+            paths::COLLATERAL_BY_DEAL_ID,
             get(crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler),
         )
         // Set maximum request body size to 100MB for document uploads
@@ -1159,6 +1164,11 @@ pub async fn get_payments_spec_handler() -> Json<utoipa::openapi::OpenApi> {
 
 pub async fn get_state_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["State"]);
+    Json(spec)
+}
+
+pub async fn get_collateral_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Collateral"]);
     Json(spec)
 }
 

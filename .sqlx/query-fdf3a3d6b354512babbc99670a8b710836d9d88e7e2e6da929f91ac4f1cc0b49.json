@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO collateral_checks (id, collateral_id, check_status)\n        VALUES ($1, $2, 'in_progress')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fdf3a3d6b354512babbc99670a8b710836d9d88e7e2e6da929f91ac4f1cc0b49"
+}

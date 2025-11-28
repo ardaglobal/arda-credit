@@ -185,7 +185,7 @@ pub struct CreateDealRequest {
     pub asset_class: Option<String>,
     pub region: Option<String>,
     pub minimum_investment: Option<String>,
-    
+
     /// UUID of collateral asset (optional)
     #[schema(example = "789e0123-b456-78c9-d012-345678901abc")]
     pub collateral_id: Option<String>,
@@ -218,7 +218,7 @@ pub struct DealDetailsResponse {
     pub asset_class: Option<String>,
     pub region: Option<String>,
     pub minimum_investment: Option<String>,
-    
+
     /// UUID of collateral asset (optional)
     pub collateral_id: Option<String>,
 }
@@ -290,7 +290,7 @@ pub struct UpdateDealRequest {
     pub asset_class: Option<Option<String>>,
     pub region: Option<Option<String>>,
     pub minimum_investment: Option<Option<String>>,
-    
+
     /// UUID of collateral asset (optional), Option<Option<T>> to handle NULL
     pub collateral_id: Option<Option<String>>,
 }
@@ -927,6 +927,7 @@ pub async fn list_deals_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: None,
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
             };
 
             // Populate sensitive fields only if not anonymized
@@ -1036,6 +1037,7 @@ pub async fn get_deals_by_user_id_endpoint(
             asset_class: deal.asset_class,
             region: deal.region,
             minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+            collateral_id: deal.collateral_id.map(|id| id.to_string()),
         })
         .collect();
 
@@ -1138,6 +1140,7 @@ pub async fn get_deals_by_company_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
             }
         })
         .collect();
@@ -1239,6 +1242,7 @@ pub async fn get_draft_deals_by_company_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
             }
         })
         .collect();
@@ -1332,6 +1336,7 @@ pub async fn get_deal_details_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
             };
 
             info!("✅ Deal details retrieved: {}", deal_id); // updated log message
@@ -1605,6 +1610,7 @@ pub async fn update_deal_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
             };
 
             let response = UpdateDealResponse {
