@@ -1,0 +1,106 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT\n            cm.matched_collateral_id,\n            cm.match_score as \"match_score!\",\n            cm.match_type as \"match_type!\",\n            c.id, c.name, c.collateral_type, c.description, c.address,\n            c.custom_id, c.double_pledged, c.has_potential_duplicates,\n            c.created_at as \"created_at!\", c.updated_at as \"updated_at!\", c.created_by, c.metadata\n        FROM collateral_matches cm\n        INNER JOIN collateral c ON c.id = cm.matched_collateral_id\n        WHERE cm.collateral_id = $1\n        ORDER BY cm.match_score DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "matched_collateral_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "match_score!",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 2,
+        "name": "match_type!",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "collateral_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "custom_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "double_pledged",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 10,
+        "name": "has_potential_duplicates",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 14,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "96ebc5e8e13920ba1d4b1f013aaf7786de16ff3390f724fb8752758f7b89c226"
+}

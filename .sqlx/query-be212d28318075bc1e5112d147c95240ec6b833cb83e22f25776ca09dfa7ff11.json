@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    INSERT INTO collateral_matches (collateral_id, matched_collateral_id, match_score, match_type)\n                    VALUES ($1, $2, $3, $4)\n                    ON CONFLICT (collateral_id, matched_collateral_id) DO UPDATE\n                    SET match_score = EXCLUDED.match_score, match_type = EXCLUDED.match_type\n                    ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "be212d28318075bc1e5112d147c95240ec6b833cb83e22f25776ca09dfa7ff11"
+}

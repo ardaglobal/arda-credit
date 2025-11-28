@@ -17,6 +17,7 @@ pub mod ai_notification_service;
 pub mod auth;
 pub mod balance_service;
 pub mod batch_processor;
+pub mod collateral_duplicate_checker;
 pub mod company_service;
 pub mod deployment_config;
 pub mod email_service;
@@ -36,6 +37,7 @@ pub mod withdrawal_service;
 pub use auth::{AuthError, AuthService, Claims};
 pub use balance_service::{BalanceVerificationResult, BalanceVerificationService};
 pub use batch_processor::BatchProcessorHandle;
+pub use collateral_duplicate_checker::CollateralDuplicateChecker;
 pub use company_service::{
     BeneficialOwnerInfo, CompanyRegistrationRequest, CompanyResponseDto, CompanyService,
     CompanyServiceError, KybSubmissionRequest, TeamInvitationRequest, TeamMemberPermissions,

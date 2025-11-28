@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            d.id,\n            d.originator_id,    -- Company ID of originator\n            d.investor_id,      -- Company ID of investor (optional)\n            d.borrower_id,      -- Company ID of borrower (optional)\n            bc.company_name as borrower_legal_name,  -- Borrower company legal name\n            d.principal_amount,\n            d.outstanding_balance,\n            d.interest_rate_bps,\n            d.deal_status,\n            d.originated_at,\n            d.maturity_date,\n            d.created_at,\n            d.updated_at,\n            d.custom_deal_id,\n            d.status,\n            d.industry,\n            d.document_ids,\n            d.title,\n            d.description,\n            d.risk_level,\n            d.asset_class,\n            d.region,\n            d.minimum_investment,\n            d.payment_frequency,\n            d.collateral_type,\n            d.collateral_value,\n            d.ltv_ratio,\n            d.credit_score,\n            d.dscr,\n            d.state_transition_hash,\n            d.proof_included\n        FROM deals d  -- was loans\n        LEFT JOIN companies bc ON d.borrower_id = bc.id\n        WHERE d.id = $1\n        ",
+  "query": "\n        SELECT\n            d.id,\n            d.originator_id,    -- Company ID of originator\n            d.investor_id,      -- Company ID of investor (optional)\n            d.borrower_id,      -- Company ID of borrower (optional)\n            bc.company_name as borrower_legal_name,  -- Borrower company legal name\n            d.principal_amount,\n            d.outstanding_balance,\n            d.interest_rate_bps,\n            d.deal_status,\n            d.originated_at,\n            d.maturity_date,\n            d.created_at,\n            d.updated_at,\n            d.custom_deal_id,\n            d.status,\n            d.industry,\n            d.document_ids,\n            d.title,\n            d.description,\n            d.risk_level,\n            d.asset_class,\n            d.region,\n            d.minimum_investment,\n            d.payment_frequency,\n            d.collateral_type,\n            d.collateral_value,\n            d.ltv_ratio,\n            d.credit_score,\n            d.dscr,\n            d.state_transition_hash,\n            d.proof_included,\n            d.collateral_id\n        FROM deals d  -- was loans\n        LEFT JOIN companies bc ON d.borrower_id = bc.id\n        WHERE d.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -157,6 +157,11 @@
         "ordinal": 30,
         "name": "proof_included",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 31,
+        "name": "collateral_id",
+        "type_info": "Uuid"
       }
     ],
     "parameters": {
@@ -195,8 +200,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "11d75a4e1005ada67eca03b456f66f7140cfaf9cc14e11c2e35e9758a57121e0"
+  "hash": "94f1d0dfe69e5a1a276b02df477d3731a12f3974ccb65054797152452cefa568"
 }

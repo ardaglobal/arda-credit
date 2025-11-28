@@ -180,6 +180,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/api-docs/users.json", get(get_users_spec_handler))
         .route("/api-docs/companies.json", get(get_companies_spec_handler))
         .route("/api-docs/deals.json", get(get_deals_spec_handler))
+        .route("/api-docs/collateral.json", get(get_collateral_spec_handler))
         .route("/api-docs/loan_tape.json", get(get_loan_tape_spec_handler))
         .route("/api-docs/admin.json", get(get_admin_spec_handler))
         .route("/api-docs/payments.json", get(get_payments_spec_handler))
@@ -874,6 +875,47 @@ pub fn create_router(state: ApiState) -> Router {
             paths::TAXONOMY_SECONDARY_TRADE_BY_ID,
             delete(crate::handlers::taxonomy::secondary_trades::delete_secondary_trade_handler),
         )
+        // Collateral
+        .route(
+            paths::COLLATERAL,
+            get(crate::handlers::taxonomy::collateral::list_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL,
+            post(crate::handlers::taxonomy::collateral::create_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL_BATCH,
+            post(crate::handlers::taxonomy::collateral::create_collateral_batch_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_ID,
+            put(crate::handlers::taxonomy::collateral::update_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_ID,
+            delete(crate::handlers::taxonomy::collateral::delete_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL_WITH_DUPLICATES,
+            get(crate::handlers::taxonomy::collateral::get_collateral_with_duplicates_handler),
+        )
+        .route(
+            paths::COLLATERAL_WITH_MATCHES,
+            get(crate::handlers::taxonomy::collateral::get_collateral_with_matches_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_CUSTOM_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_DEAL_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler),
+        )
         // Set maximum request body size to 100MB for document uploads
         // Default Axum limit is 2MB which is too small for PDFs
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100MB
@@ -1033,6 +1075,14 @@ fn filter_openapi_by_tags(
             tags if tags.contains(&"Loan Tape") => {
                 vec!["LoanTape", "Loan", "Tape", "BulkLoan", "ListLoan"]
             }
+            tags if tags.contains(&"Collateral") => vec![
+                "Collateral",
+                "Match",
+                "Duplicate",
+                "ErrorResponse",
+                "DeleteResponse",
+                "BatchOperation",
+            ],
             tags if tags.contains(&"Dev") => vec!["Faucet", "Network", "Health", "Info"],
             _ => vec![
                 "Credit",
@@ -1122,6 +1172,11 @@ pub async fn get_payments_spec_handler() -> Json<utoipa::openapi::OpenApi> {
 
 pub async fn get_state_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["State"]);
+    Json(spec)
+}
+
+pub async fn get_collateral_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Collateral"]);
     Json(spec)
 }
 

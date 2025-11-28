@@ -391,6 +391,9 @@ pub struct Deal {
     pub dscr: Option<rust_decimal::Decimal>,      // Debt Service Coverage Ratio
     pub state_transition_hash: Option<Vec<u8>>,   // Blockchain hash
     pub proof_included: bool,                     // Whether included in ZK proof batch
+
+    // Collateral reference
+    pub collateral_id: Option<uuid::Uuid>, // UUID of collateral asset (from collateral table)
 }
 
 impl Deal {
@@ -1954,6 +1957,7 @@ pub async fn create_deal(
     asset_class: Option<&str>,
     region: Option<&str>,
     minimum_investment: Option<rust_decimal::Decimal>,
+    collateral_id: Option<uuid::Uuid>, // UUID of collateral asset
 ) -> Result<Deal, sqlx::Error> {
     // was Loan
     let id = uuid::Uuid::new_v4();
@@ -1966,12 +1970,12 @@ pub async fn create_deal(
         INSERT INTO deals (
             id, originator_id, investor_id, borrower_id, principal_amount, outstanding_balance, interest_rate_bps, deal_status, maturity_date, originated_at, created_at, updated_at,
             custom_deal_id, status, industry, document_ids,
-            title, description, risk_level, asset_class, region, minimum_investment
+            title, description, risk_level, asset_class, region, minimum_investment, collateral_id
         )
         VALUES (
             $1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $9, $9,
             $10, $11, $12, $13,
-            $14, $15, $16, $17, $18, $19
+            $14, $15, $16, $17, $18, $19, $20
         )
         "#,  // was loans, borrower_id, lender_id - now originator_id and investor_id reference companies
         id,
@@ -1992,7 +1996,8 @@ pub async fn create_deal(
         risk_level,
         asset_class,
         region,
-        minimum_investment
+        minimum_investment,
+        collateral_id
     )
     .execute(pool)
     .await?;
@@ -2031,6 +2036,9 @@ pub async fn create_deal(
         dscr: None,
         state_transition_hash: None,
         proof_included: false,
+
+        // Collateral reference
+        collateral_id,
     };
 
     Ok(deal)
@@ -2072,7 +2080,8 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             d.credit_score,
             d.dscr,
             d.state_transition_hash,
-            d.proof_included
+            d.proof_included,
+            d.collateral_id
         FROM deals d  -- was loans
         LEFT JOIN companies bc ON d.borrower_id = bc.id
         WHERE d.id = $1
@@ -2117,6 +2126,9 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             dscr: row.dscr,
             state_transition_hash: row.state_transition_hash,
             proof_included: row.proof_included.unwrap_or(false),
+
+            // Collateral reference
+            collateral_id: row.collateral_id,
         })),
         None => Ok(None),
     }
@@ -2198,7 +2210,8 @@ pub async fn list_deals(
             d.credit_score,
             d.dscr,
             d.state_transition_hash,
-            d.proof_included
+            d.proof_included,
+            d.collateral_id
         FROM deals d  -- was loans
         LEFT JOIN companies bc ON d.borrower_id = bc.id
         WHERE ($1::text IS NULL OR d.deal_status = $1)
@@ -2256,6 +2269,7 @@ pub async fn list_deals(
             dscr: row.dscr,
             state_transition_hash: row.state_transition_hash,
             proof_included: row.proof_included.unwrap_or(false),
+            collateral_id: row.collateral_id,
         })
         .collect();
 
@@ -2320,7 +2334,8 @@ pub async fn get_deals_by_company_id(
             d.credit_score,
             d.dscr,
             d.state_transition_hash,
-            d.proof_included
+            d.proof_included,
+            d.collateral_id
         FROM deals d
         LEFT JOIN companies bc ON d.borrower_id = bc.id
         WHERE (d.originator_id = $1 OR d.investor_id = $1 OR d.borrower_id = $1)
@@ -2371,6 +2386,7 @@ pub async fn get_deals_by_company_id(
             dscr: row.dscr,
             state_transition_hash: row.state_transition_hash,
             proof_included: row.proof_included.unwrap_or(false),
+            collateral_id: row.collateral_id,
         })
         .collect();
 
@@ -2433,7 +2449,8 @@ pub async fn get_draft_deals_by_company_id(
             d.credit_score,
             d.dscr,
             d.state_transition_hash,
-            d.proof_included
+            d.proof_included,
+            d.collateral_id
         FROM deals d
         LEFT JOIN companies bc ON d.borrower_id = bc.id
         WHERE d.originator_id = $1
@@ -2483,6 +2500,7 @@ pub async fn get_draft_deals_by_company_id(
             dscr: row.dscr,
             state_transition_hash: row.state_transition_hash,
             proof_included: row.proof_included.unwrap_or(false),
+            collateral_id: row.collateral_id,
         })
         .collect();
 

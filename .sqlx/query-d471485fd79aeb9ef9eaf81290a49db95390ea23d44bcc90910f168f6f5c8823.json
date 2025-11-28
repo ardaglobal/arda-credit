@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                        UPDATE collateral_check_queue\n                        SET status = 'completed', completed_at = NOW()\n                        WHERE id = $1\n                        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d471485fd79aeb9ef9eaf81290a49db95390ea23d44bcc90910f168f6f5c8823"
+}

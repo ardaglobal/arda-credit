@@ -182,6 +182,76 @@ const COMPANY_PREFIXES: &[&str] = &[
     "Future",
 ];
 
+// Collateral data for testing duplicate detection
+const COLLATERAL_NAMES: &[&str] = &[
+    "123 Main Street Property",
+    "456 Oak Avenue Building",
+    "789 Elm Street Commercial Space",
+    "101 Pine Road Industrial Complex",
+    "202 Maple Drive Warehouse",
+    "CAT D8T Bulldozer Fleet",
+    "John Deere 9RX Series Tractors",
+    "Caterpillar 797F Mining Trucks",
+    "Boeing 737-800 Aircraft",
+    "Gulfstream G650 Private Jet",
+    "Inventory - Consumer Electronics",
+    "Inventory - Automotive Parts",
+    "Accounts Receivable Portfolio Q4-2024",
+    "Equipment - CNC Machining Center",
+    "Equipment - Industrial 3D Printers",
+    "Patent Portfolio - AI Technology",
+    "Trademark - Brand Assets Collection",
+    "Server Infrastructure - Data Center A",
+    "Medical Equipment - MRI Scanner",
+    "Oil & Gas Rights - Block 47",
+];
+
+const COLLATERAL_TYPES: &[&str] = &[
+    "real_estate",
+    "commercial_property",
+    "industrial_property",
+    "warehouse",
+    "construction_equipment",
+    "agricultural_equipment",
+    "mining_equipment",
+    "aircraft",
+    "private_aircraft",
+    "inventory",
+    "electronics_inventory",
+    "automotive_inventory",
+    "accounts_receivable",
+    "manufacturing_equipment",
+    "technology_equipment",
+    "intellectual_property",
+    "trademark",
+    "it_infrastructure",
+    "medical_equipment",
+    "mineral_rights",
+];
+
+const COLLATERAL_ADDRESSES: &[&str] = &[
+    "123 Main St, New York, NY 10001",
+    "456 Oak Ave, Los Angeles, CA 90012",
+    "789 Elm St, Chicago, IL 60601",
+    "101 Pine Rd, Houston, TX 77002",
+    "202 Maple Dr, Phoenix, AZ 85003",
+    "303 Cedar Ln, Philadelphia, PA 19102",
+    "404 Birch Way, San Antonio, TX 78201",
+    "505 Spruce Ct, San Diego, CA 92101",
+    "606 Willow St, Dallas, TX 75201",
+    "707 Ash Blvd, San Jose, CA 95110",
+    "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1",
+    "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
+    "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9",
+    "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+    "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+    "GPS: 40.7128° N, 74.0060° W",
+    "GPS: 34.0522° N, 118.2437° W",
+    "GPS: 41.8781° N, 87.6298° W",
+    "Parcel ID: APN-2024-00451-A",
+    "Serial: CAT-2024-D8T-00789",
+];
+
 /// Refresh all metrics data after deal population
 async fn refresh_metrics_data(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::error::Error>> {
     let mut tx = pool.begin().await?;
@@ -358,6 +428,7 @@ async fn create_deal_with_custom_dates(
     minimum_investment: Option<Decimal>,
     originated_at: chrono::DateTime<Utc>,
     created_at: chrono::DateTime<Utc>,
+    collateral_id: Option<Uuid>,
 ) -> Result<Deal, sqlx::Error> {
     let id = Uuid::new_v4();
     let default_json = serde_json::Value::Array(vec![]);
@@ -368,12 +439,12 @@ async fn create_deal_with_custom_dates(
         INSERT INTO deals (
             id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, deal_status, maturity_date, originated_at, created_at, updated_at,
             custom_deal_id, status, industry, document_ids,
-            title, description, risk_level, asset_class, region, minimum_investment
+            title, description, risk_level, asset_class, region, minimum_investment, collateral_id
         )
         VALUES (
             $1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $9,
             $10, $11, $12, $13,
-            $14, $15, $16, $17, $18, $19
+            $14, $15, $16, $17, $18, $19, $20
         )
         "#,
         id,
@@ -394,7 +465,8 @@ async fn create_deal_with_custom_dates(
         risk_level,
         asset_class,
         region,
-        minimum_investment
+        minimum_investment,
+        collateral_id
     )
     .execute(pool)
     .await?;
@@ -431,6 +503,7 @@ async fn create_deal_with_custom_dates(
         dscr: None,
         state_transition_hash: None,
         proof_included: false,
+        collateral_id,
     };
 
     Ok(deal)
@@ -709,12 +782,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Export to CSV instead of writing to database")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("dp")
+                .long("dp")
+                .value_name("NUMBER")
+                .help(
+                    "Number of double-pledged deals to create (uses same collateral intentionally)",
+                )
+                .value_parser(clap::value_parser!(u32)),
+        )
         .get_matches();
 
     let email = matches.get_one::<String>("email");
     let count = *matches.get_one::<u32>("count").unwrap();
     let clear_data = matches.get_flag("clear");
     let csv_mode = matches.get_flag("csv");
+    let double_pledged_count = matches.get_one::<u32>("dp").copied();
 
     println!("🚀 Starting deal data population...");
 
@@ -768,7 +851,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => {
             println!("🎲 Random mode: Generating {} random deals", count);
-            generate_random_deals(&pool, count).await?;
+            if let Some(dp_count) = double_pledged_count {
+                println!(
+                    "🔗 Will create {} double-pledged deals for duplicate testing",
+                    dp_count
+                );
+            }
+            generate_random_deals(&pool, count, double_pledged_count).await?;
         }
     }
 
@@ -797,6 +886,18 @@ async fn clear_existing_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
         .await?;
     sqlx::query!("DELETE FROM deals").execute(pool).await?;
 
+    // Clear collateral data
+    sqlx::query!("DELETE FROM collateral_matches")
+        .execute(pool)
+        .await?;
+    sqlx::query!("DELETE FROM collateral_check_queue")
+        .execute(pool)
+        .await?;
+    sqlx::query!("DELETE FROM collateral_checks")
+        .execute(pool)
+        .await?;
+    sqlx::query!("DELETE FROM collateral").execute(pool).await?;
+
     // Clear metrics data (must be done before deleting companies due to FK constraints)
     sqlx::query!("DELETE FROM metrics_market_value_daily")
         .execute(pool)
@@ -815,7 +916,64 @@ async fn clear_existing_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    println!("✅ Cleared existing deal, metrics, and test company data");
+    println!("✅ Cleared existing deal, metrics, collateral, and test company data");
+    Ok(())
+}
+
+/// Report on duplicate matches found
+async fn report_duplicate_matches(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    let result = sqlx::query!(
+        r#"
+        SELECT 
+            COUNT(*) as total_collateral,
+            COUNT(DISTINCT double_pledged) FILTER (WHERE double_pledged IS NOT NULL) as unique_duplicates,
+            COUNT(*) FILTER (WHERE double_pledged IS NOT NULL) as collateral_with_duplicates
+        FROM collateral
+        "#
+    )
+    .fetch_one(pool)
+    .await?;
+
+    println!("  📊 Duplicate Detection Summary:");
+    println!(
+        "     Total collateral: {}",
+        result.total_collateral.unwrap_or(0)
+    );
+    println!(
+        "     Collateral with duplicates: {}",
+        result.collateral_with_duplicates.unwrap_or(0)
+    );
+    println!(
+        "     Unique duplicate groups: {}",
+        result.unique_duplicates.unwrap_or(0)
+    );
+
+    // Show some examples
+    let examples = sqlx::query!(
+        r#"
+        SELECT 
+            c1.name as original_name,
+            c1.id as original_id,
+            c2.name as duplicate_name,
+            c2.id as duplicate_id
+        FROM collateral c1
+        INNER JOIN collateral c2 ON c1.double_pledged = c2.id
+        LIMIT 5
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    if !examples.is_empty() {
+        println!("  🔗 Example duplicate matches:");
+        for ex in examples {
+            println!(
+                "     '{}' matched with '{}'",
+                ex.original_name, ex.duplicate_name
+            );
+        }
+    }
+
     Ok(())
 }
 
@@ -860,6 +1018,7 @@ async fn generate_user_deals(
             originator.id,
             Some(investor_company.id),
             &format!("User Investment Deal #{}", i + 1),
+            None, // No collateral for user deals
         )
         .await?;
     }
@@ -875,6 +1034,7 @@ async fn generate_user_deals(
             originator_company.id,
             Some(investor.id),
             &format!("User Origination Deal #{}", i + 1),
+            None, // No collateral for user deals
         )
         .await?;
     }
@@ -893,7 +1053,10 @@ async fn generate_user_deals(
 async fn generate_random_deals(
     pool: &sqlx::PgPool,
     count: u32,
+    double_pledged_count: Option<u32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let mut rng = thread_rng();
+
     // Create random companies for originators and investors
     let companies = ensure_random_companies(
         pool,
@@ -901,23 +1064,75 @@ async fn generate_random_deals(
     )
     .await?;
 
-    println!("💰 Generating {} random deals", count);
+    println!("💰 Generating {} random deals with collateral", count);
+
+    // Track if we should create double-pledged deals
+    let mut dp_remaining = double_pledged_count.unwrap_or(0);
+    let mut shared_collateral_id: Option<Uuid> = None;
+    let dp_collateral_index = rng.gen_range(0..COLLATERAL_NAMES.len());
+
     for i in 0..count {
-        let originator = companies.choose(&mut thread_rng()).unwrap();
+        let originator = companies.choose(&mut rng).unwrap();
         let investor_candidates: Vec<&Company> =
             companies.iter().filter(|c| c.id != originator.id).collect();
-        let investor = investor_candidates.choose(&mut thread_rng()).unwrap();
+        let investor = investor_candidates.choose(&mut rng).unwrap();
+
+        // Create collateral for this deal
+        let collateral_id = if dp_remaining > 0 {
+            // Create intentional duplicate
+            if shared_collateral_id.is_none() {
+                // First double-pledged deal - create the shared collateral
+                shared_collateral_id = Some(
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?,
+                );
+                println!(
+                    "  🔗 Created shared collateral {} for {} double-pledged deals",
+                    shared_collateral_id.unwrap(),
+                    double_pledged_count.unwrap()
+                );
+            }
+            dp_remaining -= 1;
+
+            if dp_remaining > 0 {
+                // Create another collateral with same attributes (should be detected as duplicate)
+                Some(
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?,
+                )
+            } else {
+                // Last double-pledged deal uses the original
+                shared_collateral_id
+            }
+        } else {
+            // Random collateral (70% of deals have collateral)
+            if rng.gen_bool(0.7) {
+                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+            } else {
+                None
+            }
+        };
 
         create_realistic_deal(
             pool,
             originator.id,
             Some(investor.id),
             &format!("Random Deal #{}", i + 1),
+            collateral_id,
         )
         .await?;
     }
 
     println!("✅ Generated {} random deals", count);
+
+    if double_pledged_count.is_some() && double_pledged_count.unwrap() > 0 {
+        println!("🔍 Waiting 5 seconds for duplicate detection to process...");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        // Report on duplicate detection
+        println!("📊 Checking duplicate detection results...");
+        report_duplicate_matches(pool).await?;
+    }
 
     // Refresh metrics after creating deals
     println!("📊 Refreshing metrics data...");
@@ -1014,12 +1229,73 @@ async fn ensure_random_companies(
     Ok(companies)
 }
 
+/// Create a collateral asset with randomized data
+async fn create_random_collateral(
+    pool: &sqlx::PgPool,
+    rng: &mut impl Rng,
+    force_duplicate: bool,
+    duplicate_index: Option<usize>,
+) -> Result<Uuid, Box<dyn std::error::Error>> {
+    use db::{create_collateral, CreateCollateralRequest};
+
+    let (name, collateral_type, address) = if force_duplicate && duplicate_index.is_some() {
+        // Use fixed index for intentional duplicates
+        let idx = duplicate_index.unwrap();
+        (
+            COLLATERAL_NAMES[idx].to_string(),
+            Some(COLLATERAL_TYPES[idx].to_string()),
+            Some(COLLATERAL_ADDRESSES[idx].to_string()),
+        )
+    } else {
+        // Random selection
+        (
+            COLLATERAL_NAMES.choose(rng).unwrap().to_string(),
+            Some(COLLATERAL_TYPES.choose(rng).unwrap().to_string()),
+            Some(COLLATERAL_ADDRESSES.choose(rng).unwrap().to_string()),
+        )
+    };
+
+    let description = Some(format!(
+        "Collateral asset of type {} located at {}",
+        collateral_type.as_ref().unwrap(),
+        address.as_ref().unwrap()
+    ));
+
+    // Generate custom_id 50% of the time
+    let custom_id = if rng.gen_bool(0.5) {
+        Some(format!(
+            "COLL-{}-{:04}",
+            chrono::Utc::now().format("%Y%m"),
+            rng.gen_range(1000..9999)
+        ))
+    } else {
+        None
+    };
+
+    let request = CreateCollateralRequest {
+        name,
+        collateral_type,
+        description,
+        address,
+        custom_id,
+        metadata: Some(json!({
+            "created_by_script": true,
+            "is_duplicate_test": force_duplicate
+        })),
+        created_by: None,
+    };
+
+    let collateral = create_collateral(pool, request).await?;
+    Ok(collateral.id)
+}
+
 /// Create a realistic deal with randomized but reasonable data
 async fn create_realistic_deal(
     pool: &sqlx::PgPool,
     originator_id: Uuid,
     investor_id: Option<Uuid>,
     title_prefix: &str,
+    collateral_id: Option<Uuid>,
 ) -> Result<Deal, Box<dyn std::error::Error>> {
     let mut rng = thread_rng();
 
@@ -1113,6 +1389,7 @@ async fn create_realistic_deal(
         None,          // minimum_investment
         originated_at, // custom originated_at
         originated_at, // set created_at to same as originated_at
+        collateral_id, // Collateral UUID (optional)
     )
     .await?;
 

@@ -8,6 +8,10 @@ version = "0.1.0"
 name = "populate_deal_data"
 path = "populate_deal_data.rs"
 
+[[bin]]
+name = "test_collateral_duplicates"
+path = "test_collateral_duplicates.rs"
+
 [dependencies]
 chrono             = { workspace = true, features = [ "serde" ] }
 clap               = "4.0"

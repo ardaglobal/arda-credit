@@ -22,7 +22,8 @@ Arda API - Comprehensive credit deal management platform with document ingestion
 • **[Users](./users.json)** (~3-4KB) - User management & KYC
 • **[Companies](./companies.json)** (~6-8KB) - Company management & teams  
 • **[Deals](./deals.json)** (~8-10KB) - Deal lifecycle & marketplace ⭐
-• **[Loan Tape](./loan_tape.json)** (~3-4KB) - Portfolio upload & management ⭐
+• **[Collateral](./collateral.json)** (~3-4KB) - Collateral assets & duplicate detection ⭐
+• **[Loan Tape](./loan_tape.json)** (~3-4KB) - Portfolio upload & management
 • **[Admin](./admin.json)** (~4-5KB) - Administrative operations
 • **[Payments](./payments.json)** (~5-6KB) - Financial transactions
 • **[State](./state.json)** (~4-5KB) - Blockchain integration
@@ -102,6 +103,18 @@ const PAYMENTS_TAG_DESC: &str = r#"
 Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines
 
 📄 **Focused API Spec**: [/api-docs/payments.json](./payments.json) (~5-6KB - Payment endpoints & schemas only)
+"#;
+
+const COLLATERAL_TAG_DESC: &str = r#"
+Collateral asset management with intelligent duplicate detection. Track collateral assets, detect potential double-pledging, and associate with deals.
+
+**Features:**
+- Multiple duplicate detection strategies (exact, fuzzy, custom_id, address)
+- Individual match scores with configurable threshold (default: 50%)
+- Automatic background processing for duplicate checks
+- Queue-based processing prevents race conditions
+
+📄 **Focused API Spec**: [/api-docs/collateral.json](./collateral.json) (~3-4KB - Collateral endpoints & schemas only)
 "#;
 
 const TAXONOMY_TAG_DESC: &str = r#"
@@ -357,6 +370,18 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::get_user_deal_transfer_history_endpoint,
         crate::handlers::deals::deals::validate_deal_transfer_endpoint,
 
+        // Collateral endpoints
+        crate::handlers::taxonomy::collateral::list_collateral_handler,
+        crate::handlers::taxonomy::collateral::create_collateral_handler,
+        crate::handlers::taxonomy::collateral::create_collateral_batch_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_handler,
+        crate::handlers::taxonomy::collateral::update_collateral_handler,
+        crate::handlers::taxonomy::collateral::delete_collateral_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_with_duplicates_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_with_matches_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler,
+
         // Withdrawal endpoints
         crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
         crate::handlers::finance::withdrawals::get_withdrawal_status_endpoint,
@@ -522,6 +547,7 @@ fn default_limit() -> u32 {
         (name = "Company Memberships", description = COMPANY_MEMBERSHIPS_TAG_DESC),
         (name = "Company Wallets", description = COMPANY_WALLETS_TAG_DESC),
         (name = "Deals", description = DEALS_TAG_DESC),
+        (name = "Collateral", description = COLLATERAL_TAG_DESC),
         (name = "Loan Tape", description = LOAN_TAPE_TAG_DESC),
         (name = "State", description = STATE_TAG_DESC),
         (name = "Admin", description = ADMIN_TAG_DESC),
@@ -641,6 +667,14 @@ fn default_limit() -> u32 {
         DealTransferResponse,
         ValidateDealTransferRequest,
         DealTransferValidationResponse,
+
+        // Collateral types
+        crate::handlers::taxonomy::collateral::CollateralResponse,
+        crate::handlers::taxonomy::collateral::CreateCollateralApiRequest,
+        crate::handlers::taxonomy::collateral::UpdateCollateralApiRequest,
+        crate::handlers::taxonomy::collateral::CollateralWithDuplicatesResponse,
+        crate::handlers::taxonomy::collateral::CollateralWithMatchesResponse,
+        crate::handlers::taxonomy::collateral::CollateralMatchResponse,
 
         // Loan Tape types
         crate::dto::loan_tape_dto::CreateLoanTapeRequest,

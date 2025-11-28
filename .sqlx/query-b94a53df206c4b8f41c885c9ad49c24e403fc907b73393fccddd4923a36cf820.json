@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            d.id,\n            d.originator_id,    -- Company ID of originator\n            d.investor_id,      -- Company ID of investor (optional)\n            d.borrower_id,      -- Company ID of borrower (optional)\n            bc.company_name as borrower_legal_name,  -- Borrower company legal name\n            d.principal_amount,\n            d.outstanding_balance,\n            d.interest_rate_bps,\n            d.deal_status,\n            d.originated_at,\n            d.maturity_date,\n            d.created_at,\n            d.updated_at,\n            d.custom_deal_id,\n            d.status,\n            d.industry,\n            d.document_ids,\n            d.title,\n            d.description,\n            d.risk_level,\n            d.asset_class,\n            d.region,\n            d.minimum_investment,\n            d.payment_frequency,\n            d.collateral_type,\n            d.collateral_value,\n            d.ltv_ratio,\n            d.credit_score,\n            d.dscr,\n            d.state_transition_hash,\n            d.proof_included\n        FROM deals d  -- was loans\n        LEFT JOIN companies bc ON d.borrower_id = bc.id\n        WHERE ($1::text IS NULL OR d.deal_status = $1)\n          AND ($2::uuid IS NULL OR d.originator_id = $2)  -- Company ID filter\n          AND ($3::uuid IS NULL OR d.investor_id = $3)    -- Company ID filter\n          AND ($4::uuid IS NULL OR d.borrower_id = $4)    -- Company ID filter\n          AND ($5::text IS NULL OR d.industry = $5)\n        ORDER BY d.created_at DESC\n        LIMIT $6 OFFSET $7\n        ",
+  "query": "\n        SELECT\n            d.id,\n            d.originator_id,\n            d.investor_id,\n            d.borrower_id,\n            bc.company_name as borrower_legal_name,\n            d.principal_amount,\n            d.outstanding_balance,\n            d.interest_rate_bps,\n            d.deal_status,\n            d.originated_at,\n            d.maturity_date,\n            d.created_at,\n            d.updated_at,\n            d.custom_deal_id,\n            d.status,\n            d.industry,\n            d.document_ids,\n            d.title,\n            d.description,\n            d.risk_level,\n            d.asset_class,\n            d.region,\n            d.minimum_investment,\n            d.payment_frequency,\n            d.collateral_type,\n            d.collateral_value,\n            d.ltv_ratio,\n            d.credit_score,\n            d.dscr,\n            d.state_transition_hash,\n            d.proof_included,\n            d.collateral_id\n        FROM deals d\n        LEFT JOIN companies bc ON d.borrower_id = bc.id\n        WHERE (d.originator_id = $1 OR d.investor_id = $1 OR d.borrower_id = $1)\n          AND ($2::text IS NULL OR d.deal_status = $2)\n        ORDER BY d.created_at DESC\n        LIMIT $3 OFFSET $4\n        ",
   "describe": {
     "columns": [
       {
@@ -157,13 +157,15 @@
         "ordinal": 30,
         "name": "proof_included",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 31,
+        "name": "collateral_id",
+        "type_info": "Uuid"
       }
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Uuid",
-        "Uuid",
         "Uuid",
         "Text",
         "Int8",
@@ -201,8 +203,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "f6c475dd5c6f4332279d55d28dba0f585b8392b2c9f05039b4027c025851b117"
+  "hash": "b94a53df206c4b8f41c885c9ad49c24e403fc907b73393fccddd4923a36cf820"
 }
