@@ -14,7 +14,7 @@ path = "test_collateral_duplicates.rs"
 
 [dependencies]
 chrono             = { workspace = true, features = [ "serde" ] }
-clap               = "4.0"
+clap               = "4.5"
 csv                = "1.3"
 db                 = { path = "../db" }
 rand               = "0.8"
