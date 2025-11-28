@@ -1075,6 +1075,14 @@ fn filter_openapi_by_tags(
             tags if tags.contains(&"Loan Tape") => {
                 vec!["LoanTape", "Loan", "Tape", "BulkLoan", "ListLoan"]
             }
+            tags if tags.contains(&"Collateral") => vec![
+                "Collateral",
+                "Match",
+                "Duplicate",
+                "ErrorResponse",
+                "DeleteResponse",
+                "BatchOperation",
+            ],
             tags if tags.contains(&"Dev") => vec!["Faucet", "Network", "Health", "Info"],
             _ => vec![
                 "Credit",
