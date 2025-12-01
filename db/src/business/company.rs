@@ -477,12 +477,12 @@ pub async fn get_or_create_company(
         return Ok(company);
     }
 
-    // Second, try to find by company_name (enforces unique names)
+    // Second, try to find by company_name (enforces unique names, case-insensitive)
     let existing_by_name = sqlx::query_as::<_, Company>(
         r#"
         SELECT id, name, description, status, metadata, created_at, updated_at
         FROM companies
-        WHERE company_name = $1
+        WHERE LOWER(company_name) = LOWER($1)
         "#,
     )
     .bind(company_name)
@@ -541,13 +541,13 @@ pub async fn get_company_by_id(pool: &PgPool, company_id: Uuid) -> DbResult<Comp
     Ok(company)
 }
 
-/// Get company by name (case-sensitive exact match)
+/// Get company by name (case-insensitive match)
 pub async fn get_company_by_name(pool: &PgPool, company_name: &str) -> DbResult<Option<Company>> {
     let company = sqlx::query_as::<_, Company>(
         r#"
         SELECT id, name, description, status, metadata, created_at, updated_at
         FROM companies
-        WHERE name = $1
+        WHERE LOWER(name) = LOWER($1)
         "#,
     )
     .bind(company_name)

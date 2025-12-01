@@ -26,8 +26,8 @@ use arda_credit_db::{
     business::company::{
         create_company_with_membership, get_company_by_name, get_user_membership, ProfileType,
     },
-    count_loan_tape_records, create_loan_tape_record, get_identity_by_id,
-    get_loan_tape_record_by_id, get_loan_tape_records,
+    count_loan_tape_records, create_collateral, create_loan_tape_record, get_identity_by_id,
+    get_loan_tape_record_by_id, get_loan_tape_records, CreateCollateralRequest,
 };
 
 // ============================================================================
@@ -467,6 +467,61 @@ pub async fn create_bulk_loan_tape_handler(
             .as_ref()
             .and_then(|h| hex::decode(h.trim_start_matches("0x")).ok());
 
+        // Create collateral record if collateral data is provided
+        let collateral_uuid = if record_req.collateral_name.is_some()
+            || record_req.collateral_type.is_some()
+            || record_req.collateral_address.is_some()
+        {
+            // If collateral_id is provided in the request, try to parse it
+            let coll_id = if let Some(id_str) = &record_req.collateral_id {
+                Uuid::parse_str(id_str).ok()
+            } else {
+                None
+            };
+
+            // Create collateral record
+            let collateral_req = CreateCollateralRequest {
+                name: record_req
+                    .collateral_name
+                    .clone()
+                    .unwrap_or_else(|| "Unnamed Collateral".to_string()),
+                collateral_type: record_req.collateral_type.clone(),
+                description: record_req
+                    .collateral_type
+                    .as_ref()
+                    .map(|t| format!("Collateral of type {} imported from loan tape", t)),
+                address: record_req.collateral_address.clone(),
+                custom_id: record_req.collateral_custom_id.clone(),
+                metadata: Some(serde_json::json!({
+                    "imported_from": "loan_tape_bulk_upload",
+                    "provided_id": record_req.collateral_id
+                })),
+                created_by: Some(req.user_id),
+            };
+
+            match create_collateral(&state.pool, collateral_req).await {
+                Ok(collateral) => {
+                    info!(
+                        "Created collateral {} for deal at index {}",
+                        collateral.id, idx
+                    );
+                    Some(collateral.id)
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to create collateral for deal at index {}: {}. Continuing without collateral.",
+                        idx, e
+                    );
+                    coll_id
+                }
+            }
+        } else if let Some(id_str) = &record_req.collateral_id {
+            // Only collateral_id provided, parse it
+            Uuid::parse_str(id_str).ok()
+        } else {
+            None
+        };
+
         let deal = create_loan_tape_record(
             &state.pool,
             *originator_id,
@@ -492,6 +547,7 @@ pub async fn create_bulk_loan_tape_handler(
             record_req.industry.as_deref(),
             state_hash,
             record_req.proof_included.unwrap_or(false),
+            collateral_uuid,
         )
         .await
         .map_err(|e| {

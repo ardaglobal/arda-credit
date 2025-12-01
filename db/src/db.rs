@@ -4734,6 +4734,7 @@ pub async fn create_loan_tape_record(
     industry: Option<&str>,
     state_transition_hash: Option<Vec<u8>>,
     proof_included: bool,
+    collateral_id: Option<uuid::Uuid>,
 ) -> Result<Deal, sqlx::Error> {
     let id = uuid::Uuid::new_v4();
     let now = Utc::now();
@@ -4754,7 +4755,7 @@ pub async fn create_loan_tape_record(
             created_at, updated_at, custom_deal_id, status,
             title, description, payment_frequency, collateral_type, collateral_value,
             ltv_ratio, credit_score, dscr, risk_level, asset_class, region, industry,
-            state_transition_hash, proof_included,
+            state_transition_hash, proof_included, collateral_id,
             document_ids, minimum_investment
         )
         VALUES (
@@ -4763,7 +4764,7 @@ pub async fn create_loan_tape_record(
             $10, $10, $11, $12,
             $13, $14, $15, $16, $17,
             $18, $19, $20, $21, $22, $23, $24,
-            $25, $26,
+            $25, $26, $27,
             '[]'::jsonb, NULL
         )
         "#,
@@ -4792,7 +4793,8 @@ pub async fn create_loan_tape_record(
         region,
         industry,
         state_transition_hash,
-        proof_included
+        proof_included,
+        collateral_id
     )
     .execute(pool)
     .await?;

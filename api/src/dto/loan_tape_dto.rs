@@ -59,9 +59,25 @@ pub struct CreateLoanTapeRequest {
     #[schema(example = "monthly")]
     pub payment_frequency: Option<String>,
 
+    /// Collateral asset UUID (for linking to collateral table)
+    #[schema(example = "450e8400-e29b-41d4-a716-446655440003")]
+    pub collateral_id: Option<String>,
+
+    /// Collateral asset name/identifier
+    #[schema(example = "Warehouse Property - 123 Main St")]
+    pub collateral_name: Option<String>,
+
     /// Collateral type (free text)
     #[schema(example = "Equipment")]
     pub collateral_type: Option<String>,
+
+    /// Collateral physical or legal address
+    #[schema(example = "123 Main St, New York, NY 10001")]
+    pub collateral_address: Option<String>,
+
+    /// Custom collateral identifier (user-defined)
+    #[schema(example = "COLL-202412-1234")]
+    pub collateral_custom_id: Option<String>,
 
     /// Collateral value in USD
     #[schema(value_type = Option<String>, example = "3500000.00")]
