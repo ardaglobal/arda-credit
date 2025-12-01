@@ -57,6 +57,12 @@ struct DealCsvRow {
     asset_class: Option<String>,
     region: Option<String>,
     minimum_investment: Option<String>,
+    // Collateral fields for testing double pledge detection
+    collateral_id: Option<String>,
+    collateral_name: Option<String>,
+    collateral_type: Option<String>,
+    collateral_address: Option<String>,
+    collateral_custom_id: Option<String>,
 }
 
 // ============================================================================
@@ -726,6 +732,37 @@ fn generate_csv_deal_row(
         (interest_rate_bps as f64) / 100.0
     );
 
+    // Generate collateral data (70% probability, matching database mode behavior)
+    let (collateral_id, collateral_name, collateral_type, collateral_address, collateral_custom_id) =
+        if rng.gen_bool(0.7) {
+            // Generate collateral UUID and data
+            let coll_id = Uuid::new_v4();
+            let coll_name = COLLATERAL_NAMES.choose(rng).unwrap().to_string();
+            let coll_type = COLLATERAL_TYPES.choose(rng).unwrap().to_string();
+            let coll_address = COLLATERAL_ADDRESSES.choose(rng).unwrap().to_string();
+
+            // Generate custom_id 50% of the time
+            let coll_custom_id = if rng.gen_bool(0.5) {
+                Some(format!(
+                    "COLL-{}-{:04}",
+                    chrono::Utc::now().format("%Y%m"),
+                    rng.gen_range(1000..9999)
+                ))
+            } else {
+                None
+            };
+
+            (
+                Some(coll_id.to_string()),
+                Some(coll_name),
+                Some(coll_type),
+                Some(coll_address),
+                coll_custom_id,
+            )
+        } else {
+            (None, None, None, None, None)
+        };
+
     Ok(DealCsvRow {
         originator_name,
         investor_name,
@@ -744,6 +781,11 @@ fn generate_csv_deal_row(
         asset_class: Some(asset_class.to_string()),
         region: Some(region.to_string()),
         minimum_investment: None,
+        collateral_id,
+        collateral_name,
+        collateral_type,
+        collateral_address,
+        collateral_custom_id,
     })
 }
 
