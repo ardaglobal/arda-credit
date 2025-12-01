@@ -69,7 +69,7 @@ use uuid::Uuid;
 ///
 /// This function sends a non-blocking command to the background batch processor
 /// to refresh metrics. The API response is not delayed by the metrics refresh.
-fn trigger_metrics_refresh_async(state: &ApiState) {
+pub fn trigger_metrics_refresh_async(state: &ApiState) {
     if let Some(batch_processor) = &state.batch_processor {
         if let Err(e) = batch_processor.refresh_metrics() {
             warn!("Failed to trigger async metrics refresh: {}", e);
@@ -83,7 +83,7 @@ fn trigger_metrics_refresh_async(state: &ApiState) {
 }
 
 /// Invalidate metrics cache entries after deal operations
-fn invalidate_metrics_cache(state: &ApiState) {
+pub fn invalidate_metrics_cache(state: &ApiState) {
     let cache = state.metrics_cache.clone();
     tokio::spawn(async move {
         match tokio::time::timeout(std::time::Duration::from_secs(5), cache.invalidate_all()).await

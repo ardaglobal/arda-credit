@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 use crate::config::types::ApiState;
 use crate::dto::loan_tape_dto::{BulkCreateLoanTapeRequest, LoanTapeListResponse, LoanTapeRecord};
+use crate::handlers::deals::trigger_metrics_refresh_async;
 use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
     business::company::{
@@ -524,6 +525,9 @@ pub async fn create_bulk_loan_tape_handler(
         user.email,
         consistent_role
     );
+
+    // Trigger async metrics refresh after bulk deal creation
+    trigger_metrics_refresh_async(&state);
 
     Ok((
         StatusCode::CREATED,
