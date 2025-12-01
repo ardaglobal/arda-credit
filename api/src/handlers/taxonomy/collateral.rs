@@ -232,7 +232,7 @@ pub async fn create_collateral_handler(
 /// Get collateral by ID
 #[utoipa::path(
     get,
-    path = "/api/v1/taxonomy/collateral/{id}",
+    path = "/api/v1/collateral/{id}",
     params(
         ("id" = String, Path, description = "Collateral UUID")
     ),
@@ -264,7 +264,7 @@ pub async fn get_collateral_handler(
 /// Get collateral with potential duplicates
 #[utoipa::path(
     get,
-    path = "/api/v1/taxonomy/collateral/{id}/duplicates",
+    path = "/api/v1/collateral/{id}/duplicates",
     params(
         ("id" = String, Path, description = "Collateral UUID")
     ),
@@ -296,7 +296,7 @@ pub async fn get_collateral_with_duplicates_handler(
 /// Get collateral with all matches and scores
 #[utoipa::path(
     get,
-    path = "/api/v1/taxonomy/collateral/{id}/matches",
+    path = "/api/v1/collateral/{id}/matches",
     params(
         ("id" = String, Path, description = "Collateral UUID")
     ),
@@ -350,7 +350,7 @@ pub async fn get_collateral_with_matches_handler(
 /// Get collateral by custom ID
 #[utoipa::path(
     get,
-    path = "/api/v1/taxonomy/collateral/custom/{custom_id}",
+    path = "/api/v1/collateral/custom/{custom_id}",
     params(
         ("custom_id" = String, Path, description = "Custom collateral ID")
     ),
@@ -380,7 +380,7 @@ pub async fn get_collateral_by_custom_id_handler(
 /// Get collateral by deal ID
 #[utoipa::path(
     get,
-    path = "/api/v1/taxonomy/collateral/deal/{deal_id}",
+    path = "/api/v1/collateral/deal/{deal_id}",
     params(
         ("deal_id" = String, Path, description = "Deal UUID")
     ),
@@ -450,7 +450,7 @@ pub async fn list_collateral_handler(
 /// Update collateral
 #[utoipa::path(
     put,
-    path = "/api/v1/taxonomy/collateral/{id}",
+    path = "/api/v1/collateral/{id}",
     params(
         ("id" = String, Path, description = "Collateral UUID")
     ),
@@ -493,7 +493,7 @@ pub async fn update_collateral_handler(
 /// Delete collateral
 #[utoipa::path(
     delete,
-    path = "/api/v1/taxonomy/collateral/{id}",
+    path = "/api/v1/collateral/{id}",
     params(
         ("id" = String, Path, description = "Collateral UUID")
     ),
@@ -529,7 +529,7 @@ pub async fn delete_collateral_handler(
 /// Create collateral batch
 #[utoipa::path(
     post,
-    path = "/api/v1/taxonomy/collateral/batch",
+    path = "/api/v1/collateral/batch",
     request_body = Vec<CreateCollateralApiRequest>,
     responses(
         (status = 201, description = "Batch created successfully", body = BatchOperationResponse),
