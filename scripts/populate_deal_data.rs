@@ -240,11 +240,11 @@ const COLLATERAL_ADDRESSES: &[&str] = &[
     "505 Spruce Ct, San Diego, CA 92101",
     "606 Willow St, Dallas, TX 75201",
     "707 Ash Blvd, San Jose, CA 95110",
-    "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb1",
-    "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
-    "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9",
-    "0x514910771AF9Ca656af840dff83E8264EcF986CA",
-    "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+    "808 Broadway, Seattle, WA 98101",
+    "909 Market St, San Francisco, CA 94103",
+    "1010 Congress Ave, Austin, TX 78701",
+    "1111 Peachtree St, Atlanta, GA 30309",
+    "1212 Beacon St, Boston, MA 02215",
     "GPS: 40.7128° N, 74.0060° W",
     "GPS: 34.0522° N, 118.2437° W",
     "GPS: 41.8781° N, 87.6298° W",
@@ -847,7 +847,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match email {
         Some(user_email) => {
             println!("👤 User mode: Generating deals for {}", user_email);
-            generate_user_deals(&pool, user_email, count).await?;
+            if let Some(dp_count) = double_pledged_count {
+                println!(
+                    "🔗 Will create {} double-pledged deals for duplicate testing",
+                    dp_count
+                );
+            }
+            generate_user_deals(&pool, user_email, count, double_pledged_count).await?;
         }
         None => {
             println!("🎲 Random mode: Generating {} random deals", count);
@@ -982,6 +988,7 @@ async fn generate_user_deals(
     pool: &sqlx::PgPool,
     email: &str,
     count: u32,
+    double_pledged_count: Option<u32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Look up user by email, create if doesn't exist
     let user = match get_identity_by_email(pool, email).await? {
@@ -1003,6 +1010,12 @@ async fn generate_user_deals(
     // Get or create additional random companies for pairing
     let random_companies = ensure_random_companies(pool, 5).await?;
 
+    // Track if we should create double-pledged deals
+    let mut rng = thread_rng();
+    let mut dp_remaining = double_pledged_count.unwrap_or(0);
+    let mut shared_collateral_id: Option<Uuid> = None;
+    let dp_collateral_index = rng.gen_range(0..COLLATERAL_NAMES.len());
+
     // Generate deals with 50/50 split
     let investor_deals = count / 2;
     let originator_deals = count - investor_deals;
@@ -1010,15 +1023,51 @@ async fn generate_user_deals(
     println!("💰 Creating {} deals as investor", investor_deals);
     for i in 0..investor_deals {
         let originator = random_companies
-            .choose(&mut thread_rng())
+            .choose(&mut rng)
             .unwrap_or(&originator_company);
+
+        // Create collateral for this deal
+        let collateral_id = if dp_remaining > 0 {
+            // Create intentional duplicate
+            if shared_collateral_id.is_none() {
+                // First double-pledged deal - create the shared collateral
+                shared_collateral_id = Some(
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?,
+                );
+                println!(
+                    "  🔗 Created shared collateral {} for {} double-pledged deals",
+                    shared_collateral_id.unwrap(),
+                    double_pledged_count.unwrap()
+                );
+            }
+            dp_remaining -= 1;
+
+            if dp_remaining > 0 {
+                // Create another collateral with same attributes (should be detected as duplicate)
+                Some(
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?,
+                )
+            } else {
+                // Last double-pledged deal uses the original
+                shared_collateral_id
+            }
+        } else {
+            // Random collateral (70% of deals have collateral)
+            if rng.gen_bool(0.7) {
+                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+            } else {
+                None
+            }
+        };
 
         create_realistic_deal(
             pool,
             originator.id,
             Some(investor_company.id),
             &format!("User Investment Deal #{}", i + 1),
-            None, // No collateral for user deals
+            collateral_id,
         )
         .await?;
     }
@@ -1026,20 +1075,65 @@ async fn generate_user_deals(
     println!("🏢 Creating {} deals as originator", originator_deals);
     for i in 0..originator_deals {
         let investor = random_companies
-            .choose(&mut thread_rng())
+            .choose(&mut rng)
             .unwrap_or(&investor_company);
+
+        // Create collateral for this deal
+        let collateral_id = if dp_remaining > 0 {
+            // Create intentional duplicate
+            if shared_collateral_id.is_none() {
+                // First double-pledged deal - create the shared collateral
+                shared_collateral_id = Some(
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?,
+                );
+                println!(
+                    "  🔗 Created shared collateral {} for {} double-pledged deals",
+                    shared_collateral_id.unwrap(),
+                    double_pledged_count.unwrap()
+                );
+            }
+            dp_remaining -= 1;
+
+            if dp_remaining > 0 {
+                // Create another collateral with same attributes (should be detected as duplicate)
+                Some(
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?,
+                )
+            } else {
+                // Last double-pledged deal uses the original
+                shared_collateral_id
+            }
+        } else {
+            // Random collateral (70% of deals have collateral)
+            if rng.gen_bool(0.7) {
+                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+            } else {
+                None
+            }
+        };
 
         create_realistic_deal(
             pool,
             originator_company.id,
             Some(investor.id),
             &format!("User Origination Deal #{}", i + 1),
-            None, // No collateral for user deals
+            collateral_id,
         )
         .await?;
     }
 
     println!("✅ Created {} deals for user {}", count, email);
+
+    if double_pledged_count.is_some() && double_pledged_count.unwrap() > 0 {
+        println!("🔍 Waiting 5 seconds for duplicate detection to process...");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        // Report on duplicate detection
+        println!("📊 Checking duplicate detection results...");
+        report_duplicate_matches(pool).await?;
+    }
 
     // Refresh metrics after creating deals
     println!("📊 Refreshing metrics data...");
