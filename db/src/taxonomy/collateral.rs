@@ -383,6 +383,22 @@ pub async fn check_for_duplicates(pool: &PgPool, collateral_id: Uuid) -> Result<
             DbError::TransactionFailed(format!("Failed to update double_pledged: {}", e))
         })?;
 
+        // Update the matched collateral to reference back (bidirectional)
+        sqlx::query!(
+            r#"
+            UPDATE collateral
+            SET double_pledged = $1
+            WHERE id = $2 AND double_pledged IS NULL
+            "#,
+            collateral_id,
+            first_match_id
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            DbError::TransactionFailed(format!("Failed to update reciprocal double_pledged: {}", e))
+        })?;
+
         // Update check record with results
         sqlx::query!(
             r#"
@@ -749,6 +765,25 @@ pub async fn process_duplicate_check(pool: &PgPool, collateral_id: Uuid) -> Resu
             .await
             .map_err(|e| {
                 DbError::TransactionFailed(format!("Failed to update collateral duplicates: {}", e))
+            })?;
+
+            // Update the matched collateral to reference back (bidirectional)
+            sqlx::query!(
+                r#"
+                UPDATE collateral
+                SET double_pledged = $1, has_potential_duplicates = TRUE
+                WHERE id = $2 AND double_pledged IS NULL
+                "#,
+                collateral_id,
+                highest_match.0
+            )
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                DbError::TransactionFailed(format!(
+                    "Failed to update reciprocal double_pledged: {}",
+                    e
+                ))
             })?;
         }
     }
