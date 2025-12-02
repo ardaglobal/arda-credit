@@ -37,6 +37,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - uses: EmbarkStudios/cargo-deny-action@v2.0.13
+      - uses: EmbarkStudios/cargo-deny-action@v2.0.14
         with:
           command: check ${{ matrix.checks }}
