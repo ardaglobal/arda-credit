@@ -665,6 +665,15 @@ clean-anvil:
 	@echo "✅ Anvil state cleaned (blockchain reset)"
 	@echo "💡 Run 'make deploy-contracts' to redeploy contracts after reset"
 
+## clean-db: Clean Postgres database (purge all data)
+.PHONY: clean-db
+clean-db:
+	@echo "🧹 Cleaning Postgres database..."
+	@docker compose down postgres -v
+	@docker volume rm arda-credit_postgres_data 2>/dev/null || true
+	@echo "✅ Postgres database cleaned (all data removed)"
+	@echo "💡 Run 'make initDB' to reinitialize the database with fresh migrations"
+
 ## clean-docker: Clean up Docker resources
 .PHONY: clean-docker
 clean-docker:
