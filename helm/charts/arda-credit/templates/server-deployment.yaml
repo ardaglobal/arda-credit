@@ -8,6 +8,8 @@ metadata:
     app.kubernetes.io/component: server
 spec:
   replicas: {{ .Values.server.replicaCount }}
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "arda-credit.selectorLabels" . | nindent 6 }}
