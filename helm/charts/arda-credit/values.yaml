@@ -214,6 +214,28 @@ server:
   tolerations: []
   affinity: {}
 
+  # Ingress configuration for external access
+  ingress:
+    enabled: false
+    className: "alb"  # Use "nginx" for nginx-ingress, "alb" for AWS ALB
+    annotations: {}
+      # For AWS ALB:
+      # alb.ingress.kubernetes.io/scheme: internet-facing
+      # alb.ingress.kubernetes.io/target-type: ip
+      # alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+      # alb.ingress.kubernetes.io/ssl-redirect: '443'
+      # For Nginx:
+      # nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    hosts:
+      - host: server.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+      # - secretName: server-tls
+      #   hosts:
+      #     - server.example.com
+
 # Application secrets - supports both external secrets (.env) and direct values
 secrets:
   # For production: use external secret created from .env
