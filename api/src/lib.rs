@@ -76,15 +76,6 @@ pub use services::{
     KybSubmissionRequest, TeamInvitationRequest, TeamMemberPermissions, TeamMemberResponseDto,
 };
 
-// Re-export AI types
-pub use services::{
-    AiAnalysisService, AiChatMessage, AiChatRequest, AiChatResponse, AiNotificationService,
-    ChangeAnalysis, ChangeCategory, ChangeType, ChatPrompt, DeliveryMethod, DocumentAnalysisPrompt,
-    DocumentDiffRequest, DocumentDiffResponse, ImpactLevel, LlmProvider, LlmRequest, LlmResponse,
-    LlmService, NegotiationInsight, NotificationPriority, NotificationRecord, RiskFactor,
-    UserNotificationPreferences, WebhookConfig,
-};
-
 // Re-export handler modules for backward compatibility
 pub use handlers::*;
 
