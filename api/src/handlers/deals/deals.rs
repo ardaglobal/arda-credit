@@ -715,6 +715,56 @@ pub async fn create_deal_endpoint(
         None
     };
 
+    // Validate that all parties are different companies
+    if let Some(investor) = final_investor_id {
+        if final_originator_id == investor {
+            error!(
+                "❌ Originator and investor cannot be the same company: {}",
+                final_originator_id
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Originator and investor must be different companies. Both resolved to company ID: {}. \
+                    This can happen when company names are reused. Please ensure unique companies are selected.",
+                    final_originator_id
+                ),
+            ));
+        }
+    }
+
+    if let Some(borrower) = final_borrower_id {
+        if final_originator_id == borrower {
+            error!(
+                "❌ Originator and borrower cannot be the same company: {}",
+                final_originator_id
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Originator and borrower must be different companies. Both resolved to company ID: {}",
+                    final_originator_id
+                ),
+            ));
+        }
+
+        if let Some(investor) = final_investor_id {
+            if investor == borrower {
+                error!(
+                    "❌ Investor and borrower cannot be the same company: {}",
+                    investor
+                );
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "Investor and borrower must be different companies. Both resolved to company ID: {}",
+                        investor
+                    ),
+                ));
+            }
+        }
+    }
+
     // Parse collateral_id if provided
     let collateral_uuid = if let Some(coll_id_str) = &request.collateral_id {
         Some(Uuid::parse_str(coll_id_str).map_err(|e| {
