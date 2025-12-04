@@ -283,6 +283,12 @@ pub struct UpdateDealRequest {
     #[schema(example = "under_review")]
     pub status: Option<String>,
 
+    pub industry: Option<String>, // Industry sector for the deal
+
+    /// Array of document UUIDs associated with this deal, Option<Option<T>> to handle NULL
+    #[schema(example = json!(["123e4567-e89b-12d3-a456-426614174000"]))]
+    pub document_ids: Option<Option<Vec<String>>>,
+
     // Marketplace-friendly fields
     pub title: Option<Option<String>>,
     pub description: Option<Option<String>>,
@@ -714,6 +720,56 @@ pub async fn create_deal_endpoint(
     } else {
         None
     };
+
+    // Validate that all parties are different companies
+    if let Some(investor) = final_investor_id {
+        if final_originator_id == investor {
+            error!(
+                "❌ Originator and investor cannot be the same company: {}",
+                final_originator_id
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Originator and investor must be different companies. Both resolved to company ID: {}. \
+                    This can happen when company names are reused. Please ensure unique companies are selected.",
+                    final_originator_id
+                ),
+            ));
+        }
+    }
+
+    if let Some(borrower) = final_borrower_id {
+        if final_originator_id == borrower {
+            error!(
+                "❌ Originator and borrower cannot be the same company: {}",
+                final_originator_id
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Originator and borrower must be different companies. Both resolved to company ID: {}",
+                    final_originator_id
+                ),
+            ));
+        }
+
+        if let Some(investor) = final_investor_id {
+            if investor == borrower {
+                error!(
+                    "❌ Investor and borrower cannot be the same company: {}",
+                    investor
+                );
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "Investor and borrower must be different companies. Both resolved to company ID: {}",
+                        investor
+                    ),
+                ));
+            }
+        }
+    }
 
     // Parse collateral_id if provided
     let collateral_uuid = if let Some(coll_id_str) = &request.collateral_id {
@@ -1522,6 +1578,21 @@ pub async fn update_deal_endpoint(
         }
     }
 
+    // Parse document_ids into JSON format
+    let document_ids_json = if let Some(doc_ids_opt) = &request.document_ids {
+        Some(match doc_ids_opt {
+            Some(doc_ids) => Some(serde_json::to_value(doc_ids).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid document IDs format".to_string(),
+                )
+            })?),
+            None => None,
+        })
+    } else {
+        None
+    };
+
     // Update the deal in the database
     let updated_deal = update_deal(
         // was update_loan
@@ -1533,8 +1604,10 @@ pub async fn update_deal_endpoint(
         request.loan_status.as_deref(),
         maturity_date,
         request.custom_deal_id.as_ref().map(|opt| opt.as_deref()),
-        borrower_id,               // Company ID of borrower (optional third party)
-        request.status.as_deref(), // Deal negotiation status
+        borrower_id,                 // Company ID of borrower (optional third party)
+        request.status.as_deref(),   // Deal negotiation status
+        request.industry.as_deref(), // Industry sector
+        document_ids_json.as_ref().map(|opt| opt.as_ref()), // Document IDs array
         request.title.as_ref().map(|opt| opt.as_deref()),
         request.description.as_ref().map(|opt| opt.as_deref()),
         request.risk_level.as_ref().map(|opt| opt.as_deref()),

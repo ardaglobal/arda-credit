@@ -2553,11 +2553,13 @@ pub async fn update_deal(
     custom_deal_id: Option<Option<&str>>,         // Option<Option<T>> to handle setting to NULL
     borrower_id: Option<Option<uuid::Uuid>>,      // Option<Option<T>> to handle setting to NULL
     status: Option<&str>,                         // Deal negotiation status
-    title: Option<Option<&str>>,                  // Option<Option<T>> to handle setting to NULL
-    description: Option<Option<&str>>,            // Option<Option<T>> to handle setting to NULL
-    risk_level: Option<Option<&str>>,             // Option<Option<T>> to handle setting to NULL
-    asset_class: Option<Option<&str>>,            // Option<Option<T>> to handle setting to NULL
-    region: Option<Option<&str>>,                 // Option<Option<T>> to handle setting to NULL
+    industry: Option<&str>,                       // Industry sector
+    document_ids: Option<Option<&serde_json::Value>>, // Document IDs array, Option<Option<T>> to handle setting to NULL
+    title: Option<Option<&str>>,                      // Option<Option<T>> to handle setting to NULL
+    description: Option<Option<&str>>,                // Option<Option<T>> to handle setting to NULL
+    risk_level: Option<Option<&str>>,                 // Option<Option<T>> to handle setting to NULL
+    asset_class: Option<Option<&str>>,                // Option<Option<T>> to handle setting to NULL
+    region: Option<Option<&str>>,                     // Option<Option<T>> to handle setting to NULL
     minimum_investment: Option<Option<rust_decimal::Decimal>>, // Option<Option<T>> to handle setting to NULL
 ) -> Result<Option<Deal>, sqlx::Error> {
     // was Loan
@@ -2587,6 +2589,12 @@ pub async fn update_deal(
         None => existing_deal.borrower_id,
     };
     let new_status = status.unwrap_or(&existing_deal.status);
+    let new_industry = industry.map(|s| s.to_string()).or(existing_deal.industry);
+    let new_document_ids = match document_ids {
+        Some(Some(value)) => Some(value.clone()),
+        Some(None) => None,
+        None => existing_deal.document_ids,
+    };
     let new_title = match title {
         Some(Some(value)) => Some(value.to_string()),
         Some(None) => None,
@@ -2630,12 +2638,14 @@ pub async fn update_deal(
             borrower_id = $8,
             custom_deal_id = $9,
             status = $10,
-            title = $11,
-            description = $12,
-            risk_level = $13,
-            asset_class = $14,
-            region = $15,
-            minimum_investment = $16,
+            industry = $11,
+            document_ids = $12,
+            title = $13,
+            description = $14,
+            risk_level = $15,
+            asset_class = $16,
+            region = $17,
+            minimum_investment = $18,
             updated_at = $7
         WHERE id = $1
         "#,
@@ -2649,6 +2659,8 @@ pub async fn update_deal(
         new_borrower_id,
         new_custom_deal_id,
         new_status,
+        new_industry,
+        new_document_ids,
         new_title,
         new_description,
         new_risk_level,
