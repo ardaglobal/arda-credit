@@ -14,69 +14,63 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 
 /// Main API description with links to individual category specifications
 const API_DESCRIPTION: &str = r#"
-Arda API - Comprehensive credit deal management platform with document ingestion, AI analysis, and blockchain integration.
+Arda API - Comprehensive credit deal management platform.
 
 ## 🚀 Quick Access to Individual API Categories (Lightweight):
 
-• **[Auth](./auth.json)** (~2-3KB) - Authentication & authorization
-• **[Users](./users.json)** (~3-4KB) - User management & KYC
-• **[Companies](./companies.json)** (~6-8KB) - Company management & teams  
-• **[Deals](./deals.json)** (~8-10KB) - Deal lifecycle & marketplace ⭐
-• **[Collateral](./collateral.json)** (~3-4KB) - Collateral assets & duplicate detection ⭐
-• **[Loan Tape](./loan_tape.json)** (~3-4KB) - Portfolio upload & management
-• **[Admin](./admin.json)** (~4-5KB) - Administrative operations
-• **[Payments](./payments.json)** (~5-6KB) - Financial transactions
-• **[State](./state.json)** (~4-5KB) - Blockchain integration
-• **[Taxonomy](./taxonomy.json)** (~10-12KB) - Document management
-• **[Dev](./dev.json)** (~1-2KB) - Development utilities
+• **[Auth](./auth.json)** - Authentication & authorization
 
-*Each category contains only relevant endpoints and schemas for ultra-fast loading.*
+• **[Users](./users.json)** - User management & KYC
 
-## ✨ Key Features
+• **[Companies](./companies.json)** - Company management & teams  
 
-- **Anonymized Deal Views**: Use `?anon=true` on `/api/v1/deals` for market overview dashboards
-- **Company-Based Access Control**: Multi-tenant architecture with role-based permissions
-- **Document Management**: Comprehensive taxonomy with 11+ document types
-- **Blockchain Integration**: ZK proofs and authenticated data structures
-- **Magic Link Authentication**: Passwordless authentication with session management
+• **[Deals](./deals.json)** - Deal lifecycle & marketplace ⭐
 
-## 🛠️ Quick Start
+• **[Collateral](./collateral.json)** - Collateral assets & duplicate detection ⭐
 
-1. **Authentication**: `POST /api/v1/auth/magic-link` → `POST /api/v1/auth/verify`
-2. **List Deals**: `GET /api/v1/deals?anon=true&limit=50` (anonymized dashboard view)
-3. **Company Deals**: `GET /api/v1/deals?originator_id={company_id}` (portfolio view)
-4. **API Documentation**: Individual specs at `/api-docs/{category}.json`
+• **[Loan Tape](./loan_tape.json)** - Portfolio upload & management
+
+• **[Admin](./admin.json)** - Administrative operations
+
+• **[Payments](./payments.json)** - Financial transactions
+
+• **[State](./state.json)** - Blockchain integration
+
+• **[Taxonomy](./taxonomy.json)** - Document management
+
+• **[Dev](./dev.json)** - Development utilities
+
 "#;
 
 /// Tag descriptions with focused API spec links
 const AUTH_TAG_DESC: &str = r#"
 Authentication, authorization, and invite code management
 
-📄 **Focused API Spec**: [/api-docs/auth.json](./auth.json) (~2-3KB - Auth endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/auth.json](./auth.json)
 "#;
 
 const USERS_TAG_DESC: &str = r#"
 User account management, KYC verification, balances, and transaction history
 
-📄 **Focused API Spec**: [/api-docs/users.json](./users.json) (~3-4KB - User endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/users.json](./users.json)
 "#;
 
 const COMPANIES_TAG_DESC: &str = r#"
 Originator and investor company profiles, documents, turnover tracking, and AI analysis
 
-📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json)
 "#;
 
 const COMPANY_MEMBERSHIPS_TAG_DESC: &str = r#"
 Company team member management with originator/investor profile type support. Users can have multiple profiles (originator and investor) in the same company.
 
-📄 **Included in**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas)
+📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json)
 "#;
 
 const COMPANY_WALLETS_TAG_DESC: &str = r#"
 Company wallet address management with permission-based access control. Wallet addresses belong to companies with granular user permissions. Only admin users can authorize transactions.
 
-📄 **Included in**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas)
+📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json)
 "#;
 
 const DEALS_TAG_DESC: &str = r#"
@@ -84,67 +78,55 @@ Deal lifecycle management, marketplace operations, ownership transfers, and paym
 
 **NEW**: Supports anonymized responses with `anon=true` parameter for dashboard views.
 
-📄 **Focused API Spec**: [/api-docs/deals.json](./deals.json) (~8-10KB - Deal endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/deals.json](./deals.json)
 "#;
 
 const STATE_TAG_DESC: &str = r#"
 Blockchain state management, batch processing, ZK proof generation, transaction history, and contract integration
 
-📄 **Focused API Spec**: [/api-docs/state.json](./state.json) (~4-5KB - State endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/state.json](./state.json)
 "#;
 
 const ADMIN_TAG_DESC: &str = r#"
 Administrative operations including KYC approval, withdrawal management, and platform oversight
 
-📄 **Focused API Spec**: [/api-docs/admin.json](./admin.json) (~4-5KB - Admin endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/admin.json](./admin.json)
 "#;
 
 const PAYMENTS_TAG_DESC: &str = r#"
 Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines
 
-📄 **Focused API Spec**: [/api-docs/payments.json](./payments.json) (~5-6KB - Payment endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/payments.json](./payments.json)
 "#;
 
 const COLLATERAL_TAG_DESC: &str = r#"
 Collateral asset management with intelligent duplicate detection. Track collateral assets, detect potential double-pledging, and associate with deals.
 
-**Features:**
-- Multiple duplicate detection strategies (exact, fuzzy, custom_id, address)
-- Individual match scores with configurable threshold (default: 50%)
-- Automatic background processing for duplicate checks
-- Queue-based processing prevents race conditions
-
-📄 **Focused API Spec**: [/api-docs/collateral.json](./collateral.json) (~3-4KB - Collateral endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/collateral.json](./collateral.json)
 "#;
 
 const TAXONOMY_TAG_DESC: &str = r#"
 Document taxonomy operations for structured credit document management.
 
-📄 **All Taxonomy Docs**: [/api-docs/taxonomy.json](./taxonomy.json) (~10-12KB - All 11 document types & schemas only)
+📄 **All Taxonomy Docs**: [/api-docs/taxonomy.json](./taxonomy.json)
 "#;
 
 const METRICS_TAG_DESC: &str = r#"
 Market metrics and analytics endpoints for dashboard visualizations including market value charts and distribution analytics.
 
-📄 **Focused API Spec**: [/api-docs/metrics.json](./metrics.json) (~2-3KB - Metrics endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/metrics.json](./metrics.json)
 "#;
 
 const LOAN_TAPE_TAG_DESC: &str = r#"
 Loan tape portfolio upload and management. Upload CSV portfolios (converted to JSON) for single-party (originator or investor) with automatic company creation and validation.
 
-**Features:**
-- Auto-detects consistent party (originator/investor)
-- Creates companies automatically if they don't exist
-- Validates user-company associations
-- Supports bulk upload only (no single record endpoint)
-
-📄 **Focused API Spec**: [/api-docs/loan_tape.json](./loan_tape.json) (~3-4KB - Loan tape endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/loan_tape.json](./loan_tape.json)
 "#;
 
 const DEV_TAG_DESC: &str = r#"
 Development and testing utilities: health checks, API info, faucet operations (local/staging only)
 
-📄 **Focused API Spec**: [/api-docs/dev.json](./dev.json) (~1-2KB - Dev endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/dev.json](./dev.json)
 "#;
 
 // Re-export types from handlers module (keeping original structure)

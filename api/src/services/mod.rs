@@ -1,7 +1,6 @@
 //! Business logic services module
 //!
 //! This module contains all business logic services including:
-//! - AI services (analysis, notifications, LLM integration)
 //! - Authentication and authorization
 //! - Balance and withdrawal services
 //! - Batch processing
@@ -12,8 +11,6 @@
 //! - Session management
 //! - Trading authentication
 
-pub mod ai_analysis_service;
-pub mod ai_notification_service;
 pub mod auth;
 pub mod balance_service;
 pub mod batch_processor;
@@ -22,7 +19,6 @@ pub mod company_service;
 pub mod deployment_config;
 pub mod email_service;
 pub mod kyc_service;
-pub mod llm_integration;
 pub mod magic_link_service;
 pub mod metrics_cache;
 pub mod metrics_service;
@@ -58,21 +54,6 @@ pub use deployment_config::{
     get_contract_address, get_deployment, is_deployment_available, refresh_deployment,
     ContractType, DeploymentConfig, DeploymentError, DeploymentInfo, DeploymentService,
     NetworkConfig,
-};
-
-pub use ai_analysis_service::{
-    AiAnalysisService, AiChatMessage, AiChatRequest, AiChatResponse, ChangeAnalysis,
-    ChangeCategory, ChangeType, DocumentDiffRequest, DocumentDiffResponse, ImpactLevel,
-    NegotiationInsight, RiskFactor,
-};
-
-pub use ai_notification_service::{
-    AiNotificationService, DeliveryMethod, NotificationPriority, NotificationRecord,
-    UserNotificationPreferences, WebhookConfig,
-};
-
-pub use llm_integration::{
-    ChatPrompt, DocumentAnalysisPrompt, LlmProvider, LlmRequest, LlmResponse, LlmService,
 };
 
 pub use metrics_cache::{
