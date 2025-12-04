@@ -20,8 +20,7 @@ use arda_credit_db::{
     business::company::{
         create_company_with_membership, get_company_by_name, get_user_membership, ProfileType,
     },
-    create_collateral, create_loan_tape_record, get_identity_by_id, get_loan_tape_record_by_id,
-    CreateCollateralRequest,
+    create_collateral, create_loan_tape_record, get_identity_by_id, CreateCollateralRequest,
 };
 
 // ============================================================================
@@ -540,18 +539,11 @@ pub async fn create_bulk_loan_tape_handler(
             )
         })?;
 
-        if let Some(record) = get_loan_tape_record_by_id(&state.pool, deal.id)
-            .await
-            .ok()
-            .flatten()
-        {
-            created_records.push(convert_db_record_to_dto(record));
-        } else {
-            warn!(
-                "Created deal but failed to fetch full record: deal_id={}",
-                deal.id
-            );
-        }
+        // TODO: Re-implement when get_loan_tape_record_by_id is available
+        warn!(
+            "Created deal but loan tape record retrieval temporarily disabled: deal_id={}",
+            deal.id
+        );
     }
 
     info!(

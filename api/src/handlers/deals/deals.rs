@@ -840,9 +840,9 @@ pub async fn create_deal_endpoint(
             },
             collateral_ids: collateral_ids.clone(),
         };
-        let publisher = publisher.clone();
+        let publisher_clone = publisher.clone();
         tokio::spawn(async move {
-            if let Err(e) = publisher.publish_deal(event).await {
+            if let Err(e) = publisher_clone.publish_deal(event).await {
                 tracing::warn!("Failed to publish DealCreated event: {}", e);
             }
         });
@@ -855,9 +855,9 @@ pub async fn create_deal_endpoint(
                 deal_id: deal.id,
                 collateral_ids,
             };
-            let publisher = publisher.clone();
+            let publisher_clone = publisher.clone();
             tokio::spawn(async move {
-                if let Err(e) = publisher.publish_deal(event).await {
+                if let Err(e) = publisher_clone.publish_deal(event).await {
                     tracing::warn!("Failed to publish DealCollateralLinked event: {}", e);
                 }
             });
@@ -1520,14 +1520,8 @@ pub async fn update_deal_endpoint(
         )
     })?;
 
-    // Fetch old deal state for change detection
-    let old_deal = get_deal_by_id(&state.pool, deal_uuid).await.map_err(|e| {
-        error!("❌ Failed to fetch deal for update: {}", e);
-        (
-            StatusCode::NOT_FOUND,
-            format!("Deal not found: {}", deal_id),
-        )
-    })?;
+    // Fetch old deal state for change detection (Option<Deal>)
+    let old_deal = get_deal_by_id(&state.pool, deal_uuid).await.ok().flatten();
 
     // Convert request fields to database types
     let principal_amount = if let Some(amount_str) = &request.principal_amount {
@@ -1738,21 +1732,26 @@ pub async fn update_deal_endpoint(
 
                 // Check if deal_status changed
                 if let Some(ref new_status) = request.loan_status {
-                    if *new_status != old_deal.deal_status {
-                        let event = crate::events::DealEvent::DealStatusChanged {
-                            event_id: uuid::Uuid::new_v4(),
-                            timestamp: chrono::Utc::now(),
-                            deal_id: deal.id,
-                            previous_status: old_deal.deal_status.clone(),
-                            new_status: new_status.clone(),
-                            collateral_ids: collateral_ids.clone(),
-                        };
-                        let publisher = publisher.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) = publisher.publish_deal(event).await {
-                                tracing::warn!("Failed to publish DealStatusChanged event: {}", e);
-                            }
-                        });
+                    if let Some(ref old) = old_deal {
+                        if *new_status != old.deal_status {
+                            let event = crate::events::DealEvent::DealStatusChanged {
+                                event_id: uuid::Uuid::new_v4(),
+                                timestamp: chrono::Utc::now(),
+                                deal_id: deal.id,
+                                previous_status: old.deal_status.clone(),
+                                new_status: new_status.clone(),
+                                collateral_ids: collateral_ids.clone(),
+                            };
+                            let publisher = publisher.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = publisher.publish_deal(event).await {
+                                    tracing::warn!(
+                                        "Failed to publish DealStatusChanged event: {}",
+                                        e
+                                    );
+                                }
+                            });
+                        }
                     }
                 }
 
