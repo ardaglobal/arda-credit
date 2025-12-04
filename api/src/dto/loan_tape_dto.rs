@@ -127,6 +127,10 @@ pub struct BulkCreateLoanTapeRequest {
     #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub user_id: Uuid,
 
+    /// Optional document ID from the ingestion service that created these deals
+    #[schema(example = "650e8400-e29b-41d4-a716-446655440000")]
+    pub document_id: Uuid,
+
     /// Array of loan tape records to create
     #[validate(length(min = 1, max = 100))]
     pub records: Vec<CreateLoanTapeRequest>,
@@ -260,6 +264,10 @@ pub struct LoanTapeRecord {
     /// Whether included in ZK proof batch
     #[schema(example = true)]
     pub proof_included: bool,
+
+    /// Document IDs that were used to create this deal (JSONB array of UUIDs)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_ids: Option<serde_json::Value>,
 
     /// Record creation timestamp
     pub created_at: DateTime<Utc>,

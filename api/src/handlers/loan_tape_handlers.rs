@@ -548,6 +548,7 @@ pub async fn create_bulk_loan_tape_handler(
             state_hash,
             record_req.proof_included.unwrap_or(false),
             collateral_uuid,
+            Some(req.document_id),
         )
         .await
         .map_err(|e| {
@@ -893,6 +894,7 @@ fn convert_db_record_to_dto(record: arda_credit_db::LoanTapeRecord) -> LoanTapeR
             .state_transition_hash
             .map(|h| format!("0x{}", hex::encode(h))),
         proof_included: record.proof_included,
+        document_ids: record.document_ids,
         created_at: record.created_at,
         updated_at: record.updated_at,
     }

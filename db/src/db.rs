@@ -4701,6 +4701,7 @@ pub struct LoanTapeRecord {
     pub deal_title: Option<String>,
     pub state_transition_hash: Option<Vec<u8>>,
     pub proof_included: bool,
+    pub document_ids: Option<serde_json::Value>, // JSON array of document UUIDs
 
     // Timestamps
     pub created_at: DateTime<Utc>,
@@ -4735,6 +4736,7 @@ pub async fn create_loan_tape_record(
     state_transition_hash: Option<Vec<u8>>,
     proof_included: bool,
     collateral_id: Option<uuid::Uuid>,
+    document_id: Option<uuid::Uuid>,
 ) -> Result<Deal, sqlx::Error> {
     let id = uuid::Uuid::new_v4();
     let now = Utc::now();
@@ -4745,6 +4747,13 @@ pub async fn create_loan_tape_record(
         "draft"
     } else {
         "finalized"
+    };
+
+    // Build document_ids JSONB array
+    let document_ids_json = if let Some(doc_id) = document_id {
+        serde_json::json!([doc_id.to_string()])
+    } else {
+        serde_json::json!([])
     };
 
     sqlx::query!(
@@ -4765,7 +4774,7 @@ pub async fn create_loan_tape_record(
             $13, $14, $15, $16, $17,
             $18, $19, $20, $21, $22, $23, $24,
             $25, $26, $27,
-            '[]'::jsonb, NULL
+            $28, NULL
         )
         "#,
         id,
@@ -4794,7 +4803,8 @@ pub async fn create_loan_tape_record(
         industry,
         state_transition_hash,
         proof_included,
-        collateral_id
+        collateral_id,
+        document_ids_json
     )
     .execute(pool)
     .await?;
@@ -4870,6 +4880,7 @@ pub async fn get_loan_tape_records(
             d.title as deal_title,
             d.state_transition_hash,
             d.proof_included,
+            d.document_ids,
             d.created_at,
             d.updated_at
         FROM deals d
@@ -4924,6 +4935,7 @@ pub async fn get_loan_tape_records(
             deal_title: r.deal_title,
             state_transition_hash: r.state_transition_hash,
             proof_included: r.proof_included.unwrap_or(false),
+            document_ids: r.document_ids,
             created_at: r.created_at.unwrap_or_else(|| Utc::now()),
             updated_at: r.updated_at.unwrap_or_else(|| Utc::now()),
         })
@@ -4994,6 +5006,7 @@ pub async fn get_loan_tape_record_by_id(
             d.title as deal_title,
             d.state_transition_hash,
             d.proof_included,
+            d.document_ids,
             d.created_at,
             d.updated_at
         FROM deals d
@@ -5042,6 +5055,7 @@ pub async fn get_loan_tape_record_by_id(
         deal_title: r.deal_title,
         state_transition_hash: r.state_transition_hash,
         proof_included: r.proof_included.unwrap_or(false),
+        document_ids: r.document_ids,
         created_at: r.created_at.unwrap_or_else(|| Utc::now()),
         updated_at: r.updated_at.unwrap_or_else(|| Utc::now()),
     }))
