@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use arda_credit_api::events::{CollateralEvent, CollateralPayload, DealEvent, DealPayload};
+    use api::events::{CollateralEvent, CollateralPayload, DealEvent, DealPayload, FieldChange};
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -48,7 +48,7 @@ mod tests {
                 custom_id: None,
                 description: None,
             },
-            changes: vec![arda_credit_api::events::FieldChange {
+            changes: vec![FieldChange {
                 field_name: "name".to_string(),
                 old_value: Some("Old Name".to_string()),
                 new_value: Some("Updated Property".to_string()),
