@@ -337,8 +337,6 @@ fn default_limit() -> u32 {
 
         // Loan Tape endpoints
         crate::handlers::loan_tape_handlers::create_bulk_loan_tape_handler,
-        crate::handlers::loan_tape_handlers::list_loan_tape_handler,
-        crate::handlers::loan_tape_handlers::get_loan_tape_handler,
 
         // Consolidated Deal Marketplace endpoints (moved from marketplace_handlers)
         crate::handlers::deals::deals::browse_deals_for_sale_endpoint,
@@ -662,8 +660,7 @@ fn default_limit() -> u32 {
         crate::dto::loan_tape_dto::CreateLoanTapeRequest,
         crate::dto::loan_tape_dto::BulkCreateLoanTapeRequest,
         crate::dto::loan_tape_dto::LoanTapeRecord,
-        crate::dto::loan_tape_dto::LoanTapeListResponse,
-        crate::handlers::loan_tape_handlers::ListLoanTapeQuery,
+
         crate::handlers::loan_tape_handlers::BulkLoanTapeResponse,
         crate::handlers::loan_tape_handlers::ErrorResponse,
 

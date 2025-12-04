@@ -216,18 +216,8 @@ pub const DEAL_PROCESS_DOCUMENT_EXTRACTION: &str = api_path!("/deals/process-doc
 // LOAN TAPE PATHS
 // ============================================================================
 
-/// Loan tape collection (list loan tape records)
-pub const LOAN_TAPE: &str = api_path!("/loan-tape");
-
-/// Create single loan tape record (DEPRECATED - use LOAN_TAPE_BULK instead)
-/// Kept for backwards compatibility but not routed
-pub const LOAN_TAPE_CREATE: &str = api_path!("/loan-tape");
-
 /// Upload loan tape portfolio (bulk create from CSV → JSON)
 pub const LOAN_TAPE_BULK: &str = api_path!("/loan-tape/bulk");
-
-/// Get individual loan tape record by deal ID
-pub const LOAN_TAPE_BY_ID: &str = api_path!("/loan-tape/{id}");
 
 // ============================================================================
 // DEAL MARKETPLACE PATHS (consolidated from separate marketplace paths)

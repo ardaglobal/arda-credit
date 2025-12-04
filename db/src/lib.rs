@@ -186,7 +186,6 @@ pub use db::{
     // Invite code functions
     check_invite_code,
     // Loan tape functions
-    count_loan_tape_records,
     // Financial transaction functions
     create_account_financial_transaction,
     // Batch functions
@@ -229,7 +228,6 @@ pub use db::{
     get_invite_code_info,
     get_kyc_statistics,
     get_loan_tape_record_by_id,
-    get_loan_tape_records,
     get_payments_by_deal,
     get_pending_transactions,
     get_pending_withdrawal_requests,
