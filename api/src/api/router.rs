@@ -911,7 +911,7 @@ pub fn create_router(state: ApiState) -> Router {
         )
         // Internal API: Detection results from arda-collateral-intel
         .route(
-            "/api/v1/internal/collateral/:id/detection",
+            "/api/v1/internal/collateral/{id}/detection",
             post(crate::handlers::taxonomy::detection::receive_detection_result),
         )
         // Set maximum request body size to 100MB for document uploads
