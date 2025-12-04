@@ -5,11 +5,9 @@
 ///!
 ///! Endpoints:
 ///! - POST /api/v1/loan-tape/bulk - Upload loan tape portfolio (CSV → JSON)
-///! - GET /api/v1/loan-tape - List loan tape records with pagination
-///! - GET /api/v1/loan-tape/{id} - Get single loan tape record
 use axum::{
-    extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    extract::State,
+    http::StatusCode,
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -19,36 +17,20 @@ use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::config::types::ApiState;
-use crate::dto::loan_tape_dto::{BulkCreateLoanTapeRequest, LoanTapeListResponse, LoanTapeRecord};
+use crate::dto::loan_tape_dto::{BulkCreateLoanTapeRequest, LoanTapeRecord};
 use crate::handlers::deals::trigger_metrics_refresh_async;
 use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
     business::company::{
         create_company_with_membership, get_company_by_name, get_user_membership, ProfileType,
     },
-    count_loan_tape_records, create_collateral, create_loan_tape_record, get_identity_by_id,
-    get_loan_tape_record_by_id, get_loan_tape_records, CreateCollateralRequest,
+    create_collateral, create_loan_tape_record, get_identity_by_id,
+    get_loan_tape_record_by_id, CreateCollateralRequest,
 };
 
 // ============================================================================
 // REQUEST / RESPONSE TYPES
 // ============================================================================
-
-/// Query parameters for listing loan tape records
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-pub struct ListLoanTapeQuery {
-    /// Filter by deal status (optional)
-    #[param(example = "active")]
-    pub status: Option<String>,
-
-    /// Maximum number of records to return
-    #[param(example = 20)]
-    pub limit: Option<i64>,
-
-    /// Number of records to skip for pagination
-    #[param(example = 0)]
-    pub offset: Option<i64>,
-}
 
 /// Generic error response
 #[derive(Debug, Serialize, ToSchema)]
@@ -594,262 +576,6 @@ pub async fn create_bulk_loan_tape_handler(
             records: created_records,
         }),
     ))
-}
-
-/// List loan tape records with pagination and filtering
-///
-/// Retrieves loan tape records with full detail including:
-/// - Company information (originator/investor names and KYB status)
-/// - Computed metrics (APR, days to maturity)
-/// - Payment statistics (aggregated from deal_payments table)
-///
-/// # Query Parameters
-/// - `status`: Filter by deal status (e.g., "active", "paid_off", "closed")
-/// - `limit`: Maximum number of records to return (default: 20, max: 100)
-/// - `offset`: Number of records to skip for pagination (default: 0)
-///
-/// # Authentication
-/// Requires valid session token via Authorization header.
-#[utoipa::path(
-    get,
-    path = "/api/v1/loan-tape",
-    params(ListLoanTapeQuery),
-    responses(
-        (status = 200, description = "Loan tape records retrieved successfully", body = LoanTapeListResponse,
-            example = json!({
-                "records": [
-                    {
-                        "loan_id": "550e8400-e29b-41d4-a716-446655440000",
-                        "deal_id": "DL-20240115-001",
-                        "originator_name": "TechFlow Solutions Inc",
-                        "investor_name": "Apex Credit Partners LP",
-                        "principal_amount": "2500000.00",
-                        "outstanding_balance": "2150000.00",
-                        "interest_rate_bps": 875,
-                        "interest_rate_apr": "8.75",
-                        "loan_status": "active",
-                        "total_payments_made": 10
-                    }
-                ],
-                "total": 45,
-                "count": 20,
-                "offset": 0,
-                "limit": 20
-            })
-        ),
-        (status = 401, description = "Unauthorized - authentication required", body = ErrorResponse,
-            example = json!({
-                "error": "Unauthorized",
-                "details": "Missing or invalid session token"
-            })
-        ),
-        (status = 500, description = "Internal server error", body = ErrorResponse,
-            example = json!({
-                "error": "Failed to fetch records",
-                "details": "Database query failed"
-            })
-        ),
-    ),
-    security(
-        ("bearer" = [])
-    ),
-    tag = "Loan Tape"
-)]
-#[instrument(skip(state, headers))]
-pub async fn list_loan_tape_handler(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-    Query(query): Query<ListLoanTapeQuery>,
-) -> Result<Json<LoanTapeListResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Authenticate user
-    let _user = extract_current_user(&headers).ok_or_else(|| {
-        error!("Authentication failed: missing or invalid session");
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Unauthorized".to_string(),
-                details: Some("Missing or invalid session token".to_string()),
-            }),
-        )
-    })?;
-
-    let limit = query.limit.unwrap_or(20).min(100); // Cap at 100
-    let offset = query.offset.unwrap_or(0);
-
-    info!(
-        "Listing loan tape records: status={:?}, limit={}, offset={}",
-        query.status, limit, offset
-    );
-
-    // Get total count
-    let total = count_loan_tape_records(&state.pool, query.status.as_deref())
-        .await
-        .map_err(|e| {
-            error!("Failed to count loan tape records: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to count records".to_string(),
-                    details: Some(e.to_string()),
-                }),
-            )
-        })?;
-
-    // Get records
-    let records = get_loan_tape_records(&state.pool, query.status.as_deref(), limit, offset)
-        .await
-        .map_err(|e| {
-            error!("Failed to fetch loan tape records: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch records".to_string(),
-                    details: Some(e.to_string()),
-                }),
-            )
-        })?;
-
-    let dto_records: Vec<LoanTapeRecord> =
-        records.into_iter().map(convert_db_record_to_dto).collect();
-
-    Ok(Json(LoanTapeListResponse {
-        records: dto_records.clone(),
-        total,
-        count: dto_records.len(),
-        offset,
-        limit,
-    }))
-}
-
-/// Get a single loan tape record by ID
-///
-/// Retrieves a complete loan tape record with all joined and computed fields including:
-/// - Full company details (names, KYB status)
-/// - Financial metrics (APR, days to maturity)
-/// - Payment history (last payment, total payments, interest paid)
-/// - Risk assessment fields (credit score, DSCR, LTV ratio)
-/// - Blockchain tracking (state hash, proof inclusion)
-///
-/// # Path Parameters
-/// - `id`: Deal UUID to retrieve
-///
-/// # Authentication
-/// Requires valid session token via Authorization header.
-#[utoipa::path(
-    get,
-    path = "/api/v1/loan-tape/{id}",
-    params(
-        ("id" = Uuid, Path, description = "Deal UUID", example = "550e8400-e29b-41d4-a716-446655440000")
-    ),
-    responses(
-        (status = 200, description = "Loan tape record retrieved successfully", body = LoanTapeRecord,
-            example = json!({
-                "loan_id": "550e8400-e29b-41d4-a716-446655440000",
-                "deal_id": "DL-20240115-001",
-                "originator_id": "660e8400-e29b-41d4-a716-446655440001",
-                "originator_name": "TechFlow Solutions Inc",
-                "originator_kyb_status": "approved",
-                "investor_id": "770e8400-e29b-41d4-a716-446655440002",
-                "investor_name": "Apex Credit Partners LP",
-                "investor_kyb_status": "approved",
-                "principal_amount": "2500000.00",
-                "outstanding_balance": "2150000.00",
-                "interest_rate_bps": 875,
-                "interest_rate_apr": "8.75",
-                "loan_status": "active",
-                "originated_at": "2024-01-15T09:30:00Z",
-                "maturity_date": "2027-01-15T00:00:00Z",
-                "days_to_maturity": 428,
-                "payment_frequency": "monthly",
-                "last_payment_date": "2024-11-15T00:00:00Z",
-                "last_payment_amount": "45833.33",
-                "total_payments_made": 10,
-                "total_interest_paid": "287500.00",
-                "collateral_type": "Equipment",
-                "collateral_value": "3500000.00",
-                "ltv_ratio": "0.7143",
-                "credit_score": 720,
-                "dscr": "1.45",
-                "risk_level": "medium",
-                "asset_class": "direct_lending",
-                "region": "north_america",
-                "borrower_industry": "software_saas",
-                "deal_title": "TechFlow Working Capital Facility",
-                "state_transition_hash": "0x7f8e9a2b1c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f",
-                "proof_included": true,
-                "created_at": "2024-01-15T09:30:00Z",
-                "updated_at": "2024-11-15T10:00:00Z"
-            })
-        ),
-        (status = 401, description = "Unauthorized - authentication required", body = ErrorResponse,
-            example = json!({
-                "error": "Unauthorized",
-                "details": "Missing or invalid session token"
-            })
-        ),
-        (status = 404, description = "Loan tape record not found", body = ErrorResponse,
-            example = json!({
-                "error": "Loan tape record not found",
-                "details": "No record found with ID: 550e8400-e29b-41d4-a716-446655440000"
-            })
-        ),
-        (status = 500, description = "Internal server error", body = ErrorResponse,
-            example = json!({
-                "error": "Failed to fetch record",
-                "details": "Database query failed"
-            })
-        ),
-    ),
-    security(
-        ("bearer" = [])
-    ),
-    tag = "Loan Tape"
-)]
-#[instrument(skip(state, headers))]
-pub async fn get_loan_tape_handler(
-    State(state): State<ApiState>,
-    headers: HeaderMap,
-    Path(id): Path<Uuid>,
-) -> Result<Json<LoanTapeRecord>, (StatusCode, Json<ErrorResponse>)> {
-    // Authenticate user
-    let _user = extract_current_user(&headers).ok_or_else(|| {
-        error!("Authentication failed: missing or invalid session");
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Unauthorized".to_string(),
-                details: Some("Missing or invalid session token".to_string()),
-            }),
-        )
-    })?;
-
-    info!("Fetching loan tape record: id={}", id);
-
-    let record = get_loan_tape_record_by_id(&state.pool, id)
-        .await
-        .map_err(|e| {
-            error!("Failed to fetch loan tape record: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to fetch record".to_string(),
-                    details: Some(e.to_string()),
-                }),
-            )
-        })?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Loan tape record not found".to_string(),
-                    details: Some(format!("No record found with ID: {}", id)),
-                }),
-            )
-        })?;
-
-    let dto_record = convert_db_record_to_dto(record);
-
-    Ok(Json(dto_record))
 }
 
 // ============================================================================

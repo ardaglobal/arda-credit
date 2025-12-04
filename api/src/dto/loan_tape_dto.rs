@@ -275,22 +275,3 @@ pub struct LoanTapeRecord {
     /// Record last update timestamp
     pub updated_at: DateTime<Utc>,
 }
-
-/// Paginated response for loan tape records
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct LoanTapeListResponse {
-    /// Array of loan tape records
-    pub records: Vec<LoanTapeRecord>,
-
-    /// Total number of records matching the query
-    pub total: i64,
-
-    /// Number of records in this response
-    pub count: usize,
-
-    /// Offset used for pagination
-    pub offset: i64,
-
-    /// Limit used for pagination
-    pub limit: i64,
-}
