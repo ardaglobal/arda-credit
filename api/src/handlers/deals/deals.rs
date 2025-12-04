@@ -827,6 +827,43 @@ pub async fn create_deal_endpoint(
         }
     });
 
+    // Publish DealCreated event (fire-and-forget)
+    if let Some(publisher) = &state.event_publisher {
+        let collateral_ids = deal.collateral_id.map(|id| vec![id]).unwrap_or_default();
+        let event = crate::events::DealEvent::DealCreated {
+            event_id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            deal: crate::events::DealPayload {
+                id: deal.id,
+                status: deal.deal_status.clone(),
+                company_id: deal.originator_id,
+            },
+            collateral_ids: collateral_ids.clone(),
+        };
+        let publisher = publisher.clone();
+        tokio::spawn(async move {
+            if let Err(e) = publisher.publish_deal(event).await {
+                tracing::warn!("Failed to publish DealCreated event: {}", e);
+            }
+        });
+
+        // If collateral is linked, also publish DealCollateralLinked event
+        if !collateral_ids.is_empty() {
+            let event = crate::events::DealEvent::DealCollateralLinked {
+                event_id: uuid::Uuid::new_v4(),
+                timestamp: chrono::Utc::now(),
+                deal_id: deal.id,
+                collateral_ids,
+            };
+            let publisher = publisher.clone();
+            tokio::spawn(async move {
+                if let Err(e) = publisher.publish_deal(event).await {
+                    tracing::warn!("Failed to publish DealCollateralLinked event: {}", e);
+                }
+            });
+        }
+    }
+
     let response = DealDetailsResponse {
         // was LoanDetailsResponse
         deal_id: deal.id.to_string(), // was loan_id, now deal_id
@@ -1483,6 +1520,15 @@ pub async fn update_deal_endpoint(
         )
     })?;
 
+    // Fetch old deal state for change detection
+    let old_deal = get_deal_by_id(&state.pool, deal_uuid).await.map_err(|e| {
+        error!("❌ Failed to fetch deal for update: {}", e);
+        (
+            StatusCode::NOT_FOUND,
+            format!("Deal not found: {}", deal_id),
+        )
+    })?;
+
     // Convert request fields to database types
     let principal_amount = if let Some(amount_str) = &request.principal_amount {
         Some(amount_str.parse::<rust_decimal::Decimal>().map_err(|_| {
@@ -1685,6 +1731,35 @@ pub async fn update_deal_endpoint(
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
                 collateral_id: deal.collateral_id.map(|id| id.to_string()),
             };
+
+            // Publish events based on changes (fire-and-forget)
+            if let Some(publisher) = &state.event_publisher {
+                let collateral_ids = deal.collateral_id.map(|id| vec![id]).unwrap_or_default();
+
+                // Check if deal_status changed
+                if let Some(ref new_status) = request.loan_status {
+                    if *new_status != old_deal.deal_status {
+                        let event = crate::events::DealEvent::DealStatusChanged {
+                            event_id: uuid::Uuid::new_v4(),
+                            timestamp: chrono::Utc::now(),
+                            deal_id: deal.id,
+                            previous_status: old_deal.deal_status.clone(),
+                            new_status: new_status.clone(),
+                            collateral_ids: collateral_ids.clone(),
+                        };
+                        let publisher = publisher.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = publisher.publish_deal(event).await {
+                                tracing::warn!("Failed to publish DealStatusChanged event: {}", e);
+                            }
+                        });
+                    }
+                }
+
+                // Check if collateral_id changed
+                // Note: collateral_id is not in the update request, so we can't detect changes here
+                // This would require adding collateral_id to UpdateDealRequest in the future
+            }
 
             let response = UpdateDealResponse {
                 // was UpdateLoanResponse

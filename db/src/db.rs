@@ -4825,4 +4825,3 @@ pub async fn create_loan_tape_record(
         .await?
         .ok_or_else(|| sqlx::Error::RowNotFound)
 }
-

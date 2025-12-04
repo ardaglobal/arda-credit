@@ -102,6 +102,7 @@ pub struct ApiState {
     pub metrics_handle: Option<Arc<crate::utils::metrics::MetricsHandle>>,
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
     pub metrics_cache: Arc<MetricsCache>,
+    pub event_publisher: Option<Arc<crate::events::CollateralEventPublisher>>,
 }
 
 /// Configuration for API server
@@ -907,6 +908,11 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::COLLATERAL_BY_DEAL_ID,
             get(crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler),
+        )
+        // Internal API: Detection results from arda-collateral-intel
+        .route(
+            "/api/v1/internal/collateral/:id/detection",
+            post(crate::handlers::taxonomy::detection::receive_detection_result),
         )
         // Set maximum request body size to 100MB for document uploads
         // Default Axum limit is 2MB which is too small for PDFs

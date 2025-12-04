@@ -223,6 +223,30 @@ pub async fn create_collateral_handler(
         .map_err(|e| internal_error("create_collateral", e))?;
 
     info!("Collateral created successfully: {}", collateral.id);
+
+    // Publish CollateralCreated event (fire-and-forget)
+    if let Some(publisher) = &state.event_publisher {
+        let event = crate::events::CollateralEvent::CollateralCreated {
+            event_id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            collateral: crate::events::CollateralPayload {
+                id: collateral.id,
+                name: collateral.name.clone(),
+                collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
+                company_id: user.id, // Using user.id as company_id (user is associated with company)
+                address: collateral.address.clone(),
+                custom_id: collateral.custom_id.clone(),
+                description: collateral.description.clone(),
+            },
+        };
+        let publisher = publisher.clone();
+        tokio::spawn(async move {
+            if let Err(e) = publisher.publish_collateral(event).await {
+                tracing::warn!("Failed to publish CollateralCreated event: {}", e);
+            }
+        });
+    }
+
     Ok((
         StatusCode::CREATED,
         Json(collateral_to_response(collateral)),
@@ -471,13 +495,21 @@ pub async fn update_collateral_handler(
 ) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
     let uuid = parse_uuid(&id, "collateral_id")?;
 
+    // Fetch old collateral state for change detection
+    let old_collateral = get_collateral_by_id(&state.pool, uuid)
+        .await
+        .map_err(|e| match e {
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+            _ => internal_error("get_collateral_by_id", e),
+        })?;
+
     let db_req = DbUpdateRequest {
-        name: req.name,
-        collateral_type: req.collateral_type,
-        description: req.description,
-        address: req.address,
-        custom_id: req.custom_id,
-        metadata: req.metadata,
+        name: req.name.clone(),
+        collateral_type: req.collateral_type.clone(),
+        description: req.description.clone(),
+        address: req.address.clone(),
+        custom_id: req.custom_id.clone(),
+        metadata: req.metadata.clone(),
     };
 
     let collateral = update_collateral(&state.pool, uuid, db_req)
@@ -486,6 +518,85 @@ pub async fn update_collateral_handler(
             arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
             _ => internal_error("update_collateral", e),
         })?;
+
+    // Publish CollateralUpdated event (fire-and-forget)
+    if let Some(publisher) = &state.event_publisher {
+        // Detect changes
+        let mut changes = Vec::new();
+
+        if let Some(ref new_name) = req.name {
+            if *new_name != old_collateral.name {
+                changes.push(crate::events::FieldChange {
+                    field_name: "name".to_string(),
+                    old_value: Some(old_collateral.name.clone()),
+                    new_value: Some(new_name.clone()),
+                });
+            }
+        }
+
+        if let Some(ref new_type) = req.collateral_type {
+            if Some(new_type.clone()) != old_collateral.collateral_type {
+                changes.push(crate::events::FieldChange {
+                    field_name: "collateral_type".to_string(),
+                    old_value: old_collateral.collateral_type.clone(),
+                    new_value: Some(new_type.clone()),
+                });
+            }
+        }
+
+        if let Some(ref new_desc) = req.description {
+            if Some(new_desc.clone()) != old_collateral.description {
+                changes.push(crate::events::FieldChange {
+                    field_name: "description".to_string(),
+                    old_value: old_collateral.description.clone(),
+                    new_value: Some(new_desc.clone()),
+                });
+            }
+        }
+
+        if let Some(ref new_addr) = req.address {
+            if Some(new_addr.clone()) != old_collateral.address {
+                changes.push(crate::events::FieldChange {
+                    field_name: "address".to_string(),
+                    old_value: old_collateral.address.clone(),
+                    new_value: Some(new_addr.clone()),
+                });
+            }
+        }
+
+        if let Some(ref new_custom_id) = req.custom_id {
+            if Some(new_custom_id.clone()) != old_collateral.custom_id {
+                changes.push(crate::events::FieldChange {
+                    field_name: "custom_id".to_string(),
+                    old_value: old_collateral.custom_id.clone(),
+                    new_value: Some(new_custom_id.clone()),
+                });
+            }
+        }
+
+        if !changes.is_empty() {
+            let event = crate::events::CollateralEvent::CollateralUpdated {
+                event_id: uuid::Uuid::new_v4(),
+                timestamp: chrono::Utc::now(),
+                collateral: crate::events::CollateralPayload {
+                    id: collateral.id,
+                    name: collateral.name.clone(),
+                    collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
+                    company_id: old_collateral.created_by.unwrap_or_else(uuid::Uuid::nil),
+                    address: collateral.address.clone(),
+                    custom_id: collateral.custom_id.clone(),
+                    description: collateral.description.clone(),
+                },
+                changes,
+            };
+            let publisher = publisher.clone();
+            tokio::spawn(async move {
+                if let Err(e) = publisher.publish_collateral(event).await {
+                    tracing::warn!("Failed to publish CollateralUpdated event: {}", e);
+                }
+            });
+        }
+    }
 
     Ok(Json(collateral_to_response(collateral)))
 }
@@ -518,6 +629,21 @@ pub async fn delete_collateral_handler(
             arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
             _ => internal_error("delete_collateral", e),
         })?;
+
+    // Publish CollateralDeleted event (fire-and-forget)
+    if let Some(publisher) = &state.event_publisher {
+        let event = crate::events::CollateralEvent::CollateralDeleted {
+            event_id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            collateral_id: uuid,
+        };
+        let publisher = publisher.clone();
+        tokio::spawn(async move {
+            if let Err(e) = publisher.publish_collateral(event).await {
+                tracing::warn!("Failed to publish CollateralDeleted event: {}", e);
+            }
+        });
+    }
 
     Ok(Json(DeleteResponse {
         success: true,
@@ -570,6 +696,31 @@ pub async fn create_collateral_batch_handler(
         .map_err(|e| internal_error("create_collateral_batch", e))?;
 
     let successful_ids: Vec<String> = results.iter().map(|c| c.id.to_string()).collect();
+
+    // Publish CollateralCreated events for each item in batch (fire-and-forget)
+    if let Some(publisher) = &state.event_publisher {
+        for collateral in &results {
+            let event = crate::events::CollateralEvent::CollateralCreated {
+                event_id: uuid::Uuid::new_v4(),
+                timestamp: chrono::Utc::now(),
+                collateral: crate::events::CollateralPayload {
+                    id: collateral.id,
+                    name: collateral.name.clone(),
+                    collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
+                    company_id: user.id,
+                    address: collateral.address.clone(),
+                    custom_id: collateral.custom_id.clone(),
+                    description: collateral.description.clone(),
+                },
+            };
+            let publisher = publisher.clone();
+            tokio::spawn(async move {
+                if let Err(e) = publisher.publish_collateral(event).await {
+                    tracing::warn!("Failed to publish CollateralCreated event in batch: {}", e);
+                }
+            });
+        }
+    }
 
     let response = BatchOperationResponse {
         success_count: results.len(),

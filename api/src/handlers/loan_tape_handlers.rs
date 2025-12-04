@@ -5,11 +5,7 @@
 ///!
 ///! Endpoints:
 ///! - POST /api/v1/loan-tape/bulk - Upload loan tape portfolio (CSV → JSON)
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::Json,
-};
+use axum::{extract::State, http::StatusCode, response::Json};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tracing::{error, info, instrument, warn};
@@ -24,8 +20,8 @@ use arda_credit_db::{
     business::company::{
         create_company_with_membership, get_company_by_name, get_user_membership, ProfileType,
     },
-    create_collateral, create_loan_tape_record, get_identity_by_id,
-    get_loan_tape_record_by_id, CreateCollateralRequest,
+    create_collateral, create_loan_tape_record, get_identity_by_id, get_loan_tape_record_by_id,
+    CreateCollateralRequest,
 };
 
 // ============================================================================
