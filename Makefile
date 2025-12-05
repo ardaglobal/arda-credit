@@ -5,7 +5,7 @@ REGISTRY ?= ghcr.io
 OWNER ?= ardaglobal
 IMAGE_NAME ?= arda-credit
 DOCKER_TAG ?= $(shell whoami)-dev
-PLATFORM ?= linux/amd64
+PLATFORM ?= linux/arm64
 APPNAME ?= arda-credit
 
 # Anvil default private key (from foundry docs)
