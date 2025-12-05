@@ -173,6 +173,17 @@ impl ApiServer {
         let metrics_cache = Arc::new(crate::services::MetricsCache::new(cache_config));
 
         // Create API state
+        // Initialize event publisher if configured
+        let event_publisher = std::env::var("COLLATERAL_INTEL_SERVICE_URL")
+            .ok()
+            .map(|url| {
+                info!(
+                    "🔗 Initializing event publisher for collateral intel service: {}",
+                    url
+                );
+                Arc::new(crate::events::CollateralEventPublisher::new(url))
+            });
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
@@ -187,6 +198,7 @@ impl ApiServer {
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
             metrics_cache,
+            event_publisher,
         };
 
         let server = Self { config, state };
@@ -329,6 +341,17 @@ impl ApiServer {
         };
         let metrics_cache = Arc::new(crate::services::MetricsCache::new(cache_config));
 
+        // Initialize event publisher if configured
+        let event_publisher = std::env::var("COLLATERAL_INTEL_SERVICE_URL")
+            .ok()
+            .map(|url| {
+                info!(
+                    "🔗 Initializing event publisher for collateral intel service: {}",
+                    url
+                );
+                Arc::new(crate::events::CollateralEventPublisher::new(url))
+            });
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
@@ -343,6 +366,7 @@ impl ApiServer {
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
             metrics_cache,
+            event_publisher,
         };
 
         Ok(Self { config, state })
@@ -442,6 +466,7 @@ impl ApiServer {
             metrics_handle: self.state.metrics_handle.clone(),
             email_rate_limiter: Some(email_rate_limiter),
             metrics_cache: self.state.metrics_cache.clone(),
+            event_publisher: self.state.event_publisher.clone(),
         };
 
         // Use REST API routes (includes health endpoints and state)

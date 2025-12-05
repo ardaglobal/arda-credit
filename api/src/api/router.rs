@@ -102,6 +102,7 @@ pub struct ApiState {
     pub metrics_handle: Option<Arc<crate::utils::metrics::MetricsHandle>>,
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
     pub metrics_cache: Arc<MetricsCache>,
+    pub event_publisher: Option<Arc<crate::events::CollateralEventPublisher>>,
 }
 
 /// Configuration for API server
@@ -187,6 +188,7 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/api-docs/state.json", get(get_state_spec_handler))
         .route("/api-docs/taxonomy.json", get(get_taxonomy_spec_handler))
         .route("/api-docs/metrics.json", get(get_metrics_spec_handler))
+        .route("/api-docs/internal.json", get(get_internal_spec_handler))
         .route("/api-docs/dev.json", get(get_dev_spec_handler))
         // Magic Link Authentication endpoints
         .route(paths::AUTH_MAGIC_LINK, post(request_magic_link))
@@ -908,6 +910,16 @@ pub fn create_router(state: ApiState) -> Router {
             paths::COLLATERAL_BY_DEAL_ID,
             get(crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler),
         )
+        // Internal API: Collateral fetch for arda-collateral-intel
+        .route(
+            "/api/v1/internal/collateral/{id}",
+            get(crate::handlers::taxonomy::collateral::get_collateral_internal_handler),
+        )
+        // Internal API: Detection results from arda-collateral-intel
+        .route(
+            "/api/v1/internal/collateral/{id}/detection",
+            post(crate::handlers::taxonomy::detection::receive_detection_result),
+        )
         // Set maximum request body size to 100MB for document uploads
         // Default Axum limit is 2MB which is too small for PDFs
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100MB
@@ -1075,6 +1087,9 @@ fn filter_openapi_by_tags(
                 "DeleteResponse",
                 "BatchOperation",
             ],
+            tags if tags.contains(&"Internal") => {
+                vec!["Internal", "Detection", "Collateral", "ErrorResponse"]
+            }
             tags if tags.contains(&"Dev") => vec!["Faucet", "Network", "Health", "Info"],
             _ => vec![
                 "Credit",
@@ -1194,6 +1209,11 @@ pub async fn get_taxonomy_spec_handler() -> Json<utoipa::openapi::OpenApi> {
 
 pub async fn get_metrics_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Metrics"]);
+    Json(spec)
+}
+
+pub async fn get_internal_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Internal"]);
     Json(spec)
 }
 

@@ -187,6 +187,7 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
         magic_link_service: None,
         team_invitation_service: None,
         email_rate_limiter: None,
+        event_publisher: None, // No event publisher in tests
         withdrawal_executor: None,
     }
 }
@@ -276,6 +277,7 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
         withdrawal_executor: None,
         metrics_handle: None,
         email_rate_limiter: Some(email_rate_limiter),
+        event_publisher: None, // No event publisher in tests
         metrics_cache: std::sync::Arc::new(crate::services::MetricsCache::default()),
     }
 }

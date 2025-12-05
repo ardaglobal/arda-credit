@@ -5,11 +5,7 @@
 ///!
 ///! Endpoints:
 ///! - POST /api/v1/loan-tape/bulk - Upload loan tape portfolio (CSV → JSON)
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::Json,
-};
+use axum::{extract::State, http::StatusCode, response::Json};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use tracing::{error, info, instrument};
@@ -547,9 +543,7 @@ pub async fn create_bulk_loan_tape_handler(
 
     info!(
         "Successfully created {} loan tape records for user {} ({})",
-        created_count,
-        user.email,
-        consistent_role
+        created_count, user.email, consistent_role
     );
 
     // Trigger async metrics refresh after bulk deal creation
@@ -564,4 +558,3 @@ pub async fn create_bulk_loan_tape_handler(
         }),
     ))
 }
-
