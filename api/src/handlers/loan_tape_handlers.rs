@@ -10,22 +10,20 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
-use tracing::{error, info, instrument, warn};
-use utoipa::{IntoParams, ToSchema};
+use tracing::{error, info, instrument};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::config::types::ApiState;
-use crate::dto::loan_tape_dto::{BulkCreateLoanTapeRequest, LoanTapeRecord};
+use crate::dto::loan_tape_dto::BulkCreateLoanTapeRequest;
 use crate::handlers::deals::trigger_metrics_refresh_async;
-use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
     business::company::{
         create_company_with_membership, get_company_by_name, get_user_membership, ProfileType,
     },
-    create_collateral, create_loan_tape_record, get_identity_by_id,
-    get_loan_tape_record_by_id, CreateCollateralRequest,
+    create_collateral, create_loan_tape_record, get_identity_by_id, CreateCollateralRequest,
 };
 
 // ============================================================================
@@ -44,7 +42,7 @@ pub struct ErrorResponse {
 pub struct BulkLoanTapeResponse {
     pub success: bool,
     pub created_count: usize,
-    pub records: Vec<LoanTapeRecord>,
+    pub records: Vec<serde_json::Value>, // Empty for performance - use separate query to fetch records
 }
 
 // ============================================================================
@@ -403,7 +401,7 @@ pub async fn create_bulk_loan_tape_handler(
     info!("All companies ready: total_count={}", company_cache.len());
 
     // Step 5: Create all deal records
-    let mut created_records = Vec::new();
+    let mut created_count = 0;
 
     for (idx, record_req) in req.records.iter().enumerate() {
         let originator_id = company_cache
@@ -490,7 +488,7 @@ pub async fn create_bulk_loan_tape_handler(
                     Some(collateral.id)
                 }
                 Err(e) => {
-                    warn!(
+                    info!(
                         "Failed to create collateral for deal at index {}: {}. Continuing without collateral.",
                         idx, e
                     );
@@ -504,7 +502,7 @@ pub async fn create_bulk_loan_tape_handler(
             None
         };
 
-        let deal = create_loan_tape_record(
+        create_loan_tape_record(
             &state.pool,
             *originator_id,
             Some(*investor_id),
@@ -544,23 +542,12 @@ pub async fn create_bulk_loan_tape_handler(
             )
         })?;
 
-        if let Some(record) = get_loan_tape_record_by_id(&state.pool, deal.id)
-            .await
-            .ok()
-            .flatten()
-        {
-            created_records.push(convert_db_record_to_dto(record));
-        } else {
-            warn!(
-                "Created deal but failed to fetch full record: deal_id={}",
-                deal.id
-            );
-        }
+        created_count += 1;
     }
 
     info!(
         "Successfully created {} loan tape records for user {} ({})",
-        created_records.len(),
+        created_count,
         user.email,
         consistent_role
     );
@@ -572,56 +559,9 @@ pub async fn create_bulk_loan_tape_handler(
         StatusCode::CREATED,
         Json(BulkLoanTapeResponse {
             success: true,
-            created_count: created_records.len(),
-            records: created_records,
+            created_count,
+            records: vec![], // Records not returned in bulk upload to improve performance
         }),
     ))
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/// Convert database LoanTapeRecord to DTO LoanTapeRecord
-fn convert_db_record_to_dto(record: arda_credit_db::LoanTapeRecord) -> LoanTapeRecord {
-    LoanTapeRecord {
-        loan_id: record.loan_id,
-        deal_id: record.deal_id,
-        originator_id: record.originator_id,
-        originator_name: record.originator_name,
-        originator_kyb_status: record.originator_kyb_status,
-        investor_id: record.investor_id,
-        investor_name: record.investor_name,
-        investor_kyb_status: record.investor_kyb_status,
-        principal_amount: record.principal_amount,
-        outstanding_balance: record.outstanding_balance,
-        interest_rate_bps: record.interest_rate_bps,
-        interest_rate_apr: record.interest_rate_apr,
-        loan_status: record.loan_status,
-        originated_at: record.originated_at,
-        maturity_date: record.maturity_date,
-        days_to_maturity: record.days_to_maturity,
-        payment_frequency: record.payment_frequency,
-        last_payment_date: record.last_payment_date,
-        last_payment_amount: record.last_payment_amount,
-        total_payments_made: record.total_payments_made,
-        total_interest_paid: record.total_interest_paid,
-        collateral_type: record.collateral_type,
-        collateral_value: record.collateral_value,
-        ltv_ratio: record.ltv_ratio,
-        risk_level: record.risk_level,
-        asset_class: record.asset_class,
-        region: record.region,
-        borrower_industry: record.borrower_industry,
-        credit_score: record.credit_score,
-        dscr: record.dscr,
-        deal_title: record.deal_title,
-        state_transition_hash: record
-            .state_transition_hash
-            .map(|h| format!("0x{}", hex::encode(h))),
-        proof_included: record.proof_included,
-        document_ids: record.document_ids,
-        created_at: record.created_at,
-        updated_at: record.updated_at,
-    }
-}
