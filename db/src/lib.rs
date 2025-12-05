@@ -227,7 +227,6 @@ pub use db::{
     get_investor_profile_with_identity,
     get_invite_code_info,
     get_kyc_statistics,
-    get_loan_tape_record_by_id,
     get_payments_by_deal,
     get_pending_transactions,
     get_pending_withdrawal_requests,
