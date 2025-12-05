@@ -146,7 +146,6 @@ mod tests {
                 id: Uuid::new_v4(),
                 name: "Test".to_string(),
                 collateral_type: "property".to_string(),
-                company_id: Uuid::new_v4(),
                 address: None,
                 custom_id: None,
                 description: None,

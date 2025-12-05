@@ -15,7 +15,6 @@ mod tests {
                 id: Uuid::new_v4(),
                 name: "Test Property".to_string(),
                 collateral_type: "real_estate".to_string(),
-                company_id: Uuid::new_v4(),
                 address: Some("123 Main St".to_string()),
                 custom_id: Some("PROP-001".to_string()),
                 description: Some("Office building".to_string()),
@@ -43,7 +42,6 @@ mod tests {
                 id: Uuid::new_v4(),
                 name: "Updated Property".to_string(),
                 collateral_type: "commercial".to_string(),
-                company_id: Uuid::new_v4(),
                 address: None,
                 custom_id: None,
                 description: None,
@@ -151,8 +149,7 @@ mod tests {
             "collateral": {
                 "id": "650e8400-e29b-41d4-a716-446655440000",
                 "name": "Test",
-                "collateral_type": "property",
-                "company_id": "750e8400-e29b-41d4-a716-446655440000"
+                "collateral_type": "property"
             }
         }"#;
 
