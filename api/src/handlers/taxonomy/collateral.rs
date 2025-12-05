@@ -233,7 +233,6 @@ pub async fn create_collateral_handler(
                 id: collateral.id,
                 name: collateral.name.clone(),
                 collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
-                company_id: user.id, // Using user.id as company_id (user is associated with company)
                 address: collateral.address.clone(),
                 custom_id: collateral.custom_id.clone(),
                 description: collateral.description.clone(),
@@ -280,6 +279,41 @@ pub async fn get_collateral_handler(
         .map_err(|e| match e {
             arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
             _ => internal_error("get_collateral", e),
+        })?;
+
+    Ok(Json(collateral_to_response(collateral)))
+}
+
+/// Get collateral by ID (internal endpoint - no auth required)
+///
+/// This endpoint is for service-to-service communication with arda-collateral-intel.
+/// It returns the same data as get_collateral_handler but bypasses authentication.
+#[utoipa::path(
+    get,
+    path = "/api/v1/internal/collateral/{id}",
+    params(
+        ("id" = String, Path, description = "Collateral UUID")
+    ),
+    responses(
+        (status = 200, description = "Collateral found", body = CollateralResponse),
+        (status = 404, description = "Collateral not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Internal",
+    security()
+)]
+#[instrument(skip(state))]
+pub async fn get_collateral_internal_handler(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let uuid = parse_uuid(&id, "collateral_id")?;
+
+    let collateral = get_collateral_by_id(&state.pool, uuid)
+        .await
+        .map_err(|e| match e {
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+            _ => internal_error("get_collateral_internal", e),
         })?;
 
     Ok(Json(collateral_to_response(collateral)))
@@ -582,7 +616,6 @@ pub async fn update_collateral_handler(
                     id: collateral.id,
                     name: collateral.name.clone(),
                     collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
-                    company_id: old_collateral.created_by.unwrap_or_else(uuid::Uuid::nil),
                     address: collateral.address.clone(),
                     custom_id: collateral.custom_id.clone(),
                     description: collateral.description.clone(),
@@ -707,7 +740,6 @@ pub async fn create_collateral_batch_handler(
                     id: collateral.id,
                     name: collateral.name.clone(),
                     collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
-                    company_id: user.id,
                     address: collateral.address.clone(),
                     custom_id: collateral.custom_id.clone(),
                     description: collateral.description.clone(),

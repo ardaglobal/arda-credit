@@ -38,6 +38,8 @@ Arda API - Comprehensive credit deal management platform.
 
 • **[Taxonomy](./taxonomy.json)** - Document management
 
+• **[Internal](./internal.json)** - Service-to-service communication
+
 • **[Dev](./dev.json)** - Development utilities
 
 "#;
@@ -127,6 +129,14 @@ const DEV_TAG_DESC: &str = r#"
 Development and testing utilities: health checks, API info, faucet operations (local/staging only)
 
 📄 **Focused API Spec**: [/api-docs/dev.json](./dev.json)
+"#;
+
+const INTERNAL_TAG_DESC: &str = r#"
+Internal service-to-service endpoints for communication between Arda microservices.
+
+**⚠️ Note**: These endpoints bypass authentication and are intended for internal use only.
+
+📄 **Focused API Spec**: [/api-docs/internal.json](./internal.json)
 "#;
 
 // Re-export types from handlers module (keeping original structure)
@@ -355,12 +365,16 @@ fn default_limit() -> u32 {
         crate::handlers::taxonomy::collateral::create_collateral_handler,
         crate::handlers::taxonomy::collateral::create_collateral_batch_handler,
         crate::handlers::taxonomy::collateral::get_collateral_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_internal_handler,
         crate::handlers::taxonomy::collateral::update_collateral_handler,
         crate::handlers::taxonomy::collateral::delete_collateral_handler,
         crate::handlers::taxonomy::collateral::get_collateral_with_duplicates_handler,
         crate::handlers::taxonomy::collateral::get_collateral_with_matches_handler,
         crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler,
         crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler,
+
+        // Internal endpoints
+        crate::handlers::taxonomy::detection::receive_detection_result,
 
         // Withdrawal endpoints
         crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
@@ -544,7 +558,8 @@ fn default_limit() -> u32 {
         (name = "Taxonomy - SSI Records", description = TAXONOMY_TAG_DESC),
         (name = "Taxonomy - Secondary Trades", description = TAXONOMY_TAG_DESC),
         (name = "Metrics", description = METRICS_TAG_DESC),
-        (name = "Dev", description = DEV_TAG_DESC)
+        (name = "Dev", description = DEV_TAG_DESC),
+        (name = "Internal", description = INTERNAL_TAG_DESC)
     ),
     components(schemas(
         // Authentication types
@@ -655,6 +670,11 @@ fn default_limit() -> u32 {
         crate::handlers::taxonomy::collateral::CollateralWithDuplicatesResponse,
         crate::handlers::taxonomy::collateral::CollateralWithMatchesResponse,
         crate::handlers::taxonomy::collateral::CollateralMatchResponse,
+
+        // Internal detection types
+        crate::handlers::taxonomy::detection::DetectionResultRequest,
+        crate::handlers::taxonomy::detection::DetectionMatch,
+        crate::handlers::taxonomy::detection::DetectionResultResponse,
 
         // Loan Tape types
         crate::dto::loan_tape_dto::CreateLoanTapeRequest,

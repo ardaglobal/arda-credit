@@ -41,7 +41,6 @@ pub struct CollateralPayload {
     pub id: Uuid,
     pub name: String,
     pub collateral_type: String,
-    pub company_id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -171,7 +170,6 @@ mod tests {
                 id: Uuid::new_v4(),
                 name: "Test Collateral".to_string(),
                 collateral_type: "property".to_string(),
-                company_id: Uuid::new_v4(),
                 address: Some("123 Main St".to_string()),
                 custom_id: None,
                 description: None,
