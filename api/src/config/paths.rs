@@ -679,12 +679,6 @@ pub const COLLATERAL_BY_CUSTOM_ID: &str = api_path!("/collateral/custom/{custom_
 /// Collateral by deal ID endpoint
 pub const COLLATERAL_BY_DEAL_ID: &str = api_path!("/collateral/deal/{deal_id}");
 
-/// Collateral with duplicates endpoint (legacy - use matches instead)
-pub const COLLATERAL_WITH_DUPLICATES: &str = api_path!("/collateral/{id}/duplicates");
-
-/// Collateral with matches endpoint (includes scores)
-pub const COLLATERAL_WITH_MATCHES: &str = api_path!("/collateral/{id}/matches");
-
 /// Collateral batch create endpoint
 pub const COLLATERAL_BATCH: &str = api_path!("/collateral/batch");
 

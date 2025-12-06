@@ -13,9 +13,8 @@ use utoipa::{IntoParams, ToSchema};
 
 use arda_credit_db::{
     create_collateral, create_collateral_batch, delete_collateral, get_collateral_by_custom_id,
-    get_collateral_by_deal_id, get_collateral_by_id, get_collateral_matches,
-    get_collateral_with_duplicates, get_match_threshold, list_collateral, update_collateral,
-    Collateral, CollateralWithDuplicates, CreateCollateralRequest as DbCreateRequest,
+    get_collateral_by_deal_id, get_collateral_by_id, list_collateral, update_collateral,
+    Collateral, CreateCollateralRequest as DbCreateRequest,
     UpdateCollateralRequest as DbUpdateRequest,
 };
 
@@ -52,47 +51,6 @@ pub struct CollateralResponse {
     pub created_at: String,
     pub updated_at: String,
     pub metadata: Option<serde_json::Value>,
-}
-
-/// Collateral with duplicates response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct CollateralWithDuplicatesResponse {
-    pub collateral: CollateralResponse,
-    pub potential_duplicates: Vec<CollateralResponse>,
-}
-
-/// Collateral with matches response (includes scores)
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-#[schema(example = json!({
-    "collateral": {
-        "id": "550e8400-e29b-41d4-a716-446655440000",
-        "name": "123 Main Street Property",
-        "collateral_type": "real_estate"
-    },
-    "matches": [
-        {
-            "matched_collateral": {
-                "id": "660f9511-f39c-52e5-b827-557766551111",
-                "name": "123 Main Street Building"
-            },
-            "match_score": "95.50",
-            "match_type": "fuzzy_name"
-        }
-    ],
-    "match_threshold": 50.0
-}))]
-pub struct CollateralWithMatchesResponse {
-    pub collateral: CollateralResponse,
-    pub matches: Vec<CollateralMatchResponse>,
-    pub match_threshold: f64,
-}
-
-/// Individual match with score
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct CollateralMatchResponse {
-    pub matched_collateral: CollateralResponse,
-    pub match_score: String, // Decimal as string
-    pub match_type: String,  // exact_name, custom_id, address, fuzzy_name
 }
 
 /// Create collateral request
@@ -160,19 +118,6 @@ fn collateral_to_response(collateral: Collateral) -> CollateralResponse {
         created_at: collateral.created_at.to_rfc3339(),
         updated_at: collateral.updated_at.to_rfc3339(),
         metadata: collateral.metadata,
-    }
-}
-
-fn collateral_with_duplicates_to_response(
-    data: CollateralWithDuplicates,
-) -> CollateralWithDuplicatesResponse {
-    CollateralWithDuplicatesResponse {
-        collateral: collateral_to_response(data.collateral),
-        potential_duplicates: data
-            .potential_duplicates
-            .into_iter()
-            .map(collateral_to_response)
-            .collect(),
     }
 }
 
@@ -317,92 +262,6 @@ pub async fn get_collateral_internal_handler(
         })?;
 
     Ok(Json(collateral_to_response(collateral)))
-}
-
-/// Get collateral with potential duplicates
-#[utoipa::path(
-    get,
-    path = "/api/v1/collateral/{id}/duplicates",
-    params(
-        ("id" = String, Path, description = "Collateral UUID")
-    ),
-    responses(
-        (status = 200, description = "Collateral found with duplicates", body = CollateralWithDuplicatesResponse),
-        (status = 404, description = "Collateral not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "Collateral",
-    security(("bearer" = []))
-)]
-#[instrument(skip(state))]
-pub async fn get_collateral_with_duplicates_handler(
-    State(state): State<ApiState>,
-    Path(id): Path<String>,
-) -> Result<Json<CollateralWithDuplicatesResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id, "collateral_id")?;
-
-    let data = get_collateral_with_duplicates(&state.pool, uuid)
-        .await
-        .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
-            _ => internal_error("get_collateral", e),
-        })?;
-
-    Ok(Json(collateral_with_duplicates_to_response(data)))
-}
-
-/// Get collateral with all matches and scores
-#[utoipa::path(
-    get,
-    path = "/api/v1/collateral/{id}/matches",
-    params(
-        ("id" = String, Path, description = "Collateral UUID")
-    ),
-    responses(
-        (status = 200, description = "Collateral found with all matches", body = CollateralWithMatchesResponse),
-        (status = 404, description = "Collateral not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "Collateral",
-    security(("bearer" = []))
-)]
-#[instrument(skip(state))]
-pub async fn get_collateral_with_matches_handler(
-    State(state): State<ApiState>,
-    Path(id): Path<String>,
-) -> Result<Json<CollateralWithMatchesResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id, "collateral_id")?;
-
-    // Get collateral
-    let collateral = get_collateral_by_id(&state.pool, uuid)
-        .await
-        .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
-            _ => internal_error("get_collateral", e),
-        })?;
-
-    // Get all matches with scores
-    let matches = get_collateral_matches(&state.pool, uuid)
-        .await
-        .map_err(|e| internal_error("get_collateral_matches", e))?;
-
-    // Get threshold
-    let threshold = get_match_threshold(&state.pool).await.unwrap_or(50.0);
-
-    let response = CollateralWithMatchesResponse {
-        collateral: collateral_to_response(collateral),
-        matches: matches
-            .into_iter()
-            .map(|m| CollateralMatchResponse {
-                matched_collateral: collateral_to_response(m.matched_collateral),
-                match_score: m.match_score.to_string(),
-                match_type: m.match_type,
-            })
-            .collect(),
-        match_threshold: threshold,
-    };
-
-    Ok(Json(response))
 }
 
 /// Get collateral by custom ID

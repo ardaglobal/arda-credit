@@ -147,11 +147,6 @@ impl ApiServer {
         let cleanup_service = SessionCleanupService::new(session_service.clone());
         cleanup_service.start();
 
-        // Start collateral duplicate check background service
-        info!("🔍 Starting collateral duplicate checker service");
-        let duplicate_checker = crate::CollateralDuplicateChecker::new(pool.clone());
-        duplicate_checker.start();
-
         // Initialize withdrawal and balance services
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
@@ -229,11 +224,6 @@ impl ApiServer {
         // Start session cleanup background service
         let cleanup_service = SessionCleanupService::new(session_service.clone());
         cleanup_service.start();
-
-        // Start collateral duplicate check background service
-        info!("🔍 Starting collateral duplicate checker service");
-        let duplicate_checker = crate::CollateralDuplicateChecker::new(pool.clone());
-        duplicate_checker.start();
 
         // Initialize withdrawal and balance services
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
