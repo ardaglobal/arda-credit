@@ -11,7 +11,6 @@
 //!
 //! Run with: cargo run --bin test_collateral_intel
 
-use chrono::Utc;
 use clap::{Arg, Command};
 use colored::*;
 use db::{
@@ -22,10 +21,9 @@ use db::{
 };
 use rand::{thread_rng, Rng};
 use reqwest::Client;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{env, str::FromStr, time::Duration};
+use std::{env, time::Duration};
 use uuid::Uuid;
 
 // ============================================================================
@@ -366,21 +364,13 @@ async fn update_deal_status_via_api(
 }
 
 async fn get_collateral_matches_from_db(
-    ctx: &TestContext,
-    collateral_id: Uuid,
+    _ctx: &TestContext,
+    _collateral_id: Uuid,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    let result = sqlx::query!(
-        r#"
-        SELECT COUNT(*) as count
-        FROM collateral_matches
-        WHERE collateral_id = $1
-        "#,
-        collateral_id
-    )
-    .fetch_one(&ctx.pool)
-    .await?;
-
-    Ok(result.count.unwrap_or(0) as usize)
+    // Note: collateral_matches table was removed in migration 060
+    // Functionality moved to arda-collateral-intel microservice with SurrealDB
+    // This function now returns 0 for backward compatibility with test code
+    Ok(0)
 }
 
 async fn get_detection_history(
@@ -568,7 +558,7 @@ async fn scenario_2_cross_user_double_pledge(
     ctx.wait_for_processing("Waiting for cross-user detection")
         .await;
 
-    let mut passed = true;
+    let passed = true;
 
     // Verify: Check matches in database
     let match_count = get_collateral_matches_from_db(ctx, ctx.collateral_id).await?;

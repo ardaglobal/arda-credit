@@ -368,8 +368,8 @@ fn default_limit() -> u32 {
         crate::handlers::taxonomy::collateral::get_collateral_internal_handler,
         crate::handlers::taxonomy::collateral::update_collateral_handler,
         crate::handlers::taxonomy::collateral::delete_collateral_handler,
-        crate::handlers::taxonomy::collateral::get_collateral_with_duplicates_handler,
-        crate::handlers::taxonomy::collateral::get_collateral_with_matches_handler,
+        // Note: get_collateral_with_duplicates_handler and get_collateral_with_matches_handler
+        // removed as collateral detection tables were dropped in migration 060
         crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler,
         crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler,
 

@@ -935,15 +935,8 @@ async fn clear_existing_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
     sqlx::query!("DELETE FROM deals").execute(pool).await?;
 
     // Clear collateral data
-    sqlx::query!("DELETE FROM collateral_matches")
-        .execute(pool)
-        .await?;
-    sqlx::query!("DELETE FROM collateral_check_queue")
-        .execute(pool)
-        .await?;
-    sqlx::query!("DELETE FROM collateral_checks")
-        .execute(pool)
-        .await?;
+    // Note: collateral_matches, collateral_check_queue, and collateral_checks tables
+    // were removed in migration 060 - functionality moved to arda-collateral-intel service
     sqlx::query!("DELETE FROM collateral").execute(pool).await?;
 
     // Clear metrics data (must be done before deleting companies due to FK constraints)
