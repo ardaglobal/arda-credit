@@ -308,6 +308,87 @@ pub async fn create_collateral_batch(
     Ok(results)
 }
 
+/// Update collateral detection status based on detection results
+///
+/// Sets has_potential_duplicates flag and optionally sets double_pledged to highest match
+#[instrument(skip(pool))]
+pub async fn update_collateral_detection_status(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    has_duplicates: bool,
+    highest_match_id: Option<Uuid>,
+) -> Result<Collateral, DbError> {
+    sqlx::query_as!(
+        Collateral,
+        r#"
+        UPDATE collateral
+        SET
+            has_potential_duplicates = $2,
+            double_pledged = $3
+        WHERE id = $1
+        RETURNING
+            id, name, collateral_type, description, address, custom_id,
+            double_pledged, has_potential_duplicates, created_at as "created_at!", updated_at as "updated_at!",
+            created_by, metadata
+        "#,
+        collateral_id,
+        has_duplicates,
+        highest_match_id
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => DbError::NotFound(format!("Collateral {} not found", collateral_id)),
+        _ => DbError::TransactionFailed(format!("Failed to update collateral detection status: {}", e)),
+    })
+}
+
+/// Collateral match record from detection system
+#[derive(Debug, Clone)]
+pub struct CollateralMatchInsert {
+    pub matched_collateral_id: Uuid,
+    pub match_score: f32,
+    pub match_type: String,
+}
+
+/// Store collateral matches from detection results
+///
+/// Inserts or updates matches in collateral_matches table
+#[instrument(skip(pool))]
+pub async fn store_collateral_matches(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    matches: Vec<CollateralMatchInsert>,
+) -> Result<usize, DbError> {
+    let mut count = 0;
+
+    for m in matches {
+        // Use ON CONFLICT to handle duplicates (upsert)
+        sqlx::query!(
+            r#"
+            INSERT INTO collateral_matches (collateral_id, matched_collateral_id, match_score, match_type)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (collateral_id, matched_collateral_id)
+            DO UPDATE SET
+                match_score = EXCLUDED.match_score,
+                match_type = EXCLUDED.match_type,
+                created_at = NOW()
+            "#,
+            collateral_id,
+            m.matched_collateral_id,
+            m.match_score as f64, // Convert to f64 for DECIMAL type
+            m.match_type
+        )
+        .execute(pool)
+        .await
+        .map_err(|e| DbError::TransactionFailed(format!("Failed to store collateral match: {}", e)))?;
+
+        count += 1;
+    }
+
+    Ok(count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
