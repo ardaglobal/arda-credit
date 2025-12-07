@@ -9,10 +9,6 @@ name = "populate_deal_data"
 path = "populate_deal_data.rs"
 
 [[bin]]
-name = "test_collateral_duplicates"
-path = "test_collateral_duplicates.rs"
-
-[[bin]]
 name = "test_collateral_intel"
 path = "test_collateral_intel.rs"
 

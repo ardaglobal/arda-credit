@@ -895,14 +895,6 @@ pub fn create_router(state: ApiState) -> Router {
             delete(crate::handlers::taxonomy::collateral::delete_collateral_handler),
         )
         .route(
-            paths::COLLATERAL_WITH_DUPLICATES,
-            get(crate::handlers::taxonomy::collateral::get_collateral_with_duplicates_handler),
-        )
-        .route(
-            paths::COLLATERAL_WITH_MATCHES,
-            get(crate::handlers::taxonomy::collateral::get_collateral_with_matches_handler),
-        )
-        .route(
             paths::COLLATERAL_BY_CUSTOM_ID,
             get(crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler),
         )

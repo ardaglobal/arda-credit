@@ -667,9 +667,6 @@ fn default_limit() -> u32 {
         crate::handlers::taxonomy::collateral::CollateralResponse,
         crate::handlers::taxonomy::collateral::CreateCollateralApiRequest,
         crate::handlers::taxonomy::collateral::UpdateCollateralApiRequest,
-        crate::handlers::taxonomy::collateral::CollateralWithDuplicatesResponse,
-        crate::handlers::taxonomy::collateral::CollateralWithMatchesResponse,
-        crate::handlers::taxonomy::collateral::CollateralMatchResponse,
 
         // Internal detection types
         crate::handlers::taxonomy::detection::DetectionResultRequest,
