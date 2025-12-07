@@ -14,6 +14,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::config::types::{ApiState, ErrorResponse};
+use arda_credit_db as db;
 
 // ============================================================================
 // REQUEST/RESPONSE TYPES
@@ -76,7 +77,7 @@ pub struct DetectionResultResponse {
     security(("bearer" = []))
 )]
 pub async fn receive_detection_result(
-    State(_state): State<ApiState>,
+    State(state): State<ApiState>,
     Path(id): Path<String>,
     Json(result): Json<DetectionResultRequest>,
 ) -> Result<Json<DetectionResultResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -130,14 +131,104 @@ pub async fn receive_detection_result(
         }
     }
 
-    // TODO: Store detection results in database
-    // Options:
-    // 1. Update collateral table with detection_status, last_detection_at, highest_match_score
-    // 2. Create separate collateral_detections table for full history
-    // For now, we just log the results
+    // Store detection results in database
+    let pool = &state.pool;
+
+    // Determine highest match for double_pledged field (score >= 85.0 threshold)
+    let highest_match = result
+        .matches
+        .iter()
+        .filter(|m| m.overall_score >= 85.0)
+        .max_by(|a, b| {
+            a.overall_score
+                .partial_cmp(&b.overall_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+    // Update collateral flags
+    db::taxonomy::collateral::update_collateral_detection_status(
+        pool,
+        collateral_id,
+        result.match_count > 0,
+        highest_match.map(|m| m.matched_collateral_id),
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: "database_error".to_string(),
+                message: format!("Failed to update collateral detection status: {}", e),
+                details: None,
+            }),
+        )
+    })?;
+
+    info!(
+        "✅ Updated collateral {} detection status: has_duplicates={}, double_pledged={:?}",
+        collateral_id,
+        result.match_count > 0,
+        highest_match.map(|m| m.matched_collateral_id)
+    );
+
+    // Store all matches in collateral_matches table
+    if !result.matches.is_empty() {
+        // Map detection matches to database insert format
+        let match_inserts: Vec<db::taxonomy::collateral::CollateralMatchInsert> = result
+            .matches
+            .iter()
+            .map(|m| {
+                // Map confidence level to match_type
+                let match_type = match m.confidence.as_str() {
+                    "high" => "exact_name",
+                    "medium" => "fuzzy_name",
+                    _ => "semantic",
+                };
+
+                db::taxonomy::collateral::CollateralMatchInsert {
+                    matched_collateral_id: m.matched_collateral_id,
+                    match_score: m.overall_score,
+                    match_type: match_type.to_string(),
+                }
+            })
+            .collect();
+
+        let match_count = match_inserts.len();
+        let stored_count =
+            db::taxonomy::collateral::store_collateral_matches(pool, collateral_id, match_inserts)
+                .await
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ErrorResponse {
+                            error: "database_error".to_string(),
+                            message: format!("Failed to store collateral matches: {}", e),
+                            details: None,
+                        }),
+                    )
+                })?;
+
+        if stored_count < match_count {
+            info!(
+                "✅ Stored {} of {} match(es) for collateral {} ({} skipped - not found in database)",
+                stored_count,
+                match_count,
+                collateral_id,
+                match_count - stored_count
+            );
+        } else {
+            info!(
+                "✅ Stored {} match(es) for collateral {}",
+                stored_count, collateral_id
+            );
+        }
+    }
 
     Ok(Json(DetectionResultResponse {
         success: true,
-        message: format!("Detection result for collateral {} received", collateral_id),
+        message: format!(
+            "Detection result for collateral {} received and stored ({} matches)",
+            collateral_id, result.match_count
+        ),
     }))
 }
