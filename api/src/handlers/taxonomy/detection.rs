@@ -193,6 +193,7 @@ pub async fn receive_detection_result(
             })
             .collect();
 
+        let match_count = match_inserts.len();
         let stored_count =
             db::taxonomy::collateral::store_collateral_matches(pool, collateral_id, match_inserts)
                 .await
@@ -207,10 +208,20 @@ pub async fn receive_detection_result(
                     )
                 })?;
 
-        info!(
-            "✅ Stored {} match(es) for collateral {}",
-            stored_count, collateral_id
-        );
+        if stored_count < match_count {
+            info!(
+                "✅ Stored {} of {} match(es) for collateral {} ({} skipped - not found in database)",
+                stored_count,
+                match_count,
+                collateral_id,
+                match_count - stored_count
+            );
+        } else {
+            info!(
+                "✅ Stored {} match(es) for collateral {}",
+                stored_count, collateral_id
+            );
+        }
     }
 
     Ok(Json(DetectionResultResponse {

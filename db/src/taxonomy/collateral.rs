@@ -354,6 +354,7 @@ pub struct CollateralMatchInsert {
 /// Store collateral matches from detection results
 ///
 /// Inserts or updates matches in collateral_matches table
+/// Skips matches where the matched_collateral_id doesn't exist (handles stale data gracefully)
 #[instrument(skip(pool))]
 pub async fn store_collateral_matches(
     pool: &PgPool,
@@ -363,6 +364,29 @@ pub async fn store_collateral_matches(
     let mut count = 0;
 
     for m in matches {
+        // Check if the matched collateral exists before inserting
+        // This handles cases where collateral-intel has stale data from previous runs
+        let matched_exists = sqlx::query!(
+            "SELECT EXISTS(SELECT 1 FROM collateral WHERE id = $1) as exists",
+            m.matched_collateral_id
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|e| DbError::Database(e))?
+        .exists
+        .unwrap_or(false);
+
+        if !matched_exists {
+            // Skip this match - the matched collateral doesn't exist in our database
+            // This can happen when collateral-intel has stale data from previous test runs
+            tracing::debug!(
+                "Skipping match {} -> {} (matched collateral not found in database)",
+                collateral_id,
+                m.matched_collateral_id
+            );
+            continue;
+        }
+
         // Use ON CONFLICT to handle duplicates (upsert)
         sqlx::query!(
             r#"
