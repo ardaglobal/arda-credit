@@ -134,11 +134,12 @@ pub async fn receive_detection_result(
     // Store detection results in database
     let pool = &state.pool;
 
-    // Determine highest match for double_pledged field (score >= 85.0 threshold)
+    // Determine highest match for double_pledged field (score >= 0.85 threshold, i.e. 85% confidence)
+    // Note: Intel service uses 0-1 scale where 1.0 = 100%
     let highest_match = result
         .matches
         .iter()
-        .filter(|m| m.overall_score >= 85.0)
+        .filter(|m| m.overall_score >= 0.85)
         .max_by(|a, b| {
             a.overall_score
                 .partial_cmp(&b.overall_score)
