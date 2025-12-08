@@ -8,6 +8,8 @@
 //! 1. Same-User Double Pledge Detection
 //! 2. Cross-User Double Pledge Detection  
 //! 3. Paid-Off Deal - No Double Pledge
+//! 4. Happy Path - Single Deal, Single Collateral (No Double Pledge)
+//! 5. Happy Path - Two Deals, Two Different Collaterals (No Cross-Match)
 //!
 //! Run with: cargo run --bin test_collateral_intel
 
@@ -719,6 +721,366 @@ async fn scenario_3_paid_off_no_double_pledge(
     Ok(passed)
 }
 
+async fn scenario_4_happy_path_single_deal_single_collateral(
+    ctx: &mut TestContext,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    println!(
+        "\n{}",
+        "📋 Test Scenario 4: Happy Path - Single Deal, Single Collateral (No Double Pledge)"
+            .bold()
+            .cyan()
+    );
+
+    // Create a new unique collateral for this test
+    let collateral_request = CreateCollateralRequest {
+        name: format!("{}_Happy_Path_Property_A", TEST_PREFIX),
+        collateral_type: Some("real_estate".to_string()),
+        description: Some("Happy path test property A - single deal".to_string()),
+        address: Some("456 Happy Street, Test City, TC 54321".to_string()),
+        custom_id: Some(format!("{}-HAPPY-A-001", TEST_PREFIX)),
+        metadata: Some(json!({"test": true, "type": "residential", "scenario": "happy_path_a"})),
+        created_by: Some(ctx.user1_id),
+    };
+
+    let collateral_a = create_collateral(&ctx.pool, collateral_request).await?;
+    println!(
+        "  {} Created Collateral A: {} (ID: {})",
+        "✅".green(),
+        collateral_a.name,
+        collateral_a.id
+    );
+
+    // Create a single active deal with this collateral
+    let deal_a_id = create_deal_via_api(
+        ctx,
+        ctx.company1_id,
+        Some(ctx.company2_id),
+        Some(collateral_a.id),
+        "active",
+        &format!("{}_Happy_Deal_A", TEST_PREFIX),
+    )
+    .await?;
+    ctx.deal_ids.push(deal_a_id);
+    println!(
+        "  {} Created Deal A via API (single active deal) - ID: {}",
+        "✅".green(),
+        deal_a_id
+    );
+
+    ctx.wait_for_processing("Waiting for event processing and detection")
+        .await;
+
+    let mut passed = true;
+
+    // Verify: Check detection history from Intel service
+    ctx.wait_for_processing("Waiting for Intel service detection")
+        .await;
+
+    match get_detection_history(ctx, collateral_a.id).await? {
+        Some(history) => {
+            if !history.detections.is_empty() {
+                let latest = &history.detections[0];
+                println!(
+                    "  {} Detection History: Status={}, matches={}",
+                    "✅".green(),
+                    latest.status,
+                    latest.match_count
+                );
+
+                // Verify status is 'clear'
+                if latest.status == "clear" {
+                    println!(
+                        "  {} Detection status is 'clear' - CORRECT",
+                        "✅".green()
+                    );
+                } else {
+                    println!(
+                        "  {} Detection status is '{}' (expected 'clear')",
+                        "❌".red(),
+                        latest.status
+                    );
+                    passed = false;
+                }
+
+                // Verify match count is 0
+                if latest.match_count == 0 {
+                    println!(
+                        "  {} Match count is 0 - CORRECT (no double pledge)",
+                        "✅".green()
+                    );
+                } else {
+                    println!(
+                        "  {} Match count is {} (expected 0)",
+                        "❌".red(),
+                        latest.match_count
+                    );
+                    passed = false;
+                }
+
+                // Verify no concerning matches
+                let concerning_count = latest.matches.iter().filter(|m| m.is_concerning).count();
+                if concerning_count == 0 {
+                    println!(
+                        "  {} No concerning matches - CORRECT",
+                        "✅".green()
+                    );
+                } else {
+                    println!(
+                        "  {} Found {} concerning match(es) (expected 0)",
+                        "❌".red(),
+                        concerning_count
+                    );
+                    passed = false;
+                }
+            } else {
+                println!("  {} Detection History: No detections found", "⚠️".yellow());
+                passed = false;
+            }
+        }
+        None => {
+            println!("  {} Detection History: Not available (Intel service hasn't received events)", "ℹ️".blue());
+            // Not marking as failed since Intel service might not be running
+        }
+    }
+
+    // Cleanup collateral
+    sqlx::query!("DELETE FROM collateral WHERE id = $1", collateral_a.id)
+        .execute(&ctx.pool)
+        .await?;
+    println!("  {} Cleaned up test collateral A", "✅".green());
+
+    Ok(passed)
+}
+
+async fn scenario_5_happy_path_two_deals_different_collaterals(
+    ctx: &mut TestContext,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    println!(
+        "\n{}",
+        "📋 Test Scenario 5: Happy Path - Two Deals, Two Different Collaterals (No Cross-Match)"
+            .bold()
+            .cyan()
+    );
+
+    // Create first unique collateral
+    let collateral_request_1 = CreateCollateralRequest {
+        name: format!("{}_Happy_Path_Property_B1", TEST_PREFIX),
+        collateral_type: Some("real_estate".to_string()),
+        description: Some("Happy path test property B1 - distinct".to_string()),
+        address: Some("789 Oak Avenue, Test City, TC 78901".to_string()),
+        custom_id: Some(format!("{}-HAPPY-B1-001", TEST_PREFIX)),
+        metadata: Some(json!({"test": true, "type": "commercial", "scenario": "happy_path_b"})),
+        created_by: Some(ctx.user1_id),
+    };
+
+    let collateral_b1 = create_collateral(&ctx.pool, collateral_request_1).await?;
+    println!(
+        "  {} Created Collateral B1: {} (ID: {})",
+        "✅".green(),
+        collateral_b1.name,
+        collateral_b1.id
+    );
+
+    // Create second unique collateral with different name and address
+    let collateral_request_2 = CreateCollateralRequest {
+        name: format!("{}_Happy_Path_Property_B2", TEST_PREFIX),
+        collateral_type: Some("real_estate".to_string()),
+        description: Some("Happy path test property B2 - distinct".to_string()),
+        address: Some("321 Pine Boulevard, Test City, TC 32109".to_string()),
+        custom_id: Some(format!("{}-HAPPY-B2-001", TEST_PREFIX)),
+        metadata: Some(json!({"test": true, "type": "industrial", "scenario": "happy_path_b"})),
+        created_by: Some(ctx.user2_id),
+    };
+
+    let collateral_b2 = create_collateral(&ctx.pool, collateral_request_2).await?;
+    println!(
+        "  {} Created Collateral B2: {} (ID: {})",
+        "✅".green(),
+        collateral_b2.name,
+        collateral_b2.id
+    );
+
+    // Create first active deal with collateral B1
+    let deal_b1_id = create_deal_via_api(
+        ctx,
+        ctx.company1_id,
+        Some(ctx.company2_id),
+        Some(collateral_b1.id),
+        "active",
+        &format!("{}_Happy_Deal_B1", TEST_PREFIX),
+    )
+    .await?;
+    ctx.deal_ids.push(deal_b1_id);
+    println!(
+        "  {} Created Deal B1 via API with Collateral B1 - ID: {}",
+        "✅".green(),
+        deal_b1_id
+    );
+
+    ctx.wait_for_processing("Waiting for event processing")
+        .await;
+
+    // Create second active deal with collateral B2 (different collateral)
+    let deal_b2_id = create_deal_via_api(
+        ctx,
+        ctx.company2_id,
+        Some(ctx.company1_id),
+        Some(collateral_b2.id),
+        "active",
+        &format!("{}_Happy_Deal_B2", TEST_PREFIX),
+    )
+    .await?;
+    ctx.deal_ids.push(deal_b2_id);
+    println!(
+        "  {} Created Deal B2 via API with Collateral B2 (different) - ID: {}",
+        "✅".green(),
+        deal_b2_id
+    );
+
+    ctx.wait_for_processing("Waiting for event processing and detection")
+        .await;
+
+    let mut passed = true;
+
+    // Verify: Check detection history for Collateral B1
+    ctx.wait_for_processing("Waiting for Intel service detection")
+        .await;
+
+    println!("\n  {} Checking Collateral B1 Detection:", "🔍".cyan());
+    match get_detection_history(ctx, collateral_b1.id).await? {
+        Some(history) => {
+            if !history.detections.is_empty() {
+                let latest = &history.detections[0];
+                println!(
+                    "    {} Status={}, matches={}",
+                    "📊".cyan(),
+                    latest.status,
+                    latest.match_count
+                );
+
+                // Verify status is 'clear'
+                if latest.status == "clear" {
+                    println!("    {} Status 'clear' - CORRECT", "✅".green());
+                } else {
+                    println!(
+                        "    {} Status '{}' (expected 'clear')",
+                        "❌".red(),
+                        latest.status
+                    );
+                    passed = false;
+                }
+
+                // Verify match count is 0 (no cross-match with B2)
+                if latest.match_count == 0 {
+                    println!(
+                        "    {} Match count 0 - CORRECT (no cross-match)",
+                        "✅".green()
+                    );
+                } else {
+                    println!(
+                        "    {} Match count {} (expected 0)",
+                        "❌".red(),
+                        latest.match_count
+                    );
+                    passed = false;
+                }
+
+                // Verify no concerning matches
+                let concerning_count = latest.matches.iter().filter(|m| m.is_concerning).count();
+                if concerning_count == 0 {
+                    println!("    {} No concerning matches - CORRECT", "✅".green());
+                } else {
+                    println!(
+                        "    {} Found {} concerning match(es) (expected 0)",
+                        "❌".red(),
+                        concerning_count
+                    );
+                    passed = false;
+                }
+            } else {
+                println!("    {} No detections found", "⚠️".yellow());
+                passed = false;
+            }
+        }
+        None => {
+            println!("    {} Detection History not available", "ℹ️".blue());
+        }
+    }
+
+    // Verify: Check detection history for Collateral B2
+    println!("\n  {} Checking Collateral B2 Detection:", "🔍".cyan());
+    match get_detection_history(ctx, collateral_b2.id).await? {
+        Some(history) => {
+            if !history.detections.is_empty() {
+                let latest = &history.detections[0];
+                println!(
+                    "    {} Status={}, matches={}",
+                    "📊".cyan(),
+                    latest.status,
+                    latest.match_count
+                );
+
+                // Verify status is 'clear'
+                if latest.status == "clear" {
+                    println!("    {} Status 'clear' - CORRECT", "✅".green());
+                } else {
+                    println!(
+                        "    {} Status '{}' (expected 'clear')",
+                        "❌".red(),
+                        latest.status
+                    );
+                    passed = false;
+                }
+
+                // Verify match count is 0 (no cross-match with B1)
+                if latest.match_count == 0 {
+                    println!(
+                        "    {} Match count 0 - CORRECT (no cross-match)",
+                        "✅".green()
+                    );
+                } else {
+                    println!(
+                        "    {} Match count {} (expected 0)",
+                        "❌".red(),
+                        latest.match_count
+                    );
+                    passed = false;
+                }
+
+                // Verify no concerning matches
+                let concerning_count = latest.matches.iter().filter(|m| m.is_concerning).count();
+                if concerning_count == 0 {
+                    println!("    {} No concerning matches - CORRECT", "✅".green());
+                } else {
+                    println!(
+                        "    {} Found {} concerning match(es) (expected 0)",
+                        "❌".red(),
+                        concerning_count
+                    );
+                    passed = false;
+                }
+            } else {
+                println!("    {} No detections found", "⚠️".yellow());
+                passed = false;
+            }
+        }
+        None => {
+            println!("    {} Detection History not available", "ℹ️".blue());
+        }
+    }
+
+    // Cleanup collaterals
+    sqlx::query!("DELETE FROM collateral WHERE id = $1", collateral_b1.id)
+        .execute(&ctx.pool)
+        .await?;
+    sqlx::query!("DELETE FROM collateral WHERE id = $1", collateral_b2.id)
+        .execute(&ctx.pool)
+        .await?;
+    println!("\n  {} Cleaned up test collaterals B1 and B2", "✅".green());
+
+    Ok(passed)
+}
+
 // ============================================================================
 // CLEANUP
 // ============================================================================
@@ -879,6 +1241,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     results.push((
         "Scenario 3: Paid-Off - No Double Pledge",
         scenario_3_paid_off_no_double_pledge(&mut ctx).await?,
+    ));
+    results.push((
+        "Scenario 4: Happy Path - Single Deal, Single Collateral",
+        scenario_4_happy_path_single_deal_single_collateral(&mut ctx).await?,
+    ));
+    results.push((
+        "Scenario 5: Happy Path - Two Deals, Different Collaterals",
+        scenario_5_happy_path_two_deals_different_collaterals(&mut ctx).await?,
     ));
 
     // Print summary
