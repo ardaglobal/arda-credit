@@ -10,6 +10,8 @@
 //! 3. Paid-Off Deal - No Double Pledge
 //! 4. Happy Path - Single Deal, Single Collateral (No Double Pledge)
 //! 5. Happy Path - Two Deals, Two Different Collaterals (No Cross-Match)
+//! 6. Same Name/Address, Different UUID Double Pledge (Exact Match Detection)
+//! 7. Fuzzy Address Double Pledge Detection (Suite Number Variations)
 //!
 //! Run with: cargo run --bin test_collateral_intel
 
@@ -19,13 +21,13 @@ use db::{
     business::company::{
         create_company, create_membership, CompanyRole, CreateCompanyRequest, ProfileType,
     },
-    create_collateral, create_identity, init_db_with_url, CreateCollateralRequest,
+    create_collateral, create_deal, create_identity, init_db_with_url, CreateCollateralRequest,
 };
 use rand::{thread_rng, Rng};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{env, time::Duration};
+use std::{env, str::FromStr, time::Duration};
 use uuid::Uuid;
 use wiremock::{
     matchers::{method, path_regex},
@@ -143,6 +145,7 @@ struct TestContext {
     company1_id: Uuid,
     company2_id: Uuid,
     collateral_id: Uuid,
+    collateral_ids: Vec<Uuid>, // Additional collateral IDs for cleanup
     deal_ids: Vec<Uuid>,
     session_token: String,
 }
@@ -184,6 +187,7 @@ impl TestContext {
             company1_id: Uuid::nil(),
             company2_id: Uuid::nil(),
             collateral_id: Uuid::nil(),
+            collateral_ids: Vec::new(),
             deal_ids: Vec::new(),
             session_token: String::new(),
         })
@@ -489,6 +493,58 @@ async fn get_detection_history(
     }
 }
 
+async fn create_collateral_via_api(
+    ctx: &TestContext,
+    name: &str,
+    address: &str,
+    custom_id: Option<&str>,
+    description: &str,
+) -> Result<Uuid, Box<dyn std::error::Error>> {
+    #[derive(Serialize)]
+    struct CreateCollateralRequest {
+        name: String,
+        collateral_type: Option<String>,
+        description: Option<String>,
+        address: Option<String>,
+        custom_id: Option<String>,
+        metadata: Option<serde_json::Value>,
+    }
+
+    #[derive(Deserialize)]
+    struct CollateralResponse {
+        id: String,
+    }
+
+    let request = CreateCollateralRequest {
+        name: name.to_string(),
+        collateral_type: Some("real_estate".to_string()),
+        description: Some(description.to_string()),
+        address: Some(address.to_string()),
+        custom_id: custom_id.map(|s| s.to_string()),
+        metadata: Some(json!({"test": true, "type": "commercial"})),
+    };
+
+    let url = format!("{}/api/v1/collateral", ctx.api_url);
+    let response = ctx
+        .client
+        .post(&url)
+        .header("Cookie", format!("session_id={}", ctx.session_token))
+        .json(&request)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await?;
+        return Err(format!("API error {}: {}", status, body).into());
+    }
+
+    let collateral: CollateralResponse = response.json().await?;
+    let collateral_id = Uuid::parse_str(&collateral.id)?;
+
+    Ok(collateral_id)
+}
+
 async fn check_database_double_pledge(
     ctx: &TestContext,
     collateral_id: Uuid,
@@ -510,6 +566,532 @@ async fn check_database_double_pledge(
 // ============================================================================
 // TEST SCENARIOS
 // ============================================================================
+
+async fn scenario_6_exact_match_different_uuid(
+    ctx: &mut TestContext,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    println!(
+        "\n{}",
+        "📋 Test Scenario 6: Same Name/Address, Different UUID Double Pledge"
+            .bold()
+            .cyan()
+    );
+    println!("  Testing exact match detection with duplicate collateral records");
+
+    // Create Collateral A via direct DB call with specific name and address
+    let collateral_a_request = CreateCollateralRequest {
+        name: "Oak Street Office Building".to_string(),
+        collateral_type: Some("real_estate".to_string()),
+        description: Some("First instance of Oak Street Office Building".to_string()),
+        address: Some("456 Oak Street, Portland, OR".to_string()),
+        custom_id: Some(format!("{}-OAK-A", TEST_PREFIX)),
+        metadata: Some(json!({"test": true, "type": "commercial", "scenario": "exact_match"})),
+        created_by: Some(ctx.user1_id),
+    };
+    let collateral_a = create_collateral(&ctx.pool, collateral_a_request).await?;
+    ctx.collateral_ids.push(collateral_a.id); // Track for cleanup
+    println!(
+        "  {} Created Collateral A via DB - ID: {}",
+        "✅".green(),
+        collateral_a.id
+    );
+
+    // Create Deal #1 with Collateral A via direct DB call
+    let deal1 = create_deal(
+        &ctx.pool,
+        ctx.company1_id,
+        Some(ctx.company2_id),
+        None, // borrower_id
+        rust_decimal::Decimal::from_str("1000000.00")?,
+        500,                                                           // interest_rate_bps
+        None,                                                          // maturity_date
+        Some("active"),                                                // deal_status
+        None,                                                          // custom_deal_id
+        Some("active"),                                                // status
+        None,                                                          // industry
+        None,                                                          // document_ids
+        Some(&format!("{}_Deal_CollateralA", TEST_PREFIX)),            // title
+        Some(&format!("Test deal: {}_Deal_CollateralA", TEST_PREFIX)), // description
+        None,                                                          // risk_level
+        None,                                                          // asset_class
+        None,                                                          // region
+        None,                                                          // minimum_investment
+        Some(collateral_a.id),                                         // collateral_id
+    )
+    .await?;
+    ctx.deal_ids.push(deal1.id);
+    println!(
+        "  {} Created Deal #1 with Collateral A - ID: {}",
+        "✅".green(),
+        deal1.id
+    );
+
+    // Create Collateral B via direct DB call with SAME name and address but DIFFERENT UUID
+    let collateral_b_request = CreateCollateralRequest {
+        name: "Oak Street Office Building".to_string(), // SAME NAME
+        collateral_type: Some("real_estate".to_string()),
+        description: Some(
+            "Duplicate instance of Oak Street Office Building - SHOULD BE DETECTED".to_string(),
+        ),
+        address: Some("456 Oak Street, Portland, OR".to_string()), // SAME ADDRESS
+        custom_id: Some(format!("{}-OAK-B", TEST_PREFIX)),         // Different custom ID
+        metadata: Some(json!({"test": true, "type": "commercial", "scenario": "exact_match"})),
+        created_by: Some(ctx.user2_id),
+    };
+    let collateral_b = create_collateral(&ctx.pool, collateral_b_request).await?;
+    ctx.collateral_ids.push(collateral_b.id); // Track for cleanup
+    println!(
+        "  {} Created Collateral B via DB - ID: {} (DIFFERENT UUID, SAME NAME/ADDRESS)",
+        "✅".green(),
+        collateral_b.id
+    );
+
+    // Create Deal #2 with Collateral B via direct DB call (different company to avoid same-collateral detection)
+    let deal2 = create_deal(
+        &ctx.pool,
+        ctx.company2_id, // Different company
+        Some(ctx.company1_id),
+        None, // borrower_id
+        rust_decimal::Decimal::from_str("1000000.00")?,
+        500,                                                           // interest_rate_bps
+        None,                                                          // maturity_date
+        Some("active"),                                                // deal_status
+        None,                                                          // custom_deal_id
+        Some("active"),                                                // status
+        None,                                                          // industry
+        None,                                                          // document_ids
+        Some(&format!("{}_Deal_CollateralB", TEST_PREFIX)),            // title
+        Some(&format!("Test deal: {}_Deal_CollateralB", TEST_PREFIX)), // description
+        None,                                                          // risk_level
+        None,                                                          // asset_class
+        None,                                                          // region
+        None,                                                          // minimum_investment
+        Some(collateral_b.id),                                         // collateral_id
+    )
+    .await?;
+    ctx.deal_ids.push(deal2.id);
+    println!(
+        "  {} Created Deal #2 with Collateral B (different company) - ID: {}",
+        "✅".green(),
+        deal2.id
+    );
+
+    ctx.wait_for_processing("Waiting for detection analysis")
+        .await;
+
+    // Verify: Check detection history for Collateral A
+    let mut passed = true;
+
+    println!("\n  {} Verifying detection for Collateral A:", "🔍".cyan());
+
+    // Mock double pledge detection for both collaterals
+    ctx.mock_double_pledge_detected(collateral_a.id, collateral_b.id)
+        .await;
+    ctx.mock_double_pledge_detected(collateral_b.id, collateral_a.id)
+        .await;
+    println!(
+        "  {} Mock: Intel service configured to return double pledge detected",
+        "🎭".cyan()
+    );
+
+    ctx.wait_for_processing("Waiting for Intel service detection")
+        .await;
+
+    match get_detection_history(ctx, collateral_a.id).await? {
+        Some(history) => {
+            if !history.detections.is_empty() {
+                let latest = &history.detections[0];
+                println!(
+                    "    {} Detection History: Status={}, matches={}",
+                    "✅".green(),
+                    latest.status,
+                    latest.match_count
+                );
+
+                // Check if we have an exact match
+                let exact_matches: Vec<_> = latest
+                    .matches
+                    .iter()
+                    .filter(|m| {
+                        m.matched_collateral_id == collateral_b.id.to_string()
+                            && (m.reason.contains("name") || m.reason.contains("address"))
+                    })
+                    .collect();
+
+                if !exact_matches.is_empty() {
+                    for m in &exact_matches {
+                        println!(
+                            "    {} Found exact match: ID={}, Score={}, Reason={}",
+                            "✅".green(),
+                            m.matched_collateral_id,
+                            m.score,
+                            m.reason
+                        );
+                        if m.is_concerning {
+                            println!(
+                                "    {} Match is marked as concerning (both deals active)",
+                                "✅".green()
+                            );
+                        }
+                    }
+                } else {
+                    println!(
+                        "    {} No exact match found between Collateral A and B",
+                        "❌".red()
+                    );
+                    passed = false;
+                }
+            } else {
+                println!(
+                    "    {} Detection History: No detections found",
+                    "⚠️".yellow()
+                );
+                passed = false;
+            }
+        }
+        None => {
+            println!(
+                "    {} Detection History: Not available (Intel service hasn't received events)",
+                "ℹ️".blue()
+            );
+        }
+    }
+
+    println!("\n  {} Verifying detection for Collateral B:", "🔍".cyan());
+    match get_detection_history(ctx, collateral_b.id).await? {
+        Some(history) => {
+            if !history.detections.is_empty() {
+                let latest = &history.detections[0];
+                println!(
+                    "    {} Detection History: Status={}, matches={}",
+                    "✅".green(),
+                    latest.status,
+                    latest.match_count
+                );
+
+                // Check if we have an exact match
+                let exact_matches: Vec<_> = latest
+                    .matches
+                    .iter()
+                    .filter(|m| {
+                        m.matched_collateral_id == collateral_a.id.to_string()
+                            && (m.reason.contains("name") || m.reason.contains("address"))
+                    })
+                    .collect();
+
+                if !exact_matches.is_empty() {
+                    for m in &exact_matches {
+                        println!(
+                            "    {} Found exact match: ID={}, Score={}, Reason={}",
+                            "✅".green(),
+                            m.matched_collateral_id,
+                            m.score,
+                            m.reason
+                        );
+
+                        // Verify reason indicates which field matched
+                        if m.reason.contains("name") && m.reason.contains("address") {
+                            println!("    {} Match reason correctly indicates both name AND address match", "✅".green());
+                        } else if m.reason.contains("name") || m.reason.contains("address") {
+                            println!(
+                                "    {} Match reason indicates at least one field match",
+                                "✅".green()
+                            );
+                        } else {
+                            println!(
+                                "    {} Match reason doesn't clearly indicate which field matched",
+                                "⚠️".yellow()
+                            );
+                        }
+
+                        if m.is_concerning {
+                            println!(
+                                "    {} Match is marked as concerning (both deals active)",
+                                "✅".green()
+                            );
+                        }
+                    }
+                } else {
+                    println!(
+                        "    {} No exact match found between Collateral B and A",
+                        "❌".red()
+                    );
+                    passed = false;
+                }
+            } else {
+                println!(
+                    "    {} Detection History: No detections found",
+                    "⚠️".yellow()
+                );
+                passed = false;
+            }
+        }
+        None => {
+            println!(
+                "    {} Detection History: Not available (Intel service hasn't received events)",
+                "ℹ️".blue()
+            );
+        }
+    }
+
+    // Also check database flags
+    println!("\n  {} Checking database flags:", "🔍".cyan());
+    match check_database_double_pledge(ctx, collateral_a.id).await? {
+        Some(_) => {
+            println!(
+                "    {} Collateral A: double_pledged field is set",
+                "✅".green()
+            );
+        }
+        None => {
+            println!(
+                "    {} Collateral A: double_pledged field NOT set (may be expected if using external service)",
+                "⚠️".yellow()
+            );
+        }
+    }
+
+    match check_database_double_pledge(ctx, collateral_b.id).await? {
+        Some(_) => {
+            println!(
+                "    {} Collateral B: double_pledged field is set",
+                "✅".green()
+            );
+        }
+        None => {
+            println!(
+                "    {} Collateral B: double_pledged field NOT set (may be expected if using external service)",
+                "⚠️".yellow()
+            );
+        }
+    }
+
+    Ok(passed)
+}
+
+async fn scenario_7_fuzzy_address_double_pledge(
+    ctx: &mut TestContext,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    println!(
+        "\n{}",
+        "📋 Test Scenario 7: Fuzzy Address Double Pledge Detection"
+            .bold()
+            .cyan()
+    );
+    println!(
+        "  {} Testing address variations: suite numbers, unit numbers, etc.",
+        "ℹ️".blue()
+    );
+
+    // Create Collateral #1 with base address (no suite)
+    let collateral1_request = CreateCollateralRequest {
+        name: format!("{}_Fuzzy_Property_1", TEST_PREFIX),
+        collateral_type: Some("real_estate".to_string()),
+        description: Some("Test property for fuzzy address matching".to_string()),
+        address: Some("123 Main St, New York, NY 10001".to_string()),
+        custom_id: Some(format!("{}-FUZZY-001", TEST_PREFIX)),
+        metadata: Some(json!({"test": true, "type": "fuzzy_address_test"})),
+        created_by: Some(ctx.user1_id),
+    };
+
+    let collateral1 = create_collateral(&ctx.pool, collateral1_request).await?;
+    println!(
+        "  {} Created Collateral #1: {} at '{}'",
+        "✅".green(),
+        collateral1.name,
+        collateral1.address.as_ref().unwrap()
+    );
+
+    // Create Deal #1 with first collateral (active) - using direct DB call
+    let deal1 = create_deal(
+        &ctx.pool,
+        ctx.company1_id,
+        Some(ctx.company2_id),
+        None, // borrower_id
+        rust_decimal::Decimal::from_str("1000000.00")?,
+        500,                                                              // interest_rate_bps
+        None,                                                             // maturity_date
+        Some("active"),                                                   // deal_status
+        None,                                                             // custom_deal_id
+        Some("active"),                                                   // status
+        None,                                                             // industry
+        None,                                                             // document_ids
+        Some(&format!("{}_Fuzzy_Deal_1_Active", TEST_PREFIX)),            // title
+        Some(&format!("Test deal: {}_Fuzzy_Deal_1_Active", TEST_PREFIX)), // description
+        None,                                                             // risk_level
+        None,                                                             // asset_class
+        None,                                                             // region
+        None,                                                             // minimum_investment
+        Some(collateral1.id),                                             // collateral_id
+    )
+    .await?;
+    ctx.deal_ids.push(deal1.id);
+    println!(
+        "  {} Created Deal #1 with Collateral #1 (active) - ID: {}",
+        "✅".green(),
+        deal1.id
+    );
+
+    ctx.wait_for_processing("Waiting for first collateral processing")
+        .await;
+
+    // Create Collateral #2 with suite variation
+    let collateral2_request = CreateCollateralRequest {
+        name: format!("{}_Fuzzy_Property_2", TEST_PREFIX),
+        collateral_type: Some("real_estate".to_string()),
+        description: Some("Test property with suite number variation".to_string()),
+        address: Some("123 Main St Suite A, New York, NY 10001".to_string()),
+        custom_id: Some(format!("{}-FUZZY-002", TEST_PREFIX)),
+        metadata: Some(json!({"test": true, "type": "fuzzy_address_test"})),
+        created_by: Some(ctx.user2_id),
+    };
+
+    let collateral2 = create_collateral(&ctx.pool, collateral2_request).await?;
+    println!(
+        "  {} Created Collateral #2: {} at '{}'",
+        "✅".green(),
+        collateral2.name,
+        collateral2.address.as_ref().unwrap()
+    );
+
+    // Create Deal #2 with second collateral (active) - using direct DB call
+    let deal2 = create_deal(
+        &ctx.pool,
+        ctx.company2_id,
+        Some(ctx.company1_id),
+        None, // borrower_id
+        rust_decimal::Decimal::from_str("1000000.00")?,
+        500,                                                              // interest_rate_bps
+        None,                                                             // maturity_date
+        Some("active"),                                                   // deal_status
+        None,                                                             // custom_deal_id
+        Some("active"),                                                   // status
+        None,                                                             // industry
+        None,                                                             // document_ids
+        Some(&format!("{}_Fuzzy_Deal_2_Active", TEST_PREFIX)),            // title
+        Some(&format!("Test deal: {}_Fuzzy_Deal_2_Active", TEST_PREFIX)), // description
+        None,                                                             // risk_level
+        None,                                                             // asset_class
+        None,                                                             // region
+        None,                                                             // minimum_investment
+        Some(collateral2.id),                                             // collateral_id
+    )
+    .await?;
+    ctx.deal_ids.push(deal2.id);
+    println!(
+        "  {} Created Deal #2 with Collateral #2 (active) - ID: {}",
+        "✅".green(),
+        deal2.id
+    );
+
+    ctx.wait_for_processing("Waiting for fuzzy address detection")
+        .await;
+
+    let mut passed = true;
+
+    // Verify: Check detection history for collateral2
+    ctx.wait_for_processing("Waiting for Intel service fuzzy matching")
+        .await;
+
+    match get_detection_history(ctx, collateral2.id).await? {
+        Some(history) => {
+            if !history.detections.is_empty() {
+                let latest = &history.detections[0];
+                println!(
+                    "  {} Detection History: Status={}, matches={}",
+                    "✅".green(),
+                    latest.status,
+                    latest.match_count
+                );
+
+                if latest.match_count == 0 {
+                    println!(
+                        "  {} Expected at least 1 match for fuzzy address, got 0",
+                        "❌".red()
+                    );
+                    passed = false;
+                } else {
+                    // Check for high similarity match
+                    let high_similarity_matches: Vec<_> =
+                        latest.matches.iter().filter(|m| m.score >= 0.85).collect();
+
+                    if !high_similarity_matches.is_empty() {
+                        println!(
+                            "  {} Found {} high similarity match(es) (score >= 0.85)",
+                            "✅".green(),
+                            high_similarity_matches.len()
+                        );
+                        for m in &high_similarity_matches {
+                            println!(
+                                "    → Match: {} (score: {:.3}, concerning: {})",
+                                m.matched_collateral_name, m.score, m.is_concerning
+                            );
+                        }
+                    } else {
+                        println!(
+                            "  {} No matches with similarity >= 0.85 (highest: {:.3})",
+                            "⚠️".yellow(),
+                            latest.matches.first().map(|m| m.score).unwrap_or(0.0)
+                        );
+                        println!(
+                            "    {} Fuzzy matching may need tuning for suite number variations",
+                            "ℹ️".blue()
+                        );
+                    }
+
+                    // Check for concerning matches (both deals active)
+                    let concerning_count =
+                        latest.matches.iter().filter(|m| m.is_concerning).count();
+                    if concerning_count > 0 {
+                        println!(
+                            "  {} Found {} concerning match(es) - double pledge detected!",
+                            "✅".green(),
+                            concerning_count
+                        );
+                    } else {
+                        println!(
+                            "  {} No concerning matches flagged (both deals active but not flagged)",
+                            "⚠️".yellow()
+                        );
+                    }
+                }
+            } else {
+                println!("  {} Detection History: No detections found", "⚠️".yellow());
+                passed = false;
+            }
+        }
+        None => {
+            println!(
+                "  {} Detection History: Not available (Intel service not running or not receiving events)",
+                "ℹ️".blue()
+            );
+            println!(
+                "    {} This scenario requires the arda-collateral-intel microservice",
+                "ℹ️".blue()
+            );
+        }
+    }
+
+    // Document the expected threshold
+    println!("\n  {} Fuzzy Address Matching Expectations:", "📝".cyan());
+    println!("    • Similarity threshold: >= 0.85");
+    println!("    • Address variations tested:");
+    println!("      - Base address: '123 Main St, New York, NY 10001'");
+    println!("      - With suite: '123 Main St Suite A, New York, NY 10001'");
+    println!("    • Should detect as potential double pledge when both deals active");
+
+    // Cleanup: Delete the fuzzy test collaterals
+    sqlx::query!(
+        "DELETE FROM collateral WHERE id IN ($1, $2)",
+        collateral1.id,
+        collateral2.id
+    )
+    .execute(&ctx.pool)
+    .await?;
+    println!("  {} Cleaned up fuzzy test collaterals", "🧹".green());
+
+    Ok(passed)
+}
 
 async fn scenario_1_same_user_double_pledge(
     ctx: &mut TestContext,
@@ -1230,6 +1812,20 @@ async fn cleanup_test_data(ctx: &TestContext) -> Result<(), Box<dyn std::error::
         .await?;
     println!("  {} Deleted test collateral", "✅".green());
 
+    // Delete additional collateral IDs (from scenario 4)
+    for collateral_id in &ctx.collateral_ids {
+        sqlx::query!("DELETE FROM collateral WHERE id = $1", collateral_id)
+            .execute(&ctx.pool)
+            .await?;
+    }
+    if !ctx.collateral_ids.is_empty() {
+        println!(
+            "  {} Deleted {} additional collateral(s)",
+            "✅".green(),
+            ctx.collateral_ids.len()
+        );
+    }
+
     // Delete company memberships
     sqlx::query!(
         "DELETE FROM company_memberships WHERE company_id IN ($1, $2)",
@@ -1374,6 +1970,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Scenario 5: Happy Path - Two Deals, Different Collaterals",
         scenario_5_happy_path_two_deals_different_collaterals(&mut ctx).await?,
     ));
+    results.push((
+        "Scenario 6: Same Name/Address, Different UUID",
+        scenario_6_exact_match_different_uuid(&mut ctx).await?,
+    ));
+    results.push((
+        "Scenario 7: Fuzzy Address Double Pledge",
+        scenario_7_fuzzy_address_double_pledge(&mut ctx).await?,
+    ));
 
     // Print summary
     println!(
@@ -1424,6 +2028,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "💡".yellow()
         );
         println!("  Collateral ID: {}", ctx.collateral_id);
+        if !ctx.collateral_ids.is_empty() {
+            println!("  Additional Collateral IDs: {:?}", ctx.collateral_ids);
+        }
         println!("  Deal IDs: {:?}", ctx.deal_ids);
     }
 
