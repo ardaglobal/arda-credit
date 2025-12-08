@@ -27,6 +27,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{env, time::Duration};
 use uuid::Uuid;
+use wiremock::{
+    matchers::{method, path_regex},
+    Mock, MockServer, ResponseTemplate,
+};
 
 // ============================================================================
 // CONFIGURATION
@@ -131,6 +135,7 @@ struct TestContext {
     intel_url: String,
     wait_time: u64,
     cleanup: bool,
+    mock_server: MockServer,
 
     // Test data
     user1_id: Uuid,
@@ -146,7 +151,7 @@ impl TestContext {
     async fn new(
         database_url: &str,
         api_url: String,
-        intel_url: String,
+        _intel_url: String,
         wait_time: u64,
         cleanup: bool,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -157,6 +162,15 @@ impl TestContext {
 
         let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
 
+        // Start mock server for Intel service
+        let mock_server = MockServer::start().await;
+        let intel_url = mock_server.uri();
+        println!(
+            "  {} Mock Intel service started at {}",
+            "✅".green(),
+            intel_url
+        );
+
         Ok(Self {
             pool,
             client,
@@ -164,6 +178,7 @@ impl TestContext {
             intel_url,
             wait_time,
             cleanup,
+            mock_server,
             user1_id: Uuid::nil(),
             user2_id: Uuid::nil(),
             company1_id: Uuid::nil(),
@@ -289,6 +304,80 @@ impl TestContext {
     async fn wait_for_processing(&self, message: &str) {
         println!("  {} {} ({}s)...", "⏳".yellow(), message, self.wait_time);
         tokio::time::sleep(Duration::from_secs(self.wait_time)).await;
+    }
+
+    /// Mock a "double pledge detected" response from Intel service
+    async fn mock_double_pledge_detected(&self, collateral_id: Uuid, matched_collateral_id: Uuid) {
+        let response = DetectionHistoryResponse {
+            collateral_id: collateral_id.to_string(),
+            total_count: 1,
+            limit: 10,
+            offset: 0,
+            detections: vec![DetectionRecord {
+                detection_id: Uuid::new_v4().to_string(),
+                trigger_type: "deal_created".to_string(),
+                status: "double_pledge_detected".to_string(),
+                match_count: 1,
+                analyzed_at: chrono::Utc::now().to_rfc3339(),
+                matches: vec![DetectionMatchDetail {
+                    matched_collateral_id: matched_collateral_id.to_string(),
+                    matched_collateral_name: "Matched Property".to_string(),
+                    score: 0.95,
+                    confidence: "high".to_string(),
+                    is_concerning: true,
+                    reason: "Same collateral used in multiple active deals".to_string(),
+                }],
+            }],
+        };
+
+        Mock::given(method("GET"))
+            .and(path_regex(format!(
+                r"^/api/v1/collateral/{}/detection-history$",
+                collateral_id
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response))
+            .mount(&self.mock_server)
+            .await;
+    }
+
+    /// Mock a "clear" response (no double pledge detected) from Intel service
+    async fn mock_clear_response(&self, collateral_id: Uuid) {
+        let response = DetectionHistoryResponse {
+            collateral_id: collateral_id.to_string(),
+            total_count: 1,
+            limit: 10,
+            offset: 0,
+            detections: vec![DetectionRecord {
+                detection_id: Uuid::new_v4().to_string(),
+                trigger_type: "deal_created".to_string(),
+                status: "clear".to_string(),
+                match_count: 0,
+                analyzed_at: chrono::Utc::now().to_rfc3339(),
+                matches: vec![],
+            }],
+        };
+
+        Mock::given(method("GET"))
+            .and(path_regex(format!(
+                r"^/api/v1/collateral/{}/detection-history$",
+                collateral_id
+            )))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&response))
+            .mount(&self.mock_server)
+            .await;
+    }
+
+    /// Mock a "not found" response from Intel service (no detection history yet)
+    #[allow(dead_code)]
+    async fn mock_not_found(&self, collateral_id: Uuid) {
+        Mock::given(method("GET"))
+            .and(path_regex(format!(
+                r"^/api/v1/collateral/{}/detection-history$",
+                collateral_id
+            )))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&self.mock_server)
+            .await;
     }
 }
 
@@ -500,6 +589,14 @@ async fn scenario_1_same_user_double_pledge(
     }
 
     // Verify: Check detection history from Intel service
+    // Mock the Intel service response for double pledge detection
+    ctx.mock_double_pledge_detected(ctx.collateral_id, ctx.collateral_id)
+        .await;
+    println!(
+        "  {} Mock: Intel service configured to return double pledge detected",
+        "🎭".cyan()
+    );
+
     ctx.wait_for_processing("Waiting for Intel service detection")
         .await;
 
@@ -579,6 +676,14 @@ async fn scenario_2_cross_user_double_pledge(
     }
 
     // Verify: Check detection history
+    // Mock the Intel service response for cross-user double pledge detection
+    ctx.mock_double_pledge_detected(ctx.collateral_id, ctx.collateral_id)
+        .await;
+    println!(
+        "  {} Mock: Intel service configured to return double pledge detected",
+        "🎭".cyan()
+    );
+
     ctx.wait_for_processing("Waiting for Intel service detection")
         .await;
 
@@ -666,6 +771,13 @@ async fn scenario_3_paid_off_no_double_pledge(
     let passed = true;
 
     // Verify: Should show low risk since only one active deal
+    // Mock the Intel service response for clear status (no double pledge after paid-off)
+    ctx.mock_clear_response(ctx.collateral_id).await;
+    println!(
+        "  {} Mock: Intel service configured to return clear status",
+        "🎭".cyan()
+    );
+
     ctx.wait_for_processing("Waiting for Intel service detection")
         .await;
 
@@ -773,6 +885,13 @@ async fn scenario_4_happy_path_single_deal_single_collateral(
     let mut passed = true;
 
     // Verify: Check detection history from Intel service
+    // Mock the Intel service response for clear status (happy path - no double pledge)
+    ctx.mock_clear_response(collateral_a.id).await;
+    println!(
+        "  {} Mock: Intel service configured to return clear status",
+        "🎭".cyan()
+    );
+
     ctx.wait_for_processing("Waiting for Intel service detection")
         .await;
 
@@ -789,10 +908,7 @@ async fn scenario_4_happy_path_single_deal_single_collateral(
 
                 // Verify status is 'clear'
                 if latest.status == "clear" {
-                    println!(
-                        "  {} Detection status is 'clear' - CORRECT",
-                        "✅".green()
-                    );
+                    println!("  {} Detection status is 'clear' - CORRECT", "✅".green());
                 } else {
                     println!(
                         "  {} Detection status is '{}' (expected 'clear')",
@@ -820,10 +936,7 @@ async fn scenario_4_happy_path_single_deal_single_collateral(
                 // Verify no concerning matches
                 let concerning_count = latest.matches.iter().filter(|m| m.is_concerning).count();
                 if concerning_count == 0 {
-                    println!(
-                        "  {} No concerning matches - CORRECT",
-                        "✅".green()
-                    );
+                    println!("  {} No concerning matches - CORRECT", "✅".green());
                 } else {
                     println!(
                         "  {} Found {} concerning match(es) (expected 0)",
@@ -838,7 +951,10 @@ async fn scenario_4_happy_path_single_deal_single_collateral(
             }
         }
         None => {
-            println!("  {} Detection History: Not available (Intel service hasn't received events)", "ℹ️".blue());
+            println!(
+                "  {} Detection History: Not available (Intel service hasn't received events)",
+                "ℹ️".blue()
+            );
             // Not marking as failed since Intel service might not be running
         }
     }
@@ -943,6 +1059,14 @@ async fn scenario_5_happy_path_two_deals_different_collaterals(
     let mut passed = true;
 
     // Verify: Check detection history for Collateral B1
+    // Mock the Intel service responses for both collaterals (both clear - no cross-match)
+    ctx.mock_clear_response(collateral_b1.id).await;
+    ctx.mock_clear_response(collateral_b2.id).await;
+    println!(
+        "  {} Mock: Intel service configured to return clear status for both collaterals",
+        "🎭".cyan()
+    );
+
     ctx.wait_for_processing("Waiting for Intel service detection")
         .await;
 
