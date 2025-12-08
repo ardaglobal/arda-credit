@@ -8,6 +8,7 @@
 //! 1. Same-User Double Pledge Detection
 //! 2. Cross-User Double Pledge Detection  
 //! 3. Paid-Off Deal - No Double Pledge
+//! 4. Same Name/Address, Different UUID Double Pledge (Exact Match Detection)
 //!
 //! Run with: cargo run --bin test_collateral_intel
 
@@ -136,6 +137,7 @@ struct TestContext {
     company1_id: Uuid,
     company2_id: Uuid,
     collateral_id: Uuid,
+    collateral_ids: Vec<Uuid>, // Additional collateral IDs for cleanup
     deal_ids: Vec<Uuid>,
     session_token: String,
 }
@@ -167,6 +169,7 @@ impl TestContext {
             company1_id: Uuid::nil(),
             company2_id: Uuid::nil(),
             collateral_id: Uuid::nil(),
+            collateral_ids: Vec::new(),
             deal_ids: Vec::new(),
             session_token: String::new(),
         })
@@ -396,6 +399,58 @@ async fn get_detection_history(
         let body = response.text().await?;
         Err(format!("Intel service error {}: {}", status, body).into())
     }
+}
+
+async fn create_collateral_via_api(
+    ctx: &TestContext,
+    name: &str,
+    address: &str,
+    custom_id: Option<&str>,
+    description: &str,
+) -> Result<Uuid, Box<dyn std::error::Error>> {
+    #[derive(Serialize)]
+    struct CreateCollateralRequest {
+        name: String,
+        collateral_type: Option<String>,
+        description: Option<String>,
+        address: Option<String>,
+        custom_id: Option<String>,
+        metadata: Option<serde_json::Value>,
+    }
+
+    #[derive(Deserialize)]
+    struct CollateralResponse {
+        id: String,
+    }
+
+    let request = CreateCollateralRequest {
+        name: name.to_string(),
+        collateral_type: Some("real_estate".to_string()),
+        description: Some(description.to_string()),
+        address: Some(address.to_string()),
+        custom_id: custom_id.map(|s| s.to_string()),
+        metadata: Some(json!({"test": true, "type": "commercial"})),
+    };
+
+    let url = format!("{}/api/v1/collateral", ctx.api_url);
+    let response = ctx
+        .client
+        .post(&url)
+        .header("Cookie", format!("session_id={}", ctx.session_token))
+        .json(&request)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await?;
+        return Err(format!("API error {}: {}", status, body).into());
+    }
+
+    let collateral: CollateralResponse = response.json().await?;
+    let collateral_id = Uuid::parse_str(&collateral.id)?;
+
+    Ok(collateral_id)
 }
 
 async fn check_database_double_pledge(
@@ -719,6 +774,241 @@ async fn scenario_3_paid_off_no_double_pledge(
     Ok(passed)
 }
 
+async fn scenario_4_exact_match_different_uuid(
+    ctx: &mut TestContext,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    println!(
+        "\n{}",
+        "📋 Test Scenario 4: Same Name/Address, Different UUID Double Pledge"
+            .bold()
+            .cyan()
+    );
+    println!("  Testing exact match detection with duplicate collateral records");
+
+    // Create Collateral A via API with specific name and address
+    let collateral_a_id = create_collateral_via_api(
+        ctx,
+        "Oak Street Office Building",
+        "456 Oak Street, Portland, OR",
+        Some(&format!("{}-OAK-A", TEST_PREFIX)),
+        "First instance of Oak Street Office Building",
+    )
+    .await?;
+    ctx.collateral_ids.push(collateral_a_id); // Track for cleanup
+    println!(
+        "  {} Created Collateral A via API - ID: {} (triggers event publishing)",
+        "✅".green(),
+        collateral_a_id
+    );
+
+    ctx.wait_for_processing("Waiting for Collateral A event processing")
+        .await;
+
+    // Create Deal #1 with Collateral A
+    let deal1_id = create_deal_via_api(
+        ctx,
+        ctx.company1_id,
+        Some(ctx.company2_id),
+        Some(collateral_a_id),
+        "active",
+        &format!("{}_Deal_CollateralA", TEST_PREFIX),
+    )
+    .await?;
+    ctx.deal_ids.push(deal1_id);
+    println!(
+        "  {} Created Deal #1 with Collateral A - ID: {}",
+        "✅".green(),
+        deal1_id
+    );
+
+    ctx.wait_for_processing("Waiting for Deal #1 event processing")
+        .await;
+
+    // Create Collateral B via API with SAME name and address but DIFFERENT UUID
+    let collateral_b_id = create_collateral_via_api(
+        ctx,
+        "Oak Street Office Building", // SAME NAME
+        "456 Oak Street, Portland, OR", // SAME ADDRESS
+        Some(&format!("{}-OAK-B", TEST_PREFIX)), // Different custom ID
+        "Duplicate instance of Oak Street Office Building - SHOULD BE DETECTED",
+    )
+    .await?;
+    ctx.collateral_ids.push(collateral_b_id); // Track for cleanup
+    println!(
+        "  {} Created Collateral B via API - ID: {} (DIFFERENT UUID, SAME NAME/ADDRESS)",
+        "✅".green(),
+        collateral_b_id
+    );
+
+    ctx.wait_for_processing("Waiting for Collateral B event processing and duplicate detection")
+        .await;
+
+    // Create Deal #2 with Collateral B (different company to avoid same-collateral detection)
+    let deal2_id = create_deal_via_api(
+        ctx,
+        ctx.company2_id, // Different company
+        Some(ctx.company1_id),
+        Some(collateral_b_id),
+        "active",
+        &format!("{}_Deal_CollateralB", TEST_PREFIX),
+    )
+    .await?;
+    ctx.deal_ids.push(deal2_id);
+    println!(
+        "  {} Created Deal #2 with Collateral B (different company) - ID: {}",
+        "✅".green(),
+        deal2_id
+    );
+
+    ctx.wait_for_processing("Waiting for Deal #2 event processing and cross-collateral detection")
+        .await;
+
+    // Verify: Check detection history for Collateral A
+    let mut passed = true;
+
+    println!("\n  {} Verifying detection for Collateral A:", "🔍".cyan());
+    match get_detection_history(ctx, collateral_a_id).await? {
+        Some(history) => {
+            if !history.detections.is_empty() {
+                let latest = &history.detections[0];
+                println!(
+                    "    {} Detection History: Status={}, matches={}",
+                    "✅".green(),
+                    latest.status,
+                    latest.match_count
+                );
+
+                // Check if we have an exact match
+                let exact_matches: Vec<_> = latest
+                    .matches
+                    .iter()
+                    .filter(|m| {
+                        m.matched_collateral_id == collateral_b_id.to_string()
+                            && (m.reason.contains("name") || m.reason.contains("address"))
+                    })
+                    .collect();
+
+                if !exact_matches.is_empty() {
+                    for m in &exact_matches {
+                        println!(
+                            "    {} Found exact match: ID={}, Score={}, Reason={}",
+                            "✅".green(),
+                            m.matched_collateral_id,
+                            m.score,
+                            m.reason
+                        );
+                        if m.is_concerning {
+                            println!("    {} Match is marked as concerning (both deals active)", "✅".green());
+                        }
+                    }
+                } else {
+                    println!(
+                        "    {} No exact match found between Collateral A and B",
+                        "❌".red()
+                    );
+                    passed = false;
+                }
+            } else {
+                println!("    {} Detection History: No detections found", "⚠️".yellow());
+                passed = false;
+            }
+        }
+        None => {
+            println!("    {} Detection History: Not available (Intel service hasn't received events)", "ℹ️".blue());
+        }
+    }
+
+    println!("\n  {} Verifying detection for Collateral B:", "🔍".cyan());
+    match get_detection_history(ctx, collateral_b_id).await? {
+        Some(history) => {
+            if !history.detections.is_empty() {
+                let latest = &history.detections[0];
+                println!(
+                    "    {} Detection History: Status={}, matches={}",
+                    "✅".green(),
+                    latest.status,
+                    latest.match_count
+                );
+
+                // Check if we have an exact match
+                let exact_matches: Vec<_> = latest
+                    .matches
+                    .iter()
+                    .filter(|m| {
+                        m.matched_collateral_id == collateral_a_id.to_string()
+                            && (m.reason.contains("name") || m.reason.contains("address"))
+                    })
+                    .collect();
+
+                if !exact_matches.is_empty() {
+                    for m in &exact_matches {
+                        println!(
+                            "    {} Found exact match: ID={}, Score={}, Reason={}",
+                            "✅".green(),
+                            m.matched_collateral_id,
+                            m.score,
+                            m.reason
+                        );
+
+                        // Verify reason indicates which field matched
+                        if m.reason.contains("name") && m.reason.contains("address") {
+                            println!("    {} Match reason correctly indicates both name AND address match", "✅".green());
+                        } else if m.reason.contains("name") || m.reason.contains("address") {
+                            println!("    {} Match reason indicates at least one field match", "✅".green());
+                        } else {
+                            println!("    {} Match reason doesn't clearly indicate which field matched", "⚠️".yellow());
+                        }
+
+                        if m.is_concerning {
+                            println!("    {} Match is marked as concerning (both deals active)", "✅".green());
+                        }
+                    }
+                } else {
+                    println!(
+                        "    {} No exact match found between Collateral B and A",
+                        "❌".red()
+                    );
+                    passed = false;
+                }
+            } else {
+                println!("    {} Detection History: No detections found", "⚠️".yellow());
+                passed = false;
+            }
+        }
+        None => {
+            println!("    {} Detection History: Not available (Intel service hasn't received events)", "ℹ️".blue());
+        }
+    }
+
+    // Also check database flags
+    println!("\n  {} Checking database flags:", "🔍".cyan());
+    match check_database_double_pledge(ctx, collateral_a_id).await? {
+        Some(_) => {
+            println!("    {} Collateral A: double_pledged field is set", "✅".green());
+        }
+        None => {
+            println!(
+                "    {} Collateral A: double_pledged field NOT set (may be expected if using external service)",
+                "⚠️".yellow()
+            );
+        }
+    }
+
+    match check_database_double_pledge(ctx, collateral_b_id).await? {
+        Some(_) => {
+            println!("    {} Collateral B: double_pledged field is set", "✅".green());
+        }
+        None => {
+            println!(
+                "    {} Collateral B: double_pledged field NOT set (may be expected if using external service)",
+                "⚠️".yellow()
+            );
+        }
+    }
+
+    Ok(passed)
+}
+
 // ============================================================================
 // CLEANUP
 // ============================================================================
@@ -743,6 +1033,20 @@ async fn cleanup_test_data(ctx: &TestContext) -> Result<(), Box<dyn std::error::
         .execute(&ctx.pool)
         .await?;
     println!("  {} Deleted test collateral", "✅".green());
+
+    // Delete additional collateral IDs (from scenario 4)
+    for collateral_id in &ctx.collateral_ids {
+        sqlx::query!("DELETE FROM collateral WHERE id = $1", collateral_id)
+            .execute(&ctx.pool)
+            .await?;
+    }
+    if !ctx.collateral_ids.is_empty() {
+        println!(
+            "  {} Deleted {} additional collateral(s)",
+            "✅".green(),
+            ctx.collateral_ids.len()
+        );
+    }
 
     // Delete company memberships
     sqlx::query!(
@@ -880,6 +1184,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Scenario 3: Paid-Off - No Double Pledge",
         scenario_3_paid_off_no_double_pledge(&mut ctx).await?,
     ));
+    results.push((
+        "Scenario 4: Same Name/Address, Different UUID",
+        scenario_4_exact_match_different_uuid(&mut ctx).await?,
+    ));
 
     // Print summary
     println!(
@@ -930,6 +1238,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "💡".yellow()
         );
         println!("  Collateral ID: {}", ctx.collateral_id);
+        if !ctx.collateral_ids.is_empty() {
+            println!("  Additional Collateral IDs: {:?}", ctx.collateral_ids);
+        }
         println!("  Deal IDs: {:?}", ctx.deal_ids);
     }
 
