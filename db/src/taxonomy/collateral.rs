@@ -21,6 +21,8 @@ pub struct Collateral {
     pub custom_id: Option<String>,
     pub double_pledged: Option<Uuid>,
     pub has_potential_duplicates: Option<bool>,
+    pub intentional_double_pledge: Option<bool>,
+    pub double_pledge_notes: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub created_by: Option<Uuid>,
@@ -48,6 +50,8 @@ pub struct UpdateCollateralRequest {
     pub address: Option<String>,
     pub custom_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub intentional_double_pledge: Option<bool>,
+    pub double_pledge_notes: Option<String>,
 }
 
 /// Create a new collateral record and initiate duplicate check
@@ -69,7 +73,9 @@ pub async fn create_collateral(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING
             id, name, collateral_type, description, address, custom_id,
-            double_pledged, has_potential_duplicates, created_at as "created_at!", updated_at as "updated_at!",
+            double_pledged, has_potential_duplicates, 
+            intentional_double_pledge, double_pledge_notes,
+            created_at as "created_at!", updated_at as "updated_at!",
             created_by, metadata
         "#,
         id,
@@ -98,7 +104,9 @@ pub async fn get_collateral_by_id(pool: &PgPool, id: Uuid) -> Result<Collateral,
         r#"
         SELECT
             id, name, collateral_type, description, address, custom_id,
-            double_pledged, has_potential_duplicates, created_at as "created_at!", updated_at as "updated_at!",
+            double_pledged, has_potential_duplicates,
+            intentional_double_pledge, double_pledge_notes,
+            created_at as "created_at!", updated_at as "updated_at!",
             created_by, metadata
         FROM collateral
         WHERE id = $1
@@ -124,7 +132,9 @@ pub async fn get_collateral_by_custom_id(
         r#"
         SELECT
             id, name, collateral_type, description, address, custom_id,
-            double_pledged, has_potential_duplicates, created_at as "created_at!", updated_at as "updated_at!",
+            double_pledged, has_potential_duplicates,
+            intentional_double_pledge, double_pledge_notes,
+            created_at as "created_at!", updated_at as "updated_at!",
             created_by, metadata
         FROM collateral
         WHERE custom_id = $1
@@ -155,7 +165,9 @@ pub async fn list_collateral(
         r#"
         SELECT
             id, name, collateral_type, description, address, custom_id,
-            double_pledged, has_potential_duplicates, created_at as "created_at!", updated_at as "updated_at!",
+            double_pledged, has_potential_duplicates,
+            intentional_double_pledge, double_pledge_notes,
+            created_at as "created_at!", updated_at as "updated_at!",
             created_by, metadata
         FROM collateral
         WHERE
@@ -210,6 +222,14 @@ pub async fn update_collateral(
         updates.push(format!("metadata = ${}", param_count));
         param_count += 1;
     }
+    if req.intentional_double_pledge.is_some() {
+        updates.push(format!("intentional_double_pledge = ${}", param_count));
+        param_count += 1;
+    }
+    if req.double_pledge_notes.is_some() {
+        updates.push(format!("double_pledge_notes = ${}", param_count));
+        param_count += 1;
+    }
 
     if updates.is_empty() {
         return get_collateral_by_id(pool, id).await;
@@ -217,7 +237,7 @@ pub async fn update_collateral(
 
     query.push_str(&updates.join(", "));
     query.push_str(&format!(" WHERE id = ${}", param_count));
-    query.push_str(" RETURNING id, name, collateral_type, description, address, custom_id, double_pledged, created_at, updated_at, created_by, metadata");
+    query.push_str(" RETURNING id, name, collateral_type, description, address, custom_id, double_pledged, has_potential_duplicates, intentional_double_pledge, double_pledge_notes, created_at, updated_at, created_by, metadata");
 
     let mut query_builder = sqlx::query_as::<_, Collateral>(&query);
 
@@ -238,6 +258,12 @@ pub async fn update_collateral(
     }
     if let Some(metadata) = req.metadata {
         query_builder = query_builder.bind(metadata);
+    }
+    if let Some(intentional_double_pledge) = req.intentional_double_pledge {
+        query_builder = query_builder.bind(intentional_double_pledge);
+    }
+    if let Some(double_pledge_notes) = req.double_pledge_notes {
+        query_builder = query_builder.bind(double_pledge_notes);
     }
 
     query_builder = query_builder.bind(id);
@@ -279,7 +305,9 @@ pub async fn get_collateral_by_deal_id(
         r#"
         SELECT
             c.id, c.name, c.collateral_type, c.description, c.address, c.custom_id,
-            c.double_pledged, c.has_potential_duplicates, c.created_at as "created_at!", c.updated_at as "updated_at!",
+            c.double_pledged, c.has_potential_duplicates,
+            c.intentional_double_pledge, c.double_pledge_notes,
+            c.created_at as "created_at!", c.updated_at as "updated_at!",
             c.created_by, c.metadata
         FROM collateral c
         INNER JOIN deals d ON d.collateral_id = c.id
@@ -328,7 +356,9 @@ pub async fn update_collateral_detection_status(
         WHERE id = $1
         RETURNING
             id, name, collateral_type, description, address, custom_id,
-            double_pledged, has_potential_duplicates, created_at as "created_at!", updated_at as "updated_at!",
+            double_pledged, has_potential_duplicates,
+            intentional_double_pledge, double_pledge_notes,
+            created_at as "created_at!", updated_at as "updated_at!",
             created_by, metadata
         "#,
         collateral_id,
@@ -338,8 +368,13 @@ pub async fn update_collateral_detection_status(
     .fetch_one(pool)
     .await
     .map_err(|e| match e {
-        sqlx::Error::RowNotFound => DbError::NotFound(format!("Collateral {} not found", collateral_id)),
-        _ => DbError::TransactionFailed(format!("Failed to update collateral detection status: {}", e)),
+        sqlx::Error::RowNotFound => {
+            DbError::NotFound(format!("Collateral {} not found", collateral_id))
+        }
+        _ => DbError::TransactionFailed(format!(
+            "Failed to update collateral detection status: {}",
+            e
+        )),
     })
 }
 
@@ -411,6 +446,173 @@ pub async fn store_collateral_matches(
     }
 
     Ok(count)
+}
+
+/// Get all deal IDs that reference a specific collateral
+#[instrument(skip(pool))]
+pub async fn get_deals_by_collateral_id(
+    pool: &PgPool,
+    collateral_id: Uuid,
+) -> Result<Vec<Uuid>, DbError> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT id
+        FROM deals
+        WHERE collateral_id = $1
+        ORDER BY created_at DESC
+        "#,
+        collateral_id
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(DbError::Database)?;
+
+    Ok(rows.into_iter().map(|r| r.id).collect())
+}
+
+/// Mark collateral as intentionally double-pledged
+#[instrument(skip(pool))]
+pub async fn mark_intentional_double_pledge(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    intentional: bool,
+    notes: Option<String>,
+) -> Result<Collateral, DbError> {
+    sqlx::query_as!(
+        Collateral,
+        r#"
+        UPDATE collateral
+        SET
+            intentional_double_pledge = $2,
+            double_pledge_notes = $3
+        WHERE id = $1
+        RETURNING
+            id, name, collateral_type, description, address, custom_id,
+            double_pledged, has_potential_duplicates,
+            intentional_double_pledge, double_pledge_notes,
+            created_at as "created_at!", updated_at as "updated_at!",
+            created_by, metadata
+        "#,
+        collateral_id,
+        intentional,
+        notes
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::RowNotFound => {
+            DbError::NotFound(format!("Collateral {} not found", collateral_id))
+        }
+        _ => DbError::TransactionFailed(format!("Failed to mark intentional double pledge: {}", e)),
+    })
+}
+
+/// Collateral with additional deal count metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollateralWithDealCount {
+    pub collateral: Collateral,
+    pub deal_count: i64,
+    pub deal_ids: Vec<Uuid>,
+}
+
+/// Get collateral by ID with deal count
+#[instrument(skip(pool))]
+pub async fn get_collateral_with_deal_count(
+    pool: &PgPool,
+    collateral_id: Uuid,
+) -> Result<CollateralWithDealCount, DbError> {
+    let collateral = get_collateral_by_id(pool, collateral_id).await?;
+    let deal_ids = get_deals_by_collateral_id(pool, collateral_id).await?;
+    let deal_count = deal_ids.len() as i64;
+
+    Ok(CollateralWithDealCount {
+        collateral,
+        deal_count,
+        deal_ids,
+    })
+}
+
+/// List collateral that is used in multiple deals (potential self double-pledge)
+#[instrument(skip(pool))]
+pub async fn list_multi_deal_collateral(
+    pool: &PgPool,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<CollateralWithDealCount>, DbError> {
+    #[derive(sqlx::FromRow)]
+    struct CollateralWithCount {
+        id: Uuid,
+        name: String,
+        collateral_type: Option<String>,
+        description: Option<String>,
+        address: Option<String>,
+        custom_id: Option<String>,
+        double_pledged: Option<Uuid>,
+        has_potential_duplicates: Option<bool>,
+        intentional_double_pledge: Option<bool>,
+        double_pledge_notes: Option<String>,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+        created_by: Option<Uuid>,
+        metadata: Option<serde_json::Value>,
+        deal_count: i64,
+        deal_ids: Option<Vec<Uuid>>,
+    }
+
+    let rows = sqlx::query_as!(
+        CollateralWithCount,
+        r#"
+        SELECT 
+            c.id, c.name, c.collateral_type, c.description, c.address, 
+            c.custom_id, c.double_pledged, c.has_potential_duplicates,
+            c.intentional_double_pledge, c.double_pledge_notes,
+            c.created_at as "created_at!", c.updated_at as "updated_at!",
+            c.created_by, c.metadata,
+            COUNT(d.id) as "deal_count!",
+            ARRAY_AGG(d.id) FILTER (WHERE d.id IS NOT NULL) as "deal_ids"
+        FROM collateral c
+        LEFT JOIN deals d ON d.collateral_id = c.id
+        GROUP BY c.id, c.name, c.collateral_type, c.description, c.address, 
+                 c.custom_id, c.double_pledged, c.has_potential_duplicates,
+                 c.intentional_double_pledge, c.double_pledge_notes,
+                 c.created_at, c.updated_at, c.created_by, c.metadata
+        HAVING COUNT(d.id) > 1
+        ORDER BY COUNT(d.id) DESC, c.created_at DESC
+        LIMIT $1 OFFSET $2
+        "#,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(DbError::Database)?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let collateral = Collateral {
+                id: row.id,
+                name: row.name,
+                collateral_type: row.collateral_type,
+                description: row.description,
+                address: row.address,
+                custom_id: row.custom_id,
+                double_pledged: row.double_pledged,
+                has_potential_duplicates: row.has_potential_duplicates,
+                intentional_double_pledge: row.intentional_double_pledge,
+                double_pledge_notes: row.double_pledge_notes,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                created_by: row.created_by,
+                metadata: row.metadata,
+            };
+            CollateralWithDealCount {
+                collateral,
+                deal_count: row.deal_count,
+                deal_ids: row.deal_ids.unwrap_or_default(),
+            }
+        })
+        .collect())
 }
 
 #[cfg(test)]
