@@ -20,13 +20,13 @@ use db::{
     business::company::{
         create_company, create_membership, CompanyRole, CreateCompanyRequest, ProfileType,
     },
-    create_collateral, create_identity, init_db_with_url, CreateCollateralRequest,
+    create_collateral, create_deal, create_identity, init_db_with_url, CreateCollateralRequest,
 };
 use rand::{thread_rng, Rng};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::{env, time::Duration};
+use std::{env, str::FromStr, time::Duration};
 use uuid::Uuid;
 use wiremock::{
     matchers::{method, path_regex},
@@ -545,21 +545,34 @@ async fn scenario_4_fuzzy_address_double_pledge(
         collateral1.address.as_ref().unwrap()
     );
 
-    // Create Deal #1 with first collateral (active)
-    let deal1_id = create_deal_via_api(
-        ctx,
+    // Create Deal #1 with first collateral (active) - using direct DB call
+    let deal1 = create_deal(
+        &ctx.pool,
         ctx.company1_id,
         Some(ctx.company2_id),
-        Some(collateral1.id),
-        "active",
-        &format!("{}_Fuzzy_Deal_1_Active", TEST_PREFIX),
+        None, // borrower_id
+        rust_decimal::Decimal::from_str("1000000.00")?,
+        500,                                                              // interest_rate_bps
+        None,                                                             // maturity_date
+        Some("active"),                                                   // deal_status
+        None,                                                             // custom_deal_id
+        Some("active"),                                                   // status
+        None,                                                             // industry
+        None,                                                             // document_ids
+        Some(&format!("{}_Fuzzy_Deal_1_Active", TEST_PREFIX)),            // title
+        Some(&format!("Test deal: {}_Fuzzy_Deal_1_Active", TEST_PREFIX)), // description
+        None,                                                             // risk_level
+        None,                                                             // asset_class
+        None,                                                             // region
+        None,                                                             // minimum_investment
+        Some(collateral1.id),                                             // collateral_id
     )
     .await?;
-    ctx.deal_ids.push(deal1_id);
+    ctx.deal_ids.push(deal1.id);
     println!(
         "  {} Created Deal #1 with Collateral #1 (active) - ID: {}",
         "✅".green(),
-        deal1_id
+        deal1.id
     );
 
     ctx.wait_for_processing("Waiting for first collateral processing")
@@ -584,21 +597,34 @@ async fn scenario_4_fuzzy_address_double_pledge(
         collateral2.address.as_ref().unwrap()
     );
 
-    // Create Deal #2 with second collateral (active)
-    let deal2_id = create_deal_via_api(
-        ctx,
+    // Create Deal #2 with second collateral (active) - using direct DB call
+    let deal2 = create_deal(
+        &ctx.pool,
         ctx.company2_id,
         Some(ctx.company1_id),
-        Some(collateral2.id),
-        "active",
-        &format!("{}_Fuzzy_Deal_2_Active", TEST_PREFIX),
+        None, // borrower_id
+        rust_decimal::Decimal::from_str("1000000.00")?,
+        500,                                                              // interest_rate_bps
+        None,                                                             // maturity_date
+        Some("active"),                                                   // deal_status
+        None,                                                             // custom_deal_id
+        Some("active"),                                                   // status
+        None,                                                             // industry
+        None,                                                             // document_ids
+        Some(&format!("{}_Fuzzy_Deal_2_Active", TEST_PREFIX)),            // title
+        Some(&format!("Test deal: {}_Fuzzy_Deal_2_Active", TEST_PREFIX)), // description
+        None,                                                             // risk_level
+        None,                                                             // asset_class
+        None,                                                             // region
+        None,                                                             // minimum_investment
+        Some(collateral2.id),                                             // collateral_id
     )
     .await?;
-    ctx.deal_ids.push(deal2_id);
+    ctx.deal_ids.push(deal2.id);
     println!(
         "  {} Created Deal #2 with Collateral #2 (active) - ID: {}",
         "✅".green(),
-        deal2_id
+        deal2.id
     );
 
     ctx.wait_for_processing("Waiting for fuzzy address detection")
