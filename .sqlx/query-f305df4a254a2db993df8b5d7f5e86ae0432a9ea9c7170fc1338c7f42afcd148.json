@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT match_type, match_score\n            FROM collateral_matches \n            WHERE collateral_id = $1 AND matched_collateral_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "match_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "match_score",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f305df4a254a2db993df8b5d7f5e86ae0432a9ea9c7170fc1338c7f42afcd148"
+}

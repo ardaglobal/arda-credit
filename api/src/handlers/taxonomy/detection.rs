@@ -134,11 +134,12 @@ pub async fn receive_detection_result(
     // Store detection results in database
     let pool = &state.pool;
 
-    // Determine highest match for double_pledged field (score >= 85.0 threshold)
+    // Determine highest match for double_pledged field (score >= 0.85 threshold, i.e. 85% confidence)
+    // Note: Intel service uses 0-1 scale where 1.0 = 100%
     let highest_match = result
         .matches
         .iter()
-        .filter(|m| m.overall_score >= 85.0)
+        .filter(|m| m.overall_score >= 0.85)
         .max_by(|a, b| {
             a.overall_score
                 .partial_cmp(&b.overall_score)
@@ -178,11 +179,20 @@ pub async fn receive_detection_result(
             .matches
             .iter()
             .map(|m| {
-                // Map confidence level to match_type
-                let match_type = match m.confidence.as_str() {
-                    "high" => "exact_name",
-                    "medium" => "fuzzy_name",
-                    _ => "semantic",
+                // Detect self-double-pledge case (same collateral UUID in multiple deals)
+                let is_self_match = collateral_id == m.matched_collateral_id;
+
+                // Categorize match type
+                let match_type = if is_self_match {
+                    // Purest form of double-pledge: exact same collateral in multiple deals
+                    "self_double_pledge"
+                } else {
+                    // Different collateral records that might represent the same asset
+                    match m.confidence.as_str() {
+                        "high" => "exact_name",
+                        "medium" => "fuzzy_name",
+                        _ => "semantic",
+                    }
                 };
 
                 db::taxonomy::collateral::CollateralMatchInsert {

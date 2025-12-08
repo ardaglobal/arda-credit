@@ -399,27 +399,40 @@ pub async fn store_collateral_matches(
     let mut count = 0;
 
     for m in matches {
-        // Check if the matched collateral exists before inserting
-        // This handles cases where collateral-intel has stale data from previous runs
-        let matched_exists = sqlx::query!(
-            "SELECT EXISTS(SELECT 1 FROM collateral WHERE id = $1) as exists",
-            m.matched_collateral_id
-        )
-        .fetch_one(pool)
-        .await
-        .map_err(|e| DbError::Database(e))?
-        .exists
-        .unwrap_or(false);
+        // Detect self-double-pledge case (same collateral UUID in multiple deals)
+        let is_self_match = collateral_id == m.matched_collateral_id;
 
-        if !matched_exists {
-            // Skip this match - the matched collateral doesn't exist in our database
-            // This can happen when collateral-intel has stale data from previous test runs
-            tracing::debug!(
-                "Skipping match {} -> {} (matched collateral not found in database)",
-                collateral_id,
+        // For self-matches, override match_type to 'self_double_pledge'
+        // This is the purest form of double-pledge detection
+        let match_type = if is_self_match {
+            "self_double_pledge".to_string()
+        } else {
+            m.match_type.clone()
+        };
+
+        // Check if the matched collateral exists before inserting
+        // Skip this check for self-matches (we already know the collateral exists)
+        if !is_self_match {
+            let matched_exists = sqlx::query!(
+                "SELECT EXISTS(SELECT 1 FROM collateral WHERE id = $1) as exists",
                 m.matched_collateral_id
-            );
-            continue;
+            )
+            .fetch_one(pool)
+            .await
+            .map_err(|e| DbError::Database(e))?
+            .exists
+            .unwrap_or(false);
+
+            if !matched_exists {
+                // Skip this match - the matched collateral doesn't exist in our database
+                // This can happen when collateral-intel has stale data from previous test runs
+                tracing::debug!(
+                    "Skipping match {} -> {} (matched collateral not found in database)",
+                    collateral_id,
+                    m.matched_collateral_id
+                );
+                continue;
+            }
         }
 
         // Use ON CONFLICT to handle duplicates (upsert)
@@ -436,7 +449,7 @@ pub async fn store_collateral_matches(
             collateral_id,
             m.matched_collateral_id,
             m.match_score as f64, // Convert to f64 for DECIMAL type
-            m.match_type
+            match_type  // Use corrected match_type (self_double_pledge for self-matches)
         )
         .execute(pool)
         .await
