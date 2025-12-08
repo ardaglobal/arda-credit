@@ -5,7 +5,7 @@
 use arda_credit_db::{
     create_collateral, create_deal, get_collateral_with_deal_count, get_deals_by_collateral_id,
     list_multi_deal_collateral, mark_intentional_double_pledge, Collateral,
-    CreateCollateralRequest, CreateDealRequest,
+    CreateCollateralRequest,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -128,7 +128,7 @@ async fn test_intentional_vs_detected_double_pledge() {
     let collateral = create_test_collateral(&pool, "INTENT-002").await;
 
     // Mark as intentional
-    let marked = mark_intentional_double_pledge(
+    let _marked = mark_intentional_double_pledge(
         &pool,
         collateral.id,
         true,
@@ -182,27 +182,34 @@ async fn create_test_deal(pool: &sqlx::PgPool, collateral_id: Uuid) -> arda_cred
     let originator_id = Uuid::new_v4();
     let investor_id = Uuid::new_v4();
 
-    let req = CreateDealRequest {
+    create_deal(
+        pool,
         originator_id,
-        investor_id: Some(investor_id),
-        borrower_id: None,
-        principal_amount: Decimal::from_str("100000.00").unwrap(),
-        interest_rate_bps: 500,
-        term_days: Some(365),
-        custom_deal_id: None,
-        status: Some("draft".to_string()),
-        collateral_id: Some(collateral_id),
-        ..Default::default()
-    };
-
-    create_deal(pool, req).await.unwrap()
+        Some(investor_id),
+        None, // borrower_id
+        Decimal::from_str("100000.00").unwrap(),
+        500,           // interest_rate_bps
+        None,          // maturity_date
+        Some("draft"), // deal_status
+        None,          // custom_deal_id
+        Some("draft"), // status
+        None,          // industry
+        None,          // document_ids
+        None,          // title
+        None,          // description
+        None,          // risk_level
+        None,          // asset_class
+        None,          // region
+        None,          // minimum_investment
+        Some(collateral_id),
+    )
+    .await
+    .unwrap()
 }
 
 #[cfg(test)]
 mod api_tests {
     //! API-level tests for self double-pledge endpoints
-
-    use super::*;
 
     // These tests would make HTTP requests to the API endpoints
     // They require a running server, so they're marked as #[ignore]
