@@ -178,11 +178,20 @@ pub async fn receive_detection_result(
             .matches
             .iter()
             .map(|m| {
-                // Map confidence level to match_type
-                let match_type = match m.confidence.as_str() {
-                    "high" => "exact_name",
-                    "medium" => "fuzzy_name",
-                    _ => "semantic",
+                // Detect self-double-pledge case (same collateral UUID in multiple deals)
+                let is_self_match = collateral_id == m.matched_collateral_id;
+
+                // Categorize match type
+                let match_type = if is_self_match {
+                    // Purest form of double-pledge: exact same collateral in multiple deals
+                    "self_double_pledge"
+                } else {
+                    // Different collateral records that might represent the same asset
+                    match m.confidence.as_str() {
+                        "high" => "exact_name",
+                        "medium" => "fuzzy_name",
+                        _ => "semantic",
+                    }
                 };
 
                 db::taxonomy::collateral::CollateralMatchInsert {

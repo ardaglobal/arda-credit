@@ -935,9 +935,9 @@ pub fn create_router(state: ApiState) -> Router {
         // Apply session authentication middleware BEFORE with_state
         .layer(axum::middleware::from_fn({
             let state_clone = state.clone();
-            move |cookies, request, next| {
+            move |request, next| {
                 let state = state_clone.clone();
-                crate::middleware::session_middleware::session_auth_middleware(state, cookies, request, next)
+                crate::middleware::session_middleware::session_auth_middleware(state, request, next)
             }
         }))
         .with_state(state)
