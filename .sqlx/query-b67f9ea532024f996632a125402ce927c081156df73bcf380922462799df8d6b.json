@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates, created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE custom_id = $1\n        ",
+  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            intentional_double_pledge, double_pledge_notes,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -45,28 +45,38 @@
       },
       {
         "ordinal": 8,
+        "name": "intentional_double_pledge",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "double_pledge_notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
         "name": "created_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "updated_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 10,
+        "ordinal": 12,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 11,
+        "ordinal": 13,
         "name": "metadata",
         "type_info": "Jsonb"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -81,8 +91,10 @@
       true,
       true,
       true,
+      true,
+      true,
       true
     ]
   },
-  "hash": "cc7ae4f327c3c242e3c3cd1ea342a77f93d9e4c00398167be71d929222ad4ae7"
+  "hash": "b67f9ea532024f996632a125402ce927c081156df73bcf380922462799df8d6b"
 }

@@ -782,13 +782,17 @@ pub async fn mark_intentional_double_pledge_handler(
 ) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
     let uuid = parse_uuid(&id, "collateral_id")?;
 
-    let collateral =
-        arda_credit_db::mark_intentional_double_pledge(&state.pool, uuid, req.intentional, req.notes)
-            .await
-            .map_err(|e| match e {
-                arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
-                _ => internal_error("mark_intentional_double_pledge", e),
-            })?;
+    let collateral = arda_credit_db::mark_intentional_double_pledge(
+        &state.pool,
+        uuid,
+        req.intentional,
+        req.notes,
+    )
+    .await
+    .map_err(|e| match e {
+        arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+        _ => internal_error("mark_intentional_double_pledge", e),
+    })?;
 
     info!(
         "Collateral {} marked as intentional_double_pledge={}",

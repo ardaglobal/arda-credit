@@ -368,8 +368,13 @@ pub async fn update_collateral_detection_status(
     .fetch_one(pool)
     .await
     .map_err(|e| match e {
-        sqlx::Error::RowNotFound => DbError::NotFound(format!("Collateral {} not found", collateral_id)),
-        _ => DbError::TransactionFailed(format!("Failed to update collateral detection status: {}", e)),
+        sqlx::Error::RowNotFound => {
+            DbError::NotFound(format!("Collateral {} not found", collateral_id))
+        }
+        _ => DbError::TransactionFailed(format!(
+            "Failed to update collateral detection status: {}",
+            e
+        )),
     })
 }
 
@@ -445,7 +450,10 @@ pub async fn store_collateral_matches(
 
 /// Get all deal IDs that reference a specific collateral
 #[instrument(skip(pool))]
-pub async fn get_deals_by_collateral_id(pool: &PgPool, collateral_id: Uuid) -> Result<Vec<Uuid>, DbError> {
+pub async fn get_deals_by_collateral_id(
+    pool: &PgPool,
+    collateral_id: Uuid,
+) -> Result<Vec<Uuid>, DbError> {
     let rows = sqlx::query!(
         r#"
         SELECT id
@@ -492,7 +500,9 @@ pub async fn mark_intentional_double_pledge(
     .fetch_one(pool)
     .await
     .map_err(|e| match e {
-        sqlx::Error::RowNotFound => DbError::NotFound(format!("Collateral {} not found", collateral_id)),
+        sqlx::Error::RowNotFound => {
+            DbError::NotFound(format!("Collateral {} not found", collateral_id))
+        }
         _ => DbError::TransactionFailed(format!("Failed to mark intentional double pledge: {}", e)),
     })
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates, created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE\n            ($1::text IS NULL OR collateral_type = $1) AND\n            ($2::uuid IS NULL OR created_by = $2)\n        ORDER BY created_at DESC\n        LIMIT $3 OFFSET $4\n        ",
+  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            intentional_double_pledge, double_pledge_notes,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE\n            ($1::text IS NULL OR collateral_type = $1) AND\n            ($2::uuid IS NULL OR created_by = $2)\n        ORDER BY created_at DESC\n        LIMIT $3 OFFSET $4\n        ",
   "describe": {
     "columns": [
       {
@@ -45,21 +45,31 @@
       },
       {
         "ordinal": 8,
+        "name": "intentional_double_pledge",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "double_pledge_notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
         "name": "created_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "updated_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 10,
+        "ordinal": 12,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 11,
+        "ordinal": 13,
         "name": "metadata",
         "type_info": "Jsonb"
       }
@@ -84,8 +94,10 @@
       true,
       true,
       true,
+      true,
+      true,
       true
     ]
   },
-  "hash": "6a20e67dcf786743b97152be0b6e4941f4fb10e4a909a6b8153a546b16330aeb"
+  "hash": "799c6c6081f5fd2144df951dd469d3a27a3441a27c64c33103fc57457ddadd08"
 }

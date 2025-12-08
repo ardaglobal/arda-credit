@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            c.id, c.name, c.collateral_type, c.description, c.address, c.custom_id,\n            c.double_pledged, c.has_potential_duplicates, c.created_at as \"created_at!\", c.updated_at as \"updated_at!\",\n            c.created_by, c.metadata\n        FROM collateral c\n        INNER JOIN deals d ON d.collateral_id = c.id\n        WHERE d.id = $1\n        ",
+  "query": "\n        SELECT\n            c.id, c.name, c.collateral_type, c.description, c.address, c.custom_id,\n            c.double_pledged, c.has_potential_duplicates,\n            c.intentional_double_pledge, c.double_pledge_notes,\n            c.created_at as \"created_at!\", c.updated_at as \"updated_at!\",\n            c.created_by, c.metadata\n        FROM collateral c\n        INNER JOIN deals d ON d.collateral_id = c.id\n        WHERE d.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -45,21 +45,31 @@
       },
       {
         "ordinal": 8,
+        "name": "intentional_double_pledge",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "double_pledge_notes",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
         "name": "created_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 9,
+        "ordinal": 11,
         "name": "updated_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 10,
+        "ordinal": 12,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 11,
+        "ordinal": 13,
         "name": "metadata",
         "type_info": "Jsonb"
       }
@@ -81,8 +91,10 @@
       true,
       true,
       true,
+      true,
+      true,
       true
     ]
   },
-  "hash": "93ceb7f3f0a0d7819b31639895a40f52acd63b61ca477616351230199f10e230"
+  "hash": "0b836dee0dd7b134140d077098ad5b772abb17b061d95afee06c50343cbec0a2"
 }
