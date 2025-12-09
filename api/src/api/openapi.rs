@@ -367,7 +367,6 @@ fn default_limit() -> u32 {
         crate::handlers::taxonomy::collateral::get_collateral_handler,
         crate::handlers::taxonomy::collateral::get_collateral_internal_handler,
         crate::handlers::taxonomy::collateral::update_collateral_handler,
-        crate::handlers::taxonomy::collateral::mark_intentional_double_pledge_handler,
         crate::handlers::taxonomy::collateral::delete_collateral_handler,
         // Note: get_collateral_with_duplicates_handler and get_collateral_with_matches_handler
         // removed as collateral detection tables were dropped in migration 060
@@ -668,7 +667,6 @@ fn default_limit() -> u32 {
         crate::handlers::taxonomy::collateral::CollateralResponse,
         crate::handlers::taxonomy::collateral::CreateCollateralApiRequest,
         crate::handlers::taxonomy::collateral::UpdateCollateralApiRequest,
-        crate::handlers::taxonomy::collateral::MarkIntentionalDoublePledgeRequest,
 
         // Internal detection types
         crate::handlers::taxonomy::detection::DetectionResultRequest,

@@ -682,10 +682,6 @@ pub const COLLATERAL_BY_DEAL_ID: &str = api_path!("/collateral/deal/{deal_id}");
 /// Collateral batch create endpoint
 pub const COLLATERAL_BATCH: &str = api_path!("/collateral/batch");
 
-/// Mark collateral as intentionally double-pledged
-pub const COLLATERAL_MARK_INTENTIONAL_DOUBLE_PLEDGE: &str =
-    api_path!("/collateral/{id}/mark-intentional-double-pledge");
-
 /// Internal: Detection result callback from arda-collateral-intel
 pub const COLLATERAL_DETECTION_RESULT: &str = api_path!("/internal/collateral/{id}/detection");
 

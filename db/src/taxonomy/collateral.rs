@@ -483,43 +483,6 @@ pub async fn get_deals_by_collateral_id(
     Ok(rows.into_iter().map(|r| r.id).collect())
 }
 
-/// Mark collateral as intentionally double-pledged
-#[instrument(skip(pool))]
-pub async fn mark_intentional_double_pledge(
-    pool: &PgPool,
-    collateral_id: Uuid,
-    intentional: bool,
-    notes: Option<String>,
-) -> Result<Collateral, DbError> {
-    sqlx::query_as!(
-        Collateral,
-        r#"
-        UPDATE collateral
-        SET
-            intentional_double_pledge = $2,
-            double_pledge_notes = $3
-        WHERE id = $1
-        RETURNING
-            id, name, collateral_type, description, address, custom_id,
-            double_pledged, has_potential_duplicates,
-            intentional_double_pledge, double_pledge_notes,
-            created_at as "created_at!", updated_at as "updated_at!",
-            created_by, metadata
-        "#,
-        collateral_id,
-        intentional,
-        notes
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(|e| match e {
-        sqlx::Error::RowNotFound => {
-            DbError::NotFound(format!("Collateral {} not found", collateral_id))
-        }
-        _ => DbError::TransactionFailed(format!("Failed to mark intentional double pledge: {}", e)),
-    })
-}
-
 /// Collateral with additional deal count metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollateralWithDealCount {

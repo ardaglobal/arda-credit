@@ -79,17 +79,17 @@ GET /api/v1/collateral/{id}/with-deals
 }
 ```
 
-### 3. Mark Intentional Double Pledge
+### 3. Update Collateral (including intentional double pledge flags)
 
-Explicitly mark collateral as intentionally double-pledged.
+Use the standard collateral update endpoint to set intentional double pledge flags.
 
 ```bash
-POST /api/v1/collateral/{id}/mark-intentional-double-pledge
+PUT /api/v1/collateral/{id}
 Content-Type: application/json
 
 {
-  "intentional": true,
-  "notes": "This property is used for multiple tranches of the same loan"
+  "intentional_double_pledge": true,
+  "double_pledge_notes": "This property is used for multiple tranches of the same loan"
 }
 ```
 
@@ -103,6 +103,8 @@ Content-Type: application/json
   ...
 }
 ```
+
+**Note:** The dedicated `POST /api/v1/collateral/{id}/mark-intentional-double-pledge` endpoint has been removed. Use the standard `PUT /api/v1/collateral/{id}` endpoint instead.
 
 ## Workflow Examples
 
@@ -146,12 +148,12 @@ curl -X POST http://0.0.0.0:8080/api/v1/deal \
   }'
 
 # 4. Mark as intentionally double-pledged
-curl -X POST http://0.0.0.0:8080/api/v1/collateral/collateral-uuid/mark-intentional-double-pledge \
+curl -X PUT http://0.0.0.0:8080/api/v1/collateral/collateral-uuid \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
-    "intentional": true,
-    "notes": "Multiple tranches of senior secured debt"
+    "intentional_double_pledge": true,
+    "double_pledge_notes": "Multiple tranches of senior secured debt"
   }'
 ```
 
@@ -176,14 +178,6 @@ pub async fn get_deals_by_collateral_id(
     collateral_id: Uuid
 ) -> Result<Vec<Uuid>, DbError>
 
-// Mark collateral as intentionally double-pledged
-pub async fn mark_intentional_double_pledge(
-    pool: &PgPool,
-    collateral_id: Uuid,
-    intentional: bool,
-    notes: Option<String>,
-) -> Result<Collateral, DbError>
-
 // Get collateral with deal count and IDs
 pub async fn get_collateral_with_deal_count(
     pool: &PgPool,
@@ -196,7 +190,16 @@ pub async fn list_multi_deal_collateral(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<CollateralWithDealCount>, DbError>
+
+// Update collateral (including intentional_double_pledge flags)
+pub async fn update_collateral(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    request: UpdateCollateralRequest,
+) -> Result<Collateral, DbError>
 ```
+
+**Note:** The dedicated `mark_intentional_double_pledge` function has been removed. Use the standard `update_collateral` function to update `intentional_double_pledge` and `double_pledge_notes` fields.
 
 ## Frontend Integration
 
@@ -235,14 +238,17 @@ async function markIntentionalDoublePledge(
   notes?: string
 ) {
   const response = await fetch(
-    `/api/v1/collateral/${collateralId}/mark-intentional-double-pledge`,
+    `/api/v1/collateral/${collateralId}`,
     {
-      method: 'POST',
+      method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ intentional, notes }),
+      body: JSON.stringify({ 
+        intentional_double_pledge: intentional, 
+        double_pledge_notes: notes 
+      }),
     }
   );
   return response.json();
