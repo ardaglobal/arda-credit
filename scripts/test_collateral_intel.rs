@@ -12,6 +12,8 @@
 //! 5. Happy Path - Two Deals, Two Different Collaterals (No Cross-Match)
 //! 6. Same Name/Address, Different UUID Double Pledge (Exact Match Detection)
 //! 7. Fuzzy Address Double Pledge Detection (Suite Number Variations)
+//! 8. Batch Upload with Double Pledge Detection (10 deals, 2 duplicates)
+//! 9. Queue Status Verification (Check all tasks completed)
 //!
 //! Run with: cargo run --bin test_collateral_intel
 
@@ -21,7 +23,7 @@ use db::{
     business::company::{
         create_company, create_membership, CompanyRole, CreateCompanyRequest, ProfileType,
     },
-    create_collateral, create_identity, init_db_with_url, CreateCollateralRequest,
+    create_collateral, create_deal, create_identity, init_db_with_url, CreateCollateralRequest,
 };
 use rand::{thread_rng, Rng};
 use reqwest::Client;
@@ -120,6 +122,67 @@ struct DetectionMatchDetail {
     confidence: String,
     is_concerning: bool,
     reason: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BatchDealPayload {
+    deal: BatchDealInfo,
+    collaterals: Vec<BatchCollateralInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BatchDealInfo {
+    id: String,
+    status: String,
+    company_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BatchCollateralInfo {
+    id: String,
+    name: String,
+    collateral_type: String,
+    address: Option<String>,
+    custom_id: Option<String>,
+    description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BatchUploadRequest {
+    deals: Vec<BatchDealPayload>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BatchUploadResponse {
+    total_deals: i32,
+    total_collaterals: i32,
+    tasks_queued: i32,
+    message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct QueueStatusResponse {
+    total_tasks: i32,
+    by_status: QueueStatusBreakdown,
+    tasks: Option<Vec<QueueTaskDetail>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct QueueStatusBreakdown {
+    pending: i32,
+    processing: i32,
+    completed: i32,
+    failed: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct QueueTaskDetail {
+    task_id: String,
+    collateral_id: String,
+    status: String,
+    retry_count: i32,
+    error_message: Option<String>,
+    created_at: String,
 }
 
 // ============================================================================
@@ -835,6 +898,284 @@ async fn scenario_7_fuzzy_address_double_pledge(
     .execute(&ctx.pool)
     .await?;
     println!("  {} Cleaned up fuzzy test collaterals", "🧹".green());
+
+    Ok(passed)
+}
+
+async fn scenario_8_batch_upload_with_double_pledge(
+    ctx: &mut TestContext,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    println!(
+        "\n{}",
+        "📋 Test Scenario 8: Batch Upload with Double Pledge Detection"
+            .bold()
+            .cyan()
+    );
+    println!("  Testing batch upload endpoint with intentional double pledge");
+
+    // IMPORTANT: Create collaterals and deals via DB to bypass API event triggers
+    // This ensures we're only testing the batch upload endpoint's event publishing
+    let mut batch_collaterals = Vec::new();
+    let mut batch_deals = Vec::new();
+
+    // Create 10 collaterals - 2 with the same name for double pledge detection
+    for i in 0..10 {
+        let collateral_name = if i == 3 || i == 7 {
+            // These two will have the same name -> double pledge
+            format!("{}_BATCH_DUPLICATE_PROPERTY", TEST_PREFIX)
+        } else {
+            format!("{}_BATCH_Property_{}", TEST_PREFIX, i)
+        };
+
+        let collateral_request = CreateCollateralRequest {
+            name: collateral_name.clone(),
+            collateral_type: Some("real_estate".to_string()),
+            description: Some(format!("Batch test property {}", i)),
+            address: Some(format!("{} Batch Street, Test City, TC 1000{}", 100 + i, i)),
+            custom_id: Some(format!("{}-BATCH-{:03}", TEST_PREFIX, i)),
+            metadata: Some(json!({"test": true, "batch": true, "index": i})),
+            created_by: Some(ctx.user1_id),
+        };
+
+        let collateral = create_collateral(&ctx.pool, collateral_request).await?;
+        let collateral_id = collateral.id; // Store ID before moving
+        batch_collaterals.push(collateral);
+        println!(
+            "  {} Created Collateral #{} via DB (bypass events): {} - ID: {}",
+            "✅".green(),
+            i,
+            collateral_name,
+            collateral_id
+        );
+    }
+
+    // Create 10 deals via DB, each linked to one collateral
+    for (i, collateral) in batch_collaterals.iter().enumerate() {
+        // Create deal directly via database function (bypass API)
+        let deal = create_deal(
+            &ctx.pool,
+            ctx.company1_id,                                    // originator_id
+            Some(ctx.company2_id),                              // investor_id
+            None,                                               // borrower_id
+            rust_decimal::Decimal::new(1000000, 2),             // principal_amount: 10000.00
+            500,                                                // interest_rate_bps
+            None,                                               // maturity_date
+            Some("active"),                                     // deal_status
+            None,                                               // custom_deal_id
+            Some("active"),                                     // status
+            None,                                               // industry
+            None,                                               // document_ids
+            Some(&format!("{}_BATCH_Deal_{}", TEST_PREFIX, i)), // title
+            Some(&format!("Batch test deal {}", i)),            // description
+            None,                                               // risk_level
+            None,                                               // asset_class
+            None,                                               // region
+            None,                                               // minimum_investment
+            Some(collateral.id),                                // collateral_id
+        )
+        .await?;
+
+        batch_deals.push(deal.id);
+        ctx.deal_ids.push(deal.id);
+        println!(
+            "  {} Created Deal #{} via DB (bypass events) - ID: {}",
+            "✅".green(),
+            i,
+            deal.id
+        );
+    }
+
+    println!(
+        "\n  {} Preparing batch upload request with {} deals",
+        "📦".cyan(),
+        batch_deals.len()
+    );
+
+    // Prepare batch upload request
+    let batch_request = BatchUploadRequest {
+        deals: batch_deals
+            .iter()
+            .zip(batch_collaterals.iter())
+            .map(|(deal_id, collateral)| BatchDealPayload {
+                deal: BatchDealInfo {
+                    id: deal_id.to_string(),
+                    status: "active".to_string(),
+                    company_id: ctx.company1_id.to_string(),
+                },
+                collaterals: vec![BatchCollateralInfo {
+                    id: collateral.id.to_string(),
+                    name: collateral.name.clone(),
+                    collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
+                    address: collateral.address.clone(),
+                    custom_id: collateral.custom_id.clone(),
+                    description: collateral.description.clone(),
+                }],
+            })
+            .collect(),
+    };
+
+    // Send batch upload request to Intel service
+    let url = format!("{}/api/v1/batch/upload", ctx.intel_url);
+    let response = ctx.client.post(&url).json(&batch_request).send().await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await?;
+        return Err(format!("Batch upload failed {}: {}", status, body).into());
+    }
+
+    let batch_response: BatchUploadResponse = response.json().await?;
+    println!(
+        "  {} Batch upload successful: {} deals, {} collaterals, {} tasks queued",
+        "✅".green(),
+        batch_response.total_deals,
+        batch_response.total_collaterals,
+        batch_response.tasks_queued
+    );
+
+    ctx.wait_for_processing("Waiting for Intel service to process batch and detect duplicates")
+        .await;
+
+    // Verify: Check for double pledge detection on the two matching collaterals
+    let duplicate_collateral_ids: Vec<Uuid> =
+        vec![batch_collaterals[3].id, batch_collaterals[7].id];
+
+    let mut passed = true;
+
+    println!(
+        "\n  {} Verifying double pledge detection for duplicate collaterals:",
+        "🔍".cyan()
+    );
+
+    for (idx, collateral_id) in duplicate_collateral_ids.iter().enumerate() {
+        match get_detection_history(ctx, *collateral_id).await? {
+            Some(history) => {
+                if !history.detections.is_empty() {
+                    let latest = &history.detections[0];
+                    println!(
+                        "    {} Collateral #{} (ID: {}): Status={}, matches={}",
+                        "✅".green(),
+                        if idx == 0 { 3 } else { 7 },
+                        collateral_id,
+                        latest.status,
+                        latest.match_count
+                    );
+
+                    if latest.match_count > 0 {
+                        println!("      {} Double pledge detected as expected!", "✅".green());
+                    } else {
+                        println!("      {} Expected match but found none", "❌".red());
+                        passed = false;
+                    }
+                } else {
+                    println!(
+                        "    {} Collateral #{}: No detection history",
+                        "⚠️".yellow(),
+                        if idx == 0 { 3 } else { 7 }
+                    );
+                    passed = false;
+                }
+            }
+            None => {
+                println!(
+                    "    {} Collateral #{}: Detection history not available",
+                    "⚠️".yellow(),
+                    if idx == 0 { 3 } else { 7 }
+                );
+            }
+        }
+    }
+
+    // Store collateral IDs for cleanup
+    ctx.collateral_ids
+        .extend(batch_collaterals.iter().map(|c| c.id));
+
+    Ok(passed)
+}
+
+async fn scenario_9_queue_status_verification(
+    ctx: &TestContext,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    println!(
+        "\n{}",
+        "📋 Test Scenario 9: Queue Status Verification"
+            .bold()
+            .cyan()
+    );
+    println!("  Testing queue status endpoint to verify all tasks completed");
+
+    // Query queue status
+    let url = format!("{}/api/v1/queue/status", ctx.intel_url);
+    let response = ctx.client.get(&url).send().await?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await?;
+        return Err(format!("Queue status request failed {}: {}", status, body).into());
+    }
+
+    let queue_status: QueueStatusResponse = response.json().await?;
+
+    println!("\n  {} Queue Status Summary:", "📊".cyan());
+    println!("    Total tasks: {}", queue_status.total_tasks);
+    println!("    Breakdown:");
+    println!("      - Pending:    {}", queue_status.by_status.pending);
+    println!("      - Processing: {}", queue_status.by_status.processing);
+    println!("      - Completed:  {}", queue_status.by_status.completed);
+    println!("      - Failed:     {}", queue_status.by_status.failed);
+
+    let mut passed = true;
+
+    // Verify expectations
+    if queue_status.by_status.completed > 0 {
+        println!(
+            "  {} {} tasks completed successfully",
+            "✅".green(),
+            queue_status.by_status.completed
+        );
+    } else {
+        println!("  {} No tasks completed yet", "⚠️".yellow());
+        passed = false;
+    }
+
+    if queue_status.by_status.failed > 0 {
+        println!(
+            "  {} {} tasks failed - investigating...",
+            "❌".red(),
+            queue_status.by_status.failed
+        );
+
+        // Query detailed failed tasks
+        let failed_url = format!("{}/api/v1/queue/status?status=failed", ctx.intel_url);
+        let failed_response = ctx.client.get(&failed_url).send().await?;
+
+        if failed_response.status().is_success() {
+            let failed_status: QueueStatusResponse = failed_response.json().await?;
+            if let Some(tasks) = failed_status.tasks {
+                for task in tasks {
+                    println!(
+                        "      Failed task: {} - Collateral: {} - Error: {}",
+                        task.task_id,
+                        task.collateral_id,
+                        task.error_message
+                            .unwrap_or_else(|| "No error message".to_string())
+                    );
+                }
+            }
+        }
+
+        passed = false;
+    }
+
+    // Check if any tasks are still pending/processing
+    if queue_status.by_status.pending > 0 || queue_status.by_status.processing > 0 {
+        println!(
+            "  {} Some tasks still in progress (pending: {}, processing: {})",
+            "ℹ️".blue(),
+            queue_status.by_status.pending,
+            queue_status.by_status.processing
+        );
+    }
 
     Ok(passed)
 }
@@ -1556,6 +1897,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     results.push((
         "Scenario 7: Fuzzy Address Double Pledge",
         scenario_7_fuzzy_address_double_pledge(&mut ctx).await?,
+    ));
+    results.push((
+        "Scenario 8: Batch Upload with Double Pledge",
+        scenario_8_batch_upload_with_double_pledge(&mut ctx).await?,
+    ));
+    results.push((
+        "Scenario 9: Queue Status Verification",
+        scenario_9_queue_status_verification(&ctx).await?,
     ));
 
     // Print summary
