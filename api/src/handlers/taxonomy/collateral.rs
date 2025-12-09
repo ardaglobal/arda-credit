@@ -38,8 +38,6 @@ use crate::middleware::session_middleware::extract_current_user;
     "address": "123 Main St, New York, NY 10001",
     "custom_id": "PROP-2025-001",
     "double_pledged": null,
-    "intentional_double_pledge": false,
-    "double_pledge_notes": null,
     "deal_count": 2,
     "deal_ids": ["550e8400-e29b-41d4-a716-446655440001", "550e8400-e29b-41d4-a716-446655440002"]
 }))]
@@ -52,8 +50,6 @@ pub struct CollateralResponse {
     pub custom_id: Option<String>,
     pub double_pledged: Option<String>,
     pub has_potential_duplicates: Option<bool>,
-    pub intentional_double_pledge: Option<bool>,
-    pub double_pledge_notes: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub metadata: Option<serde_json::Value>,
@@ -93,8 +89,6 @@ pub struct UpdateCollateralApiRequest {
     pub address: Option<String>,
     pub custom_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
-    pub intentional_double_pledge: Option<bool>,
-    pub double_pledge_notes: Option<String>,
 }
 
 /// Query parameters for listing collateral
@@ -127,8 +121,6 @@ fn collateral_to_response(collateral: Collateral) -> CollateralResponse {
         custom_id: collateral.custom_id,
         double_pledged: collateral.double_pledged.map(|u| u.to_string()),
         has_potential_duplicates: collateral.has_potential_duplicates,
-        intentional_double_pledge: collateral.intentional_double_pledge,
-        double_pledge_notes: collateral.double_pledge_notes,
         created_at: collateral.created_at.to_rfc3339(),
         updated_at: collateral.updated_at.to_rfc3339(),
         metadata: collateral.metadata,
@@ -151,8 +143,6 @@ fn collateral_with_deals_to_response(
         custom_id: collateral.custom_id,
         double_pledged: collateral.double_pledged.map(|u| u.to_string()),
         has_potential_duplicates: collateral.has_potential_duplicates,
-        intentional_double_pledge: collateral.intentional_double_pledge,
-        double_pledge_notes: collateral.double_pledge_notes,
         created_at: collateral.created_at.to_rfc3339(),
         updated_at: collateral.updated_at.to_rfc3339(),
         metadata: collateral.metadata,
@@ -443,8 +433,6 @@ pub async fn update_collateral_handler(
         address: req.address.clone(),
         custom_id: req.custom_id.clone(),
         metadata: req.metadata.clone(),
-        intentional_double_pledge: req.intentional_double_pledge,
-        double_pledge_notes: req.double_pledge_notes.clone(),
     };
 
     let collateral = update_collateral(&state.pool, uuid, db_req)

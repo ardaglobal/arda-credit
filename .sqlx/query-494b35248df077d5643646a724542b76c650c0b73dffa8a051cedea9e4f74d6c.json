@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO collateral (\n            id, name, collateral_type, description, address, custom_id,\n            created_at, updated_at, created_by, metadata\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n        RETURNING\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates, \n            intentional_double_pledge, double_pledge_notes,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        ",
+  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -45,47 +45,28 @@
       },
       {
         "ordinal": 8,
-        "name": "intentional_double_pledge",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 9,
-        "name": "double_pledge_notes",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 10,
         "name": "created_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 9,
         "name": "updated_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 10,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 13,
+        "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Varchar",
-        "Varchar",
-        "Text",
-        "Text",
-        "Varchar",
-        "Timestamptz",
-        "Timestamptz",
-        "Uuid",
-        "Jsonb"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -100,10 +81,8 @@
       true,
       true,
       true,
-      true,
-      true,
       true
     ]
   },
-  "hash": "be640dabec6fb72646a515ce9acb8bf38fc9772d690dcaf4747a5dec9bf12725"
+  "hash": "494b35248df077d5643646a724542b76c650c0b73dffa8a051cedea9e4f74d6c"
 }

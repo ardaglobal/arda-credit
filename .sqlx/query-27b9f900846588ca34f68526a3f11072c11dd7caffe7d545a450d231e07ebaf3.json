@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            c.id, c.name, c.collateral_type, c.description, c.address, c.custom_id,\n            c.double_pledged, c.has_potential_duplicates,\n            c.intentional_double_pledge, c.double_pledge_notes,\n            c.created_at as \"created_at!\", c.updated_at as \"updated_at!\",\n            c.created_by, c.metadata\n        FROM collateral c\n        INNER JOIN deals d ON d.collateral_id = c.id\n        WHERE d.id = $1\n        ",
+  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE\n            ($1::text IS NULL OR collateral_type = $1) AND\n            ($2::uuid IS NULL OR created_by = $2)\n        ORDER BY created_at DESC\n        LIMIT $3 OFFSET $4\n        ",
   "describe": {
     "columns": [
       {
@@ -45,38 +45,31 @@
       },
       {
         "ordinal": 8,
-        "name": "intentional_double_pledge",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 9,
-        "name": "double_pledge_notes",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 10,
         "name": "created_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 9,
         "name": "updated_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 10,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 13,
+        "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Text",
+        "Uuid",
+        "Int8",
+        "Int8"
       ]
     },
     "nullable": [
@@ -91,10 +84,8 @@
       true,
       true,
       true,
-      true,
-      true,
       true
     ]
   },
-  "hash": "0b836dee0dd7b134140d077098ad5b772abb17b061d95afee06c50343cbec0a2"
+  "hash": "27b9f900846588ca34f68526a3f11072c11dd7caffe7d545a450d231e07ebaf3"
 }

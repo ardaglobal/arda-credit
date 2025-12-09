@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE collateral\n        SET\n            has_potential_duplicates = $2,\n            double_pledged = $3\n        WHERE id = $1\n        RETURNING\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            intentional_double_pledge, double_pledge_notes,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        ",
+  "query": "\n        UPDATE collateral\n        SET\n            has_potential_duplicates = $2,\n            double_pledged = $3\n        WHERE id = $1\n        RETURNING\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        ",
   "describe": {
     "columns": [
       {
@@ -45,31 +45,21 @@
       },
       {
         "ordinal": 8,
-        "name": "intentional_double_pledge",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 9,
-        "name": "double_pledge_notes",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 10,
         "name": "created_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 9,
         "name": "updated_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 10,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 13,
+        "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
       }
@@ -93,10 +83,8 @@
       true,
       true,
       true,
-      true,
-      true,
       true
     ]
   },
-  "hash": "3034df8cca970962df4692cf028a9f2917c81773a8b91441933a470f606d17fd"
+  "hash": "8b7cbb2b2141b0dcb514932a662f90ce7258e33e851413f803899181eb674f72"
 }

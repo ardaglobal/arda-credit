@@ -102,8 +102,7 @@ async fn test_intentional_vs_detected_double_pledge() {
     assert_eq!(collateral_with_count.deal_count, 2);
 
     // Note: has_potential_duplicates is set by external detection service (arda-collateral-intel)
-    // intentional_double_pledge can be set via the update endpoint if needed
-    // They are independent flags that can coexist
+    // User intentions about double-pledging are also managed by arda-collateral-intel
 }
 
 // Helper functions
