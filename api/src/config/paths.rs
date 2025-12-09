@@ -682,18 +682,8 @@ pub const COLLATERAL_BY_DEAL_ID: &str = api_path!("/collateral/deal/{deal_id}");
 /// Collateral batch create endpoint
 pub const COLLATERAL_BATCH: &str = api_path!("/collateral/batch");
 
-/// Collateral deals endpoint - get all deals sharing this collateral
-pub const COLLATERAL_DEALS: &str = api_path!("/collateral/{id}/deals");
-
-/// Collateral with deals endpoint - get collateral with deal count
-pub const COLLATERAL_WITH_DEALS: &str = api_path!("/collateral/{id}/with-deals");
-
-/// Mark collateral as intentionally double-pledged
-pub const COLLATERAL_MARK_INTENTIONAL_DOUBLE_PLEDGE: &str =
-    api_path!("/collateral/{id}/mark-intentional-double-pledge");
-
-/// List collateral used in multiple deals
-pub const COLLATERAL_MULTI_DEAL: &str = api_path!("/collateral/multi-deal");
+/// Internal: Detection result callback from arda-collateral-intel
+pub const COLLATERAL_DETECTION_RESULT: &str = api_path!("/internal/collateral/{id}/detection");
 
 // ============================================================================
 // TRANSACTION HISTORY PATHS

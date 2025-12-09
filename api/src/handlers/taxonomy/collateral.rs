@@ -29,7 +29,7 @@ use crate::middleware::session_middleware::extract_current_user;
 // ============================================================================
 
 /// Collateral API response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[schema(example = json!({
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "name": "123 Main Street Property",
@@ -38,10 +38,13 @@ use crate::middleware::session_middleware::extract_current_user;
     "address": "123 Main St, New York, NY 10001",
     "custom_id": "PROP-2025-001",
     "double_pledged": null,
-    "intentional_double_pledge": false,
-    "double_pledge_notes": null,
     "deal_count": 2,
-    "deal_ids": ["550e8400-e29b-41d4-a716-446655440001", "550e8400-e29b-41d4-a716-446655440002"]
+    "deal_ids": ["550e8400-e29b-41d4-a716-446655440001", "550e8400-e29b-41d4-a716-446655440002"],
+    "is_double_pledged": true,
+    "has_detection": true,
+    "detection_count": 1,
+    "last_detection_at": "2025-12-09T10:30:00Z",
+    "detection_status": "potential_duplicates"
 }))]
 pub struct CollateralResponse {
     pub id: String,
@@ -52,8 +55,6 @@ pub struct CollateralResponse {
     pub custom_id: Option<String>,
     pub double_pledged: Option<String>,
     pub has_potential_duplicates: Option<bool>,
-    pub intentional_double_pledge: Option<bool>,
-    pub double_pledge_notes: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub metadata: Option<serde_json::Value>,
@@ -61,6 +62,16 @@ pub struct CollateralResponse {
     pub deal_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deal_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_double_pledged: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_detection: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detection_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_detection_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detection_status: Option<String>,
 }
 
 /// Create collateral request
@@ -93,8 +104,6 @@ pub struct UpdateCollateralApiRequest {
     pub address: Option<String>,
     pub custom_id: Option<String>,
     pub metadata: Option<serde_json::Value>,
-    pub intentional_double_pledge: Option<bool>,
-    pub double_pledge_notes: Option<String>,
 }
 
 /// Query parameters for listing collateral
@@ -127,13 +136,16 @@ fn collateral_to_response(collateral: Collateral) -> CollateralResponse {
         custom_id: collateral.custom_id,
         double_pledged: collateral.double_pledged.map(|u| u.to_string()),
         has_potential_duplicates: collateral.has_potential_duplicates,
-        intentional_double_pledge: collateral.intentional_double_pledge,
-        double_pledge_notes: collateral.double_pledge_notes,
         created_at: collateral.created_at.to_rfc3339(),
         updated_at: collateral.updated_at.to_rfc3339(),
         metadata: collateral.metadata,
         deal_count: None,
         deal_ids: None,
+        is_double_pledged: None,
+        has_detection: Some(collateral.has_detection),
+        detection_count: Some(collateral.detection_count),
+        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+        detection_status: collateral.detection_status,
     }
 }
 
@@ -142,6 +154,8 @@ fn collateral_with_deals_to_response(
     deal_ids: Vec<uuid::Uuid>,
 ) -> CollateralResponse {
     let deal_count = deal_ids.len() as i64;
+    let is_double_pledged = deal_count > 1;
+
     CollateralResponse {
         id: collateral.id.to_string(),
         name: collateral.name,
@@ -151,13 +165,16 @@ fn collateral_with_deals_to_response(
         custom_id: collateral.custom_id,
         double_pledged: collateral.double_pledged.map(|u| u.to_string()),
         has_potential_duplicates: collateral.has_potential_duplicates,
-        intentional_double_pledge: collateral.intentional_double_pledge,
-        double_pledge_notes: collateral.double_pledge_notes,
         created_at: collateral.created_at.to_rfc3339(),
         updated_at: collateral.updated_at.to_rfc3339(),
         metadata: collateral.metadata,
         deal_count: Some(deal_count),
         deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+        is_double_pledged: Some(is_double_pledged),
+        has_detection: Some(collateral.has_detection),
+        detection_count: Some(collateral.detection_count),
+        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+        detection_status: collateral.detection_status,
     }
 }
 
@@ -443,8 +460,6 @@ pub async fn update_collateral_handler(
         address: req.address.clone(),
         custom_id: req.custom_id.clone(),
         metadata: req.metadata.clone(),
-        intentional_double_pledge: req.intentional_double_pledge,
-        double_pledge_notes: req.double_pledge_notes.clone(),
     };
 
     let collateral = update_collateral(&state.pool, uuid, db_req)
@@ -665,178 +680,4 @@ pub async fn create_collateral_batch_handler(
 
     info!("Batch creation successful: {} items created", results.len());
     Ok((StatusCode::CREATED, Json(response)))
-}
-
-/// Get all deals that share a specific collateral
-///
-/// Returns all deal IDs that reference the given collateral ID, useful for identifying
-/// self double-pledge scenarios.
-#[utoipa::path(
-    get,
-    path = "/api/v1/collateral/{id}/deals",
-    params(
-        ("id" = String, Path, description = "Collateral UUID")
-    ),
-    responses(
-        (status = 200, description = "List of deal IDs", body = Vec<String>),
-        (status = 404, description = "Collateral not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "Collateral",
-    security(("bearer" = []))
-)]
-#[instrument(skip(state))]
-pub async fn get_collateral_deals_handler(
-    State(state): State<ApiState>,
-    Path(id): Path<String>,
-) -> Result<Json<Vec<String>>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id, "collateral_id")?;
-
-    // First check if collateral exists
-    let _collateral = arda_credit_db::get_collateral_by_id(&state.pool, uuid)
-        .await
-        .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
-            _ => internal_error("get_collateral_by_id", e),
-        })?;
-
-    let deal_ids = arda_credit_db::get_deals_by_collateral_id(&state.pool, uuid)
-        .await
-        .map_err(|e| internal_error("get_deals_by_collateral_id", e))?;
-
-    Ok(Json(deal_ids.iter().map(|id| id.to_string()).collect()))
-}
-
-/// Get collateral with deal count
-///
-/// Returns collateral details along with the count of deals that reference it and their IDs.
-#[utoipa::path(
-    get,
-    path = "/api/v1/collateral/{id}/with-deals",
-    params(
-        ("id" = String, Path, description = "Collateral UUID")
-    ),
-    responses(
-        (status = 200, description = "Collateral with deal count", body = CollateralResponse),
-        (status = 404, description = "Collateral not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "Collateral",
-    security(("bearer" = []))
-)]
-#[instrument(skip(state))]
-pub async fn get_collateral_with_deals_handler(
-    State(state): State<ApiState>,
-    Path(id): Path<String>,
-) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id, "collateral_id")?;
-
-    let collateral_with_count = arda_credit_db::get_collateral_with_deal_count(&state.pool, uuid)
-        .await
-        .map_err(|e| match e {
-            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
-            _ => internal_error("get_collateral_with_deal_count", e),
-        })?;
-
-    Ok(Json(collateral_with_deals_to_response(
-        collateral_with_count.collateral,
-        collateral_with_count.deal_ids,
-    )))
-}
-
-/// Request to mark collateral as intentionally double-pledged
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct MarkIntentionalDoublePledgeRequest {
-    #[schema(example = true)]
-    pub intentional: bool,
-
-    #[schema(example = "This collateral is intentionally used for multiple tranches")]
-    pub notes: Option<String>,
-}
-
-/// Mark collateral as intentionally double-pledged
-///
-/// Allows users to explicitly mark that a collateral is intentionally being used
-/// across multiple deals. This distinguishes legitimate multi-deal collateral from
-/// unintentional duplicate detection.
-#[utoipa::path(
-    post,
-    path = "/api/v1/collateral/{id}/mark-intentional-double-pledge",
-    params(
-        ("id" = String, Path, description = "Collateral UUID")
-    ),
-    request_body = MarkIntentionalDoublePledgeRequest,
-    responses(
-        (status = 200, description = "Collateral updated successfully", body = CollateralResponse),
-        (status = 404, description = "Collateral not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "Collateral",
-    security(("bearer" = []))
-)]
-#[instrument(skip(state))]
-pub async fn mark_intentional_double_pledge_handler(
-    State(state): State<ApiState>,
-    Path(id): Path<String>,
-    Json(req): Json<MarkIntentionalDoublePledgeRequest>,
-) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let uuid = parse_uuid(&id, "collateral_id")?;
-
-    let collateral = arda_credit_db::mark_intentional_double_pledge(
-        &state.pool,
-        uuid,
-        req.intentional,
-        req.notes,
-    )
-    .await
-    .map_err(|e| match e {
-        arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
-        _ => internal_error("mark_intentional_double_pledge", e),
-    })?;
-
-    info!(
-        "Collateral {} marked as intentional_double_pledge={}",
-        uuid, req.intentional
-    );
-
-    Ok(Json(collateral_to_response(collateral)))
-}
-
-/// List collateral used in multiple deals
-///
-/// Returns collateral that is referenced by 2 or more deals, useful for identifying
-/// self double-pledge scenarios.
-#[utoipa::path(
-    get,
-    path = "/api/v1/collateral/multi-deal",
-    params(
-        ("limit" = Option<i64>, Query, description = "Maximum number of results (default: 20)"),
-        ("offset" = Option<i64>, Query, description = "Offset for pagination (default: 0)")
-    ),
-    responses(
-        (status = 200, description = "List of collateral with multiple deals", body = Vec<CollateralResponse>),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    tag = "Collateral",
-    security(("bearer" = []))
-)]
-#[instrument(skip(state))]
-pub async fn list_multi_deal_collateral_handler(
-    State(state): State<ApiState>,
-    Query(params): Query<CollateralListQueryParams>,
-) -> Result<Json<Vec<CollateralResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    let results = arda_credit_db::list_multi_deal_collateral(
-        &state.pool,
-        params.limit.unwrap_or(20),
-        params.offset.unwrap_or(0),
-    )
-    .await
-    .map_err(|e| internal_error("list_multi_deal_collateral", e))?;
-
-    let response = results
-        .into_iter()
-        .map(|r| collateral_with_deals_to_response(r.collateral, r.deal_ids))
-        .collect();
-
-    Ok(Json(response))
 }

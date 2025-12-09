@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            intentional_double_pledge, double_pledge_notes,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE id = $1\n        ",
+  "query": "\n        SELECT\n            c.id, c.name, c.collateral_type, c.description, c.address, c.custom_id,\n            c.double_pledged, c.has_potential_duplicates,\n            c.created_at as \"created_at!\", c.updated_at as \"updated_at!\",\n            c.created_by, c.metadata,\n            c.has_detection as \"has_detection!\", c.detection_count as \"detection_count!\",\n            c.last_detection_at, c.detection_status\n        FROM collateral c\n        INNER JOIN deals d ON d.collateral_id = c.id\n        WHERE d.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -45,33 +45,43 @@
       },
       {
         "ordinal": 8,
-        "name": "intentional_double_pledge",
-        "type_info": "Bool"
-      },
-      {
-        "ordinal": 9,
-        "name": "double_pledge_notes",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 10,
         "name": "created_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 11,
+        "ordinal": 9,
         "name": "updated_at!",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 12,
+        "ordinal": 10,
         "name": "created_by",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 13,
+        "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "has_detection!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "detection_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_detection_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "detection_status",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
@@ -92,9 +102,11 @@
       true,
       true,
       true,
+      false,
+      false,
       true,
       true
     ]
   },
-  "hash": "b67f9ea532024f996632a125402ce927c081156df73bcf380922462799df8d6b"
+  "hash": "5f3e0cfa46e8c4f87e9762ea6a7096d3ad56941e1059949ef6703ce5984a8cb8"
 }

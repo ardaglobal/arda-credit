@@ -4,8 +4,7 @@
 
 use arda_credit_db::{
     create_collateral, create_deal, get_collateral_with_deal_count, get_deals_by_collateral_id,
-    list_multi_deal_collateral, mark_intentional_double_pledge, Collateral,
-    CreateCollateralRequest,
+    list_multi_deal_collateral, Collateral, CreateCollateralRequest,
 };
 use rust_decimal::Decimal;
 use std::str::FromStr;
@@ -53,42 +52,6 @@ async fn test_multiple_deals_share_same_collateral() {
 
 #[tokio::test]
 #[ignore] // Requires database
-async fn test_mark_intentional_double_pledge() {
-    let pool = arda_credit_db::init_db().await.unwrap();
-
-    // Create a collateral
-    let collateral_req = CreateCollateralRequest {
-        name: "Test Property for Intentional Double Pledge".to_string(),
-        collateral_type: Some("real_estate".to_string()),
-        description: Some("Property to test intentional marking".to_string()),
-        address: None,
-        custom_id: Some("INTENT-001".to_string()),
-        metadata: None,
-        created_by: None,
-    };
-
-    let collateral = create_collateral(&pool, collateral_req).await.unwrap();
-
-    // Mark as intentionally double-pledged
-    let notes = Some("This property is used for multiple tranches of the same loan".to_string());
-    let updated = mark_intentional_double_pledge(&pool, collateral.id, true, notes.clone())
-        .await
-        .unwrap();
-
-    assert_eq!(updated.intentional_double_pledge, Some(true));
-    assert_eq!(updated.double_pledge_notes, notes);
-
-    // Unmark it
-    let unmarked = mark_intentional_double_pledge(&pool, collateral.id, false, None)
-        .await
-        .unwrap();
-
-    assert_eq!(unmarked.intentional_double_pledge, Some(false));
-    assert_eq!(unmarked.double_pledge_notes, None);
-}
-
-#[tokio::test]
-#[ignore] // Requires database
 async fn test_list_multi_deal_collateral() {
     let pool = arda_credit_db::init_db().await.unwrap();
 
@@ -127,16 +90,6 @@ async fn test_intentional_vs_detected_double_pledge() {
     // Create collateral with intentional double pledge
     let collateral = create_test_collateral(&pool, "INTENT-002").await;
 
-    // Mark as intentional
-    let _marked = mark_intentional_double_pledge(
-        &pool,
-        collateral.id,
-        true,
-        Some("Intentionally used across multiple deals".to_string()),
-    )
-    .await
-    .unwrap();
-
     // Create multiple deals
     let _deal1 = create_test_deal(&pool, collateral.id).await;
     let _deal2 = create_test_deal(&pool, collateral.id).await;
@@ -147,18 +100,9 @@ async fn test_intentional_vs_detected_double_pledge() {
         .unwrap();
 
     assert_eq!(collateral_with_count.deal_count, 2);
-    assert_eq!(
-        collateral_with_count.collateral.intentional_double_pledge,
-        Some(true)
-    );
-    assert!(collateral_with_count
-        .collateral
-        .double_pledge_notes
-        .is_some());
 
-    // Note: has_potential_duplicates is set by external detection service
-    // intentional_double_pledge is set by user action
-    // They are independent flags that can coexist
+    // Note: has_potential_duplicates is set by external detection service (arda-collateral-intel)
+    // User intentions about double-pledging are also managed by arda-collateral-intel
 }
 
 // Helper functions
@@ -205,40 +149,4 @@ async fn create_test_deal(pool: &sqlx::PgPool, collateral_id: Uuid) -> arda_cred
     )
     .await
     .unwrap()
-}
-
-#[cfg(test)]
-mod api_tests {
-    //! API-level tests for self double-pledge endpoints
-
-    // These tests would make HTTP requests to the API endpoints
-    // They require a running server, so they're marked as #[ignore]
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_get_collateral_deals_endpoint() {
-        // Test GET /api/v1/collateral/{id}/deals
-        // Should return list of deal IDs
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_get_collateral_with_deals_endpoint() {
-        // Test GET /api/v1/collateral/{id}/with-deals
-        // Should return collateral with deal_count and deal_ids
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_mark_intentional_double_pledge_endpoint() {
-        // Test POST /api/v1/collateral/{id}/mark-intentional-double-pledge
-        // Should update intentional_double_pledge flag
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_list_multi_deal_collateral_endpoint() {
-        // Test GET /api/v1/collateral/multi-deal
-        // Should return only collateral with 2+ deals
-    }
 }

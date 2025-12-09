@@ -58,20 +58,25 @@ pub struct DetectionResultResponse {
 
 /// Receive detection result from arda-collateral-intel service
 ///
-/// This is an internal endpoint called by the intelligence service to report
-/// detection results back to arda-credit.
+/// This is an internal webhook endpoint called by the arda-collateral-intel service
+/// to report double-pledge detection results back to arda-credit. This endpoint is the
+/// ONLY way detection results reach arda-credit's database.
+///
+/// The endpoint updates the collateral_matches table and sets the double_pledged field
+/// when high-confidence matches are detected (score >= 0.85).
 #[utoipa::path(
     post,
     path = "/api/v1/internal/collateral/{id}/detection",
+    operation_id = "receiveDetectionResult",
     params(
         ("id" = String, Path, description = "Collateral UUID")
     ),
     request_body = DetectionResultRequest,
     responses(
-        (status = 200, description = "Detection result received successfully", body = DetectionResultResponse),
-        (status = 400, description = "Invalid request", body = ErrorResponse),
-        (status = 404, description = "Collateral not found", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
+        (status = 200, description = "Detection result successfully processed and stored in database", body = DetectionResultResponse),
+        (status = 400, description = "Invalid request format or collateral ID mismatch", body = ErrorResponse),
+        (status = 404, description = "Collateral not found in database", body = ErrorResponse),
+        (status = 500, description = "Internal server error during database update", body = ErrorResponse)
     ),
     tag = "Internal",
     security(("bearer" = []))
@@ -146,11 +151,14 @@ pub async fn receive_detection_result(
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-    // Update collateral flags
+    // Update collateral detection metadata
     db::taxonomy::collateral::update_collateral_detection_status(
         pool,
         collateral_id,
-        result.match_count > 0,
+        true, // has_detection = true (detection was performed)
+        result.match_count as i32,
+        Some(result.detection_status.clone()),
+        result.analyzed_at,
         highest_match.map(|m| m.matched_collateral_id),
     )
     .await
@@ -166,9 +174,10 @@ pub async fn receive_detection_result(
     })?;
 
     info!(
-        "✅ Updated collateral {} detection status: has_duplicates={}, double_pledged={:?}",
+        "✅ Updated collateral {} detection status: has_detection=true, count={}, status={}, double_pledged={:?}",
         collateral_id,
-        result.match_count > 0,
+        result.match_count,
+        result.detection_status,
         highest_match.map(|m| m.matched_collateral_id)
     );
 
