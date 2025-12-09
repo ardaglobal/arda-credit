@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO collateral (\n            id, name, collateral_type, description, address, custom_id,\n            created_at, updated_at, created_by, metadata\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n        RETURNING\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        ",
+  "query": "\n        SELECT\n            c.id, c.name, c.collateral_type, c.description, c.address, c.custom_id,\n            c.double_pledged, c.has_potential_duplicates,\n            c.created_at as \"created_at!\", c.updated_at as \"updated_at!\",\n            c.created_by, c.metadata,\n            c.has_detection as \"has_detection!\", c.detection_count as \"detection_count!\",\n            c.last_detection_at, c.detection_status\n        FROM collateral c\n        INNER JOIN deals d ON d.collateral_id = c.id\n        WHERE d.id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -62,20 +62,31 @@
         "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "has_detection!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "detection_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_detection_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "detection_status",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid",
-        "Varchar",
-        "Varchar",
-        "Text",
-        "Text",
-        "Varchar",
-        "Timestamptz",
-        "Timestamptz",
-        "Uuid",
-        "Jsonb"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -90,8 +101,12 @@
       true,
       true,
       true,
+      true,
+      false,
+      false,
+      true,
       true
     ]
   },
-  "hash": "a979993394d2d7586b37c38efa9243bbcbcb76636b8b9a8cac67a9f0c8fc7173"
+  "hash": "5f3e0cfa46e8c4f87e9762ea6a7096d3ad56941e1059949ef6703ce5984a8cb8"
 }

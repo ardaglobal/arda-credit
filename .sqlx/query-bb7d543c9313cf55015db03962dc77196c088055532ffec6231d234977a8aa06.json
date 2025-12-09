@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE\n            ($1::text IS NULL OR collateral_type = $1) AND\n            ($2::uuid IS NULL OR created_by = $2)\n        ORDER BY created_at DESC\n        LIMIT $3 OFFSET $4\n        ",
+  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata,\n            has_detection as \"has_detection!\", detection_count as \"detection_count!\",\n            last_detection_at, detection_status\n        FROM collateral\n        WHERE\n            ($1::text IS NULL OR collateral_type = $1) AND\n            ($2::uuid IS NULL OR created_by = $2)\n        ORDER BY created_at DESC\n        LIMIT $3 OFFSET $4\n        ",
   "describe": {
     "columns": [
       {
@@ -62,6 +62,26 @@
         "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "has_detection!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "detection_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_detection_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "detection_status",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
@@ -84,8 +104,12 @@
       true,
       true,
       true,
+      true,
+      false,
+      false,
+      true,
       true
     ]
   },
-  "hash": "27b9f900846588ca34f68526a3f11072c11dd7caffe7d545a450d231e07ebaf3"
+  "hash": "bb7d543c9313cf55015db03962dc77196c088055532ffec6231d234977a8aa06"
 }

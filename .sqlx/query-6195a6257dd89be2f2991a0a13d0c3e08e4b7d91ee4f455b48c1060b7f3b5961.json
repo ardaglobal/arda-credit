@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            c.id, c.name, c.collateral_type, c.description, c.address, \n            c.custom_id, c.double_pledged, c.has_potential_duplicates,\n            c.created_at as \"created_at!\", c.updated_at as \"updated_at!\",\n            c.created_by, c.metadata,\n            COUNT(d.id) as \"deal_count!\",\n            ARRAY_AGG(d.id) FILTER (WHERE d.id IS NOT NULL) as \"deal_ids\"\n        FROM collateral c\n        LEFT JOIN deals d ON d.collateral_id = c.id\n        GROUP BY c.id, c.name, c.collateral_type, c.description, c.address, \n                 c.custom_id, c.double_pledged, c.has_potential_duplicates,\n                 c.created_at, c.updated_at, c.created_by, c.metadata\n        HAVING COUNT(d.id) > 1\n        ORDER BY COUNT(d.id) DESC, c.created_at DESC\n        LIMIT $1 OFFSET $2\n        ",
+  "query": "\n        SELECT \n            c.id, c.name, c.collateral_type, c.description, c.address, \n            c.custom_id, c.double_pledged, c.has_potential_duplicates,\n            c.created_at as \"created_at!\", c.updated_at as \"updated_at!\",\n            c.created_by, c.metadata,\n            c.has_detection as \"has_detection!\", c.detection_count as \"detection_count!\",\n            c.last_detection_at, c.detection_status,\n            COUNT(d.id) as \"deal_count!\",\n            ARRAY_AGG(d.id) FILTER (WHERE d.id IS NOT NULL) as \"deal_ids\"\n        FROM collateral c\n        LEFT JOIN deals d ON d.collateral_id = c.id\n        GROUP BY c.id, c.name, c.collateral_type, c.description, c.address, \n                 c.custom_id, c.double_pledged, c.has_potential_duplicates,\n                 c.created_at, c.updated_at, c.created_by, c.metadata,\n                 c.has_detection, c.detection_count, c.last_detection_at, c.detection_status\n        HAVING COUNT(d.id) > 1\n        ORDER BY COUNT(d.id) DESC, c.created_at DESC\n        LIMIT $1 OFFSET $2\n        ",
   "describe": {
     "columns": [
       {
@@ -65,11 +65,31 @@
       },
       {
         "ordinal": 12,
+        "name": "has_detection!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "detection_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_detection_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "detection_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
         "name": "deal_count!",
         "type_info": "Int8"
       },
       {
-        "ordinal": 13,
+        "ordinal": 17,
         "name": "deal_ids",
         "type_info": "UuidArray"
       }
@@ -93,9 +113,13 @@
       true,
       true,
       true,
+      false,
+      false,
+      true,
+      true,
       null,
       null
     ]
   },
-  "hash": "2510ffcc85804aea3a6c0d1ed7cb9c06d55baac866a4f808ad0e4f5e57e5872d"
+  "hash": "6195a6257dd89be2f2991a0a13d0c3e08e4b7d91ee4f455b48c1060b7f3b5961"
 }

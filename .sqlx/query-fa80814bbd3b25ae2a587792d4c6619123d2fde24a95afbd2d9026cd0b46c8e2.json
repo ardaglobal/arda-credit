@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        UPDATE collateral\n        SET\n            has_potential_duplicates = $2,\n            double_pledged = $3\n        WHERE id = $1\n        RETURNING\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        ",
+  "query": "\n        INSERT INTO collateral (\n            id, name, collateral_type, description, address, custom_id,\n            created_at, updated_at, created_by, metadata\n        )\n        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n        RETURNING\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata,\n            has_detection as \"has_detection!\", detection_count as \"detection_count!\",\n            last_detection_at, detection_status\n        ",
   "describe": {
     "columns": [
       {
@@ -62,13 +62,40 @@
         "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "has_detection!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "detection_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_detection_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "detection_status",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
-        "Bool",
-        "Uuid"
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Text",
+        "Varchar",
+        "Timestamptz",
+        "Timestamptz",
+        "Uuid",
+        "Jsonb"
       ]
     },
     "nullable": [
@@ -83,8 +110,12 @@
       true,
       true,
       true,
+      true,
+      false,
+      false,
+      true,
       true
     ]
   },
-  "hash": "8b7cbb2b2141b0dcb514932a662f90ce7258e33e851413f803899181eb674f72"
+  "hash": "fa80814bbd3b25ae2a587792d4c6619123d2fde24a95afbd2d9026cd0b46c8e2"
 }

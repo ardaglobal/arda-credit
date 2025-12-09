@@ -29,7 +29,7 @@ use crate::middleware::session_middleware::extract_current_user;
 // ============================================================================
 
 /// Collateral API response
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[schema(example = json!({
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "name": "123 Main Street Property",
@@ -39,7 +39,12 @@ use crate::middleware::session_middleware::extract_current_user;
     "custom_id": "PROP-2025-001",
     "double_pledged": null,
     "deal_count": 2,
-    "deal_ids": ["550e8400-e29b-41d4-a716-446655440001", "550e8400-e29b-41d4-a716-446655440002"]
+    "deal_ids": ["550e8400-e29b-41d4-a716-446655440001", "550e8400-e29b-41d4-a716-446655440002"],
+    "is_double_pledged": true,
+    "has_detection": true,
+    "detection_count": 1,
+    "last_detection_at": "2025-12-09T10:30:00Z",
+    "detection_status": "potential_duplicates"
 }))]
 pub struct CollateralResponse {
     pub id: String,
@@ -57,6 +62,16 @@ pub struct CollateralResponse {
     pub deal_count: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deal_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_double_pledged: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub has_detection: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detection_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_detection_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detection_status: Option<String>,
 }
 
 /// Create collateral request
@@ -126,6 +141,11 @@ fn collateral_to_response(collateral: Collateral) -> CollateralResponse {
         metadata: collateral.metadata,
         deal_count: None,
         deal_ids: None,
+        is_double_pledged: None,
+        has_detection: Some(collateral.has_detection),
+        detection_count: Some(collateral.detection_count),
+        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+        detection_status: collateral.detection_status,
     }
 }
 
@@ -134,6 +154,8 @@ fn collateral_with_deals_to_response(
     deal_ids: Vec<uuid::Uuid>,
 ) -> CollateralResponse {
     let deal_count = deal_ids.len() as i64;
+    let is_double_pledged = deal_count > 1;
+
     CollateralResponse {
         id: collateral.id.to_string(),
         name: collateral.name,
@@ -148,6 +170,11 @@ fn collateral_with_deals_to_response(
         metadata: collateral.metadata,
         deal_count: Some(deal_count),
         deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+        is_double_pledged: Some(is_double_pledged),
+        has_detection: Some(collateral.has_detection),
+        detection_count: Some(collateral.detection_count),
+        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+        detection_status: collateral.detection_status,
     }
 }
 

@@ -25,6 +25,11 @@ pub struct Collateral {
     pub updated_at: DateTime<Utc>,
     pub created_by: Option<Uuid>,
     pub metadata: Option<serde_json::Value>,
+    // Detection metadata from arda-collateral-intel
+    pub has_detection: bool,
+    pub detection_count: i32,
+    pub last_detection_at: Option<DateTime<Utc>>,
+    pub detection_status: Option<String>,
 }
 
 /// Request to create a collateral record
@@ -71,7 +76,9 @@ pub async fn create_collateral(
             id, name, collateral_type, description, address, custom_id,
             double_pledged, has_potential_duplicates,
             created_at as "created_at!", updated_at as "updated_at!",
-            created_by, metadata
+            created_by, metadata,
+            has_detection as "has_detection!", detection_count as "detection_count!",
+            last_detection_at, detection_status
         "#,
         id,
         req.name,
@@ -101,7 +108,9 @@ pub async fn get_collateral_by_id(pool: &PgPool, id: Uuid) -> Result<Collateral,
             id, name, collateral_type, description, address, custom_id,
             double_pledged, has_potential_duplicates,
             created_at as "created_at!", updated_at as "updated_at!",
-            created_by, metadata
+            created_by, metadata,
+            has_detection as "has_detection!", detection_count as "detection_count!",
+            last_detection_at, detection_status
         FROM collateral
         WHERE id = $1
         "#,
@@ -128,7 +137,9 @@ pub async fn get_collateral_by_custom_id(
             id, name, collateral_type, description, address, custom_id,
             double_pledged, has_potential_duplicates,
             created_at as "created_at!", updated_at as "updated_at!",
-            created_by, metadata
+            created_by, metadata,
+            has_detection as "has_detection!", detection_count as "detection_count!",
+            last_detection_at, detection_status
         FROM collateral
         WHERE custom_id = $1
         "#,
@@ -160,7 +171,9 @@ pub async fn list_collateral(
             id, name, collateral_type, description, address, custom_id,
             double_pledged, has_potential_duplicates,
             created_at as "created_at!", updated_at as "updated_at!",
-            created_by, metadata
+            created_by, metadata,
+            has_detection as "has_detection!", detection_count as "detection_count!",
+            last_detection_at, detection_status
         FROM collateral
         WHERE
             ($1::text IS NULL OR collateral_type = $1) AND
@@ -221,7 +234,7 @@ pub async fn update_collateral(
 
     query.push_str(&updates.join(", "));
     query.push_str(&format!(" WHERE id = ${}", param_count));
-    query.push_str(" RETURNING id, name, collateral_type, description, address, custom_id, double_pledged, has_potential_duplicates, created_at, updated_at, created_by, metadata");
+    query.push_str(" RETURNING id, name, collateral_type, description, address, custom_id, double_pledged, has_potential_duplicates, created_at, updated_at, created_by, metadata, has_detection, detection_count, last_detection_at, detection_status");
 
     let mut query_builder = sqlx::query_as::<_, Collateral>(&query);
 
@@ -285,7 +298,9 @@ pub async fn get_collateral_by_deal_id(
             c.id, c.name, c.collateral_type, c.description, c.address, c.custom_id,
             c.double_pledged, c.has_potential_duplicates,
             c.created_at as "created_at!", c.updated_at as "updated_at!",
-            c.created_by, c.metadata
+            c.created_by, c.metadata,
+            c.has_detection as "has_detection!", c.detection_count as "detection_count!",
+            c.last_detection_at, c.detection_status
         FROM collateral c
         INNER JOIN deals d ON d.collateral_id = c.id
         WHERE d.id = $1
@@ -315,29 +330,45 @@ pub async fn create_collateral_batch(
 
 /// Update collateral detection status based on detection results
 ///
-/// Sets has_potential_duplicates flag and optionally sets double_pledged to highest match
+/// Sets detection metadata from arda-collateral-intel and optionally sets double_pledged to highest match
 #[instrument(skip(pool))]
 pub async fn update_collateral_detection_status(
     pool: &PgPool,
     collateral_id: Uuid,
-    has_duplicates: bool,
+    has_detection: bool,
+    detection_count: i32,
+    detection_status: Option<String>,
+    last_detection_at: DateTime<Utc>,
     highest_match_id: Option<Uuid>,
 ) -> Result<Collateral, DbError> {
+    // Also set has_potential_duplicates for backward compatibility
+    let has_duplicates = detection_count > 0;
+
     sqlx::query_as!(
         Collateral,
         r#"
         UPDATE collateral
         SET
-            has_potential_duplicates = $2,
-            double_pledged = $3
+            has_detection = $2,
+            detection_count = $3,
+            detection_status = $4,
+            last_detection_at = $5,
+            has_potential_duplicates = $6,
+            double_pledged = $7
         WHERE id = $1
         RETURNING
             id, name, collateral_type, description, address, custom_id,
             double_pledged, has_potential_duplicates,
             created_at as "created_at!", updated_at as "updated_at!",
-            created_by, metadata
+            created_by, metadata,
+            has_detection as "has_detection!", detection_count as "detection_count!",
+            last_detection_at, detection_status
         "#,
         collateral_id,
+        has_detection,
+        detection_count,
+        detection_status,
+        last_detection_at,
         has_duplicates,
         highest_match_id
     )
@@ -505,6 +536,10 @@ pub async fn list_multi_deal_collateral(
         updated_at: DateTime<Utc>,
         created_by: Option<Uuid>,
         metadata: Option<serde_json::Value>,
+        has_detection: bool,
+        detection_count: i32,
+        last_detection_at: Option<DateTime<Utc>>,
+        detection_status: Option<String>,
         deal_count: i64,
         deal_ids: Option<Vec<Uuid>>,
     }
@@ -517,13 +552,16 @@ pub async fn list_multi_deal_collateral(
             c.custom_id, c.double_pledged, c.has_potential_duplicates,
             c.created_at as "created_at!", c.updated_at as "updated_at!",
             c.created_by, c.metadata,
+            c.has_detection as "has_detection!", c.detection_count as "detection_count!",
+            c.last_detection_at, c.detection_status,
             COUNT(d.id) as "deal_count!",
             ARRAY_AGG(d.id) FILTER (WHERE d.id IS NOT NULL) as "deal_ids"
         FROM collateral c
         LEFT JOIN deals d ON d.collateral_id = c.id
         GROUP BY c.id, c.name, c.collateral_type, c.description, c.address, 
                  c.custom_id, c.double_pledged, c.has_potential_duplicates,
-                 c.created_at, c.updated_at, c.created_by, c.metadata
+                 c.created_at, c.updated_at, c.created_by, c.metadata,
+                 c.has_detection, c.detection_count, c.last_detection_at, c.detection_status
         HAVING COUNT(d.id) > 1
         ORDER BY COUNT(d.id) DESC, c.created_at DESC
         LIMIT $1 OFFSET $2
@@ -551,6 +589,10 @@ pub async fn list_multi_deal_collateral(
                 updated_at: row.updated_at,
                 created_by: row.created_by,
                 metadata: row.metadata,
+                has_detection: row.has_detection,
+                detection_count: row.detection_count,
+                last_detection_at: row.last_detection_at,
+                detection_status: row.detection_status,
             };
             CollateralWithDealCount {
                 collateral,

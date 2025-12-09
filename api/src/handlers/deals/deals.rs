@@ -43,12 +43,15 @@ use arda_credit_db::{
     create_deal_listing, // was create_payment
     delete_deal,         // Delete deal function
     // Transfer functions (consolidated)
-    execute_deal_transfer,         // was execute_loan_transfer
-    get_deal_by_id,                // was get_loan_by_id
-    get_deal_transfer_history,     // was get_loan_transfer_history
-    get_deals_by_user_id,          // new function to get deals by user ID
-    list_deals,                    // was list_loans
-    remove_deal_listing,           // was remove_loan_listing
+    execute_deal_transfer,     // was execute_loan_transfer
+    get_deal_by_id,            // was get_loan_by_id
+    get_deal_transfer_history, // was get_loan_transfer_history
+    get_deals_by_user_id,      // new function to get deals by user ID
+    list_deals,                // was list_loans
+
+    remove_deal_listing, // was remove_loan_listing
+    // Collateral functions
+    taxonomy::collateral::{get_collateral_by_id, get_deals_by_collateral_id},
     update_deal,                   // was update_loan
     validate_transfer_eligibility, // was validate_transfer_eligibility
     // Enums for validation
@@ -219,8 +222,12 @@ pub struct DealDetailsResponse {
     pub region: Option<String>,
     pub minimum_investment: Option<String>,
 
-    /// UUID of collateral asset (optional)
+    /// UUID of collateral asset (optional, deprecated - use collateral field instead)
     pub collateral_id: Option<String>,
+
+    /// Full collateral object with detection metadata (preferred over collateral_id)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collateral: Option<crate::handlers::taxonomy::collateral::CollateralResponse>,
 }
 
 /// List deals query parameters (converted from ListLoansQuery)
@@ -485,6 +492,71 @@ pub struct DealTransferValidationResponse {
     pub deal_id: String,                 // was loan_id, now deal_id
     pub current_investor_id: uuid::Uuid, // was current_lender_id
     pub message: String,
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Fetch collateral data for a list of deals
+///
+/// Returns a HashMap of collateral_id -> CollateralResponse with deal counts computed
+async fn fetch_collateral_for_deals(
+    pool: &sqlx::PgPool,
+    deals: &[arda_credit_db::Deal],
+) -> std::collections::HashMap<uuid::Uuid, crate::handlers::taxonomy::collateral::CollateralResponse>
+{
+    use std::collections::HashMap;
+
+    // Extract unique collateral IDs from deals
+    let mut collateral_ids: Vec<uuid::Uuid> =
+        deals.iter().filter_map(|d| d.collateral_id).collect();
+    collateral_ids.sort();
+    collateral_ids.dedup();
+
+    if collateral_ids.is_empty() {
+        return HashMap::new();
+    }
+
+    // Fetch all collateral records
+    let mut collateral_map = HashMap::new();
+    for coll_id in collateral_ids {
+        if let Ok(collateral) = get_collateral_by_id(pool, coll_id).await {
+            // Get deal IDs for this collateral
+            let deal_ids = get_deals_by_collateral_id(pool, coll_id)
+                .await
+                .unwrap_or_default();
+
+            let deal_count = deal_ids.len() as i64;
+            let is_double_pledged = deal_count > 1;
+
+            // Build CollateralResponse
+            let response = crate::handlers::taxonomy::collateral::CollateralResponse {
+                id: collateral.id.to_string(),
+                name: collateral.name,
+                collateral_type: collateral.collateral_type,
+                description: collateral.description,
+                address: collateral.address,
+                custom_id: collateral.custom_id,
+                double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+                has_potential_duplicates: collateral.has_potential_duplicates,
+                created_at: collateral.created_at.to_rfc3339(),
+                updated_at: collateral.updated_at.to_rfc3339(),
+                metadata: collateral.metadata,
+                deal_count: Some(deal_count),
+                deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+                is_double_pledged: Some(is_double_pledged),
+                has_detection: Some(collateral.has_detection),
+                detection_count: Some(collateral.detection_count),
+                last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+                detection_status: collateral.detection_status,
+            };
+
+            collateral_map.insert(coll_id, response);
+        }
+    }
+
+    collateral_map
 }
 
 // ============================================================================
@@ -864,6 +936,43 @@ pub async fn create_deal_endpoint(
         }
     }
 
+    // Fetch collateral if available
+    let collateral = if let Some(coll_id) = deal.collateral_id {
+        if let Ok(collateral) = get_collateral_by_id(&state.pool, coll_id).await {
+            let deal_ids = get_deals_by_collateral_id(&state.pool, coll_id)
+                .await
+                .unwrap_or_default();
+
+            let deal_count = deal_ids.len() as i64;
+            let is_double_pledged = deal_count > 1;
+
+            Some(crate::handlers::taxonomy::collateral::CollateralResponse {
+                id: collateral.id.to_string(),
+                name: collateral.name,
+                collateral_type: collateral.collateral_type,
+                description: collateral.description,
+                address: collateral.address,
+                custom_id: collateral.custom_id,
+                double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+                has_potential_duplicates: collateral.has_potential_duplicates,
+                created_at: collateral.created_at.to_rfc3339(),
+                updated_at: collateral.updated_at.to_rfc3339(),
+                metadata: collateral.metadata,
+                deal_count: Some(deal_count),
+                deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+                is_double_pledged: Some(is_double_pledged),
+                has_detection: Some(collateral.has_detection),
+                detection_count: Some(collateral.detection_count),
+                last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+                detection_status: collateral.detection_status,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let response = DealDetailsResponse {
         // was LoanDetailsResponse
         deal_id: deal.id.to_string(), // was loan_id, now deal_id
@@ -888,6 +997,7 @@ pub async fn create_deal_endpoint(
         region: deal.region,
         minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
         collateral_id: deal.collateral_id.map(|id| id.to_string()),
+        collateral,
     };
 
     // Record function execution time
@@ -983,6 +1093,9 @@ pub async fn list_deals_endpoint(
     // Check if anonymized response is requested
     let is_anonymized = query.anon.unwrap_or(false);
 
+    // Fetch collateral data for all deals
+    let collateral_map = fetch_collateral_for_deals(&state.pool, &result.deals).await;
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = result
         .deals // was LoanDetailsResponse
@@ -996,6 +1109,11 @@ pub async fn list_deals_endpoint(
                     None
                 }
             });
+
+            // Get collateral if available
+            let collateral = deal
+                .collateral_id
+                .and_then(|coll_id| collateral_map.get(&coll_id).cloned());
 
             let mut response = DealDetailsResponse {
                 // was loan, LoanDetailsResponse
@@ -1021,6 +1139,7 @@ pub async fn list_deals_endpoint(
                 region: deal.region,
                 minimum_investment: None,
                 collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             };
 
             // Populate sensitive fields only if not anonymized
@@ -1102,35 +1221,46 @@ pub async fn get_deals_by_user_id_endpoint(
         )
     })?;
 
+    // Fetch collateral data for all deals
+    let collateral_map = fetch_collateral_for_deals(&state.pool, &result.deals).await;
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = result
         .deals
         .into_iter()
-        .map(|deal| DealDetailsResponse {
-            deal_id: deal.id.to_string(),
-            originator_id: Some(deal.originator_id.to_string()),
-            investor_id: deal.investor_id.map(|id| id.to_string()),
-            borrower_id: deal.borrower_id.map(|id| id.to_string()),
-            borrower_legal_name: deal.borrower_legal_name.clone(),
-            principal_amount: deal.principal_amount.to_string(),
-            outstanding_balance: deal.outstanding_balance.to_string(),
-            interest_rate_bps: deal.interest_rate_bps as u16,
-            loan_status: deal.deal_status,
-            originated_at: deal.originated_at,
-            last_updated: Some(deal.updated_at),
-            custom_deal_id: deal.custom_deal_id,
-            status: deal.status,
-            industry: deal.industry,
-            document_ids: deal
-                .document_ids
-                .and_then(|ids| serde_json::from_value::<Vec<String>>(ids).ok()),
-            title: deal.title,
-            description: deal.description,
-            risk_level: deal.risk_level,
-            asset_class: deal.asset_class,
-            region: deal.region,
-            minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
-            collateral_id: deal.collateral_id.map(|id| id.to_string()),
+        .map(|deal| {
+            // Get collateral if available
+            let collateral = deal
+                .collateral_id
+                .and_then(|coll_id| collateral_map.get(&coll_id).cloned());
+
+            DealDetailsResponse {
+                deal_id: deal.id.to_string(),
+                originator_id: Some(deal.originator_id.to_string()),
+                investor_id: deal.investor_id.map(|id| id.to_string()),
+                borrower_id: deal.borrower_id.map(|id| id.to_string()),
+                borrower_legal_name: deal.borrower_legal_name.clone(),
+                principal_amount: deal.principal_amount.to_string(),
+                outstanding_balance: deal.outstanding_balance.to_string(),
+                interest_rate_bps: deal.interest_rate_bps as u16,
+                loan_status: deal.deal_status,
+                originated_at: deal.originated_at,
+                last_updated: Some(deal.updated_at),
+                custom_deal_id: deal.custom_deal_id,
+                status: deal.status,
+                industry: deal.industry,
+                document_ids: deal
+                    .document_ids
+                    .and_then(|ids| serde_json::from_value::<Vec<String>>(ids).ok()),
+                title: deal.title,
+                description: deal.description,
+                risk_level: deal.risk_level,
+                asset_class: deal.asset_class,
+                region: deal.region,
+                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
+            }
         })
         .collect();
 
@@ -1197,6 +1327,9 @@ pub async fn get_deals_by_company_endpoint(
         )
     })?;
 
+    // Fetch collateral data for all deals
+    let collateral_map = fetch_collateral_for_deals(&state.pool, &result.deals).await;
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = result
         .deals
@@ -1210,6 +1343,11 @@ pub async fn get_deals_by_company_endpoint(
                     None
                 }
             });
+
+            // Get collateral if available
+            let collateral = deal
+                .collateral_id
+                .and_then(|coll_id| collateral_map.get(&coll_id).cloned());
 
             DealDetailsResponse {
                 deal_id: deal.id.to_string(),
@@ -1234,6 +1372,7 @@ pub async fn get_deals_by_company_endpoint(
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
                 collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             }
         })
         .collect();
@@ -1299,6 +1438,9 @@ pub async fn get_draft_deals_by_company_endpoint(
         )
     })?;
 
+    // Fetch collateral data for all deals
+    let collateral_map = fetch_collateral_for_deals(&state.pool, &result.deals).await;
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = result
         .deals
@@ -1312,6 +1454,11 @@ pub async fn get_draft_deals_by_company_endpoint(
                     None
                 }
             });
+
+            // Get collateral if available
+            let collateral = deal
+                .collateral_id
+                .and_then(|coll_id| collateral_map.get(&coll_id).cloned());
 
             DealDetailsResponse {
                 deal_id: deal.id.to_string(),
@@ -1336,6 +1483,7 @@ pub async fn get_draft_deals_by_company_endpoint(
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
                 collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             }
         })
         .collect();
@@ -1406,6 +1554,43 @@ pub async fn get_deal_details_endpoint(
                 }
             });
 
+            // Fetch collateral if available
+            let collateral = if let Some(coll_id) = deal.collateral_id {
+                if let Ok(collateral) = get_collateral_by_id(&state.pool, coll_id).await {
+                    let deal_ids = get_deals_by_collateral_id(&state.pool, coll_id)
+                        .await
+                        .unwrap_or_default();
+
+                    let deal_count = deal_ids.len() as i64;
+                    let is_double_pledged = deal_count > 1;
+
+                    Some(crate::handlers::taxonomy::collateral::CollateralResponse {
+                        id: collateral.id.to_string(),
+                        name: collateral.name,
+                        collateral_type: collateral.collateral_type,
+                        description: collateral.description,
+                        address: collateral.address,
+                        custom_id: collateral.custom_id,
+                        double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+                        has_potential_duplicates: collateral.has_potential_duplicates,
+                        created_at: collateral.created_at.to_rfc3339(),
+                        updated_at: collateral.updated_at.to_rfc3339(),
+                        metadata: collateral.metadata,
+                        deal_count: Some(deal_count),
+                        deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+                        is_double_pledged: Some(is_double_pledged),
+                        has_detection: Some(collateral.has_detection),
+                        detection_count: Some(collateral.detection_count),
+                        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+                        detection_status: collateral.detection_status,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             let response = DealDetailsResponse {
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
@@ -1430,6 +1615,7 @@ pub async fn get_deal_details_endpoint(
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
                 collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             };
 
             info!("✅ Deal details retrieved: {}", deal_id); // updated log message
@@ -1699,6 +1885,43 @@ pub async fn update_deal_endpoint(
                 }
             });
 
+            // Fetch collateral if available
+            let collateral = if let Some(coll_id) = deal.collateral_id {
+                if let Ok(collateral) = get_collateral_by_id(&state.pool, coll_id).await {
+                    let deal_ids = get_deals_by_collateral_id(&state.pool, coll_id)
+                        .await
+                        .unwrap_or_default();
+
+                    let deal_count = deal_ids.len() as i64;
+                    let is_double_pledged = deal_count > 1;
+
+                    Some(crate::handlers::taxonomy::collateral::CollateralResponse {
+                        id: collateral.id.to_string(),
+                        name: collateral.name,
+                        collateral_type: collateral.collateral_type,
+                        description: collateral.description,
+                        address: collateral.address,
+                        custom_id: collateral.custom_id,
+                        double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+                        has_potential_duplicates: collateral.has_potential_duplicates,
+                        created_at: collateral.created_at.to_rfc3339(),
+                        updated_at: collateral.updated_at.to_rfc3339(),
+                        metadata: collateral.metadata,
+                        deal_count: Some(deal_count),
+                        deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+                        is_double_pledged: Some(is_double_pledged),
+                        has_detection: Some(collateral.has_detection),
+                        detection_count: Some(collateral.detection_count),
+                        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+                        detection_status: collateral.detection_status,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             // Convert to response format
             let deal_details = DealDetailsResponse {
                 // was LoanDetailsResponse
@@ -1724,6 +1947,7 @@ pub async fn update_deal_endpoint(
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
                 collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             };
 
             // Publish events based on changes (fire-and-forget)

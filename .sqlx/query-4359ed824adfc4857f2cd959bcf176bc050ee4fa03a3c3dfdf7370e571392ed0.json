@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE id = $1\n        ",
+  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata,\n            has_detection as \"has_detection!\", detection_count as \"detection_count!\",\n            last_detection_at, detection_status\n        FROM collateral\n        WHERE custom_id = $1\n        ",
   "describe": {
     "columns": [
       {
@@ -62,11 +62,31 @@
         "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "has_detection!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "detection_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_detection_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "detection_status",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Text"
       ]
     },
     "nullable": [
@@ -81,8 +101,12 @@
       true,
       true,
       true,
+      true,
+      false,
+      false,
+      true,
       true
     ]
   },
-  "hash": "494b35248df077d5643646a724542b76c650c0b73dffa8a051cedea9e4f74d6c"
+  "hash": "4359ed824adfc4857f2cd959bcf176bc050ee4fa03a3c3dfdf7370e571392ed0"
 }

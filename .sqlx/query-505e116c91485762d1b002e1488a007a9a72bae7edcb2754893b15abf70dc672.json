@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata\n        FROM collateral\n        WHERE custom_id = $1\n        ",
+  "query": "\n        UPDATE collateral\n        SET\n            has_detection = $2,\n            detection_count = $3,\n            detection_status = $4,\n            last_detection_at = $5,\n            has_potential_duplicates = $6,\n            double_pledged = $7\n        WHERE id = $1\n        RETURNING\n            id, name, collateral_type, description, address, custom_id,\n            double_pledged, has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            created_by, metadata,\n            has_detection as \"has_detection!\", detection_count as \"detection_count!\",\n            last_detection_at, detection_status\n        ",
   "describe": {
     "columns": [
       {
@@ -62,11 +62,37 @@
         "ordinal": 11,
         "name": "metadata",
         "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 12,
+        "name": "has_detection!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 13,
+        "name": "detection_count!",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 14,
+        "name": "last_detection_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 15,
+        "name": "detection_status",
+        "type_info": "Varchar"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Uuid",
+        "Bool",
+        "Int4",
+        "Varchar",
+        "Timestamptz",
+        "Bool",
+        "Uuid"
       ]
     },
     "nullable": [
@@ -81,8 +107,12 @@
       true,
       true,
       true,
+      true,
+      false,
+      false,
+      true,
       true
     ]
   },
-  "hash": "a72e1c05f6e6fb460bcb17d1d862c30b62b75340063216bc747eefbcff299807"
+  "hash": "505e116c91485762d1b002e1488a007a9a72bae7edcb2754893b15abf70dc672"
 }

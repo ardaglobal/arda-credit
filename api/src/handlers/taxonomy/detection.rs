@@ -151,11 +151,14 @@ pub async fn receive_detection_result(
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-    // Update collateral flags
+    // Update collateral detection metadata
     db::taxonomy::collateral::update_collateral_detection_status(
         pool,
         collateral_id,
-        result.match_count > 0,
+        true, // has_detection = true (detection was performed)
+        result.match_count as i32,
+        Some(result.detection_status.clone()),
+        result.analyzed_at,
         highest_match.map(|m| m.matched_collateral_id),
     )
     .await
@@ -171,9 +174,10 @@ pub async fn receive_detection_result(
     })?;
 
     info!(
-        "✅ Updated collateral {} detection status: has_duplicates={}, double_pledged={:?}",
+        "✅ Updated collateral {} detection status: has_detection=true, count={}, status={}, double_pledged={:?}",
         collateral_id,
-        result.match_count > 0,
+        result.match_count,
+        result.detection_status,
         highest_match.map(|m| m.matched_collateral_id)
     );
 
