@@ -695,6 +695,9 @@ pub const COLLATERAL_MARK_INTENTIONAL_DOUBLE_PLEDGE: &str =
 /// List collateral used in multiple deals
 pub const COLLATERAL_MULTI_DEAL: &str = api_path!("/collateral/multi-deal");
 
+/// Internal: Detection result callback from arda-collateral-intel
+pub const COLLATERAL_DETECTION_RESULT: &str = api_path!("/internal/collateral/{id}/detection");
+
 // ============================================================================
 // TRANSACTION HISTORY PATHS
 // ============================================================================
