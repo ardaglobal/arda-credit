@@ -24,11 +24,12 @@ use db::{
         batch_upsert_market_value_metrics, batch_upsert_pie_chart_metrics, clear_all_metrics,
         CreateMarketValueMetricRequest, CreatePieChartMetricRequest,
     },
-    create_identity, get_identity_by_email, init_db_with_url, list_deals, Deal, User,
+    create_identity, get_identity_by_email, init_db_with_url, list_deals, Collateral, Deal, User,
 };
 use rand::{seq::SliceRandom, thread_rng, Rng};
+use reqwest::Client;
 use rust_decimal::Decimal;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{collections::HashMap, env, str::FromStr};
 use uuid::Uuid;
@@ -63,6 +64,51 @@ struct DealCsvRow {
     collateral_type: Option<String>,
     collateral_address: Option<String>,
     collateral_custom_id: Option<String>,
+}
+
+// ============================================================================
+// BATCH UPLOAD STRUCTURES (for arda-collateral-intel service)
+// ============================================================================
+
+/// Batch upload request for collateral intel service
+#[derive(Debug, Serialize)]
+struct BatchUploadRequest {
+    deals: Vec<BatchDealPayload>,
+}
+
+/// Deal payload for batch upload
+#[derive(Debug, Serialize)]
+struct BatchDealPayload {
+    deal: BatchDealInfo,
+    collaterals: Vec<BatchCollateralInfo>,
+}
+
+/// Deal info for batch upload
+#[derive(Debug, Serialize)]
+struct BatchDealInfo {
+    id: String,
+    status: String,
+    company_id: String,
+}
+
+/// Collateral info for batch upload
+#[derive(Debug, Serialize)]
+struct BatchCollateralInfo {
+    id: String,
+    name: String,
+    collateral_type: String,
+    address: Option<String>,
+    custom_id: Option<String>,
+    description: Option<String>,
+}
+
+/// Response from batch upload
+#[derive(Debug, Deserialize)]
+struct BatchUploadResponse {
+    total_deals: i32,
+    total_collaterals: i32,
+    tasks_queued: i32,
+    message: String,
 }
 
 // ============================================================================
@@ -1018,6 +1064,74 @@ async fn report_duplicate_matches(pool: &sqlx::PgPool) -> Result<(), Box<dyn std
     Ok(())
 }
 
+/// Submit batch upload request to collateral intel service
+async fn submit_batch_to_intel_service(
+    deals_with_collateral: Vec<(Deal, Vec<Collateral>)>,
+    intel_service_url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if deals_with_collateral.is_empty() {
+        println!("ℹ️  No deals with collateral to submit to intel service");
+        return Ok(());
+    }
+
+    println!(
+        "🚀 Submitting {} deals with collateral to intel service at {}",
+        deals_with_collateral.len(),
+        intel_service_url
+    );
+
+    // Build batch upload request
+    let batch_request = BatchUploadRequest {
+        deals: deals_with_collateral
+            .into_iter()
+            .map(|(deal, collaterals)| BatchDealPayload {
+                deal: BatchDealInfo {
+                    id: deal.id.to_string(),
+                    status: deal.deal_status.clone(),
+                    company_id: deal.originator_id.to_string(),
+                },
+                collaterals: collaterals
+                    .into_iter()
+                    .map(|c| BatchCollateralInfo {
+                        id: c.id.to_string(),
+                        name: c.name.clone(),
+                        collateral_type: c.collateral_type.clone().unwrap_or_default(),
+                        address: c.address.clone(),
+                        custom_id: c.custom_id.clone(),
+                        description: c.description.clone(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+    };
+
+    // Submit to intel service
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let url = format!("{}/api/v1/batch/upload", intel_service_url);
+    let response = client.post(&url).json(&batch_request).send().await?;
+
+    if response.status().is_success() {
+        let batch_response: BatchUploadResponse = response.json().await?;
+        println!(
+            "✅ Batch upload successful: {} deals, {} collaterals, {} tasks queued",
+            batch_response.total_deals,
+            batch_response.total_collaterals,
+            batch_response.tasks_queued
+        );
+        println!("   {}", batch_response.message);
+    } else {
+        let status = response.status();
+        let body = response.text().await?;
+        eprintln!("❌ Batch upload failed with status {}: {}", status, body);
+        return Err(format!("Batch upload failed: {} - {}", status, body).into());
+    }
+
+    Ok(())
+}
+
 /// Generate deals for a specific user
 async fn generate_user_deals(
     pool: &sqlx::PgPool,
@@ -1048,8 +1162,11 @@ async fn generate_user_deals(
     // Track if we should create double-pledged deals
     let mut rng = thread_rng();
     let mut dp_remaining = double_pledged_count.unwrap_or(0);
-    let mut shared_collateral_id: Option<Uuid> = None;
+    let mut shared_collateral: Option<Collateral> = None;
     let dp_collateral_index = rng.gen_range(0..COLLATERAL_NAMES.len());
+
+    // Track all deals and collateral for batch submission
+    let mut all_deals_with_collateral: Vec<(Deal, Vec<Collateral>)> = Vec::new();
 
     // Generate deals with 50/50 split
     let investor_deals = count / 2;
@@ -1062,31 +1179,33 @@ async fn generate_user_deals(
             .unwrap_or(&originator_company);
 
         // Create collateral for this deal
-        let collateral_id = if dp_remaining > 0 {
+        let collateral = if dp_remaining > 0 {
             // Create intentional duplicate
-            if shared_collateral_id.is_none() {
+            if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                shared_collateral_id = Some(
+                let coll =
                     create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?,
-                );
+                        .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
-                    shared_collateral_id.unwrap(),
+                    coll.id,
                     double_pledged_count.unwrap()
                 );
-            }
-            dp_remaining -= 1;
-
-            if dp_remaining > 0 {
-                // Create another collateral with same attributes (should be detected as duplicate)
-                Some(
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?,
-                )
+                shared_collateral = Some(coll.clone());
+                Some(coll)
             } else {
-                // Last double-pledged deal uses the original
-                shared_collateral_id
+                dp_remaining -= 1;
+
+                if dp_remaining > 0 {
+                    // Create another collateral with same attributes (should be detected as duplicate)
+                    Some(
+                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                            .await?,
+                    )
+                } else {
+                    // Last double-pledged deal uses the original
+                    shared_collateral.clone()
+                }
             }
         } else {
             // Random collateral (70% of deals have collateral)
@@ -1097,14 +1216,19 @@ async fn generate_user_deals(
             }
         };
 
-        create_realistic_deal(
+        let (deal, collateral_opt) = create_realistic_deal(
             pool,
             originator.id,
             Some(investor_company.id),
             &format!("User Investment Deal #{}", i + 1),
-            collateral_id,
+            collateral.clone(),
         )
         .await?;
+
+        // Track deal with its collateral for batch submission
+        if let Some(coll) = collateral_opt {
+            all_deals_with_collateral.push((deal, vec![coll]));
+        }
     }
 
     println!("🏢 Creating {} deals as originator", originator_deals);
@@ -1114,31 +1238,33 @@ async fn generate_user_deals(
             .unwrap_or(&investor_company);
 
         // Create collateral for this deal
-        let collateral_id = if dp_remaining > 0 {
+        let collateral = if dp_remaining > 0 {
             // Create intentional duplicate
-            if shared_collateral_id.is_none() {
+            if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                shared_collateral_id = Some(
+                let coll =
                     create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?,
-                );
+                        .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
-                    shared_collateral_id.unwrap(),
+                    coll.id,
                     double_pledged_count.unwrap()
                 );
-            }
-            dp_remaining -= 1;
-
-            if dp_remaining > 0 {
-                // Create another collateral with same attributes (should be detected as duplicate)
-                Some(
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?,
-                )
+                shared_collateral = Some(coll.clone());
+                Some(coll)
             } else {
-                // Last double-pledged deal uses the original
-                shared_collateral_id
+                dp_remaining -= 1;
+
+                if dp_remaining > 0 {
+                    // Create another collateral with same attributes (should be detected as duplicate)
+                    Some(
+                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                            .await?,
+                    )
+                } else {
+                    // Last double-pledged deal uses the original
+                    shared_collateral.clone()
+                }
             }
         } else {
             // Random collateral (70% of deals have collateral)
@@ -1149,17 +1275,45 @@ async fn generate_user_deals(
             }
         };
 
-        create_realistic_deal(
+        let (deal, collateral_opt) = create_realistic_deal(
             pool,
             originator_company.id,
             Some(investor.id),
             &format!("User Origination Deal #{}", i + 1),
-            collateral_id,
+            collateral.clone(),
         )
         .await?;
+
+        // Track deal with its collateral for batch submission
+        if let Some(coll) = collateral_opt {
+            all_deals_with_collateral.push((deal, vec![coll]));
+        }
     }
 
     println!("✅ Created {} deals for user {}", count, email);
+
+    // Submit batch to collateral intel service if configured
+    if let Ok(intel_url) = env::var("COLLATERAL_INTEL_SERVICE_URL") {
+        if !all_deals_with_collateral.is_empty() {
+            println!(
+                "🔗 Submitting {} deals with collateral to intel service for analysis...",
+                all_deals_with_collateral.len()
+            );
+            if let Err(e) =
+                submit_batch_to_intel_service(all_deals_with_collateral, &intel_url).await
+            {
+                eprintln!(
+                    "⚠️  Warning: Failed to submit batch to intel service: {}",
+                    e
+                );
+                eprintln!("   Continuing without intel service submission...");
+            }
+        } else {
+            println!("ℹ️  No deals with collateral to submit to intel service");
+        }
+    } else {
+        println!("ℹ️  COLLATERAL_INTEL_SERVICE_URL not set, skipping intel service submission");
+    }
 
     if double_pledged_count.is_some() && double_pledged_count.unwrap() > 0 {
         println!("🔍 Waiting 5 seconds for duplicate detection to process...");
@@ -1197,8 +1351,11 @@ async fn generate_random_deals(
 
     // Track if we should create double-pledged deals
     let mut dp_remaining = double_pledged_count.unwrap_or(0);
-    let mut shared_collateral_id: Option<Uuid> = None;
+    let mut shared_collateral: Option<Collateral> = None;
     let dp_collateral_index = rng.gen_range(0..COLLATERAL_NAMES.len());
+
+    // Track all deals and collateral for batch submission
+    let mut all_deals_with_collateral: Vec<(Deal, Vec<Collateral>)> = Vec::new();
 
     for i in 0..count {
         let originator = companies.choose(&mut rng).unwrap();
@@ -1207,31 +1364,33 @@ async fn generate_random_deals(
         let investor = investor_candidates.choose(&mut rng).unwrap();
 
         // Create collateral for this deal
-        let collateral_id = if dp_remaining > 0 {
+        let collateral = if dp_remaining > 0 {
             // Create intentional duplicate
-            if shared_collateral_id.is_none() {
+            if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                shared_collateral_id = Some(
+                let coll =
                     create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?,
-                );
+                        .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
-                    shared_collateral_id.unwrap(),
+                    coll.id,
                     double_pledged_count.unwrap()
                 );
-            }
-            dp_remaining -= 1;
-
-            if dp_remaining > 0 {
-                // Create another collateral with same attributes (should be detected as duplicate)
-                Some(
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?,
-                )
+                shared_collateral = Some(coll.clone());
+                Some(coll)
             } else {
-                // Last double-pledged deal uses the original
-                shared_collateral_id
+                dp_remaining -= 1;
+
+                if dp_remaining > 0 {
+                    // Create another collateral with same attributes (should be detected as duplicate)
+                    Some(
+                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                            .await?,
+                    )
+                } else {
+                    // Last double-pledged deal uses the original
+                    shared_collateral.clone()
+                }
             }
         } else {
             // Random collateral (70% of deals have collateral)
@@ -1242,17 +1401,45 @@ async fn generate_random_deals(
             }
         };
 
-        create_realistic_deal(
+        let (deal, collateral_opt) = create_realistic_deal(
             pool,
             originator.id,
             Some(investor.id),
             &format!("Random Deal #{}", i + 1),
-            collateral_id,
+            collateral.clone(),
         )
         .await?;
+
+        // Track deal with its collateral for batch submission
+        if let Some(coll) = collateral_opt {
+            all_deals_with_collateral.push((deal, vec![coll]));
+        }
     }
 
     println!("✅ Generated {} random deals", count);
+
+    // Submit batch to collateral intel service if configured
+    if let Ok(intel_url) = env::var("COLLATERAL_INTEL_SERVICE_URL") {
+        if !all_deals_with_collateral.is_empty() {
+            println!(
+                "🔗 Submitting {} deals with collateral to intel service for analysis...",
+                all_deals_with_collateral.len()
+            );
+            if let Err(e) =
+                submit_batch_to_intel_service(all_deals_with_collateral, &intel_url).await
+            {
+                eprintln!(
+                    "⚠️  Warning: Failed to submit batch to intel service: {}",
+                    e
+                );
+                eprintln!("   Continuing without intel service submission...");
+            }
+        } else {
+            println!("ℹ️  No deals with collateral to submit to intel service");
+        }
+    } else {
+        println!("ℹ️  COLLATERAL_INTEL_SERVICE_URL not set, skipping intel service submission");
+    }
 
     if double_pledged_count.is_some() && double_pledged_count.unwrap() > 0 {
         println!("🔍 Waiting 5 seconds for duplicate detection to process...");
@@ -1364,7 +1551,7 @@ async fn create_random_collateral(
     rng: &mut impl Rng,
     force_duplicate: bool,
     duplicate_index: Option<usize>,
-) -> Result<Uuid, Box<dyn std::error::Error>> {
+) -> Result<Collateral, Box<dyn std::error::Error>> {
     use db::{create_collateral, CreateCollateralRequest};
 
     let (name, collateral_type, address) = if force_duplicate && duplicate_index.is_some() {
@@ -1415,17 +1602,18 @@ async fn create_random_collateral(
     };
 
     let collateral = create_collateral(pool, request).await?;
-    Ok(collateral.id)
+    Ok(collateral)
 }
 
 /// Create a realistic deal with randomized but reasonable data
+/// Returns the deal and optionally the collateral if one was provided
 async fn create_realistic_deal(
     pool: &sqlx::PgPool,
     originator_id: Uuid,
     investor_id: Option<Uuid>,
     title_prefix: &str,
-    collateral_id: Option<Uuid>,
-) -> Result<Deal, Box<dyn std::error::Error>> {
+    collateral: Option<Collateral>,
+) -> Result<(Deal, Option<Collateral>), Box<dyn std::error::Error>> {
     let mut rng = thread_rng();
 
     // Realistic principal amounts
@@ -1515,10 +1703,10 @@ async fn create_realistic_deal(
         Some(selected_risk),
         Some(ASSET_CLASSES.choose(&mut rng).unwrap()),
         Some(REGIONS.choose(&mut rng).unwrap()),
-        None,          // minimum_investment
-        originated_at, // custom originated_at
-        originated_at, // set created_at to same as originated_at
-        collateral_id, // Collateral UUID (optional)
+        None,                              // minimum_investment
+        originated_at,                     // custom originated_at
+        originated_at,                     // set created_at to same as originated_at
+        collateral.as_ref().map(|c| c.id), // Collateral UUID (optional)
     )
     .await?;
 
@@ -1540,5 +1728,5 @@ async fn create_realistic_deal(
         selected_status
     );
 
-    Ok(deal)
+    Ok((deal, collateral))
 }
