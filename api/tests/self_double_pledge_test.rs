@@ -216,29 +216,8 @@ mod api_tests {
 
     #[tokio::test]
     #[ignore]
-    async fn test_get_collateral_deals_endpoint() {
-        // Test GET /api/v1/collateral/{id}/deals
-        // Should return list of deal IDs
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_get_collateral_with_deals_endpoint() {
-        // Test GET /api/v1/collateral/{id}/with-deals
-        // Should return collateral with deal_count and deal_ids
-    }
-
-    #[tokio::test]
-    #[ignore]
     async fn test_mark_intentional_double_pledge_endpoint() {
         // Test POST /api/v1/collateral/{id}/mark-intentional-double-pledge
         // Should update intentional_double_pledge flag
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_list_multi_deal_collateral_endpoint() {
-        // Test GET /api/v1/collateral/multi-deal
-        // Should return only collateral with 2+ deals
     }
 }

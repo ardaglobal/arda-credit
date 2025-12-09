@@ -904,20 +904,8 @@ pub fn create_router(state: ApiState) -> Router {
         )
         // Self double-pledge endpoints
         .route(
-            paths::COLLATERAL_DEALS,
-            get(crate::handlers::taxonomy::collateral::get_collateral_deals_handler),
-        )
-        .route(
-            paths::COLLATERAL_WITH_DEALS,
-            get(crate::handlers::taxonomy::collateral::get_collateral_with_deals_handler),
-        )
-        .route(
             paths::COLLATERAL_MARK_INTENTIONAL_DOUBLE_PLEDGE,
             post(crate::handlers::taxonomy::collateral::mark_intentional_double_pledge_handler),
-        )
-        .route(
-            paths::COLLATERAL_MULTI_DEAL,
-            get(crate::handlers::taxonomy::collateral::list_multi_deal_collateral_handler),
         )
         // Internal API: Collateral fetch for arda-collateral-intel
         .route(

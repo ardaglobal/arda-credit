@@ -20,12 +20,6 @@ make initDB  # Applies migration 062_add_intentional_double_pledge.sql
 All new endpoints are under `/api/v1/collateral/`:
 
 ```bash
-# Get all deals using a collateral
-GET /api/v1/collateral/{id}/deals
-
-# Get collateral with deal count
-GET /api/v1/collateral/{id}/with-deals
-
 # Mark as intentionally double-pledged
 POST /api/v1/collateral/{id}/mark-intentional-double-pledge
 {
@@ -33,8 +27,8 @@ POST /api/v1/collateral/{id}/mark-intentional-double-pledge
   "notes": "Multiple tranches"
 }
 
-# List all multi-deal collateral
-GET /api/v1/collateral/multi-deal?limit=20
+# Get collateral (includes deal count and deal IDs)
+GET /api/v1/collateral/{id}
 ```
 
 ## Example Workflow
@@ -73,8 +67,8 @@ curl -X POST http://0.0.0.0:8080/api/v1/collateral/col-123/mark-intentional-doub
     "notes": "Senior and junior tranches"
   }'
 
-# 4. Query multi-deal collateral
-curl http://0.0.0.0:8080/api/v1/collateral/multi-deal \
+# 4. View collateral with deal count
+curl http://0.0.0.0:8080/api/v1/collateral/col-123 \
   -H "Authorization: Bearer $TOKEN"
 ```
 

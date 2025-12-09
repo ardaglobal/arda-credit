@@ -72,31 +72,19 @@ Updated to export all new functions and types.
 
 **New API Endpoints:**
 
-1. **GET `/api/v1/collateral/{id}/deals`**
-   - Get all deal IDs that share a collateral
-   - Returns: `Vec<String>` (list of deal UUIDs)
-
-2. **GET `/api/v1/collateral/{id}/with-deals`**
-   - Get collateral with deal count and IDs
-   - Returns: `CollateralResponse` with `deal_count` and `deal_ids`
-
-3. **POST `/api/v1/collateral/{id}/mark-intentional-double-pledge`**
+1. **POST `/api/v1/collateral/{id}/mark-intentional-double-pledge`**
    - Mark collateral as intentionally double-pledged
    - Request body: `{ "intentional": bool, "notes": string? }`
    - Returns: `CollateralResponse`
 
-4. **GET `/api/v1/collateral/multi-deal`**
-   - List all collateral with 2+ deals
-   - Query params: `limit`, `offset`
-   - Returns: `Vec<CollateralResponse>` with deal counts
+2. **GET `/api/v1/collateral/{id}`**
+   - Enhanced to include deal count and deal IDs when available
+   - Returns: `CollateralResponse` with optional `deal_count` and `deal_ids`
 
 ### 4. Path Configuration (`api/src/config/paths.rs`)
 
-Added new path constants:
-- `COLLATERAL_DEALS`
-- `COLLATERAL_WITH_DEALS`
+Added new path constant:
 - `COLLATERAL_MARK_INTENTIONAL_DOUBLE_PLEDGE`
-- `COLLATERAL_MULTI_DEAL`
 
 ### 5. Router Configuration (`api/src/api/router.rs`)
 
@@ -188,11 +176,8 @@ POST /api/v1/collateral/{id}/mark-intentional-double-pledge
 ### Querying Multi-Deal Collateral
 
 ```bash
-# List all collateral with multiple deals
-GET /api/v1/collateral/multi-deal?limit=20
-
 # Get specific collateral with deal details
-GET /api/v1/collateral/{id}/with-deals
+GET /api/v1/collateral/{id}
 ```
 
 ## Testing

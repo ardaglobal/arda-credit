@@ -104,36 +104,6 @@ Content-Type: application/json
 }
 ```
 
-### 4. List Multi-Deal Collateral
-
-List all collateral that is referenced by 2 or more deals.
-
-```bash
-GET /api/v1/collateral/multi-deal?limit=20&offset=0
-```
-
-**Response:**
-```json
-[
-  {
-    "id": "collateral-uuid-1",
-    "name": "Property A",
-    "deal_count": 3,
-    "deal_ids": ["deal-1", "deal-2", "deal-3"],
-    "intentional_double_pledge": true,
-    ...
-  },
-  {
-    "id": "collateral-uuid-2",
-    "name": "Property B",
-    "deal_count": 2,
-    "deal_ids": ["deal-4", "deal-5"],
-    "intentional_double_pledge": false,
-    ...
-  }
-]
-```
-
 ## Workflow Examples
 
 ### Scenario 1: Creating Intentional Self Double-Pledge
@@ -185,23 +155,11 @@ curl -X POST http://0.0.0.0:8080/api/v1/collateral/collateral-uuid/mark-intentio
   }'
 ```
 
-### Scenario 2: Querying Multi-Deal Collateral
+### Scenario 2: Monitoring Double-Pledge Status
 
 ```bash
-# List all collateral with multiple deals
-curl "http://0.0.0.0:8080/api/v1/collateral/multi-deal?limit=10" \
-  -H "Authorization: Bearer $TOKEN"
-
-# Get details for specific collateral with deal count
-curl "http://0.0.0.0:8080/api/v1/collateral/collateral-uuid/with-deals" \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### Scenario 3: Monitoring Double-Pledge Status
-
-```bash
-# Get all deals using a specific collateral
-curl "http://0.0.0.0:8080/api/v1/collateral/collateral-uuid/deals" \
+# Get collateral details (includes deal_count and deal_ids when available)
+curl "http://0.0.0.0:8080/api/v1/collateral/collateral-uuid" \
   -H "Authorization: Bearer $TOKEN"
 
 # Returns: ["deal-uuid-1", "deal-uuid-2", "deal-uuid-3"]
