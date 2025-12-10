@@ -1291,13 +1291,28 @@ async fn generate_user_deals(
     }
 
     println!("✅ Created {} deals for user {}", count, email);
+    println!("   📊 Collateral breakdown:");
+    println!(
+        "      • {} deals WITH collateral ({}%)",
+        all_deals_with_collateral.len(),
+        (all_deals_with_collateral.len() as f64 / count as f64 * 100.0).round()
+    );
+    println!(
+        "      • {} deals WITHOUT collateral ({}%)",
+        count as usize - all_deals_with_collateral.len(),
+        ((count as usize - all_deals_with_collateral.len()) as f64 / count as f64 * 100.0).round()
+    );
 
     // Submit batch to collateral intel service if configured
     if let Ok(intel_url) = env::var("COLLATERAL_INTEL_SERVICE_URL") {
         if !all_deals_with_collateral.is_empty() {
             println!(
-                "🔗 Submitting {} deals with collateral to intel service for analysis...",
-                all_deals_with_collateral.len()
+                "ℹ️  Note: Only deals with collateral are submitted to intel service for analysis"
+            );
+            println!(
+                "🔗 Submitting {} of {} deals to intel service (only deals with collateral)...",
+                all_deals_with_collateral.len(),
+                count
             );
             if let Err(e) =
                 submit_batch_to_intel_service(all_deals_with_collateral, &intel_url).await
@@ -1309,7 +1324,7 @@ async fn generate_user_deals(
                 eprintln!("   Continuing without intel service submission...");
             }
         } else {
-            println!("ℹ️  No deals with collateral to submit to intel service");
+            println!("ℹ️  No deals with collateral - skipping intel service submission");
         }
     } else {
         println!("ℹ️  COLLATERAL_INTEL_SERVICE_URL not set, skipping intel service submission");
@@ -1417,13 +1432,28 @@ async fn generate_random_deals(
     }
 
     println!("✅ Generated {} random deals", count);
+    println!("   📊 Collateral breakdown:");
+    println!(
+        "      • {} deals WITH collateral ({}%)",
+        all_deals_with_collateral.len(),
+        (all_deals_with_collateral.len() as f64 / count as f64 * 100.0).round()
+    );
+    println!(
+        "      • {} deals WITHOUT collateral ({}%)",
+        count as usize - all_deals_with_collateral.len(),
+        ((count as usize - all_deals_with_collateral.len()) as f64 / count as f64 * 100.0).round()
+    );
 
     // Submit batch to collateral intel service if configured
     if let Ok(intel_url) = env::var("COLLATERAL_INTEL_SERVICE_URL") {
         if !all_deals_with_collateral.is_empty() {
             println!(
-                "🔗 Submitting {} deals with collateral to intel service for analysis...",
-                all_deals_with_collateral.len()
+                "ℹ️  Note: Only deals with collateral are submitted to intel service for analysis"
+            );
+            println!(
+                "🔗 Submitting {} of {} deals to intel service (only deals with collateral)...",
+                all_deals_with_collateral.len(),
+                count
             );
             if let Err(e) =
                 submit_batch_to_intel_service(all_deals_with_collateral, &intel_url).await
@@ -1435,7 +1465,7 @@ async fn generate_random_deals(
                 eprintln!("   Continuing without intel service submission...");
             }
         } else {
-            println!("ℹ️  No deals with collateral to submit to intel service");
+            println!("ℹ️  No deals with collateral - skipping intel service submission");
         }
     } else {
         println!("ℹ️  COLLATERAL_INTEL_SERVICE_URL not set, skipping intel service submission");
@@ -1721,11 +1751,18 @@ async fn create_realistic_deal(
         .await?;
     }
 
+    let collateral_msg = if collateral.is_some() {
+        " with collateral"
+    } else {
+        ""
+    };
+
     println!(
-        "  💰 Created deal: ${} at {}% APR ({})",
+        "  💰 Created deal: ${} at {}% APR ({}{})",
         principal_amount,
         (interest_rate_bps as f64) / 100.0,
-        selected_status
+        selected_status,
+        collateral_msg
     );
 
     Ok((deal, collateral))
