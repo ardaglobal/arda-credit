@@ -173,10 +173,16 @@ pub use taxonomy::secondary_trades::{
 
 pub use taxonomy::collateral::{
     create_collateral, create_collateral_batch, delete_collateral, get_collateral_by_custom_id,
-    get_collateral_by_deal_id, get_collateral_by_id, get_collateral_with_deal_count,
-    get_deals_by_collateral_id, list_collateral, list_multi_deal_collateral,
-    store_collateral_matches, update_collateral, update_collateral_detection_status, Collateral,
-    CollateralMatchInsert, CollateralWithDealCount, CreateCollateralRequest,
+    get_collateral_by_deal_id, get_collateral_by_id, get_collateral_transaction_history,
+    get_collateral_with_deal_count, get_deals_by_collateral_id, list_collateral,
+    list_multi_deal_collateral, record_collateral_creation_transaction,
+    record_collateral_deal_association_transaction,
+    record_collateral_deal_disassociation_transaction,
+    record_collateral_detection_request_transaction,
+    record_collateral_detection_update_transaction, record_collateral_transaction,
+    record_collateral_update_transaction, store_collateral_matches, update_collateral,
+    update_collateral_detection_status, Collateral, CollateralMatchInsert, CollateralTransaction,
+    CollateralTransactionWithUser, CollateralWithDealCount, CreateCollateralRequest,
     UpdateCollateralRequest,
 };
 

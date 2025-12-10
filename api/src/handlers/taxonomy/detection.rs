@@ -15,6 +15,7 @@ use uuid::Uuid;
 
 use crate::config::types::{ApiState, ErrorResponse};
 use arda_credit_db as db;
+use arda_credit_db::taxonomy::collateral::record_collateral_detection_update_transaction;
 
 // ============================================================================
 // REQUEST/RESPONSE TYPES
@@ -180,6 +181,21 @@ pub async fn receive_detection_result(
         result.detection_status,
         highest_match.map(|m| m.matched_collateral_id)
     );
+
+    // Record detection update transaction for audit trail
+    if let Err(e) = record_collateral_detection_update_transaction(
+        pool,
+        collateral_id,
+        &result.detection_status,
+        result.match_count as i32,
+    )
+    .await
+    {
+        warn!(
+            "Failed to record collateral detection update transaction: {}",
+            e
+        );
+    }
 
     // Store all matches in collateral_matches table
     if !result.matches.is_empty() {

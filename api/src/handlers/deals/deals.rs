@@ -51,7 +51,10 @@ use arda_credit_db::{
 
     remove_deal_listing, // was remove_loan_listing
     // Collateral functions
-    taxonomy::collateral::{get_collateral_by_id, get_deals_by_collateral_id},
+    taxonomy::collateral::{
+        get_collateral_by_id, get_deals_by_collateral_id,
+        record_collateral_deal_association_transaction,
+    },
     update_deal,                   // was update_loan
     validate_transfer_eligibility, // was validate_transfer_eligibility
     // Enums for validation
@@ -956,6 +959,23 @@ pub async fn create_deal_endpoint(
                     tracing::warn!("Failed to publish DealCollateralLinked event: {}", e);
                 }
             });
+        }
+    }
+
+    // Record collateral-deal association transaction for audit trail
+    if let Some(coll_id) = deal.collateral_id {
+        if let Err(e) = record_collateral_deal_association_transaction(
+            &state.pool,
+            coll_id,
+            deal.id,
+            None, // System event - no specific user
+        )
+        .await
+        {
+            tracing::warn!(
+                "Failed to record collateral-deal association transaction: {}",
+                e
+            );
         }
     }
 
