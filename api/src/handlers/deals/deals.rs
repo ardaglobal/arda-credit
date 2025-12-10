@@ -373,6 +373,29 @@ pub struct DealPaymentHistoryResponse {
     pub total_amount_paid: String,
 }
 
+/// Response for deal transaction history (audit trail)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DealAuditTrailResponse {
+    pub deal_id: String,
+    pub deal_status: String,
+    pub transactions: Vec<DealTransactionEvent>,
+    pub total_count: usize,
+}
+
+/// Individual transaction event in the audit trail
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DealTransactionEvent {
+    pub id: String,
+    pub transaction_type: String,
+    pub amount: String,
+    pub created_at: String,
+    pub user_id: Option<String>,
+    pub payment_id: Option<String>,
+    pub included_in_batch_id: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
+    pub description: String, // Human-readable description
+}
+
 // ============================================================================
 // CONSOLIDATED MARKETPLACE TYPES (moved from marketplace_handlers)
 // ============================================================================
@@ -2181,6 +2204,98 @@ pub async fn get_deal_payment_history_endpoint(
     };
 
     info!("✅ API: Payment history retrieved");
+    Ok(Json(response))
+}
+
+/// Get deal transaction history (audit trail)
+#[utoipa::path(
+    get,
+    path = "/api/v1/deal/{deal_id}/audit-trail",
+    summary = "Get deal transaction history",
+    description = "Retrieve complete transaction history showing deal state progression events",
+    params(
+        ("deal_id" = String, Path, description = "Deal UUID")
+    ),
+    responses(
+        (status = 200, description = "Transaction history retrieved", body = DealAuditTrailResponse),
+        (status = 400, description = "Invalid deal ID"),
+        (status = 404, description = "Deal not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals"
+)]
+#[instrument(skip(state))]
+pub async fn get_deal_audit_trail_endpoint(
+    State(state): State<ApiState>,
+    Path(deal_id): Path<String>,
+) -> Result<Json<DealAuditTrailResponse>, (StatusCode, String)> {
+    info!("Getting audit trail for deal: {}", deal_id);
+
+    let deal_uuid = uuid::Uuid::parse_str(&deal_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid deal ID".to_string()))?;
+
+    // Get deal to verify it exists and get current status
+    let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch deal: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            error!("Deal not found: {}", deal_id);
+            (StatusCode::NOT_FOUND, "Deal not found".to_string())
+        })?;
+
+    // Get transaction history
+    let transactions = arda_credit_db::get_deal_transaction_history(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch transaction history: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    let total_count = transactions.len();
+
+    // Convert to response format with descriptions
+    let transaction_events: Vec<DealTransactionEvent> = transactions
+        .into_iter()
+        .map(|tx| {
+            let description = match tx.transaction_type.as_str() {
+                "deal_origination" => format!("Deal originated with principal of ${}", tx.amount),
+                "deal_payment" => format!("Payment of ${} received", tx.amount),
+                "deal_closeout" => "Deal closed".to_string(),
+                _ => format!("{} transaction", tx.transaction_type),
+            };
+
+            DealTransactionEvent {
+                id: tx.id.to_string(),
+                transaction_type: tx.transaction_type,
+                amount: tx.amount.to_string(),
+                created_at: tx.created_at.to_rfc3339(),
+                user_id: tx.user_id.map(|u| u.to_string()),
+                payment_id: tx.payment_id.map(|p| p.to_string()),
+                included_in_batch_id: tx.included_in_batch_id,
+                metadata: tx.metadata,
+                description,
+            }
+        })
+        .collect();
+
+    let response = DealAuditTrailResponse {
+        deal_id: deal_uuid.to_string(),
+        deal_status: deal.deal_status,
+        transactions: transaction_events,
+        total_count,
+    };
+
+    info!(
+        "Successfully retrieved {} transaction events for deal {}",
+        total_count, deal_id
+    );
+
     Ok(Json(response))
 }
 
