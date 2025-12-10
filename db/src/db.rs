@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use std::env;
 use std::str::FromStr;
 use tracing::{debug, instrument};
@@ -511,6 +511,47 @@ pub struct DealTransactionDb {
     pub included_in_batch_id: Option<i32>,
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
+}
+
+/// Get complete transaction history for a deal with enriched context
+pub async fn get_deal_transaction_history(
+    pool: &PgPool,
+    deal_id: uuid::Uuid,
+) -> Result<Vec<DealTransactionDb>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT 
+            id, transaction_id_hash, user_id_hash, deal_id_hash,
+            transaction_type, amount, user_id, deal_id, payment_id,
+            included_in_batch_id, metadata, created_at
+        FROM deal_transactions
+        WHERE deal_id = $1
+        ORDER BY created_at DESC
+        "#,
+    )
+    .bind(deal_id)
+    .fetch_all(pool)
+    .await?;
+
+    let transactions: Vec<DealTransactionDb> = rows
+        .into_iter()
+        .map(|row| DealTransactionDb {
+            id: row.get("id"),
+            transaction_id_hash: row.get("transaction_id_hash"),
+            user_id_hash: row.get("user_id_hash"),
+            deal_id_hash: row.get("deal_id_hash"),
+            transaction_type: row.get("transaction_type"),
+            amount: row.get("amount"),
+            user_id: row.get("user_id"),
+            deal_id: row.get("deal_id"),
+            payment_id: row.get("payment_id"),
+            included_in_batch_id: row.get("included_in_batch_id"),
+            metadata: row.get("metadata"),
+            created_at: row.get("created_at"),
+        })
+        .collect();
+
+    Ok(transactions)
 }
 
 /// State snapshot for auditing

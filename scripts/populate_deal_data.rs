@@ -31,6 +31,7 @@ use reqwest::Client;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{collections::HashMap, env, str::FromStr};
 use uuid::Uuid;
 
@@ -559,6 +560,213 @@ async fn create_deal_with_custom_dates(
     };
 
     Ok(deal)
+}
+
+// ============================================================================
+// DEAL TRANSACTION HISTORY FUNCTIONS
+// ============================================================================
+
+/// Generate SHA256 hash of a UUID for deal_transactions table
+fn hash_uuid(uuid: &Uuid) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(uuid.as_bytes());
+    hasher.finalize().to_vec()
+}
+
+/// Create a deal_transactions record to track state progression events
+async fn create_deal_transaction_record(
+    pool: &sqlx::PgPool,
+    transaction_type: &str, // "deal_origination", "deal_payment", "deal_closeout"
+    deal_id: Uuid,
+    user_id: Option<Uuid>, // Optional for script-generated deals
+    amount: Decimal,
+    created_at: chrono::DateTime<Utc>,
+    payment_id: Option<Uuid>,
+) -> Result<(), sqlx::Error> {
+    let transaction_id = Uuid::new_v4();
+    let transaction_id_hash = hash_uuid(&transaction_id);
+    // Use a dummy UUID for hash if user_id is None
+    let dummy_uuid = Uuid::nil();
+    let user_id_hash = hash_uuid(&user_id.unwrap_or(dummy_uuid));
+    let deal_id_hash = hash_uuid(&deal_id);
+
+    sqlx::query(
+        r#"
+        INSERT INTO deal_transactions (
+            id, transaction_id_hash, user_id_hash, deal_id_hash,
+            transaction_type, amount, user_id, deal_id, payment_id,
+            metadata, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        "#,
+    )
+    .bind(transaction_id)
+    .bind(transaction_id_hash)
+    .bind(user_id_hash)
+    .bind(deal_id_hash)
+    .bind(transaction_type)
+    .bind(amount)
+    .bind(user_id)
+    .bind(deal_id)
+    .bind(payment_id)
+    .bind(json!({
+        "created_by_script": true,
+        "transaction_type": transaction_type
+    }))
+    .bind(created_at)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Create realistic state progression history for a deal based on its target status
+async fn create_deal_state_progression(
+    pool: &sqlx::PgPool,
+    deal: &Deal,
+    target_status: &str,
+    rng: &mut impl Rng,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let originated_at = deal.originated_at;
+    let maturity_date = deal
+        .maturity_date
+        .unwrap_or(originated_at + Duration::days(365));
+
+    // Always create deal_origination transaction
+    // Note: user_id is None for script-generated deals without specific users
+    create_deal_transaction_record(
+        pool,
+        "deal_origination",
+        deal.id,
+        None, // No specific user for script-generated deals
+        deal.principal_amount,
+        originated_at,
+        None,
+    )
+    .await?;
+
+    match target_status {
+        "originated" => {
+            // Just the origination event, no payments yet
+        }
+        "active" => {
+            // Create 1-2 partial payment transactions
+            let num_payments = rng.gen_range(1..=2);
+            let total_days = (maturity_date - originated_at).num_days();
+
+            for _i in 0..num_payments {
+                // Spread payments across 20-60% of deal lifetime
+                let days_offset = rng.gen_range(30..=(total_days * 6 / 10).max(30));
+                let payment_date = originated_at + Duration::days(days_offset);
+
+                // Partial payment (10-30% of principal each)
+                let payment_pct = rng.gen_range(10..=30);
+                let payment_amount =
+                    deal.principal_amount * Decimal::from(payment_pct) / Decimal::from(100);
+
+                create_deal_transaction_record(
+                    pool,
+                    "deal_payment",
+                    deal.id,
+                    None, // No specific user for script-generated deals
+                    payment_amount,
+                    payment_date,
+                    None, // No actual payment record created
+                )
+                .await?;
+            }
+        }
+        "paid_off" => {
+            // Create 3-5 payment transactions that sum to principal amount
+            let num_payments = rng.gen_range(3..=5);
+            let total_days = (maturity_date - originated_at).num_days();
+
+            // Calculate payment amounts that sum to principal
+            let mut remaining = deal.principal_amount;
+            let mut payment_amounts = Vec::new();
+
+            for _i in 0..(num_payments - 1) {
+                // Each payment is 15-35% of remaining balance
+                let pct = rng.gen_range(15..=35);
+                let amount = (remaining * Decimal::from(pct) / Decimal::from(100)).round_dp(2);
+                payment_amounts.push(amount);
+                remaining -= amount;
+            }
+            // Last payment is exactly the remaining balance
+            payment_amounts.push(remaining);
+
+            // Create evenly spaced payment transactions
+            for (i, amount) in payment_amounts.iter().enumerate() {
+                let days_offset = ((i + 1) as i64 * total_days) / (num_payments as i64);
+                let payment_date = originated_at + Duration::days(days_offset.min(total_days - 1));
+
+                create_deal_transaction_record(
+                    pool,
+                    "deal_payment",
+                    deal.id,
+                    None, // No specific user for script-generated deals
+                    *amount,
+                    payment_date,
+                    None, // No actual payment record created
+                )
+                .await?;
+            }
+        }
+        "closed" => {
+            // Create full payment history + closeout transaction
+            let num_payments = rng.gen_range(3..=5);
+            let total_days = (maturity_date - originated_at).num_days();
+
+            // Calculate payment amounts that sum to principal
+            let mut remaining = deal.principal_amount;
+            let mut payment_amounts = Vec::new();
+
+            for _i in 0..(num_payments - 1) {
+                let pct = rng.gen_range(15..=35);
+                let amount = (remaining * Decimal::from(pct) / Decimal::from(100)).round_dp(2);
+                payment_amounts.push(amount);
+                remaining -= amount;
+            }
+            payment_amounts.push(remaining);
+
+            // Create payment transactions
+            let mut last_payment_date = originated_at;
+            for (i, amount) in payment_amounts.iter().enumerate() {
+                let days_offset = ((i + 1) as i64 * total_days) / (num_payments as i64);
+                let payment_date = originated_at + Duration::days(days_offset.min(total_days - 1));
+                last_payment_date = payment_date;
+
+                create_deal_transaction_record(
+                    pool,
+                    "deal_payment",
+                    deal.id,
+                    None, // No specific user for script-generated deals
+                    *amount,
+                    payment_date,
+                    None, // No actual payment record created
+                )
+                .await?;
+            }
+
+            // Create closeout transaction a few days after final payment
+            let closeout_date = last_payment_date + Duration::days(rng.gen_range(3..=14));
+            create_deal_transaction_record(
+                pool,
+                "deal_closeout",
+                deal.id,
+                None, // No specific user for script-generated deals
+                Decimal::ZERO,
+                closeout_date,
+                None,
+            )
+            .await?;
+        }
+        _ => {
+            // Unknown status, just create origination
+        }
+    }
+
+    Ok(())
 }
 
 // ============================================================================
@@ -1750,6 +1958,9 @@ async fn create_realistic_deal(
         .execute(pool)
         .await?;
     }
+
+    // Create state progression history (transaction records showing how deal reached current state)
+    create_deal_state_progression(pool, &deal, selected_status, &mut rng).await?;
 
     let collateral_msg = if collateral.is_some() {
         " with collateral"

@@ -474,6 +474,10 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DEAL_PAYMENTS,
             get(crate::handlers::deals::deals::get_deal_payment_history_endpoint),
         )
+        .route(
+            paths::DEAL_AUDIT_TRAIL,
+            get(crate::handlers::deals::deals::get_deal_audit_trail_endpoint),
+        )
         // ========================================================================
         // LOAN TAPE ENDPOINTS
         // ========================================================================
