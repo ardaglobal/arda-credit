@@ -603,6 +603,268 @@ pub async fn list_multi_deal_collateral(
         .collect())
 }
 
+// ============================================================================
+// COLLATERAL TRANSACTION RECORDING (Audit Trail)
+// ============================================================================
+
+/// Collateral transaction record for audit trail
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct CollateralTransaction {
+    pub transaction_id: Uuid,
+    pub collateral_id: Uuid,
+    pub transaction_type: String,
+    pub created_at: DateTime<Utc>,
+    pub created_by: Option<Uuid>,
+    pub deal_id: Option<Uuid>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Collateral transaction with user details (for audit trail display)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollateralTransactionWithUser {
+    pub transaction_id: Uuid,
+    pub collateral_id: Uuid,
+    pub transaction_type: String,
+    pub created_at: DateTime<Utc>,
+    pub created_by: Option<Uuid>,
+    pub user_email: Option<String>,
+    pub deal_id: Option<Uuid>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Generic function to record a collateral transaction
+#[instrument(skip(pool))]
+pub async fn record_collateral_transaction(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    transaction_type: &str,
+    created_by: Option<Uuid>,
+    deal_id: Option<Uuid>,
+    metadata: Option<serde_json::Value>,
+) -> Result<CollateralTransaction, DbError> {
+    let transaction = sqlx::query_as!(
+        CollateralTransaction,
+        r#"
+        INSERT INTO collateral_transactions (
+            collateral_id, transaction_type, created_by, deal_id, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING
+            transaction_id,
+            collateral_id,
+            transaction_type,
+            created_at as "created_at!",
+            created_by,
+            deal_id,
+            metadata
+        "#,
+        collateral_id,
+        transaction_type,
+        created_by,
+        deal_id,
+        metadata
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        DbError::TransactionFailed(format!("Failed to record collateral transaction: {}", e))
+    })?;
+
+    Ok(transaction)
+}
+
+/// Record collateral creation transaction
+#[instrument(skip(pool))]
+pub async fn record_collateral_creation_transaction(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    created_by: Option<Uuid>,
+    initial_properties: serde_json::Value,
+) -> Result<CollateralTransaction, DbError> {
+    let metadata = serde_json::json!({
+        "initial_properties": initial_properties
+    });
+
+    record_collateral_transaction(
+        pool,
+        collateral_id,
+        "collateral_creation",
+        created_by,
+        None,
+        Some(metadata),
+    )
+    .await
+}
+
+/// Record collateral update transaction with field changes
+#[instrument(skip(pool))]
+pub async fn record_collateral_update_transaction(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    updated_by: Option<Uuid>,
+    changes: serde_json::Value,
+) -> Result<CollateralTransaction, DbError> {
+    let metadata = serde_json::json!({
+        "changes": changes
+    });
+
+    record_collateral_transaction(
+        pool,
+        collateral_id,
+        "collateral_update",
+        updated_by,
+        None,
+        Some(metadata),
+    )
+    .await
+}
+
+/// Record collateral-deal association transaction
+#[instrument(skip(pool))]
+pub async fn record_collateral_deal_association_transaction(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    deal_id: Uuid,
+    created_by: Option<Uuid>,
+) -> Result<CollateralTransaction, DbError> {
+    let metadata = serde_json::json!({
+        "deal_id": deal_id.to_string(),
+        "action": "associated"
+    });
+
+    record_collateral_transaction(
+        pool,
+        collateral_id,
+        "collateral_deal_association",
+        created_by,
+        Some(deal_id),
+        Some(metadata),
+    )
+    .await
+}
+
+/// Record collateral-deal disassociation transaction
+#[instrument(skip(pool))]
+pub async fn record_collateral_deal_disassociation_transaction(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    deal_id: Uuid,
+    created_by: Option<Uuid>,
+) -> Result<CollateralTransaction, DbError> {
+    let metadata = serde_json::json!({
+        "deal_id": deal_id.to_string(),
+        "action": "disassociated"
+    });
+
+    record_collateral_transaction(
+        pool,
+        collateral_id,
+        "collateral_deal_disassociation",
+        created_by,
+        Some(deal_id),
+        Some(metadata),
+    )
+    .await
+}
+
+/// Record collateral detection request transaction
+#[instrument(skip(pool))]
+pub async fn record_collateral_detection_request_transaction(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    requested_by: Option<Uuid>,
+    trigger_type: &str,
+) -> Result<CollateralTransaction, DbError> {
+    let metadata = serde_json::json!({
+        "trigger_type": trigger_type,
+        "requested_by": requested_by.map(|u| u.to_string())
+    });
+
+    record_collateral_transaction(
+        pool,
+        collateral_id,
+        "collateral_detection_request",
+        requested_by,
+        None,
+        Some(metadata),
+    )
+    .await
+}
+
+/// Record collateral detection update transaction
+#[instrument(skip(pool))]
+pub async fn record_collateral_detection_update_transaction(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    detection_status: &str,
+    detection_count: i32,
+) -> Result<CollateralTransaction, DbError> {
+    let metadata = serde_json::json!({
+        "detection_status": detection_status,
+        "detection_count": detection_count
+    });
+
+    record_collateral_transaction(
+        pool,
+        collateral_id,
+        "collateral_detection_update",
+        None, // System event
+        None,
+        Some(metadata),
+    )
+    .await
+}
+
+/// Get collateral transaction history with user details
+#[instrument(skip(pool))]
+pub async fn get_collateral_transaction_history(
+    pool: &PgPool,
+    collateral_id: Uuid,
+    limit: Option<i64>,
+) -> Result<Vec<CollateralTransactionWithUser>, DbError> {
+    let limit = limit.unwrap_or(100);
+
+    let rows = sqlx::query!(
+        r#"
+        SELECT 
+            ct.transaction_id,
+            ct.collateral_id,
+            ct.transaction_type,
+            ct.created_at,
+            ct.created_by,
+            u.email as "user_email?",
+            ct.deal_id,
+            ct.metadata
+        FROM collateral_transactions ct
+        LEFT JOIN users u ON ct.created_by = u.id
+        WHERE ct.collateral_id = $1
+        ORDER BY ct.created_at ASC
+        LIMIT $2
+        "#,
+        collateral_id,
+        limit
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(DbError::Database)?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| CollateralTransactionWithUser {
+            transaction_id: row.transaction_id,
+            collateral_id: row.collateral_id,
+            transaction_type: row.transaction_type,
+            created_at: row.created_at,
+            created_by: row.created_by,
+            user_email: row.user_email,
+            deal_id: row.deal_id,
+            metadata: row.metadata,
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

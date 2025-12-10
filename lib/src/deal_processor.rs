@@ -268,6 +268,16 @@ impl GlobalLoanState {
                 self.users = user_state.users;
             }
             TransactionType::VerifyDocument => todo!(),
+            // Collateral transactions are for audit trail only, not processed in zkVM
+            TransactionType::CollateralCreation
+            | TransactionType::CollateralUpdate
+            | TransactionType::CollateralDealAssociation
+            | TransactionType::CollateralDealDisassociation
+            | TransactionType::CollateralDetectionRequest
+            | TransactionType::CollateralDetectionUpdate => {
+                // No-op: Collateral transactions are recorded for audit trail
+                // but don't affect zkVM state (deals, balances, users)
+            }
         }
 
         // Update global state

@@ -375,6 +375,7 @@ fn default_limit() -> u32 {
         // removed as collateral detection tables were dropped in migration 060
         crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler,
         crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_audit_trail_handler,
 
         // Internal endpoints
         crate::handlers::taxonomy::detection::receive_detection_result,

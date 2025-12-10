@@ -67,6 +67,13 @@ pub enum TransactionType {
     // Admin operations
     AdminRegistration = 11,
     VerifyDocument = 19,
+    // Collateral operations
+    CollateralCreation = 20,
+    CollateralUpdate = 21,
+    CollateralDealAssociation = 22,
+    CollateralDealDisassociation = 23,
+    CollateralDetectionRequest = 24,
+    CollateralDetectionUpdate = 25,
 }
 
 impl TransactionType {
@@ -147,6 +154,16 @@ impl std::fmt::Display for TransactionType {
             TransactionType::InvestorRegistration => write!(f, "investor_registration"),
             TransactionType::AdminRegistration => write!(f, "admin_registration"),
             TransactionType::VerifyDocument => write!(f, "verify_document"),
+            TransactionType::CollateralCreation => write!(f, "collateral_creation"),
+            TransactionType::CollateralUpdate => write!(f, "collateral_update"),
+            TransactionType::CollateralDealAssociation => write!(f, "collateral_deal_association"),
+            TransactionType::CollateralDealDisassociation => {
+                write!(f, "collateral_deal_disassociation")
+            }
+            TransactionType::CollateralDetectionRequest => {
+                write!(f, "collateral_detection_request")
+            }
+            TransactionType::CollateralDetectionUpdate => write!(f, "collateral_detection_update"),
         }
     }
 }
@@ -171,6 +188,12 @@ impl std::str::FromStr for TransactionType {
             "investor_registration" => Ok(TransactionType::InvestorRegistration),
             "admin_registration" => Ok(TransactionType::AdminRegistration),
             "verify_document" => Ok(TransactionType::VerifyDocument),
+            "collateral_creation" => Ok(TransactionType::CollateralCreation),
+            "collateral_update" => Ok(TransactionType::CollateralUpdate),
+            "collateral_deal_association" => Ok(TransactionType::CollateralDealAssociation),
+            "collateral_deal_disassociation" => Ok(TransactionType::CollateralDealDisassociation),
+            "collateral_detection_request" => Ok(TransactionType::CollateralDetectionRequest),
+            "collateral_detection_update" => Ok(TransactionType::CollateralDetectionUpdate),
             _ => Err(format!("Unknown transaction type: {}", s)),
         }
     }

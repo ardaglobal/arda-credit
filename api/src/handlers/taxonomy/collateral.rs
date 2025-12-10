@@ -13,8 +13,9 @@ use utoipa::{IntoParams, ToSchema};
 
 use arda_credit_db::{
     create_collateral, create_collateral_batch, delete_collateral, get_collateral_by_custom_id,
-    get_collateral_by_deal_id, get_collateral_by_id, list_collateral, update_collateral,
-    Collateral, CreateCollateralRequest as DbCreateRequest,
+    get_collateral_by_deal_id, get_collateral_by_id, get_collateral_transaction_history,
+    list_collateral, record_collateral_creation_transaction, record_collateral_update_transaction,
+    update_collateral, Collateral, CreateCollateralRequest as DbCreateRequest,
     UpdateCollateralRequest as DbUpdateRequest,
 };
 
@@ -225,6 +226,26 @@ pub async fn create_collateral_handler(
         .map_err(|e| internal_error("create_collateral", e))?;
 
     info!("Collateral created successfully: {}", collateral.id);
+
+    // Record creation transaction for audit trail
+    let initial_properties = serde_json::json!({
+        "name": collateral.name.clone(),
+        "collateral_type": collateral.collateral_type.clone(),
+        "description": collateral.description.clone(),
+        "address": collateral.address.clone(),
+        "custom_id": collateral.custom_id.clone(),
+    });
+
+    if let Err(e) = record_collateral_creation_transaction(
+        &state.pool,
+        collateral.id,
+        Some(user.id),
+        initial_properties,
+    )
+    .await
+    {
+        tracing::warn!("Failed to record collateral creation transaction: {}", e);
+    }
 
     // Publish CollateralCreated event (fire-and-forget)
     if let Some(publisher) = &state.event_publisher {
@@ -437,9 +458,10 @@ pub async fn list_collateral_handler(
     tag = "Collateral",
     security(("bearer" = []))
 )]
-#[instrument(skip(state))]
+#[instrument(skip(state, headers))]
 pub async fn update_collateral_handler(
     State(state): State<ApiState>,
+    headers: axum::http::HeaderMap,
     Path(id): Path<String>,
     Json(req): Json<UpdateCollateralApiRequest>,
 ) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -469,61 +491,91 @@ pub async fn update_collateral_handler(
             _ => internal_error("update_collateral", e),
         })?;
 
+    // Detect changes for both transaction recording and event publishing
+    let mut changes = Vec::new();
+
+    if let Some(ref new_name) = req.name {
+        if *new_name != old_collateral.name {
+            changes.push(crate::events::FieldChange {
+                field_name: "name".to_string(),
+                old_value: Some(old_collateral.name.clone()),
+                new_value: Some(new_name.clone()),
+            });
+        }
+    }
+
+    if let Some(ref new_type) = req.collateral_type {
+        if Some(new_type.clone()) != old_collateral.collateral_type {
+            changes.push(crate::events::FieldChange {
+                field_name: "collateral_type".to_string(),
+                old_value: old_collateral.collateral_type.clone(),
+                new_value: Some(new_type.clone()),
+            });
+        }
+    }
+
+    if let Some(ref new_desc) = req.description {
+        if Some(new_desc.clone()) != old_collateral.description {
+            changes.push(crate::events::FieldChange {
+                field_name: "description".to_string(),
+                old_value: old_collateral.description.clone(),
+                new_value: Some(new_desc.clone()),
+            });
+        }
+    }
+
+    if let Some(ref new_addr) = req.address {
+        if Some(new_addr.clone()) != old_collateral.address {
+            changes.push(crate::events::FieldChange {
+                field_name: "address".to_string(),
+                old_value: old_collateral.address.clone(),
+                new_value: Some(new_addr.clone()),
+            });
+        }
+    }
+
+    if let Some(ref new_custom_id) = req.custom_id {
+        if Some(new_custom_id.clone()) != old_collateral.custom_id {
+            changes.push(crate::events::FieldChange {
+                field_name: "custom_id".to_string(),
+                old_value: old_collateral.custom_id.clone(),
+                new_value: Some(new_custom_id.clone()),
+            });
+        }
+    }
+
+    // Record update transaction for audit trail if there are changes
+    if !changes.is_empty() {
+        let changes_json = serde_json::json!(changes
+            .iter()
+            .map(|c| {
+                serde_json::json!({
+                    c.field_name.clone(): {
+                        "old": c.old_value.clone(),
+                        "new": c.new_value.clone()
+                    }
+                })
+            })
+            .collect::<Vec<_>>());
+
+        // Extract current user from headers (if available)
+        let current_user = extract_current_user(&headers);
+        let updated_by = current_user.as_ref().map(|u| u.id);
+
+        if let Err(e) = record_collateral_update_transaction(
+            &state.pool,
+            collateral.id,
+            updated_by,
+            changes_json,
+        )
+        .await
+        {
+            tracing::warn!("Failed to record collateral update transaction: {}", e);
+        }
+    }
+
     // Publish CollateralUpdated event (fire-and-forget)
     if let Some(publisher) = &state.event_publisher {
-        // Detect changes
-        let mut changes = Vec::new();
-
-        if let Some(ref new_name) = req.name {
-            if *new_name != old_collateral.name {
-                changes.push(crate::events::FieldChange {
-                    field_name: "name".to_string(),
-                    old_value: Some(old_collateral.name.clone()),
-                    new_value: Some(new_name.clone()),
-                });
-            }
-        }
-
-        if let Some(ref new_type) = req.collateral_type {
-            if Some(new_type.clone()) != old_collateral.collateral_type {
-                changes.push(crate::events::FieldChange {
-                    field_name: "collateral_type".to_string(),
-                    old_value: old_collateral.collateral_type.clone(),
-                    new_value: Some(new_type.clone()),
-                });
-            }
-        }
-
-        if let Some(ref new_desc) = req.description {
-            if Some(new_desc.clone()) != old_collateral.description {
-                changes.push(crate::events::FieldChange {
-                    field_name: "description".to_string(),
-                    old_value: old_collateral.description.clone(),
-                    new_value: Some(new_desc.clone()),
-                });
-            }
-        }
-
-        if let Some(ref new_addr) = req.address {
-            if Some(new_addr.clone()) != old_collateral.address {
-                changes.push(crate::events::FieldChange {
-                    field_name: "address".to_string(),
-                    old_value: old_collateral.address.clone(),
-                    new_value: Some(new_addr.clone()),
-                });
-            }
-        }
-
-        if let Some(ref new_custom_id) = req.custom_id {
-            if Some(new_custom_id.clone()) != old_collateral.custom_id {
-                changes.push(crate::events::FieldChange {
-                    field_name: "custom_id".to_string(),
-                    old_value: old_collateral.custom_id.clone(),
-                    new_value: Some(new_custom_id.clone()),
-                });
-            }
-        }
-
         if !changes.is_empty() {
             let event = crate::events::CollateralEvent::CollateralUpdated {
                 event_id: uuid::Uuid::new_v4(),
@@ -680,4 +732,193 @@ pub async fn create_collateral_batch_handler(
 
     info!("Batch creation successful: {} items created", results.len());
     Ok((StatusCode::CREATED, Json(response)))
+}
+
+// ============================================================================
+// AUDIT TRAIL ENDPOINT
+// ============================================================================
+
+/// Collateral audit trail response
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CollateralAuditTrailResponse {
+    pub collateral_id: String,
+    pub collateral_name: String,
+    pub total_events: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detection_history_unavailable: Option<bool>,
+    pub events: Vec<AuditEvent>,
+}
+
+/// Individual audit event (transaction or detection)
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct AuditEvent {
+    pub event_id: String,
+    pub event_type: String, // "creation", "update", "deal_association", "detection_request", etc.
+    pub timestamp: String,  // ISO 8601
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_email: Option<String>,
+    pub source: String,             // "arda-credit" or "arda-collateral-intel"
+    pub details: serde_json::Value, // Flexible structure based on event_type
+}
+
+/// Get collateral audit trail
+#[utoipa::path(
+    get,
+    path = "/api/v1/collateral/{id}/audit-trail",
+    summary = "Get collateral audit trail",
+    description = "Retrieve complete audit trail showing collateral lifecycle events and detection history",
+    params(
+        ("id" = String, Path, description = "Collateral UUID")
+    ),
+    responses(
+        (status = 200, description = "Audit trail retrieved", body = CollateralAuditTrailResponse),
+        (status = 404, description = "Collateral not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Collateral",
+    security(("bearer" = []))
+)]
+#[instrument(skip(state))]
+pub async fn get_collateral_audit_trail_handler(
+    State(state): State<ApiState>,
+    Path(id): Path<String>,
+) -> Result<Json<CollateralAuditTrailResponse>, (StatusCode, Json<ErrorResponse>)> {
+    info!("Getting audit trail for collateral: {}", id);
+
+    let uuid = parse_uuid(&id, "collateral_id")?;
+
+    // 1. Verify collateral exists
+    let collateral = get_collateral_by_id(&state.pool, uuid)
+        .await
+        .map_err(|e| match e {
+            arda_credit_db::DbError::NotFound(_) => not_found_error("Collateral", &id),
+            _ => internal_error("get_collateral_by_id", e),
+        })?;
+
+    // 2. Query collateral transactions from PostgreSQL
+    let transactions = get_collateral_transaction_history(&state.pool, uuid, Some(100))
+        .await
+        .map_err(|e| internal_error("get_collateral_transaction_history", e))?;
+
+    // 3. Convert transactions to audit events
+    let mut events: Vec<AuditEvent> = transactions
+        .into_iter()
+        .map(|tx| {
+            let event_type = match tx.transaction_type.as_str() {
+                "collateral_creation" => "creation",
+                "collateral_update" => "update",
+                "collateral_deal_association" => "deal_association",
+                "collateral_deal_disassociation" => "deal_disassociation",
+                "collateral_detection_request" => "detection_request",
+                "collateral_detection_update" => "detection_update",
+                _ => "unknown",
+            };
+
+            AuditEvent {
+                event_id: tx.transaction_id.to_string(),
+                event_type: event_type.to_string(),
+                timestamp: tx.created_at.to_rfc3339(),
+                user_id: tx.created_by.map(|u| u.to_string()),
+                user_email: tx.user_email,
+                source: "arda-credit".to_string(),
+                details: tx.metadata.unwrap_or_else(|| serde_json::json!({})),
+            }
+        })
+        .collect();
+
+    // 4. Try to fetch detection history from arda-collateral-intel
+    let mut detection_history_unavailable = false;
+
+    if let Ok(intel_url) = std::env::var("COLLATERAL_INTEL_SERVICE_URL") {
+        let client = crate::services::CollateralIntelClient::new(intel_url);
+
+        match client.get_detection_history(uuid).await {
+            Ok(Some(history)) => {
+                // Save count before consuming the vector
+                let detection_count = history.detections.len();
+
+                // Convert detection records to audit events
+                for detection in history.detections {
+                    // Parse timestamp
+                    let timestamp =
+                        crate::services::collateral_intel_client::parse_detection_timestamp(
+                            &detection.analyzed_at,
+                        )
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_else(|| detection.analyzed_at.clone());
+
+                    let details = serde_json::json!({
+                        "detection_id": detection.detection_id,
+                        "trigger_type": detection.trigger_type,
+                        "status": detection.status,
+                        "match_count": detection.match_count,
+                        "matches": detection.matches.iter().map(|m| {
+                            serde_json::json!({
+                                "matched_collateral_id": m.matched_collateral_id,
+                                "matched_deal_id": m.matched_deal_id,
+                                "overall_score": m.overall_score,
+                                "confidence": m.confidence,
+                                "is_same_deal": m.is_same_deal,
+                                "both_deals_active": m.both_deals_active,
+                                "summary": m.summary,
+                            })
+                        }).collect::<Vec<_>>()
+                    });
+
+                    events.push(AuditEvent {
+                        event_id: detection.detection_id,
+                        event_type: "detection".to_string(),
+                        timestamp,
+                        user_id: None,
+                        user_email: None,
+                        source: "arda-collateral-intel".to_string(),
+                        details,
+                    });
+                }
+
+                info!(
+                    "Merged {} detection events from arda-collateral-intel",
+                    detection_count
+                );
+            }
+            Ok(None) => {
+                info!("No detection history available from arda-collateral-intel");
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to fetch detection history from arda-collateral-intel: {}",
+                    e
+                );
+                detection_history_unavailable = true;
+            }
+        }
+    } else {
+        info!("COLLATERAL_INTEL_SERVICE_URL not configured, skipping detection history");
+    }
+
+    // 5. Sort events chronologically
+    events.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+    let total_events = events.len();
+
+    let response = CollateralAuditTrailResponse {
+        collateral_id: uuid.to_string(),
+        collateral_name: collateral.name,
+        total_events,
+        detection_history_unavailable: if detection_history_unavailable {
+            Some(true)
+        } else {
+            None
+        },
+        events,
+    };
+
+    info!(
+        "Successfully retrieved {} audit events for collateral {}",
+        total_events, id
+    );
+
+    Ok(Json(response))
 }
