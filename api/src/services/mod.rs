@@ -26,6 +26,7 @@ pub mod session_service;
 pub mod simple_withdrawal_executor;
 pub mod team_invitation_service;
 pub mod trading_auth;
+pub mod transaction_recording;
 pub mod unified_batch_service;
 pub mod withdrawal_service;
 
@@ -47,6 +48,7 @@ pub use kyc_service::{KycValidationResult, KycValidationService};
 pub use magic_link_service::MagicLinkService;
 pub use session_service::SessionService;
 pub use team_invitation_service::{TeamInvitationError, TeamInvitationService};
+pub use transaction_recording::{TransactionRecordingRequest, TransactionRecordingService};
 pub use unified_batch_service::{BatchCreationResult, UnifiedBatchService};
 pub use withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,

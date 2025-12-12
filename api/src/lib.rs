@@ -62,6 +62,7 @@ pub use services::{
     AuthError, AuthService, BalanceVerificationResult, BalanceVerificationService,
     BatchCreationResult, BatchProcessorHandle, Claims, CompanyService, EmailService,
     KycValidationResult, KycValidationService, MagicLinkService, SessionService,
+    TransactionRecordingService,
     UnifiedBatchService, WithdrawalTransactionService,
 };
 

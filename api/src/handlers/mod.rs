@@ -24,6 +24,7 @@ pub mod finance;
 pub mod loan_tape_handlers;
 pub mod metrics;
 pub mod taxonomy;
+pub mod test_handlers;
 pub mod users;
 
 // Re-export all handler functions for backward compatibility

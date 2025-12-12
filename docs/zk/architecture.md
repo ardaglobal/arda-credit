@@ -275,6 +275,7 @@ Our system separates concerns across three distinct layers, each with specific r
 **Responsibilities:**
 
 1. **Transaction Recording Service**
+   - **Implementation:** `api/src/services/transaction_recording.rs`
    - Creates deal_transactions records
    - Hashes UUIDs using SHA256 for privacy
    - Encodes metadata for zkVM consumption

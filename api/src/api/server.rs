@@ -21,6 +21,7 @@ use crate::services::deployment_config::get_deployment;
 use crate::services::email_service::EmailService;
 use crate::services::magic_link_service::{MagicLinkConfig, MagicLinkService};
 use crate::services::session_service::SessionService;
+use crate::services::transaction_recording::TransactionRecordingService;
 use crate::utils::session_cleanup::SessionCleanupService;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -151,6 +152,9 @@ impl ApiServer {
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
 
+        // Initialize transaction recording service
+        let transaction_recording = Arc::new(TransactionRecordingService::new(pool.clone()));
+
         // Initialize Prometheus metrics
         info!("📊 Initializing Prometheus metrics");
         let metrics_handle = crate::utils::metrics::MetricsHandle::new().map_err(|e| {
@@ -194,6 +198,7 @@ impl ApiServer {
             email_rate_limiter: None, // Will be set in create_router
             metrics_cache,
             event_publisher,
+            transaction_recording,  // NEW
         };
 
         let server = Self { config, state };
@@ -228,6 +233,9 @@ impl ApiServer {
         // Initialize withdrawal and balance services
         let withdrawal_service = crate::WithdrawalTransactionService::new(pool.clone());
         let balance_service = crate::BalanceVerificationService::new(pool.clone());
+
+        // Initialize transaction recording service
+        let transaction_recording = Arc::new(TransactionRecordingService::new(pool.clone()));
 
         // Initialize simple withdrawal executor service if Ethereum config is available
         let withdrawal_executor = if let Some(executor_config) =
@@ -357,6 +365,7 @@ impl ApiServer {
             email_rate_limiter: None, // Will be set in create_router
             metrics_cache,
             event_publisher,
+            transaction_recording,  // NEW
         };
 
         Ok(Self { config, state })
@@ -457,6 +466,7 @@ impl ApiServer {
             email_rate_limiter: Some(email_rate_limiter),
             metrics_cache: self.state.metrics_cache.clone(),
             event_publisher: self.state.event_publisher.clone(),
+            transaction_recording: self.state.transaction_recording.clone(),  // NEW
         };
 
         // Use REST API routes (includes health endpoints and state)

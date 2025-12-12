@@ -35,6 +35,7 @@ use crate::handlers::{
 use crate::services::batch_processor::BatchProcessorHandle;
 use crate::services::session_service::SessionService;
 use crate::services::{BalanceVerificationService, MetricsCache, WithdrawalTransactionService};
+use crate::services::TransactionRecordingService;
 use arda_credit_db::{IndexedMerkleTreeADS, User};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -103,6 +104,8 @@ pub struct ApiState {
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
     pub metrics_cache: Arc<MetricsCache>,
     pub event_publisher: Option<Arc<crate::events::CollateralEventPublisher>>,
+    // NEW: Add transaction recording service
+    pub transaction_recording: Arc<TransactionRecordingService>,
 }
 
 /// Configuration for API server
@@ -596,8 +599,12 @@ pub fn create_router(state: ApiState) -> Router {
             post(crate::handlers::faucet::request_faucet_funds),
         )
         // ========================================================================
-        // TAXONOMY ENDPOINTS - Arda Document Management
+        // TEST ENDPOINTS (only in debug mode)
         // ========================================================================
+        .route(
+            "/api/v1/test/record-transaction",
+            get(crate::handlers::test_handlers::test_transaction_recording_endpoint),
+        )
         // Credit Agreements
         .route(
             paths::TAXONOMY_CREDIT_AGREEMENTS,
