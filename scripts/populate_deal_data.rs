@@ -1,17 +1,42 @@
 #!/usr/bin/env cargo run --bin populate_deal_data --
 //! Deal data population script for the Arda Credit database
 //!
-//! This script creates realistic deal data for testing the deals API endpoint
-//! and automatically refreshes the metrics cache for dashboard visualization.
-//! It supports two modes:
+//! This script creates realistic deal data for testing the deals API endpoint,
+//! zkVM batch processing, and automatically refreshes the metrics cache.
+//!
+//! ## Transaction Coverage
+//!
+//! The script creates the following transaction types for zkVM testing:
+//! - UserRegistration (for new users)
+//! - DealOrigination (for all deals)
+//! - DealPayment (1-5 per deal based on status)
+//! - DealCloseout (for 'closed' status deals)
+//! - CollateralCreation (~70% of deals)
+//! - CollateralDealAssociation (~70% of deals)
+//!
+//! This provides 60% coverage of zkVM transaction types.
+//!
+//! ## Modes
+//!
 //! - Random mode: Generate random deals with random companies (no --email)
 //! - User mode: Generate deals for a specific user's companies (with --email)
+//! - CSV mode: Export to CSV instead of database (with --csv)
 //!
-//! After generating deals, the script automatically calculates and caches:
-//! - Market value time series (both market growth and Arda growth)
-//! - Pie chart distributions (industry, region, asset class breakdowns)
+//! ## Usage
 //!
-//! Run with: cargo run --bin populate_deal_data
+//! ```bash
+//! # Basic usage (random deals)
+//! cargo run --bin populate_deal_data -- --count 25
+//!
+//! # User-specific deals
+//! cargo run --bin populate_deal_data -- --email user@example.com --count 10
+//!
+//! # With all zkVM transaction types
+//! cargo run --bin populate_deal_data -- --count 50
+//!
+//! # Clear and regenerate
+//! cargo run --bin populate_deal_data -- --clear --count 100
+//! ```
 
 use chrono::NaiveDate;
 use chrono::{Duration, Utc};
@@ -1357,6 +1382,20 @@ async fn generate_user_deals(
             println!("👤 User {} not found, creating new user...", email);
             let user = create_identity(pool, "investor", email).await?;
             println!("✅ Created new user: {} ({})", user.email, user.id);
+
+            // NEW: Record user registration transaction
+            println!("  📝 Recording UserRegistration transaction");
+            create_deal_transaction_record(
+                pool,
+                "user_registration",
+                Uuid::nil(),
+                Some(user.id),
+                Decimal::ZERO,
+                user.created_at,
+                None,
+            )
+            .await?;
+
             user
         }
     };
@@ -1725,6 +1764,26 @@ async fn ensure_user_companies(
     )
     .await?;
 
+    // NEW: Record user registration transaction for zkVM
+    // Check if user was recently created (within last minute) to avoid duplicates
+    let user_age = (Utc::now() - user.created_at).num_seconds();
+    if user_age < 60 {
+        println!(
+            "  📝 Recording UserRegistration transaction for {}",
+            user.email
+        );
+        create_deal_transaction_record(
+            pool,
+            "user_registration",
+            Uuid::nil(), // No deal_id for user registration
+            Some(user.id),
+            Decimal::ZERO,
+            user.created_at, // Use user's actual creation time
+            None,
+        )
+        .await?;
+    }
+
     // Create originator company
     let originator_company_name = format!("{} Originator Corp", user_name);
     let originator_request = CreateCompanyRequest {
@@ -1840,6 +1899,22 @@ async fn create_random_collateral(
     };
 
     let collateral = create_collateral(pool, request).await?;
+
+    // NEW: Record collateral creation transaction for zkVM
+    println!(
+        "  📝 Recording CollateralCreation transaction for {}",
+        collateral.id
+    );
+    db::record_collateral_transaction(
+        pool,
+        collateral.id,
+        "collateral_creation",
+        None, // No specific user for script-generated collateral
+        None, // No deal association yet
+        Some(serde_json::json!({"created_by_script": true})),
+    )
+    .await?;
+
     Ok(collateral)
 }
 
@@ -1947,6 +2022,23 @@ async fn create_realistic_deal(
         collateral.as_ref().map(|c| c.id), // Collateral UUID (optional)
     )
     .await?;
+
+    // NEW: If collateral was associated, record transaction
+    if let Some(coll) = &collateral {
+        println!("  📝 Recording CollateralDealAssociation transaction");
+        db::record_collateral_transaction(
+            pool,
+            coll.id,
+            "collateral_deal_association",
+            None,          // No specific user for script-generated deals
+            Some(deal.id), // Associated with this deal
+            Some(serde_json::json!({
+                "created_by_script": true,
+                "deal_id": deal.id,
+            })),
+        )
+        .await?;
+    }
 
     // Update outstanding balance if different from principal
     if outstanding_balance != principal_amount {
