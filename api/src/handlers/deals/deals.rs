@@ -475,6 +475,73 @@ pub struct DealTransactionEvent {
 }
 
 // ============================================================================
+// ENHANCED AUDIT TRAIL WITH PROOFS TYPES
+// ============================================================================
+
+/// Enhanced deal audit trail response with proof information
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EnhancedDealAuditTrailResponse {
+    pub deal_id: String,
+    pub deal_status: String,
+    pub total_transactions: usize,
+
+    // Transactions grouped by batch with proof info
+    pub batches: Vec<BatchWithTransactions>,
+    pub unbatched_transactions: Vec<UnbatchedTransaction>,
+}
+
+/// Batch with transactions and proof metadata
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BatchWithTransactions {
+    pub batch_id: i32,
+    pub batch_status: String, // "pending", "proving", "proven", "posted"
+    pub created_at: String,
+    pub proven_at: Option<String>,
+    pub posted_at: Option<String>,
+    pub transactions: Vec<DealTransactionEvent>,
+    pub proof: Option<ProofMetadata>,
+}
+
+/// Proof metadata for a batch
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProofMetadata {
+    pub sindri_proof_id: String,
+    pub proof_status: String,
+    pub posted_to_contract: bool,
+    pub contract_tx_hash: Option<String>,
+    pub merkle_roots: MerkleRootInfo,
+    pub proof_url: String,
+    pub contract_url: Option<String>,
+    pub proof_data: Option<ProofDataInfo>,
+}
+
+/// Merkle root information
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MerkleRootInfo {
+    pub previous_state_root: String,
+    pub new_state_root: String,
+}
+
+/// Proof data information (when include_proof_data=true)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProofDataInfo {
+    pub proof_bytes_size: usize,
+    pub public_values_size: usize,
+    pub proof_bytes_base64: Option<String>,
+    pub public_values_base64: Option<String>,
+}
+
+/// Transaction not yet batched
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UnbatchedTransaction {
+    pub id: String,
+    pub transaction_type: String,
+    pub amount: String,
+    pub created_at: String,
+    pub status: String, // Always "pending_batch"
+}
+
+// ============================================================================
 // CONSOLIDATED MARKETPLACE TYPES (moved from marketplace_handlers)
 // ============================================================================
 
@@ -2775,6 +2842,241 @@ pub async fn get_deal_audit_trail_endpoint(
     );
 
     Ok(Json(response))
+}
+
+/// Get enhanced deal audit trail with proof information
+#[utoipa::path(
+    get,
+    path = "/api/v1/deal/{deal_id}/audit-trail-with-proofs",
+    params(
+        ("deal_id" = String, Path, description = "Deal ID"),
+        ("include_proof_data" = Option<bool>, Query, description = "Include actual proof bytes in response (default: false)")
+    ),
+    responses(
+        (status = 200, description = "Enhanced audit trail with proof information", body = EnhancedDealAuditTrailResponse),
+        (status = 400, description = "Invalid deal ID"),
+        (status = 404, description = "Deal not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals"
+)]
+pub async fn get_deal_audit_trail_with_proofs_endpoint(
+    State(state): State<ApiState>,
+    Path(deal_id): Path<String>,
+    Query(params): Query<EnhancedAuditTrailQuery>,
+) -> Result<Json<EnhancedDealAuditTrailResponse>, (StatusCode, String)> {
+    info!(
+        "Getting enhanced audit trail with proofs for deal: {}",
+        deal_id
+    );
+
+    let deal_uuid = uuid::Uuid::parse_str(&deal_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid deal ID".to_string()))?;
+
+    // Get deal to verify it exists and get current status
+    let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch deal: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            error!("Deal not found: {}", deal_id);
+            (StatusCode::NOT_FOUND, "Deal not found".to_string())
+        })?;
+
+    // Get transactions with proof information
+    let transactions = arda_credit_db::get_deal_transactions_with_proofs(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch transaction history with proofs: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    let total_transactions = transactions.len();
+
+    // Group transactions by batch
+    let mut batch_map: std::collections::HashMap<
+        Option<i32>,
+        Vec<&arda_credit_db::TransactionWithProofInfo>,
+    > = std::collections::HashMap::new();
+
+    for tx in &transactions {
+        batch_map
+            .entry(tx.batch_id)
+            .or_insert_with(Vec::new)
+            .push(tx);
+    }
+
+    // Build batches response
+    let mut batches = Vec::new();
+    let mut unbatched_transactions = Vec::new();
+
+    for (batch_id_opt, batch_txs) in batch_map {
+        match batch_id_opt {
+            Some(batch_id) => {
+                // This is a batched transaction group
+                if let Some(first_tx) = batch_txs.first() {
+                    let batch_status = determine_batch_status(first_tx);
+                    let proven_at = first_tx.proven_at.map(|dt| dt.to_rfc3339());
+                    let posted_at = first_tx.posted_to_contract_at.map(|dt| dt.to_rfc3339());
+
+                    let proof = if first_tx.sindri_proof_id.is_some() {
+                        Some(build_proof_metadata(
+                            first_tx,
+                            params.include_proof_data.unwrap_or(false),
+                        ))
+                    } else {
+                        None
+                    };
+
+                    let transaction_events = batch_txs
+                        .iter()
+                        .map(|tx| build_transaction_event(tx))
+                        .collect();
+
+                    batches.push(BatchWithTransactions {
+                        batch_id,
+                        batch_status,
+                        created_at: first_tx.created_at.to_rfc3339(),
+                        proven_at,
+                        posted_at,
+                        transactions: transaction_events,
+                        proof,
+                    });
+                }
+            }
+            None => {
+                // These are unbatched transactions
+                for tx in batch_txs {
+                    unbatched_transactions.push(UnbatchedTransaction {
+                        id: tx.id.to_string(),
+                        transaction_type: tx.transaction_type.clone(),
+                        amount: tx.amount.to_string(),
+                        created_at: tx.created_at.to_rfc3339(),
+                        status: "pending_batch".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Sort batches by creation time
+    batches.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+    let batch_count = batches.len();
+
+    let response = EnhancedDealAuditTrailResponse {
+        deal_id: deal_uuid.to_string(),
+        deal_status: deal.deal_status.clone(),
+        total_transactions,
+        batches,
+        unbatched_transactions,
+    };
+
+    info!(
+        "Successfully retrieved enhanced audit trail with {} transactions in {} batches for deal {}",
+        total_transactions, batch_count, deal_id
+    );
+
+    Ok(Json(response))
+}
+
+/// Query parameters for enhanced audit trail
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct EnhancedAuditTrailQuery {
+    pub include_proof_data: Option<bool>,
+}
+
+/// Determine batch status based on proof information
+fn determine_batch_status(tx: &arda_credit_db::TransactionWithProofInfo) -> String {
+    if tx.posted_to_contract.unwrap_or(false) {
+        "posted".to_string()
+    } else if tx.proven_at.is_some() {
+        "proven".to_string()
+    } else if tx.sindri_proof_id.is_some() {
+        "proving".to_string()
+    } else {
+        "pending".to_string()
+    }
+}
+
+/// Build proof metadata from transaction data
+fn build_proof_metadata(
+    tx: &arda_credit_db::TransactionWithProofInfo,
+    include_proof_data: bool,
+) -> ProofMetadata {
+    let sindri_proof_id = tx.sindri_proof_id.as_ref().unwrap().clone();
+
+    // Build URLs (these would need to be configured properly)
+    let proof_url = format!("https://sindri.app/proof/{}", sindri_proof_id);
+    let contract_url = tx.contract_tx_hash.as_ref().map(|hash| {
+        // Assuming Sepolia testnet, this should be configurable
+        format!("https://sepolia.etherscan.io/tx/{}", hash)
+    });
+
+    let merkle_roots = MerkleRootInfo {
+        previous_state_root: tx
+            .prev_merkle_root
+            .clone()
+            .unwrap_or_else(|| "pending".to_string()),
+        new_state_root: tx
+            .new_merkle_root
+            .clone()
+            .unwrap_or_else(|| "pending".to_string()),
+    };
+
+    let proof_data = if include_proof_data {
+        // For now, we'll skip actual proof data inclusion as it requires additional API calls to Sindri
+        // This would be implemented in a future enhancement
+        Some(ProofDataInfo {
+            proof_bytes_size: 0,
+            public_values_size: 0,
+            proof_bytes_base64: None,
+            public_values_base64: None,
+        })
+    } else {
+        None
+    };
+
+    ProofMetadata {
+        sindri_proof_id,
+        proof_status: tx
+            .proof_status
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string()),
+        posted_to_contract: tx.posted_to_contract.unwrap_or(false),
+        contract_tx_hash: tx.contract_tx_hash.clone(),
+        merkle_roots,
+        proof_url,
+        contract_url,
+        proof_data,
+    }
+}
+
+/// Build transaction event from database transaction
+fn build_transaction_event(tx: &arda_credit_db::TransactionWithProofInfo) -> DealTransactionEvent {
+    let description = match tx.transaction_type.as_str() {
+        "deal_origination" => format!("Deal originated with principal of ${}", tx.amount),
+        "deal_payment" => format!("Payment of ${} received", tx.amount),
+        "deal_closeout" => "Deal closed".to_string(),
+        _ => format!("{} transaction", tx.transaction_type),
+    };
+
+    DealTransactionEvent {
+        id: tx.id.to_string(),
+        transaction_type: tx.transaction_type.clone(),
+        amount: tx.amount.to_string(),
+        created_at: tx.created_at.to_rfc3339(),
+        user_id: None,    // Not available in the enhanced query for now
+        payment_id: None, // Not available in the enhanced query for now
+        included_in_batch_id: tx.batch_id,
+        metadata: tx.metadata.clone(),
+        description,
+    }
 }
 
 // ============================================================================

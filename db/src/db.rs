@@ -554,6 +554,84 @@ pub async fn get_deal_transaction_history(
     Ok(transactions)
 }
 
+/// Transaction with proof information for enhanced audit trail
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TransactionWithProofInfo {
+    // Transaction fields
+    pub id: uuid::Uuid,
+    pub transaction_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub created_at: DateTime<Utc>,
+    pub metadata: Option<serde_json::Value>,
+
+    // Batch and proof fields (nullable)
+    pub batch_id: Option<i32>,
+    pub proof_status: Option<String>,
+    pub sindri_proof_id: Option<String>,
+    pub proven_at: Option<DateTime<Utc>>,
+    pub posted_to_contract: Option<bool>,
+    pub posted_to_contract_at: Option<DateTime<Utc>>,
+    pub contract_tx_hash: Option<String>,
+    pub prev_merkle_root: Option<String>,
+    pub new_merkle_root: Option<String>,
+}
+
+/// Get deal transactions with proof information (single query)
+#[instrument]
+pub async fn get_deal_transactions_with_proofs(
+    pool: &PgPool,
+    deal_id: uuid::Uuid,
+) -> Result<Vec<TransactionWithProofInfo>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            dt.id,
+            dt.transaction_type,
+            dt.amount,
+            dt.created_at,
+            dt.metadata,
+            dt.included_in_batch_id as batch_id,
+            pb.proof_status,
+            pb.sindri_proof_id,
+            pb.proven_at,
+            pb.posted_to_contract,
+            pb.posted_to_contract_at,
+            pb.contract_tx_hash,
+            encode(ads.merkle_root, 'hex') as merkle_root
+        FROM deal_transactions dt
+        LEFT JOIN proof_batches pb ON dt.included_in_batch_id = pb.id
+        LEFT JOIN ads_state_commits ads ON pb.id = ads.batch_id
+        WHERE dt.deal_id = $1
+        ORDER BY dt.created_at ASC
+        "#,
+    )
+    .bind(deal_id)
+    .fetch_all(pool)
+    .await?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| TransactionWithProofInfo {
+            id: row.get("id"),
+            transaction_type: row.get("transaction_type"),
+            amount: row.get("amount"),
+            created_at: row.get("created_at"),
+            metadata: row.get("metadata"),
+            batch_id: row.get("batch_id"),
+            proof_status: row.get("proof_status"),
+            sindri_proof_id: row.get("sindri_proof_id"),
+            proven_at: row.get("proven_at"),
+            posted_to_contract: row.get("posted_to_contract"),
+            posted_to_contract_at: row.get("posted_to_contract_at"),
+            contract_tx_hash: row.get("contract_tx_hash"),
+            prev_merkle_root: None, // TODO: Get from previous batch or contract data
+            new_merkle_root: row.get("merkle_root"),
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
 /// State snapshot for auditing
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct StateSnapshot {

@@ -472,10 +472,7 @@ impl GlobalLoanState {
 
     /// Get collateral by ID (read-only)
     #[must_use]
-    pub fn get_collateral(
-        &self,
-        collateral_id: &[u8],
-    ) -> Option<&crate::collateral::Collateral> {
+    pub fn get_collateral(&self, collateral_id: &[u8]) -> Option<&crate::collateral::Collateral> {
         self.collateral.get(collateral_id)
     }
 
@@ -1448,7 +1445,10 @@ mod tests {
             .insert(collateral_id.to_vec(), vec![deal_id.to_vec()]);
 
         assert!(state.is_collateral_pledged(&collateral_id));
-        assert_eq!(state.get_active_associations(&collateral_id), vec![deal_id.to_vec()]);
+        assert_eq!(
+            state.get_active_associations(&collateral_id),
+            vec![deal_id.to_vec()]
+        );
         assert_eq!(state.total_active_associations(), 1);
     }
     #[test]
@@ -1989,7 +1989,7 @@ mod tests {
         let deposit_tx = create_test_deposit_with_timestamp(
             investor_id,
             investor_wallet,
-            200000, // $2000 deposit
+            200000,        // $2000 deposit
             1_640_999_000, // Before collateral creation
         );
         state.process_transaction(&deposit_tx).unwrap();

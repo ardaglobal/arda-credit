@@ -491,6 +491,10 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DEAL_AUDIT_TRAIL,
             get(crate::handlers::deals::deals::get_deal_audit_trail_endpoint),
         )
+        .route(
+            paths::DEAL_AUDIT_TRAIL_WITH_PROOFS,
+            get(crate::handlers::deals::deals::get_deal_audit_trail_with_proofs_endpoint),
+        )
         // ========================================================================
         // LOAN TAPE ENDPOINTS
         // ========================================================================
