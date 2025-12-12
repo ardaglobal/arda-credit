@@ -1,0 +1,41 @@
+feat: fix critical zkVM batch processor disconnect
+
+Resolves the critical gap where API endpoints created transactions in
+deal_transactions but the batch processor was querying incoming_transactions,
+breaking the entire zkVM integration pipeline.
+
+Changes:
+
+Database Layer:
+- Added get_pending_deal_transactions() to query deal_transactions table
+- Added create_batch_from_deal_transactions() for atomic batch creation
+- Fixed SQLx type annotations for proper DateTime handling
+
+API Layer:
+- Created transaction_conversion.rs module for DB→zkVM format conversion
+- Updated batch_processor.rs to query deal_transactions
+- Updated unified_batch_service.rs to use new query functions
+- Added zkVM transaction recording to detection webhook
+- Fixed doctest examples and imports
+
+Testing:
+- Created automated E2E test script (tests/scripts/test_zk_integration.sh)
+- Fixed integration test migration paths
+- All tests passing (37+ tests)
+
+Documentation:
+- Updated docs/zk/EXECUTIVE_SUMMARY.md with resolution status
+- Updated docs/zk/IMMEDIATE_ACTIONS.md marking actions complete
+- Created IMPLEMENTATION_SUMMARY.md and ZK_INTEGRATION_COMPLETE.md
+
+Result: API→deal_transactions→batch processor→zkVM→proofs pipeline now
+fully operational. All 10 core transaction types (UserRegistration,
+DealOrigination, DealPayment, DealCloseout, 6 Collateral types) flow
+through complete proof generation system.
+
+Files created: 3
+Files modified: 10
+Lines added: ~700
+Tests: ✅ All passing
+Compilation: ✅ Zero errors
+

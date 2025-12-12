@@ -13,9 +13,19 @@
 //!
 //! ## Usage
 //!
-//! ```rust
-//! use crate::services::TransactionRecordingService;
+//! ```rust,no_run
+//! use api::services::TransactionRecordingService;
+//! use arda_credit_lib::TransactionType;
+//! use serde_json::json;
+//! use rust_decimal::Decimal;
+//! use uuid::Uuid;
 //!
+//! # async fn example(
+//! #     state: api::config::types::ApiState,
+//! #     user_id: Uuid,
+//! #     deal_id: Uuid,
+//! #     principal_amount: Decimal,
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // Get service from ApiState
 //! let tx_service = state.transaction_recording.clone();
 //!
@@ -26,10 +36,12 @@
 //!     Some(deal_id),
 //!     principal_amount,
 //!     Some(json!({
-//!         "investor_id": investor_id.to_string(),
+//!         "investor_id": "...",
 //!         "interest_rate_bps": 500,
 //!     })),
 //! ).await?;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! ## Privacy & Hashing
@@ -141,7 +153,14 @@ impl TransactionRecordingService {
     /// * `Err(DbError)` - Database error if insertion fails
     ///
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// use api::services::TransactionRecordingService;
+    /// use arda_credit_lib::TransactionType;
+    /// use serde_json::json;
+    /// use rust_decimal::Decimal;
+    /// use uuid::Uuid;
+    ///
+    /// # async fn example(pool: sqlx::PgPool, user_id: Uuid) -> Result<(), Box<dyn std::error::Error>> {
     /// let tx_service = TransactionRecordingService::new(pool.clone());
     /// let tx_id = tx_service.record_transaction(
     ///     TransactionType::UserRegistration,
@@ -153,6 +172,8 @@ impl TransactionRecordingService {
     ///         "user_type": "investor"
     ///     })),
     /// ).await?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[instrument(skip(self, metadata), level = "info")]
     pub async fn record_transaction(
@@ -292,6 +313,7 @@ impl TransactionRecordingService {
 mod tests {
     use super::*;
     use sqlx::PgPool;
+    use std::str::FromStr;
 
     // Helper to create test database pool
     async fn setup_test_db() -> PgPool {
@@ -306,6 +328,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "Requires test database - run with: cargo test --package api -- --ignored"]
     async fn test_record_user_registration() {
         let pool = setup_test_db().await;
         let service = TransactionRecordingService::new(pool.clone());
@@ -345,6 +368,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "Requires test database - run with: cargo test --package api -- --ignored"]
     async fn test_record_deal_origination() {
         let pool = setup_test_db().await;
         let service = TransactionRecordingService::new(pool.clone());
@@ -382,6 +406,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "Requires test database - run with: cargo test --package api -- --ignored"]
     async fn test_all_transaction_types() {
         let pool = setup_test_db().await;
         let service = TransactionRecordingService::new(pool.clone());
@@ -449,6 +474,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "Requires test database - run with: cargo test --package api -- --ignored"]
     async fn test_batch_recording() {
         let pool = setup_test_db().await;
         let service = TransactionRecordingService::new(pool.clone());

@@ -14,9 +14,9 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
 use arda_credit_db::{
-    create_batch_from_deal_transactions, get_pending_deal_transactions, get_pending_transactions,
-    store_ads_state_commit, AuthenticatedDataStructure, DealTransactionDb, IncomingTransaction,
-    IndexedMerkleTreeADS, LoanOperation, ProofBatch, StateTransition,
+    create_batch_from_deal_transactions, get_pending_deal_transactions, store_ads_state_commit,
+    AuthenticatedDataStructure, DealTransactionDb, IncomingTransaction, IndexedMerkleTreeADS,
+    LoanOperation, ProofBatch, StateTransition,
 };
 use chrono;
 use std::time::{Duration, Instant};
