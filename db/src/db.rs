@@ -894,6 +894,62 @@ pub async fn get_pending_transactions(
     Ok(transactions)
 }
 
+/// Get pending deal transactions for zkVM batch processing
+///
+/// This function queries the deal_transactions table for transactions that haven't
+/// been included in a batch yet (included_in_batch_id IS NULL).
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `limit` - Optional maximum number of transactions to retrieve (defaults to 1000)
+///
+/// # Returns
+/// Vector of DealTransactionDb structs ready for zkVM processing
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "deal_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_pending_deal_transactions(
+    pool: &PgPool,
+    limit: Option<i64>,
+) -> Result<Vec<DealTransactionDb>, sqlx::Error> {
+    let limit = limit.unwrap_or(1000);
+    debug!("Getting pending deal transactions with limit {}", limit);
+
+    let rows = sqlx::query_as!(
+        DealTransactionDb,
+        r#"
+        SELECT 
+            id,
+            transaction_id_hash,
+            user_id_hash,
+            deal_id_hash,
+            transaction_type,
+            amount,
+            user_id,
+            deal_id,
+            payment_id,
+            included_in_batch_id,
+            metadata,
+            created_at as "created_at!"
+        FROM deal_transactions
+        WHERE included_in_batch_id IS NULL
+        ORDER BY created_at ASC
+        LIMIT $1
+        "#,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!("Found {} pending deal transactions", rows.len());
+    Ok(rows)
+}
+
 // ============================================================================
 // BATCH FUNCTIONS
 // ============================================================================
@@ -925,6 +981,151 @@ pub async fn create_batch(
     }
 
     // Get the created batch details
+    get_batch_by_id(pool, batch_id).await.map(Some)
+}
+
+/// Create a batch from deal_transactions only (new integrated approach)
+///
+/// This function creates a batch by directly querying deal_transactions and marking
+/// them as batched, bypassing the old incoming_transactions system entirely.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `batch_size` - Maximum number of transactions to include in the batch
+/// * `deal_transaction_ids` - Optional specific transaction IDs to batch (for testing)
+///
+/// # Returns
+/// Option<ProofBatch> - The created batch, or None if no transactions were available
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(
+        operation = "create_batch_deal_transactions",
+        table = "proof_batches",
+        layer = "database"
+    ),
+    level = "info"
+)]
+pub async fn create_batch_from_deal_transactions(
+    pool: &PgPool,
+    batch_size: i32,
+    deal_transaction_ids: Option<Vec<uuid::Uuid>>,
+) -> Result<Option<ProofBatch>, sqlx::Error> {
+    debug!(
+        "Creating batch from deal_transactions with size {}",
+        batch_size
+    );
+
+    // Start a transaction for atomicity
+    let mut tx = pool.begin().await?;
+
+    // Get current counter value (for ADS compatibility)
+    let previous_counter: i64 = sqlx::query_scalar!("SELECT get_current_counter_value()")
+        .fetch_one(&mut *tx)
+        .await?
+        .unwrap_or(0);
+
+    // Get unbatched deal transactions
+    let transactions = if let Some(ids) = deal_transaction_ids {
+        // Use specific transaction IDs (for testing)
+        sqlx::query_as!(
+            DealTransactionDb,
+            r#"
+            SELECT 
+                id, transaction_id_hash, user_id_hash, deal_id_hash,
+                transaction_type, amount, user_id, deal_id, payment_id,
+                included_in_batch_id, metadata, created_at as "created_at!"
+            FROM deal_transactions
+            WHERE id = ANY($1) AND included_in_batch_id IS NULL
+            ORDER BY created_at ASC
+            "#,
+            &ids
+        )
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        // Get next unbatched transactions
+        sqlx::query_as!(
+            DealTransactionDb,
+            r#"
+            SELECT 
+                id, transaction_id_hash, user_id_hash, deal_id_hash,
+                transaction_type, amount, user_id, deal_id, payment_id,
+                included_in_batch_id, metadata, created_at as "created_at!"
+            FROM deal_transactions
+            WHERE included_in_batch_id IS NULL
+            ORDER BY created_at ASC
+            LIMIT $1
+            FOR UPDATE SKIP LOCKED
+            "#,
+            batch_size as i64
+        )
+        .fetch_all(&mut *tx)
+        .await?
+    };
+
+    if transactions.is_empty() {
+        debug!("No deal transactions to batch");
+        tx.rollback().await?;
+        return Ok(None);
+    }
+
+    debug!("Found {} deal transactions to batch", transactions.len());
+
+    // For backward compatibility with proof_batches.transaction_ids (INTEGER[]),
+    // we'll use a sequential counter per batch. This is a placeholder since
+    // the real transaction tracking is now via deal_transactions.included_in_batch_id
+    let transaction_ids: Vec<i32> = (1..=transactions.len() as i32).collect();
+
+    // Final counter remains the same as previous for deal transactions
+    // (they don't affect the arithmetic counter used by incoming_transactions)
+    let final_counter = previous_counter;
+
+    // Create the batch entry
+    let batch_id: i32 = sqlx::query_scalar!(
+        r#"
+        INSERT INTO proof_batches (
+            previous_counter_value,
+            final_counter_value,
+            transaction_ids
+        ) VALUES ($1, $2, $3)
+        RETURNING id
+        "#,
+        previous_counter,
+        final_counter,
+        &transaction_ids
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    debug!(
+        "Created batch {} for {} transactions",
+        batch_id,
+        transactions.len()
+    );
+
+    // Mark all transactions as included in this batch
+    let tx_ids: Vec<uuid::Uuid> = transactions.iter().map(|t| t.id).collect();
+    sqlx::query!(
+        r#"
+        UPDATE deal_transactions
+        SET included_in_batch_id = $1
+        WHERE id = ANY($2)
+        "#,
+        batch_id,
+        &tx_ids
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    debug!("Marked {} deal transactions as batched", tx_ids.len());
+
+    // Commit the transaction
+    tx.commit().await?;
+
+    // Get and return the created batch
     get_batch_by_id(pool, batch_id).await.map(Some)
 }
 

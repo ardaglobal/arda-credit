@@ -17,9 +17,9 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::config::types::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
 use arda_credit_db::{
-    get_batch_by_id, get_contract_submission_data, get_pending_transactions,
-    get_proven_unposted_batches, mark_batch_posted_to_contract_with_tx_hash, update_batch_proof,
-    IndexedMerkleTreeADS,
+    get_batch_by_id, get_contract_submission_data, get_pending_deal_transactions,
+    get_pending_transactions, get_proven_unposted_batches,
+    mark_batch_posted_to_contract_with_tx_hash, update_batch_proof, IndexedMerkleTreeADS,
 };
 use arda_credit_lib::proof::{generate_batch_proof, BatchProofGenerationRequest, ProofSystem};
 use ethereum_client::{Config as EthConfig, EthereumClient};
@@ -378,13 +378,14 @@ impl BackgroundBatchProcessor {
 
     /// Check if count trigger should fire
     async fn check_count_trigger(&self) -> Result<bool, String> {
-        match get_pending_transactions(&self.pool).await {
+        // Use new deal_transactions table instead of incoming_transactions
+        match get_pending_deal_transactions(&self.pool, Some(1000)).await {
             Ok(transactions) => {
                 let count = transactions.len();
-                debug!("📊 Current pending transactions: {}", count);
+                debug!("📊 Current pending deal transactions: {}", count);
                 Ok(count >= self.config.count_trigger_threshold)
             }
-            Err(e) => Err(format!("Failed to get pending transactions: {}", e)),
+            Err(e) => Err(format!("Failed to get pending deal transactions: {}", e)),
         }
     }
 

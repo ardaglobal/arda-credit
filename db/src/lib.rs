@@ -196,6 +196,7 @@ pub use db::{
     create_account_financial_transaction,
     // Batch functions
     create_batch,
+    create_batch_from_deal_transactions,
     create_deal,
     create_deal_payment,
     // CCR Domain functions
@@ -236,6 +237,7 @@ pub use db::{
     get_invite_code_info,
     get_kyc_statistics,
     get_payments_by_deal,
+    get_pending_deal_transactions,
     get_pending_transactions,
     get_pending_withdrawal_requests,
     get_potential_stuck_batches,

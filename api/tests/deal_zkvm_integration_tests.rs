@@ -12,7 +12,7 @@
 //! - End-to-end deal lifecycle works
 
 use api::services::TransactionRecordingService;
-use arda_credit_db::*;
+use arda_credit_db::{business::*, *};
 use sqlx::PgPool;
 use std::str::FromStr;
 
@@ -70,27 +70,27 @@ async fn test_deal_creation_creates_transaction(pool: PgPool) {
     // Create deal via API
     let request = api::handlers::deals::deals::CreateDealRequest {
         originator_id: originator.id.to_string(),
+        originator_name: None,
         investor_id: Some(investor.id.to_string()),
+        investor_name: None,
+        borrower_id: None,
+        borrower_name: None,
         principal_amount: "100000.00".to_string(),
         interest_rate_bps: 500,
         term_days: Some(365),
-        // ... other required fields
+        loan_status: Some("originated".to_string()),
+        metadata: None,
+        custom_deal_id: None,
+        status: Some("draft".to_string()),
+        industry: Some("Technology".to_string()),
+        document_ids: None,
         title: Some("Test Deal".to_string()),
         description: Some("Integration test deal".to_string()),
         risk_level: Some("Medium".to_string()),
         asset_class: Some("Corporate Bond".to_string()),
         region: Some("US".to_string()),
         minimum_investment: Some("10000.00".to_string()),
-        industry: Some("Technology".to_string()),
-        custom_deal_id: None,
-        status: Some("draft".to_string()),
-        loan_status: Some("originated".to_string()),
-        document_ids: None,
         collateral_id: None,
-        // Auto-create company fields
-        originator_name: None,
-        investor_name: None,
-        borrower_name: None,
     };
 
     let response = api::handlers::deals::deals::create_deal_endpoint(
@@ -376,18 +376,38 @@ async fn test_transaction_recording_service(pool: PgPool) {
 /// Create test API state for integration tests
 async fn create_test_api_state(pool: PgPool) -> api::api::router::ApiState {
     use api::api::router::{ApiConfig, ApiState};
-    use api::services::{MetricsCache, TransactionRecordingService};
+    use api::services::{MetricsCache, MetricsCacheConfig, TransactionRecordingService};
+    use arda_credit_db::ads::{AdsConfig, IndexedMerkleTreeADS};
     use std::sync::Arc;
     use tokio::sync::RwLock;
 
     let config = ApiConfig::default();
-    let ads_service = Arc::new(RwLock::new(arda_credit_db::IndexedMerkleTreeADS::new()));
-    let session_service = Arc::new(api::services::session_service::SessionService::new());
-    let transaction_recording = Arc::new(TransactionRecordingService::new(pool.clone()));
-    let metrics_cache = Arc::new(MetricsCache::new(
-        config.metrics_cache_ttl_seconds,
-        config.metrics_cache_max_entries,
+
+    // Create ADS service with default config
+    let ads_config = AdsConfig::default();
+    let ads_service = Arc::new(RwLock::new(
+        IndexedMerkleTreeADS::new(pool.clone(), ads_config)
+            .await
+            .unwrap(),
     ));
+
+    let session_service = Arc::new(api::services::session_service::SessionService::new(
+        pool.clone(),
+    ));
+    let transaction_recording = Arc::new(TransactionRecordingService::new(pool.clone()));
+
+    // Create metrics cache config
+    let metrics_config = MetricsCacheConfig {
+        ttl: std::time::Duration::from_secs(config.metrics_cache_ttl_seconds),
+        max_entries: config.metrics_cache_max_entries,
+        enable_stats: true,
+    };
+    let metrics_cache = Arc::new(MetricsCache::new(metrics_config));
+
+    let withdrawal_service =
+        api::services::withdrawal_service::WithdrawalTransactionService::new(pool.clone());
+    let balance_service =
+        api::services::balance_service::BalanceVerificationService::new(pool.clone());
 
     ApiState {
         pool,
@@ -397,8 +417,8 @@ async fn create_test_api_state(pool: PgPool) -> api::api::router::ApiState {
         session_service,
         magic_link_service: None,
         team_invitation_service: None,
-        withdrawal_service: api::services::withdrawal_service::WithdrawalTransactionService::new(),
-        balance_service: api::services::balance_service::BalanceVerificationService::new(),
+        withdrawal_service,
+        balance_service,
         withdrawal_executor: None,
         metrics_handle: None,
         email_rate_limiter: None,
@@ -409,16 +429,13 @@ async fn create_test_api_state(pool: PgPool) -> api::api::router::ApiState {
 }
 
 /// Create a test company for integration tests
-async fn create_test_company(pool: &PgPool, name: &str) -> arda_credit_db::Company {
-    arda_credit_db::create_company(
-        pool,
-        name,
-        &format!("contact@{}", name.to_lowercase().replace(" ", "")),
-        "Technology",
-        "Delaware",
-    )
-    .await
-    .unwrap()
+async fn create_test_company(pool: &PgPool, name: &str) -> Company {
+    let request = CreateCompanyRequest {
+        name: name.to_string(),
+        description: Some(format!("Test company: {}", name)),
+        metadata: None,
+    };
+    create_company(pool, &request).await.unwrap()
 }
 
 /// Create a test deal via API for integration tests
@@ -432,25 +449,27 @@ async fn create_test_deal_via_api(state: &api::api::router::ApiState) -> uuid::U
     // Create deal via API
     let request = api::handlers::deals::deals::CreateDealRequest {
         originator_id: originator.id.to_string(),
+        originator_name: None,
         investor_id: Some(investor.id.to_string()),
+        investor_name: None,
+        borrower_id: None,
+        borrower_name: None,
         principal_amount: "100000.00".to_string(),
         interest_rate_bps: 500,
         term_days: Some(365),
+        loan_status: Some("originated".to_string()),
+        metadata: None,
+        custom_deal_id: None,
+        status: Some("draft".to_string()),
+        industry: Some("Technology".to_string()),
+        document_ids: None,
         title: Some("Test Deal".to_string()),
         description: Some("Integration test deal".to_string()),
         risk_level: Some("Medium".to_string()),
         asset_class: Some("Corporate Bond".to_string()),
         region: Some("US".to_string()),
         minimum_investment: Some("10000.00".to_string()),
-        industry: Some("Technology".to_string()),
-        custom_deal_id: None,
-        status: Some("draft".to_string()),
-        loan_status: Some("originated".to_string()),
-        document_ids: None,
         collateral_id: None,
-        originator_name: None,
-        investor_name: None,
-        borrower_name: None,
     };
 
     let response = api::handlers::deals::deals::create_deal_endpoint(

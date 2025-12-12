@@ -464,6 +464,12 @@ impl GlobalLoanState {
         self.balance_state.get_user_update_history(user_id, limit)
     }
 
+    /// Compute total balance across all users
+    #[must_use]
+    pub fn compute_total_user_balance(&self) -> u128 {
+        self.balance_state.compute_total_balance()
+    }
+
     /// Get balance updates for a specific loan
     #[must_use]
     pub fn get_loan_balance_updates(&self, loan_id: &[u8; 32]) -> Vec<&BalanceUpdate> {
@@ -1831,15 +1837,20 @@ mod tests {
         // Total transaction count should be 9 (3 registrations + 3 KYC verifications + 2 deposits + 1 loan origination)
         assert_eq!(state.transaction_count, 9);
 
-        // Verify total system value calculation (what ZK program will use)
-        let total_system_value = state.compute_total_balance();
+        // Verify total system value calculation (total user balances)
+        let total_user_balances = state.compute_total_user_balance();
         // Should equal total deposits: $1000 (depositor) + $1500 (lender) = $2500
-        assert_eq!(total_system_value, 250000); // $2500 in cents
+        assert_eq!(total_user_balances, 250000); // $2500 in cents
 
         // Verify this equals sum of individual balances
         let sum_of_balances = state.get_user_balance(&depositor_id)
             + state.get_user_balance(&lender_id)
             + state.get_user_balance(&borrower_id);
+        assert_eq!(total_user_balances, sum_of_balances);
+
+        // Verify total outstanding loan balance
+        let total_loan_balance = state.compute_total_balance();
+        assert_eq!(total_loan_balance, 50000); // $500 outstanding loan balance
     }
     #[test]
     fn test_complete_collateral_lifecycle() {
@@ -2313,8 +2324,8 @@ mod tests {
         assert_eq!(state.balance_state.get_balance(&user1_id), 70000); // $700 remaining
         assert_eq!(state.balance_state.get_balance(&user2_id), 150000); // $1500 remaining
 
-        // Verify total system balance decreased correctly
-        assert_eq!(state.compute_total_balance(), 220000); // $2200 total
+        // Verify total user balance decreased correctly
+        assert_eq!(state.compute_total_user_balance(), 220000); // $2200 total
     }
 
     // Helper function to create test KYC submission transaction
