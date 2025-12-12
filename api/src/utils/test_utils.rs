@@ -189,7 +189,9 @@ pub async fn create_test_api_state(pool: &PgPool) -> ApiState {
         email_rate_limiter: None,
         event_publisher: None, // No event publisher in tests
         withdrawal_executor: None,
-        transaction_recording: Arc::new(crate::services::TransactionRecordingService::new(pool.clone())),  // NEW
+        transaction_recording: Arc::new(crate::services::TransactionRecordingService::new(
+            pool.clone(),
+        )), // NEW
     }
 }
 
@@ -280,7 +282,9 @@ pub async fn create_test_api_state_with_magic_links(pool: &PgPool) -> ApiState {
         email_rate_limiter: Some(email_rate_limiter),
         event_publisher: None, // No event publisher in tests
         metrics_cache: std::sync::Arc::new(crate::services::MetricsCache::default()),
-        transaction_recording: Arc::new(crate::services::TransactionRecordingService::new(pool.clone())),  // NEW
+        transaction_recording: Arc::new(crate::services::TransactionRecordingService::new(
+            pool.clone(),
+        )), // NEW
     }
 }
 

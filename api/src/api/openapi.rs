@@ -347,6 +347,10 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::get_payment_details_endpoint,
         crate::handlers::deals::deals::get_deal_payment_history_endpoint,
         crate::handlers::deals::deals::get_deal_audit_trail_endpoint,
+        // NEW: Make Payment endpoint
+        crate::handlers::deals::deals::make_payment_endpoint,
+        // NEW: Closeout endpoint
+        crate::handlers::deals::deals::closeout_deal_endpoint,
 
         // Loan Tape endpoints
         crate::handlers::loan_tape_handlers::create_bulk_loan_tape_handler,
@@ -655,6 +659,12 @@ fn default_limit() -> u32 {
         PaymentDetailsResponse,
         PaymentResponse,
         RecordDealPaymentRequest,
+        // NEW: Make Payment types
+        crate::handlers::deals::deals::MakePaymentRequest,
+        crate::handlers::deals::deals::MakePaymentResponse,
+        // NEW: Closeout types
+        crate::handlers::deals::deals::CloseoutDealRequest,
+        crate::handlers::deals::deals::CloseoutResponse,
         UpdateDealRequest,
         UpdateDealResponse,
 

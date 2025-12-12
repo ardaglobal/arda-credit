@@ -198,7 +198,7 @@ impl ApiServer {
             email_rate_limiter: None, // Will be set in create_router
             metrics_cache,
             event_publisher,
-            transaction_recording,  // NEW
+            transaction_recording, // NEW
         };
 
         let server = Self { config, state };
@@ -365,7 +365,7 @@ impl ApiServer {
             email_rate_limiter: None, // Will be set in create_router
             metrics_cache,
             event_publisher,
-            transaction_recording,  // NEW
+            transaction_recording, // NEW
         };
 
         Ok(Self { config, state })
@@ -466,7 +466,7 @@ impl ApiServer {
             email_rate_limiter: Some(email_rate_limiter),
             metrics_cache: self.state.metrics_cache.clone(),
             event_publisher: self.state.event_publisher.clone(),
-            transaction_recording: self.state.transaction_recording.clone(),  // NEW
+            transaction_recording: self.state.transaction_recording.clone(), // NEW
         };
 
         // Use REST API routes (includes health endpoints and state)

@@ -18,6 +18,8 @@ use arda_credit_db::{
     update_collateral, Collateral, CreateCollateralRequest as DbCreateRequest,
     UpdateCollateralRequest as DbUpdateRequest,
 };
+use arda_credit_lib::TransactionType;
+use rust_decimal::Decimal;
 
 use crate::config::types::{ApiState, ErrorResponse};
 use crate::handlers::taxonomy::common::{
@@ -121,6 +123,36 @@ pub struct CollateralListQueryParams {
 
     #[param(example = "550e8400-e29b-41d4-a716-446655440000")]
     pub created_by: Option<String>,
+}
+
+/// Request to associate collateral with deal
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AssociateCollateralRequest {
+    pub deal_id: String,
+}
+
+/// Response from association
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AssociationResponse {
+    pub collateral_id: String,
+    pub deal_id: String,
+    pub transaction_id: String,
+    pub associated_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Request to disassociate collateral from deal
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DisassociateCollateralRequest {
+    pub deal_id: String,
+}
+
+/// Response from disassociation
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DisassociationResponse {
+    pub collateral_id: String,
+    pub deal_id: String,
+    pub transaction_id: String,
+    pub disassociated_at: chrono::DateTime<chrono::Utc>,
 }
 
 // ============================================================================
@@ -227,24 +259,40 @@ pub async fn create_collateral_handler(
 
     info!("Collateral created successfully: {}", collateral.id);
 
-    // Record creation transaction for audit trail
-    let initial_properties = serde_json::json!({
+    // Record creation transaction for zkVM
+    // Metadata must encode collateral_type in first 32 bytes for zkVM
+    let metadata = Some(serde_json::json!({
+        "collateral_type": collateral.collateral_type.clone().unwrap_or_default(),
         "name": collateral.name.clone(),
-        "collateral_type": collateral.collateral_type.clone(),
-        "description": collateral.description.clone(),
         "address": collateral.address.clone(),
         "custom_id": collateral.custom_id.clone(),
-    });
+        "created_by": user.id.to_string(),
+    }));
 
-    if let Err(e) = record_collateral_creation_transaction(
-        &state.pool,
-        collateral.id,
-        Some(user.id),
-        initial_properties,
-    )
-    .await
-    {
-        tracing::warn!("Failed to record collateral creation transaction: {}", e);
+    let tx_result = state
+        .transaction_recording
+        .record_transaction(
+            arda_credit_lib::TransactionType::CollateralCreation,
+            user.id,
+            None, // No deal_id yet (not associated)
+            rust_decimal::Decimal::ZERO,
+            metadata,
+        )
+        .await;
+
+    match tx_result {
+        Ok(tx_id) => {
+            info!(
+                "Recorded CollateralCreation transaction {} for collateral {}",
+                tx_id, collateral.id
+            );
+        }
+        Err(e) => {
+            // Decision: Fail request or log and continue?
+            tracing::error!("Failed to record collateral creation transaction: {}", e);
+            // For MVP: Log but don't fail (collateral was created successfully)
+            // For production: Consider failing for strict consistency
+        }
     }
 
     // Publish CollateralCreated event (fire-and-forget)
@@ -558,19 +606,36 @@ pub async fn update_collateral_handler(
             })
             .collect::<Vec<_>>());
 
-        // Extract current user from headers (if available)
-        let current_user = extract_current_user(&headers);
-        let updated_by = current_user.as_ref().map(|u| u.id);
+        // Record update transaction for zkVM
+        let metadata = Some(serde_json::json!({
+            "collateral_type": collateral.collateral_type.clone(),
+            "name": collateral.name.clone(),
+            "address": collateral.address.clone(),
+            "updated_by": updated_by.unwrap_or_default().to_string(),
+            "updated_fields": serde_json::json!({
+                "name": req.name.is_some(),
+                "collateral_type": req.collateral_type.is_some(),
+                "description": req.description.is_some(),
+                "address": req.address.is_some(),
+                "custom_id": req.custom_id.is_some(),
+                "metadata": req.metadata.is_some(),
+            }),
+        }));
 
-        if let Err(e) = record_collateral_update_transaction(
-            &state.pool,
-            collateral.id,
-            updated_by,
-            changes_json,
-        )
-        .await
+        if let Err(e) = state
+            .transaction_recording
+            .record_transaction(
+                TransactionType::CollateralUpdate,
+                updated_by.unwrap_or_default(),
+                None, // No deal_id for update
+                Decimal::ZERO,
+                metadata,
+            )
+            .await
         {
-            tracing::warn!("Failed to record collateral update transaction: {}", e);
+            tracing::error!("Failed to record collateral update transaction: {}", e);
+            // Decision: Log and continue, or return error?
+            // For MVP: Log and continue
         }
     }
 
@@ -732,6 +797,195 @@ pub async fn create_collateral_batch_handler(
 
     info!("Batch creation successful: {} items created", results.len());
     Ok((StatusCode::CREATED, Json(response)))
+}
+
+/// Associate collateral with a deal
+///
+/// Links an existing piece of collateral to an existing deal.
+/// This will be validated in the zkVM to prevent double-pledging.
+///
+#[utoipa::path(
+    post,
+    path = "/api/v1/collateral/{collateral_id}/associate",
+    request_body = AssociateCollateralRequest,
+    responses(
+        (status = 200, description = "Collateral associated successfully", body = AssociationResponse),
+        (status = 400, description = "Invalid request or double-pledge detected", body = ErrorResponse),
+        (status = 404, description = "Collateral or deal not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Collateral",
+    security(("bearer" = []))
+)]
+#[instrument(skip(state, headers))]
+pub async fn associate_collateral_handler(
+    State(state): State<ApiState>,
+    Path(collateral_id_str): Path<String>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<AssociateCollateralRequest>,
+) -> Result<Json<AssociationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let collateral_id = parse_uuid(&collateral_id_str)?;
+    let deal_id = parse_uuid(&req.deal_id)?;
+
+    let current_user = extract_current_user(&headers);
+    let user = current_user
+        .as_ref()
+        .ok_or_else(|| internal_error("extract_current_user", "User not authenticated"))?;
+
+    // Validate collateral exists
+    let _collateral = get_collateral_by_id(&state.pool, collateral_id)
+        .await
+        .map_err(|_| not_found_error("Collateral", &collateral_id_str))?;
+
+    // Validate deal exists
+    let _deal = arda_credit_db::get_deal_by_id(&state.pool, deal_id)
+        .await
+        .map_err(|_| not_found_error("Deal", &req.deal_id))?;
+
+    // Check for existing active associations (double-pledge check)
+    let existing_deal = sqlx::query!(
+        r#"
+        SELECT deal_id FROM deals
+        WHERE collateral_id = $1
+          AND deal_status IN ('originated', 'active', 'paid_off')
+        LIMIT 1
+        "#,
+        collateral_id
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| internal_error("check_existing_association", e))?;
+
+    if let Some(existing) = existing_deal {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "CollateralAlreadyPledged".to_string(),
+                message: format!("Collateral is already pledged to deal {}", existing.deal_id),
+                details: None,
+            }),
+        ));
+    }
+
+    // Update deal to include collateral_id
+    sqlx::query!(
+        "UPDATE deals SET collateral_id = $1, updated_at = NOW() WHERE id = $2",
+        collateral_id,
+        deal_id,
+    )
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal_error("update_deal_collateral", e))?;
+
+    // Record association transaction for zkVM
+    // Metadata format: bytes 0-31 = collateral_id, bytes 32-63 = deal_id
+    let assoc_metadata = Some(serde_json::json!({
+        "collateral_id": collateral_id.to_string(),
+        "deal_id": deal_id.to_string(),
+        "associated_by": user.id.to_string(),
+    }));
+
+    let tx_id = state
+        .transaction_recording
+        .record_transaction(
+            TransactionType::CollateralDealAssociation,
+            user.id,
+            Some(deal_id),
+            Decimal::ZERO,
+            assoc_metadata,
+        )
+        .await
+        .map_err(|e| internal_error("record_association_transaction", e))?;
+
+    info!(
+        "Associated collateral {} with deal {}, transaction {}",
+        collateral_id, deal_id, tx_id
+    );
+
+    Ok(Json(AssociationResponse {
+        collateral_id: collateral_id.to_string(),
+        deal_id: deal_id.to_string(),
+        transaction_id: tx_id.to_string(),
+        associated_at: chrono::Utc::now(),
+    }))
+}
+
+/// Disassociate collateral from a deal
+///
+/// Removes the link between collateral and a deal.
+/// Typically used when a deal is closed or when replacing collateral.
+///
+#[utoipa::path(
+    delete,
+    path = "/api/v1/collateral/{collateral_id}/associate",
+    params(
+        ("collateral_id" = String, Path, description = "Collateral UUID")
+    ),
+    request_body = DisassociateCollateralRequest,
+    responses(
+        (status = 200, description = "Collateral disassociated successfully", body = DisassociationResponse),
+        (status = 404, description = "Association not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "Collateral",
+    security(("bearer" = []))
+)]
+#[instrument(skip(state, headers))]
+pub async fn disassociate_collateral_handler(
+    State(state): State<ApiState>,
+    Path(collateral_id_str): Path<String>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<DisassociateCollateralRequest>,
+) -> Result<Json<DisassociationResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let collateral_id = parse_uuid(&collateral_id_str)?;
+    let deal_id = parse_uuid(&req.deal_id)?;
+
+    let current_user = extract_current_user(&headers);
+    let user = current_user
+        .as_ref()
+        .ok_or_else(|| internal_error("extract_current_user", "User not authenticated"))?;
+
+    // Remove collateral_id from deal
+    sqlx::query!(
+        "UPDATE deals SET collateral_id = NULL, updated_at = NOW() WHERE id = $1 AND collateral_id = $2",
+        deal_id,
+        collateral_id,
+    )
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal_error("update_deal_collateral", e))?;
+
+    // Record disassociation transaction for zkVM
+    // Metadata format: bytes 0-31 = collateral_id, bytes 32-63 = deal_id
+    let disassoc_metadata = Some(serde_json::json!({
+        "collateral_id": collateral_id.to_string(),
+        "deal_id": deal_id.to_string(),
+        "disassociated_by": user.id.to_string(),
+    }));
+
+    let tx_id = state
+        .transaction_recording
+        .record_transaction(
+            TransactionType::CollateralDealDisassociation,
+            user.id,
+            Some(deal_id),
+            Decimal::ZERO,
+            disassoc_metadata,
+        )
+        .await
+        .map_err(|e| internal_error("record_disassociation_transaction", e))?;
+
+    info!(
+        "Disassociated collateral {} from deal {}, transaction {}",
+        collateral_id, deal_id, tx_id
+    );
+
+    Ok(Json(DisassociationResponse {
+        collateral_id: collateral_id.to_string(),
+        deal_id: deal_id.to_string(),
+        transaction_id: tx_id.to_string(),
+        disassociated_at: chrono::Utc::now(),
+    }))
 }
 
 // ============================================================================

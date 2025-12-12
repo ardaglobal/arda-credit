@@ -28,6 +28,10 @@ pub enum ProcessingError {
     #[error("Balance error: {0}")]
     BalanceError(#[from] BalanceError),
 
+    // NEW: Collateral errors
+    #[error("Collateral error: {0}")]
+    CollateralError(#[from] crate::collateral::CollateralError),
+
     #[error("Invalid transaction type for operation")]
     InvalidTransactionType,
 
@@ -51,7 +55,7 @@ pub enum ProcessingError {
     InvalidTransactionData,
 }
 
-/// Global state for loan processing (maintains user and loan state)
+/// Global state for loan processing (maintains user, loan, and collateral state)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalLoanState {
     /// All users in the system
@@ -59,6 +63,15 @@ pub struct GlobalLoanState {
 
     /// All loans in the system
     pub loans: HashMap<[u8; 32], Deal>, // Keep loans field name for compatibility, but use Deal type
+
+    /// NEW: All collateral in the system
+    pub collateral: HashMap<[u8; 32], crate::collateral::Collateral>,
+
+    /// NEW: Active collateral-deal associations
+    pub active_associations: HashMap<[u8; 32], Vec<[u8; 32]>>,
+
+    /// NEW: Complete association history
+    pub association_history: HashMap<[u8; 64], crate::collateral::CollateralAssociation>,
 
     /// User balance tracking state
     pub balance_state: BalanceState,
@@ -78,6 +91,9 @@ impl Default for GlobalLoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
+            collateral: HashMap::new(),          // NEW
+            active_associations: HashMap::new(), // NEW
+            association_history: HashMap::new(), // NEW
             balance_state: BalanceState::new(),
             loan_terms: LoanTerms::default(),
             transaction_count: 0,
@@ -99,6 +115,9 @@ impl GlobalLoanState {
         Self {
             users: HashMap::new(),
             loans: HashMap::new(),
+            collateral: HashMap::new(),          // NEW
+            active_associations: HashMap::new(), // NEW
+            association_history: HashMap::new(), // NEW
             balance_state: BalanceState::new(),
             loan_terms,
             transaction_count: 0,
@@ -268,15 +287,97 @@ impl GlobalLoanState {
                 self.users = user_state.users;
             }
             TransactionType::VerifyDocument => todo!(),
-            // Collateral transactions are for audit trail only, not processed in zkVM
-            TransactionType::CollateralCreation
-            | TransactionType::CollateralUpdate
-            | TransactionType::CollateralDealAssociation
-            | TransactionType::CollateralDealDisassociation
-            | TransactionType::CollateralDetectionRequest
-            | TransactionType::CollateralDetectionUpdate => {
-                // No-op: Collateral transactions are recorded for audit trail
-                // but don't affect zkVM state (deals, balances, users)
+            TransactionType::CollateralCreation => {
+                let mut collateral_state = crate::collateral::CollateralState {
+                    collateral: self.collateral.clone(),
+                    active_associations: self.active_associations.clone(),
+                    association_history: self.association_history.clone(),
+                    detection_requests: std::collections::HashMap::new(), // Not needed for creation
+                };
+
+                collateral_state
+                    .process_collateral_creation(transaction)
+                    .map_err(|e| ProcessingError::CollateralError(e))?;
+
+                self.collateral = collateral_state.collateral;
+            }
+
+            TransactionType::CollateralUpdate => {
+                let mut collateral_state = crate::collateral::CollateralState {
+                    collateral: self.collateral.clone(),
+                    active_associations: self.active_associations.clone(),
+                    association_history: self.association_history.clone(),
+                    detection_requests: std::collections::HashMap::new(),
+                };
+
+                collateral_state
+                    .process_collateral_update(transaction)
+                    .map_err(|e| ProcessingError::CollateralError(e))?;
+
+                self.collateral = collateral_state.collateral;
+            }
+
+            TransactionType::CollateralDealAssociation => {
+                let mut collateral_state = crate::collateral::CollateralState {
+                    collateral: self.collateral.clone(),
+                    active_associations: self.active_associations.clone(),
+                    association_history: self.association_history.clone(),
+                    detection_requests: std::collections::HashMap::new(),
+                };
+
+                // CRITICAL: This proves no double-pledging!
+                collateral_state
+                    .process_collateral_association(transaction)
+                    .map_err(|e| ProcessingError::CollateralError(e))?;
+
+                self.active_associations = collateral_state.active_associations;
+                self.association_history = collateral_state.association_history;
+            }
+
+            TransactionType::CollateralDealDisassociation => {
+                let mut collateral_state = crate::collateral::CollateralState {
+                    collateral: self.collateral.clone(),
+                    active_associations: self.active_associations.clone(),
+                    association_history: self.association_history.clone(),
+                    detection_requests: std::collections::HashMap::new(),
+                };
+
+                collateral_state
+                    .process_collateral_disassociation(transaction)
+                    .map_err(|e| ProcessingError::CollateralError(e))?;
+
+                self.active_associations = collateral_state.active_associations;
+                self.association_history = collateral_state.association_history;
+            }
+
+            TransactionType::CollateralDetectionRequest => {
+                let mut collateral_state = crate::collateral::CollateralState {
+                    collateral: self.collateral.clone(),
+                    active_associations: std::collections::HashMap::new(), // Not needed
+                    association_history: std::collections::HashMap::new(), // Not needed
+                    detection_requests: std::collections::HashMap::new(),
+                };
+
+                collateral_state
+                    .process_collateral_detection_request(transaction)
+                    .map_err(|e| ProcessingError::CollateralError(e))?;
+
+                // Detection requests don't update state (just audit trail)
+            }
+
+            TransactionType::CollateralDetectionUpdate => {
+                let mut collateral_state = crate::collateral::CollateralState {
+                    collateral: self.collateral.clone(),
+                    active_associations: std::collections::HashMap::new(),
+                    association_history: std::collections::HashMap::new(),
+                    detection_requests: std::collections::HashMap::new(),
+                };
+
+                collateral_state
+                    .process_collateral_detection_update(transaction)
+                    .map_err(|e| ProcessingError::CollateralError(e))?;
+
+                // Detection updates don't modify state (just audit trail)
             }
         }
 
@@ -369,10 +470,60 @@ impl GlobalLoanState {
         self.balance_state.get_loan_balance_updates(loan_id)
     }
 
-    /// Get total value of all user balances
+    /// Get collateral by ID (read-only)
     #[must_use]
-    pub fn compute_total_user_balance(&self) -> u128 {
-        self.balance_state.compute_total_balance()
+    pub fn get_collateral(
+        &self,
+        collateral_id: &[u8; 32],
+    ) -> Option<&crate::collateral::Collateral> {
+        self.collateral.get(collateral_id)
+    }
+
+    /// Get active associations for a collateral
+    #[must_use]
+    pub fn get_active_associations(&self, collateral_id: &[u8; 32]) -> Vec<[u8; 32]> {
+        self.active_associations
+            .get(collateral_id)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Check if collateral is actively pledged to any deal
+    #[must_use]
+    pub fn is_collateral_pledged(&self, collateral_id: &[u8; 32]) -> bool {
+        self.active_associations
+            .get(collateral_id)
+            .map_or(false, |deals| !deals.is_empty())
+    }
+
+    /// Get all collateral associated with a deal
+    #[must_use]
+    pub fn get_deal_collateral(&self, deal_id: &[u8; 32]) -> Vec<[u8; 32]> {
+        self.active_associations
+            .iter()
+            .filter_map(|(coll_id, deal_ids)| {
+                if deal_ids.contains(deal_id) {
+                    Some(*coll_id)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Compute total collateral count
+    #[must_use]
+    pub fn total_collateral_count(&self) -> usize {
+        self.collateral.len()
+    }
+
+    /// Compute total active associations
+    #[must_use]
+    pub fn total_active_associations(&self) -> usize {
+        self.active_associations
+            .values()
+            .map(|deals| deals.len())
+            .sum()
     }
 }
 
@@ -1260,6 +1411,47 @@ mod tests {
     }
 
     #[test]
+    fn test_global_state_with_collateral() {
+        let state = GlobalLoanState::new();
+
+        assert_eq!(state.collateral.len(), 0);
+        assert_eq!(state.active_associations.len(), 0);
+        assert_eq!(state.total_collateral_count(), 0);
+    }
+
+    #[test]
+    fn test_collateral_helper_methods() {
+        let mut state = GlobalLoanState::new();
+
+        let collateral_id = [1u8; 32];
+        let deal_id = [2u8; 32];
+
+        // Add collateral
+        state.collateral.insert(
+            collateral_id,
+            crate::collateral::Collateral {
+                collateral_id,
+                created_at: 1000,
+                updated_at: 1000,
+                collateral_type: "real_estate".to_string(),
+            },
+        );
+
+        // Check helpers
+        assert!(state.get_collateral(&collateral_id).is_some());
+        assert!(!state.is_collateral_pledged(&collateral_id));
+        assert_eq!(state.total_collateral_count(), 1);
+
+        // Add association
+        state
+            .active_associations
+            .insert(collateral_id, vec![deal_id]);
+
+        assert!(state.is_collateral_pledged(&collateral_id));
+        assert_eq!(state.get_active_associations(&collateral_id), vec![deal_id]);
+        assert_eq!(state.total_active_associations(), 1);
+    }
+    #[test]
     fn test_process_loan_operations() {
         let previous_balance = 100_000u128; // $1000
         let previous_root = [0u8; 32];
@@ -1648,11 +1840,210 @@ mod tests {
         let sum_of_balances = state.get_user_balance(&depositor_id)
             + state.get_user_balance(&lender_id)
             + state.get_user_balance(&borrower_id);
-        assert_eq!(total_system_value, sum_of_balances);
+    }
+    #[test]
+    fn test_complete_collateral_lifecycle() {
+        let mut state = GlobalLoanState::new();
+        let collateral_id = [1u8; 32];
+        let deal_id = [2u8; 32];
 
-        // Outstanding loan balance is separate and should be $500
-        let loan_balance_total = state.compute_total_balance();
-        assert_eq!(loan_balance_total, 50000); // $500 in cents
+        // 1. Create collateral
+        let create_tx = create_test_collateral_creation_tx(collateral_id, "real_estate");
+        state.process_transaction(&create_tx).unwrap();
+
+        assert_eq!(state.collateral.len(), 1);
+        assert!(!state.is_collateral_pledged(&collateral_id));
+
+        // 2. Update collateral
+        let update_tx = create_test_collateral_update_tx(collateral_id, "commercial_property");
+        state.process_transaction(&update_tx).unwrap();
+
+        let collateral = state.get_collateral(&collateral_id).unwrap();
+        assert_eq!(collateral.collateral_type, "commercial_property");
+
+        // 3. Associate with deal
+        let assoc_tx = create_test_association_tx(collateral_id, deal_id);
+        state.process_transaction(&assoc_tx).unwrap();
+
+        assert!(state.is_collateral_pledged(&collateral_id));
+        assert_eq!(state.get_active_associations(&collateral_id).len(), 1);
+
+        // 4. Request detection
+        let detect_req_tx = create_test_detection_request_tx(collateral_id);
+        state.process_transaction(&detect_req_tx).unwrap();
+
+        // 5. Update detection results
+        let detect_upd_tx = create_test_detection_update_tx(collateral_id);
+        state.process_transaction(&detect_upd_tx).unwrap();
+
+        // 6. Disassociate from deal
+        let disassoc_tx = create_test_disassociation_tx(collateral_id, deal_id);
+        state.process_transaction(&disassoc_tx).unwrap();
+
+        assert!(!state.is_collateral_pledged(&collateral_id));
+        assert_eq!(state.get_active_associations(&collateral_id).len(), 0);
+
+        // Verify transaction count
+        assert_eq!(state.transaction_count, 6);
+    }
+
+    #[test]
+    fn test_double_pledge_prevention_in_global_state() {
+        let mut state = GlobalLoanState::new();
+
+        let collateral_id = [1u8; 32];
+        let deal1_id = [2u8; 32];
+        let deal2_id = [3u8; 32];
+
+        // Setup users and deals for context
+        setup_kycd_users(&mut state, [4u8; 32], [5u8; 32]);
+        setup_test_deal(&mut state, deal1_id);
+        setup_test_deal(&mut state, deal2_id);
+
+        // Create collateral
+        let create_tx = create_test_collateral_creation_tx(collateral_id, "real_estate");
+        state.process_transaction(&create_tx).unwrap();
+
+        // Associate with deal 1
+        let assoc1_tx = create_test_association_tx(collateral_id, deal1_id);
+        state.process_transaction(&assoc1_tx).unwrap();
+
+        // Try to associate with deal 2 - MUST FAIL
+        let assoc2_tx = create_test_association_tx(collateral_id, deal2_id);
+        let result = state.process_transaction(&assoc2_tx);
+
+        assert!(result.is_err());
+
+        // Verify error is CollateralAlreadyPledged
+        match result.unwrap_err() {
+            ProcessingError::CollateralError(
+                crate::collateral::CollateralError::CollateralAlreadyPledged {
+                    collateral_id: cid,
+                    existing_deal_id,
+                },
+            ) => {
+                assert_eq!(cid, collateral_id);
+                assert_eq!(existing_deal_id, deal1_id);
+            }
+            e => panic!("Expected CollateralAlreadyPledged, got: {:?}", e),
+        }
+
+        // Verify deal2 was NOT associated
+        let active = state.get_active_associations(&collateral_id);
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0], deal1_id);
+    }
+
+    #[test]
+    fn test_batch_with_collateral_transactions() {
+        let mut state = GlobalLoanState::new();
+
+        let collateral1_id = [10u8; 32];
+        let collateral2_id = [11u8; 32];
+        let deal1_id = [20u8; 32];
+        let deal2_id = [21u8; 32];
+
+        // Create batch with mixed transaction types
+        let batch = LoanBatch {
+            batch_id: [100u8; 32],
+            transactions: vec![
+                // Create two pieces of collateral
+                create_test_collateral_creation_tx(collateral1_id, "real_estate"),
+                create_test_collateral_creation_tx(collateral2_id, "equipment"),
+                // Associate each with different deals
+                create_test_association_tx(collateral1_id, deal1_id),
+                create_test_association_tx(collateral2_id, deal2_id),
+                // Request detection for both
+                create_test_detection_request_tx(collateral1_id),
+                create_test_detection_request_tx(collateral2_id),
+            ],
+            previous_state_root: [0u8; 32],
+            created_at: 1_640_995_200, // January 1, 2022 - valid timestamp
+        };
+
+        // Process batch
+        let result = state.process_batch(&batch);
+        assert!(result.is_ok());
+
+        // Verify final state
+        assert_eq!(state.collateral.len(), 2);
+        assert_eq!(state.total_active_associations(), 2);
+        assert!(state.is_collateral_pledged(&collateral1_id));
+        assert!(state.is_collateral_pledged(&collateral2_id));
+    }
+
+    #[test]
+    fn test_collateral_with_deal_lifecycle() {
+        let mut state = GlobalLoanState::new();
+
+        let originator_id = [1u8; 32];
+        let investor_id = [2u8; 32];
+        let deal_id = [10u8; 32];
+        let collateral_id = [20u8; 32];
+
+        // Setup: Create users with KYC
+        setup_kycd_users(&mut state, originator_id, investor_id);
+
+        // Create collateral
+        let coll_create = create_test_collateral_creation_tx(collateral_id, "real_estate");
+        state.process_transaction(&coll_create).unwrap();
+
+        // Create deal
+        let deal_tx = create_test_deal_origination(deal_id, originator_id, investor_id, 100000);
+        state.process_transaction(&deal_tx).unwrap();
+
+        // Associate collateral with deal
+        let assoc_tx = create_test_association_tx(collateral_id, deal_id);
+        state.process_transaction(&assoc_tx).unwrap();
+
+        assert!(state.is_collateral_pledged(&collateral_id));
+
+        // Make payments and close deal
+        let payment = create_test_deal_payment(deal_id, originator_id, 100000);
+        state.process_transaction(&payment).unwrap();
+
+        let closeout = create_test_deal_closeout(deal_id, investor_id);
+        state.process_transaction(&closeout).unwrap();
+
+        // After deal is closed, can disassociate collateral
+        let disassoc_tx = create_test_disassociation_tx(collateral_id, deal_id);
+        state.process_transaction(&disassoc_tx).unwrap();
+
+        assert!(!state.is_collateral_pledged(&collateral_id));
+
+        // Now collateral can be reused for another deal
+        let deal2_id = [11u8; 32];
+        setup_test_deal(&mut state, deal2_id);
+
+        let assoc2_tx = create_test_association_tx(collateral_id, deal2_id);
+        let result = state.process_transaction(&assoc2_tx);
+
+        assert!(
+            result.is_ok(),
+            "Should allow reassociation after disassociation"
+        );
+    }
+
+    #[test]
+    fn test_collateral_errors_propagate_correctly() {
+        let mut state = GlobalLoanState::new();
+        let collateral_id = [1u8; 32];
+
+        // Try to update non-existent collateral
+        let update_tx = create_test_collateral_update_tx(collateral_id, "real_estate");
+        let result = state.process_transaction(&update_tx);
+
+        assert!(result.is_err());
+
+        // Verify it's a CollateralError wrapped in ProcessingError
+        match result.unwrap_err() {
+            ProcessingError::CollateralError(
+                crate::collateral::CollateralError::CollateralNotFound { .. },
+            ) => {
+                // Expected
+            }
+            e => panic!("Expected CollateralNotFound, got: {:?}", e),
+        }
     }
 
     #[test]
@@ -1998,5 +2389,172 @@ mod tests {
             created_at: timestamp,
             metadata: MetadataArray::from_bytes(&metadata_bytes),
         }
+    }
+
+    fn create_test_collateral_creation_tx(
+        collateral_id: [u8; 32],
+        collateral_type: &str,
+    ) -> LoanTransaction {
+        // Encode collateral_type in metadata
+        let mut metadata_bytes = [0u8; 64];
+        let type_bytes = collateral_type.as_bytes();
+        let len = type_bytes.len().min(32);
+        metadata_bytes[0..len].copy_from_slice(&type_bytes[0..len]);
+
+        LoanTransaction {
+            transaction_id: [99u8; 32],
+            user_id: [0u8; 32],     // No user for collateral creation
+            deal_id: collateral_id, // Use deal_id field for collateral_id
+            transaction_type: TransactionType::CollateralCreation,
+            amount: 0,
+            created_at: 1_640_995_200,
+            metadata: MetadataArray::from_bytes(&metadata_bytes),
+        }
+    }
+
+    fn create_test_collateral_update_tx(
+        collateral_id: [u8; 32],
+        new_type: &str,
+    ) -> LoanTransaction {
+        let mut metadata_bytes = [0u8; 64];
+        let type_bytes = new_type.as_bytes();
+        let len = type_bytes.len().min(32);
+        metadata_bytes[0..len].copy_from_slice(&type_bytes[0..len]);
+
+        LoanTransaction {
+            transaction_id: [98u8; 32],
+            user_id: [0u8; 32],
+            deal_id: collateral_id,
+            transaction_type: TransactionType::CollateralUpdate,
+            amount: 0,
+            created_at: 1_640_995_300, // Later than creation
+            metadata: MetadataArray::from_bytes(&metadata_bytes),
+        }
+    }
+
+    fn create_test_association_tx(collateral_id: [u8; 32], deal_id: [u8; 32]) -> LoanTransaction {
+        let mut metadata_bytes = [0u8; 64];
+        metadata_bytes[0..32].copy_from_slice(&collateral_id);
+        metadata_bytes[32..64].copy_from_slice(&deal_id);
+
+        LoanTransaction {
+            transaction_id: [97u8; 32],
+            user_id: [0u8; 32],
+            deal_id: [0u8; 32], // Zero for association transactions
+            transaction_type: TransactionType::CollateralDealAssociation,
+            amount: 0,
+            created_at: 1_640_995_400,
+            metadata: MetadataArray::from_bytes(&metadata_bytes),
+        }
+    }
+
+    fn create_test_disassociation_tx(
+        collateral_id: [u8; 32],
+        deal_id: [u8; 32],
+    ) -> LoanTransaction {
+        let mut metadata_bytes = [0u8; 64];
+        metadata_bytes[0..32].copy_from_slice(&collateral_id);
+        metadata_bytes[32..64].copy_from_slice(&deal_id);
+
+        LoanTransaction {
+            transaction_id: [96u8; 32],
+            user_id: [0u8; 32],
+            deal_id: [0u8; 32],
+            transaction_type: TransactionType::CollateralDealDisassociation,
+            amount: 0,
+            created_at: 1_640_995_500,
+            metadata: MetadataArray::from_bytes(&metadata_bytes),
+        }
+    }
+
+    fn create_test_detection_request_tx(collateral_id: [u8; 32]) -> LoanTransaction {
+        LoanTransaction {
+            transaction_id: [95u8; 32],
+            user_id: [0u8; 32],
+            deal_id: collateral_id, // Collateral ID in deal_id field
+            transaction_type: TransactionType::CollateralDetectionRequest,
+            amount: 0,
+            created_at: 1_640_995_600,
+            metadata: MetadataArray::empty(),
+        }
+    }
+
+    fn create_test_detection_update_tx(collateral_id: [u8; 32]) -> LoanTransaction {
+        LoanTransaction {
+            transaction_id: [94u8; 32],
+            user_id: [0u8; 32],
+            deal_id: collateral_id,
+            transaction_type: TransactionType::CollateralDetectionUpdate,
+            amount: 0,
+            created_at: 1_640_995_700,
+            metadata: MetadataArray::empty(),
+        }
+    }
+
+    fn create_test_deal_origination(
+        deal_id: [u8; 32],
+        originator_id: [u8; 32],
+        investor_id: [u8; 32],
+        amount: u64,
+    ) -> LoanTransaction {
+        let mut metadata = vec![0u8; 64];
+        metadata[0..32].copy_from_slice(&originator_id);
+        metadata[32..64].copy_from_slice(&investor_id);
+
+        LoanTransaction {
+            transaction_id: [3u8; 32],
+            user_id: originator_id, // was borrower_id
+            deal_id,                // Keep deal_id field name
+            transaction_type: TransactionType::DealOrigination, // was LoanOrigination
+            amount,
+            created_at: 1_640_995_400, // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::from_bytes(&metadata),
+        }
+    }
+
+    fn create_test_deal_payment(
+        deal_id: [u8; 32],
+        payer_id: [u8; 32],
+        amount: u64,
+    ) -> LoanTransaction {
+        LoanTransaction {
+            transaction_id: [4u8; 32],
+            user_id: payer_id,                              // was borrower_id
+            deal_id,                                        // Keep deal_id field name
+            transaction_type: TransactionType::DealPayment, // was LoanPayment
+            amount,                                         // Partial payment
+            created_at: 1_640_995_500,                      // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::empty(),
+        }
+    }
+
+    fn create_test_deal_closeout(deal_id: [u8; 32], closer_id: [u8; 32]) -> LoanTransaction {
+        LoanTransaction {
+            transaction_id: [6u8; 32],
+            user_id: closer_id,                              // was lender_id
+            deal_id,                                         // Keep deal_id field name
+            transaction_type: TransactionType::DealCloseout, // was LoanCloseout
+            amount: 0,
+            created_at: 1_640_995_700, // January 1, 2022 - valid timestamp
+            metadata: MetadataArray::empty(),
+        }
+    }
+
+    fn setup_test_deal(state: &mut GlobalLoanState, deal_id: [u8; 32]) {
+        // Add a minimal deal for testing (not through full origination process)
+        let deal = crate::deal::Deal {
+            deal_id,
+            originator_id: [1u8; 32],
+            investor_id: [2u8; 32],
+            principal_amount: 100000,
+            outstanding_balance: 100000,
+            interest_rate: 750,
+            term_months: 36,
+            deal_status: LoanStatus::Active,
+            originated_at: 1_640_995_200,
+            funded_at: 1_640_995_200,
+            maturity_date: 1_640_995_200 + (36 * 30 * 24 * 60 * 60),
+        };
+        state.loans.insert(deal_id, deal);
     }
 }

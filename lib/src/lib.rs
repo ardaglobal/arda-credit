@@ -27,12 +27,13 @@ use alloy_sol_types::sol;
 
 // Separated modules for better maintainability
 pub mod balance;
+pub mod collateral;
 pub mod deal;
 pub mod deal_processor;
 pub mod transactions;
 pub mod user;
 pub mod utils;
-pub mod zkvm_ads; // zkVM-compatible ADS operations
+pub mod zkvm_ads; // zkVM-compatible ADS operations // NEW: Collateral state management
 
 #[cfg(test)]
 mod zkvm_ads_consistency_tests; // Consistency tests for zkVM ADS
@@ -66,6 +67,7 @@ pub use balance::{
     BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType,
     UserBalance,
 };
+pub use collateral::{Collateral, CollateralAssociation, CollateralError, CollateralState};
 pub use deal::{Deal, DealError, LoanStatus, LoanTerms};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};

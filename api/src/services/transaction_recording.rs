@@ -193,7 +193,7 @@ impl TransactionRecordingService {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
             "#,
             transaction_id,
-            &transaction_id_hash[..],  // Convert Vec<u8> to &[u8]
+            &transaction_id_hash[..], // Convert Vec<u8> to &[u8]
             &user_id_hash[..],
             deal_id_hash_ref,
             transaction_type.to_string(),
@@ -214,10 +214,7 @@ impl TransactionRecordingService {
 
         info!(
             "Recorded {} transaction: {} for user {} (deal: {:?})",
-            transaction_type,
-            transaction_id,
-            user_id,
-            deal_id
+            transaction_type, transaction_id, user_id, deal_id
         );
 
         // Record metrics
@@ -283,10 +280,7 @@ impl TransactionRecordingService {
 
         tx.commit().await?;
 
-        info!(
-            "Recorded batch of {} transactions",
-            transaction_ids.len()
-        );
+        info!("Recorded batch of {} transactions", transaction_ids.len());
 
         metrics::counter!("zkvm_batch_transactions_recorded_total")
             .increment(transaction_ids.len() as u64);
@@ -303,8 +297,9 @@ mod tests {
     // Helper to create test database pool
     async fn setup_test_db() -> PgPool {
         // Use test database or in-memory SQLite
-        let database_url = std::env::var("TEST_DATABASE_URL")
-            .unwrap_or_else(|_| "postgresql://postgres:password@localhost:5432/arda_credit_test".to_string());
+        let database_url = std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://postgres:password@localhost:5432/arda_credit_test".to_string()
+        });
 
         sqlx::PgPool::connect(&database_url)
             .await
@@ -322,13 +317,15 @@ mod tests {
             "user_type": "investor"
         }));
 
-        let result = service.record_transaction(
-            arda_credit_lib::TransactionType::UserRegistration,
-            user_id,
-            None,
-            rust_decimal::Decimal::ZERO,
-            metadata,
-        ).await;
+        let result = service
+            .record_transaction(
+                arda_credit_lib::TransactionType::UserRegistration,
+                user_id,
+                None,
+                rust_decimal::Decimal::ZERO,
+                metadata,
+            )
+            .await;
 
         assert!(result.is_ok());
         let transaction_id = result.unwrap();
@@ -357,13 +354,15 @@ mod tests {
         let deal_id = Uuid::new_v4();
         let amount = rust_decimal::Decimal::from_str("100000.50").unwrap();
 
-        let result = service.record_transaction(
-            arda_credit_lib::TransactionType::DealOrigination,
-            user_id,
-            Some(deal_id),
-            amount,
-            None,
-        ).await;
+        let result = service
+            .record_transaction(
+                arda_credit_lib::TransactionType::DealOrigination,
+                user_id,
+                Some(deal_id),
+                amount,
+                None,
+            )
+            .await;
 
         assert!(result.is_ok());
         let transaction_id = result.unwrap();
@@ -406,19 +405,17 @@ mod tests {
         ];
 
         for tx_type in types {
-            let result = service.record_transaction(
-                tx_type,
-                user_id,
-                Some(deal_id),
-                rust_decimal::Decimal::ZERO,
-                None,
-            ).await;
+            let result = service
+                .record_transaction(
+                    tx_type,
+                    user_id,
+                    Some(deal_id),
+                    rust_decimal::Decimal::ZERO,
+                    None,
+                )
+                .await;
 
-            assert!(
-                result.is_ok(),
-                "Failed to record {} transaction",
-                tx_type
-            );
+            assert!(result.is_ok(), "Failed to record {} transaction", tx_type);
         }
 
         // Verify all were created
@@ -446,7 +443,10 @@ mod tests {
         hasher.update(uuid.as_bytes());
         let expected_hash: Vec<u8> = hasher.finalize().to_vec();
 
-        assert_eq!(our_hash, expected_hash, "Hash must match test script implementation");
+        assert_eq!(
+            our_hash, expected_hash,
+            "Hash must match test script implementation"
+        );
     }
 
     #[tokio::test]
@@ -489,13 +489,10 @@ mod tests {
 
         // Verify all created
         for tx_id in transaction_ids {
-            let exists = sqlx::query!(
-                "SELECT id FROM deal_transactions WHERE id = $1",
-                tx_id
-            )
-            .fetch_optional(&pool)
-            .await
-            .unwrap();
+            let exists = sqlx::query!("SELECT id FROM deal_transactions WHERE id = $1", tx_id)
+                .fetch_optional(&pool)
+                .await
+                .unwrap();
 
             assert!(exists.is_some());
         }

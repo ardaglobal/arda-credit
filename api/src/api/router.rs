@@ -34,8 +34,8 @@ use crate::handlers::{
 };
 use crate::services::batch_processor::BatchProcessorHandle;
 use crate::services::session_service::SessionService;
-use crate::services::{BalanceVerificationService, MetricsCache, WithdrawalTransactionService};
 use crate::services::TransactionRecordingService;
+use crate::services::{BalanceVerificationService, MetricsCache, WithdrawalTransactionService};
 use arda_credit_db::{IndexedMerkleTreeADS, User};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -431,6 +431,10 @@ pub fn create_router(state: ApiState) -> Router {
             delete(crate::handlers::deals::deals::delete_deal_endpoint),
         )
         .route(
+            paths::DEAL_BY_ID,
+            delete(crate::handlers::deals::deals::delete_deal_endpoint),
+        )
+        .route(
             paths::DEALS_STATS,
             get(crate::handlers::deals::deals::get_deal_stats_endpoint),
         )
@@ -468,6 +472,16 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::STATE_PAYMENTS,
             post(crate::handlers::deals::deals::record_deal_payment_endpoint),
+        )
+        // NEW: Deal Payment Endpoint
+        .route(
+            "/api/v1/deal/:deal_id/payment",
+            post(crate::handlers::deals::deals::make_payment_endpoint),
+        )
+        // NEW: Deal Closeout Endpoint
+        .route(
+            "/api/v1/deal/:deal_id/closeout",
+            post(crate::handlers::deals::deals::closeout_deal_endpoint),
         )
         .route(
             paths::STATE_PAYMENT_BY_ID,
@@ -916,6 +930,15 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             "/api/v1/collateral/{id}/audit-trail",
             get(crate::handlers::taxonomy::collateral::get_collateral_audit_trail_handler),
+        )
+        // NEW: Association endpoints
+        .route(
+            "/api/v1/collateral/{collateral_id}/associate",
+            post(crate::handlers::taxonomy::collateral::associate_collateral_handler),
+        )
+        .route(
+            "/api/v1/collateral/{collateral_id}/associate",
+            delete(crate::handlers::taxonomy::collateral::disassociate_collateral_handler),
         )
         // Internal API: Collateral fetch for arda-collateral-intel
         .route(
