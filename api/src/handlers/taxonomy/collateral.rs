@@ -10,12 +10,12 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument};
 use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
 use arda_credit_db::{
     create_collateral, create_collateral_batch, delete_collateral, get_collateral_by_custom_id,
     get_collateral_by_deal_id, get_collateral_by_id, get_collateral_transaction_history,
-    list_collateral, record_collateral_creation_transaction, record_collateral_update_transaction,
-    update_collateral, Collateral, CreateCollateralRequest as DbCreateRequest,
+    list_collateral, update_collateral, Collateral, CreateCollateralRequest as DbCreateRequest,
     UpdateCollateralRequest as DbUpdateRequest,
 };
 use arda_credit_lib::TransactionType;
@@ -515,6 +515,13 @@ pub async fn update_collateral_handler(
 ) -> Result<Json<CollateralResponse>, (StatusCode, Json<ErrorResponse>)> {
     let uuid = parse_uuid(&id, "collateral_id")?;
 
+    // Extract current user for audit trail
+    let current_user = extract_current_user(&headers);
+    let user_id = current_user
+        .as_ref()
+        .map(|u| u.id)
+        .unwrap_or_else(|| Uuid::nil());
+
     // Fetch old collateral state for change detection
     let old_collateral = get_collateral_by_id(&state.pool, uuid)
         .await
@@ -611,7 +618,7 @@ pub async fn update_collateral_handler(
             "collateral_type": collateral.collateral_type.clone(),
             "name": collateral.name.clone(),
             "address": collateral.address.clone(),
-            "updated_by": updated_by.unwrap_or_default().to_string(),
+            "updated_by": user_id.to_string(),
             "updated_fields": serde_json::json!({
                 "name": req.name.is_some(),
                 "collateral_type": req.collateral_type.is_some(),
@@ -626,7 +633,7 @@ pub async fn update_collateral_handler(
             .transaction_recording
             .record_transaction(
                 TransactionType::CollateralUpdate,
-                updated_by.unwrap_or_default(),
+                user_id,
                 None, // No deal_id for update
                 Decimal::ZERO,
                 metadata,
@@ -824,8 +831,8 @@ pub async fn associate_collateral_handler(
     headers: axum::http::HeaderMap,
     Json(req): Json<AssociateCollateralRequest>,
 ) -> Result<Json<AssociationResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let collateral_id = parse_uuid(&collateral_id_str)?;
-    let deal_id = parse_uuid(&req.deal_id)?;
+    let collateral_id = parse_uuid(&collateral_id_str, "collateral_id")?;
+    let deal_id = parse_uuid(&req.deal_id, "deal_id")?;
 
     let current_user = extract_current_user(&headers);
     let user = current_user
@@ -845,7 +852,7 @@ pub async fn associate_collateral_handler(
     // Check for existing active associations (double-pledge check)
     let existing_deal = sqlx::query!(
         r#"
-        SELECT deal_id FROM deals
+        SELECT id FROM deals
         WHERE collateral_id = $1
           AND deal_status IN ('originated', 'active', 'paid_off')
         LIMIT 1
@@ -861,7 +868,7 @@ pub async fn associate_collateral_handler(
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
                 error: "CollateralAlreadyPledged".to_string(),
-                message: format!("Collateral is already pledged to deal {}", existing.deal_id),
+                message: format!("Collateral is already pledged to deal {}", existing.id),
                 details: None,
             }),
         ));
@@ -937,8 +944,8 @@ pub async fn disassociate_collateral_handler(
     headers: axum::http::HeaderMap,
     Json(req): Json<DisassociateCollateralRequest>,
 ) -> Result<Json<DisassociationResponse>, (StatusCode, Json<ErrorResponse>)> {
-    let collateral_id = parse_uuid(&collateral_id_str)?;
-    let deal_id = parse_uuid(&req.deal_id)?;
+    let collateral_id = parse_uuid(&collateral_id_str, "collateral_id")?;
+    let deal_id = parse_uuid(&req.deal_id, "deal_id")?;
 
     let current_user = extract_current_user(&headers);
     let user = current_user

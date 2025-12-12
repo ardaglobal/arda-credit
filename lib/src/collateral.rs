@@ -26,25 +26,25 @@ use crate::transactions::LoanTransaction;
 #[derive(Error, Debug, Clone)]
 pub enum CollateralError {
     #[error("Collateral already exists: {collateral_id:?}")]
-    CollateralAlreadyExists { collateral_id: [u8; 32] },
+    CollateralAlreadyExists { collateral_id: Vec<u8> },
 
     #[error("Collateral not found: {collateral_id:?}")]
-    CollateralNotFound { collateral_id: [u8; 32] },
+    CollateralNotFound { collateral_id: Vec<u8> },
 
     #[error("Collateral already pledged to deal: {collateral_id:?} → {existing_deal_id:?}")]
     CollateralAlreadyPledged {
-        collateral_id: [u8; 32],
-        existing_deal_id: [u8; 32],
+        collateral_id: Vec<u8>,
+        existing_deal_id: Vec<u8>,
     },
 
     #[error("Collateral not associated with deal: {collateral_id:?} + {deal_id:?}")]
     CollateralNotAssociated {
-        collateral_id: [u8; 32],
-        deal_id: [u8; 32],
+        collateral_id: Vec<u8>,
+        deal_id: Vec<u8>,
     },
 
     #[error("Deal not found: {deal_id:?}")]
-    DealNotFound { deal_id: [u8; 32] },
+    DealNotFound { deal_id: Vec<u8> },
 
     #[error("Invalid collateral metadata")]
     InvalidMetadata,
@@ -61,7 +61,7 @@ pub enum CollateralError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Collateral {
     /// Hashed collateral ID (32 bytes)
-    pub collateral_id: [u8; 32],
+    pub collateral_id: Vec<u8>,
 
     /// When collateral was created (Unix timestamp)
     pub created_at: u64,
@@ -77,10 +77,10 @@ pub struct Collateral {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollateralAssociation {
     /// Hashed collateral ID
-    pub collateral_id: [u8; 32],
+    pub collateral_id: Vec<u8>,
 
     /// Hashed deal ID
-    pub deal_id: [u8; 32],
+    pub deal_id: Vec<u8>,
 
     /// When association was created
     pub associated_at: u64,
@@ -96,21 +96,61 @@ pub struct CollateralAssociation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CollateralState {
     /// All collateral in the system (collateral_id → Collateral)
-    pub collateral: HashMap<[u8; 32], Collateral>,
+    pub collateral: HashMap<Vec<u8>, Collateral>,
 
     /// Active associations (collateral_id → Vec<deal_id>)
     /// Only includes currently active associations
-    pub active_associations: HashMap<[u8; 32], Vec<[u8; 32]>>,
+    pub active_associations: HashMap<Vec<u8>, Vec<Vec<u8>>>,
 
     /// Complete association history (for audit trail)
     /// Key: (collateral_id, deal_id) as concatenated bytes
-    pub association_history: HashMap<[u8; 64], CollateralAssociation>,
+    pub association_history: HashMap<Vec<u8>, CollateralAssociation>,
 
     /// Detection requests (collateral_id → request_timestamp)
-    pub detection_requests: HashMap<[u8; 32], u64>,
+    pub detection_requests: HashMap<Vec<u8>, u64>,
 }
 
 impl CollateralState {
+    /// Create a new empty collateral state
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            collateral: HashMap::new(),
+            active_associations: HashMap::new(),
+            association_history: HashMap::new(),
+            detection_requests: HashMap::new(),
+        }
+    }
+
+    /// Extract collateral type from transaction metadata
+    ///
+    /// The collateral type is stored in the first 32 bytes of metadata.
+    pub fn extract_collateral_type_from_metadata(
+        transaction: &LoanTransaction,
+    ) -> Result<String, CollateralError> {
+        let metadata = transaction.metadata.as_bytes();
+        if metadata.len() < 32 {
+            return Err(CollateralError::InvalidMetadata);
+        }
+
+        // Find null terminator or take first 32 bytes
+        let type_bytes = &metadata[0..32];
+        let null_pos = type_bytes.iter().position(|&b| b == 0).unwrap_or(32);
+        let type_str = std::str::from_utf8(&type_bytes[0..null_pos])
+            .map_err(|_| CollateralError::InvalidMetadata)?;
+
+        Ok(type_str.to_string())
+    }
+
+    /// Create association key from collateral_id and deal_id
+    ///
+    /// The key is collateral_id + deal_id (64 bytes total)
+    pub fn make_association_key(collateral_id: &[u8], deal_id: &[u8]) -> Vec<u8> {
+        let mut key = Vec::with_capacity(64);
+        key.extend_from_slice(collateral_id);
+        key.extend_from_slice(deal_id);
+        key
+    }
     /// Process collateral creation transaction
     ///
     /// Creates a new collateral in the zkVM state. Validates that the
@@ -139,7 +179,7 @@ impl CollateralState {
         // Extract collateral_id from transaction
         // For collateral creation, we use deal_id field to store collateral_id
         // (deal_id would be zero for collateral operations not yet associated)
-        let collateral_id = transaction.deal_id;
+        let collateral_id = transaction.deal_id.to_vec();
 
         // Validation: Collateral must NOT already exist
         if self.collateral.contains_key(&collateral_id) {
@@ -151,7 +191,7 @@ impl CollateralState {
 
         // Create collateral in state
         let collateral = Collateral {
-            collateral_id,
+            collateral_id: collateral_id.clone(),
             created_at: transaction.created_at,
             updated_at: transaction.created_at,
             collateral_type,
@@ -185,7 +225,7 @@ impl CollateralState {
         &mut self,
         transaction: &LoanTransaction,
     ) -> Result<(), CollateralError> {
-        let collateral_id = transaction.deal_id; // Use deal_id field
+        let collateral_id = transaction.deal_id.to_vec(); // Use deal_id field
 
         // Validation: Collateral must exist
         let collateral = self
@@ -238,10 +278,8 @@ impl CollateralState {
         // Extract IDs from metadata
         let metadata = transaction.metadata.as_bytes();
 
-        let mut collateral_id = [0u8; 32];
-        let mut deal_id = [0u8; 32];
-        collateral_id.copy_from_slice(&metadata[0..32]);
-        deal_id.copy_from_slice(&metadata[32..64]);
+        let collateral_id = metadata[0..32].to_vec();
+        let deal_id = metadata[32..64].to_vec();
 
         // Validation 1: Collateral must exist
         if !self.collateral.contains_key(&collateral_id) {
@@ -256,7 +294,7 @@ impl CollateralState {
                 // Return error with proof of which deal it's pledged to
                 return Err(CollateralError::CollateralAlreadyPledged {
                     collateral_id,
-                    existing_deal_id: active_deals[0], // First active deal
+                    existing_deal_id: active_deals[0].clone(), // First active deal
                 });
             }
         }
@@ -272,8 +310,8 @@ impl CollateralState {
 
         // Create association
         let association = CollateralAssociation {
-            collateral_id,
-            deal_id,
+            collateral_id: collateral_id.clone(),
+            deal_id: deal_id.clone(),
             associated_at: transaction.created_at,
             disassociated_at: None,
             is_active: true,
@@ -281,9 +319,9 @@ impl CollateralState {
 
         // Add to active associations
         self.active_associations
-            .entry(collateral_id)
+            .entry(collateral_id.clone())
             .or_insert_with(Vec::new)
-            .push(deal_id);
+            .push(deal_id.clone());
 
         // Add to history
         self.association_history.insert(assoc_key, association);
@@ -313,17 +351,15 @@ impl CollateralState {
         // Extract IDs from metadata (same format as association)
         let metadata = transaction.metadata.as_bytes();
 
-        let mut collateral_id = [0u8; 32];
-        let mut deal_id = [0u8; 32];
-        collateral_id.copy_from_slice(&metadata[0..32]);
-        deal_id.copy_from_slice(&metadata[32..64]);
+        let collateral_id = metadata[0..32].to_vec();
+        let deal_id = metadata[32..64].to_vec();
 
         // Validation: Association must exist and be active
         let assoc_key = Self::make_association_key(&collateral_id, &deal_id);
         let association = self.association_history.get_mut(&assoc_key).ok_or(
             CollateralError::CollateralNotAssociated {
-                collateral_id,
-                deal_id,
+                collateral_id: collateral_id.clone(),
+                deal_id: deal_id.clone(),
             },
         )?;
 
@@ -338,7 +374,7 @@ impl CollateralState {
 
         // Remove from active associations
         if let Some(deals) = self.active_associations.get_mut(&collateral_id) {
-            deals.retain(|&d| d != deal_id);
+            deals.retain(|d| d != &deal_id);
 
             // Remove entry if no more active associations
             if deals.is_empty() {
@@ -363,7 +399,7 @@ impl CollateralState {
         &mut self,
         transaction: &LoanTransaction,
     ) -> Result<(), CollateralError> {
-        let collateral_id = transaction.deal_id; // Use deal_id field
+        let collateral_id = transaction.deal_id.to_vec(); // Use deal_id field
 
         // Validation: Collateral should exist (but not required - can check non-existent)
         // Record the detection request
@@ -397,7 +433,7 @@ impl CollateralState {
         &mut self,
         transaction: &LoanTransaction,
     ) -> Result<(), CollateralError> {
-        let collateral_id = transaction.deal_id; // Use deal_id field
+        let collateral_id = transaction.deal_id.to_vec(); // Use deal_id field
 
         // Update detection request timestamp to reflect completion
         self.detection_requests
@@ -434,13 +470,13 @@ mod tests {
     #[test]
     fn test_collateral_struct() {
         let collateral = Collateral {
-            collateral_id: [1u8; 32],
+            collateral_id: vec![1u8; 32],
             created_at: 1000,
             updated_at: 1000,
             collateral_type: "real_estate".to_string(),
         };
 
-        assert_eq!(collateral.collateral_id, [1u8; 32]);
+        assert_eq!(collateral.collateral_id, vec![1u8; 32]);
         assert_eq!(collateral.created_at, 1000);
     }
 
@@ -455,10 +491,11 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify collateral exists
-        assert!(state.collateral.contains_key(&collateral_id));
+        let collateral_id_vec = collateral_id.to_vec();
+        assert!(state.collateral.contains_key(&collateral_id_vec));
 
-        let collateral = state.collateral.get(&collateral_id).unwrap();
-        assert_eq!(collateral.collateral_id, collateral_id);
+        let collateral = state.collateral.get(&collateral_id_vec).unwrap();
+        assert_eq!(collateral.collateral_id, collateral_id_vec);
         assert_eq!(collateral.collateral_type, "real_estate");
         assert_eq!(collateral.created_at, 1_640_995_200);
     }
@@ -479,7 +516,7 @@ mod tests {
 
         match result.unwrap_err() {
             CollateralError::CollateralAlreadyExists { collateral_id: id } => {
-                assert_eq!(id, collateral_id);
+                assert_eq!(id, collateral_id.to_vec());
             }
             _ => panic!("Expected CollateralAlreadyExists error"),
         }
@@ -510,7 +547,8 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify update
-        let collateral = state.collateral.get(&collateral_id).unwrap();
+        let collateral_id_vec = collateral_id.to_vec();
+        let collateral = state.collateral.get(&collateral_id_vec).unwrap();
         assert_eq!(collateral.collateral_type, "commercial_property");
         assert!(collateral.updated_at > collateral.created_at);
     }
@@ -532,13 +570,15 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify association
+        let collateral_id_vec = collateral_id.to_vec();
+        let deal_id_vec = deal_id.to_vec();
         let active = state
             .active_associations
-            .get(&collateral_id)
+            .get(&collateral_id_vec)
             .unwrap()
             .clone();
         assert_eq!(active.len(), 1);
-        assert_eq!(active[0], deal_id);
+        assert_eq!(active[0], deal_id_vec);
 
         // Verify history
         let assoc_key = CollateralState::make_association_key(&collateral_id, &deal_id);
@@ -573,8 +613,8 @@ mod tests {
                 collateral_id: coll_id,
                 existing_deal_id,
             } => {
-                assert_eq!(coll_id, collateral_id);
-                assert_eq!(existing_deal_id, deal1_id);
+                assert_eq!(coll_id, collateral_id.to_vec());
+                assert_eq!(existing_deal_id, deal1_id.to_vec());
             }
             _ => panic!("Expected CollateralAlreadyPledged error"),
         }
@@ -610,13 +650,15 @@ mod tests {
         );
 
         // Verify second deal is now associated
+        let collateral_id_vec = collateral_id.to_vec();
+        let deal2_id_vec = deal2_id.to_vec();
         let active = state
             .active_associations
-            .get(&collateral_id)
+            .get(&collateral_id_vec)
             .unwrap()
             .clone();
         assert_eq!(active.len(), 1);
-        assert_eq!(active[0], deal2_id);
+        assert_eq!(active[0], deal2_id_vec);
     }
 
     #[test]
@@ -628,7 +670,8 @@ mod tests {
         let result = state.process_collateral_detection_request(&tx);
 
         assert!(result.is_ok());
-        assert!(state.detection_requests.contains_key(&collateral_id));
+        let collateral_id_vec = collateral_id.to_vec();
+        assert!(state.detection_requests.contains_key(&collateral_id_vec));
     }
 
     #[test]
@@ -640,7 +683,8 @@ mod tests {
         let result = state.process_collateral_detection_update(&update_tx);
 
         assert!(result.is_ok());
-        assert!(state.detection_requests.contains_key(&collateral_id));
+        let collateral_id_vec = collateral_id.to_vec();
+        assert!(state.detection_requests.contains_key(&collateral_id_vec));
     }
 
     fn create_collateral_creation_tx(

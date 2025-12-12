@@ -59,7 +59,6 @@ use sqlx::PgPool;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 
-use crate::config::types::ErrorResponse;
 use arda_credit_db::DbError;
 
 /// Service for recording transactions for zkVM processing

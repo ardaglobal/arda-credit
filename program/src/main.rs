@@ -61,8 +61,8 @@ pub fn main() {
     // that don't change the total system value, only redistribute it between users.
     // When users deposit from external wallets → smart contract, this total increases.
     // When users originate deals or make payments, this total stays constant (internal transfers).
-    let previous_total = input.initial_loan_state.compute_total_user_balance();
-    let current_total = final_deal_state.compute_total_user_balance();
+    let previous_total = input.initial_loan_state.compute_total_balance();
+    let current_total = final_deal_state.compute_total_balance();
 
     // Create hash of transaction types for transparency (without revealing details)
     let mut types_hasher = Sha256::new();

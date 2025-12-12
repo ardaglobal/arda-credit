@@ -65,13 +65,13 @@ pub struct GlobalLoanState {
     pub loans: HashMap<[u8; 32], Deal>, // Keep loans field name for compatibility, but use Deal type
 
     /// NEW: All collateral in the system
-    pub collateral: HashMap<[u8; 32], crate::collateral::Collateral>,
+    pub collateral: HashMap<Vec<u8>, crate::collateral::Collateral>,
 
     /// NEW: Active collateral-deal associations
-    pub active_associations: HashMap<[u8; 32], Vec<[u8; 32]>>,
+    pub active_associations: HashMap<Vec<u8>, Vec<Vec<u8>>>,
 
     /// NEW: Complete association history
-    pub association_history: HashMap<[u8; 64], crate::collateral::CollateralAssociation>,
+    pub association_history: HashMap<Vec<u8>, crate::collateral::CollateralAssociation>,
 
     /// User balance tracking state
     pub balance_state: BalanceState,
@@ -474,14 +474,14 @@ impl GlobalLoanState {
     #[must_use]
     pub fn get_collateral(
         &self,
-        collateral_id: &[u8; 32],
+        collateral_id: &[u8],
     ) -> Option<&crate::collateral::Collateral> {
         self.collateral.get(collateral_id)
     }
 
     /// Get active associations for a collateral
     #[must_use]
-    pub fn get_active_associations(&self, collateral_id: &[u8; 32]) -> Vec<[u8; 32]> {
+    pub fn get_active_associations(&self, collateral_id: &[u8]) -> Vec<Vec<u8>> {
         self.active_associations
             .get(collateral_id)
             .cloned()
@@ -490,7 +490,7 @@ impl GlobalLoanState {
 
     /// Check if collateral is actively pledged to any deal
     #[must_use]
-    pub fn is_collateral_pledged(&self, collateral_id: &[u8; 32]) -> bool {
+    pub fn is_collateral_pledged(&self, collateral_id: &[u8]) -> bool {
         self.active_associations
             .get(collateral_id)
             .map_or(false, |deals| !deals.is_empty())
@@ -498,12 +498,12 @@ impl GlobalLoanState {
 
     /// Get all collateral associated with a deal
     #[must_use]
-    pub fn get_deal_collateral(&self, deal_id: &[u8; 32]) -> Vec<[u8; 32]> {
+    pub fn get_deal_collateral(&self, deal_id: &[u8]) -> Vec<Vec<u8>> {
         self.active_associations
             .iter()
             .filter_map(|(coll_id, deal_ids)| {
-                if deal_ids.contains(deal_id) {
-                    Some(*coll_id)
+                if deal_ids.iter().any(|d| d.as_slice() == deal_id) {
+                    Some(coll_id.clone())
                 } else {
                     None
                 }
@@ -1428,9 +1428,9 @@ mod tests {
 
         // Add collateral
         state.collateral.insert(
-            collateral_id,
+            collateral_id.to_vec(),
             crate::collateral::Collateral {
-                collateral_id,
+                collateral_id: collateral_id.to_vec(),
                 created_at: 1000,
                 updated_at: 1000,
                 collateral_type: "real_estate".to_string(),
@@ -1445,10 +1445,10 @@ mod tests {
         // Add association
         state
             .active_associations
-            .insert(collateral_id, vec![deal_id]);
+            .insert(collateral_id.to_vec(), vec![deal_id.to_vec()]);
 
         assert!(state.is_collateral_pledged(&collateral_id));
-        assert_eq!(state.get_active_associations(&collateral_id), vec![deal_id]);
+        assert_eq!(state.get_active_associations(&collateral_id), vec![deal_id.to_vec()]);
         assert_eq!(state.total_active_associations(), 1);
     }
     #[test]
@@ -1832,7 +1832,7 @@ mod tests {
         assert_eq!(state.transaction_count, 9);
 
         // Verify total system value calculation (what ZK program will use)
-        let total_system_value = state.compute_total_user_balance();
+        let total_system_value = state.compute_total_balance();
         // Should equal total deposits: $1000 (depositor) + $1500 (lender) = $2500
         assert_eq!(total_system_value, 250000); // $2500 in cents
 
@@ -1984,6 +1984,16 @@ mod tests {
         // Setup: Create users with KYC
         setup_kycd_users(&mut state, originator_id, investor_id);
 
+        // Give investor funds for deal origination
+        let investor_wallet = [100u8; 32];
+        let deposit_tx = create_test_deposit_with_timestamp(
+            investor_id,
+            investor_wallet,
+            200000, // $2000 deposit
+            1_640_999_000, // Before collateral creation
+        );
+        state.process_transaction(&deposit_tx).unwrap();
+
         // Create collateral
         let coll_create = create_test_collateral_creation_tx(collateral_id, "real_estate");
         state.process_transaction(&coll_create).unwrap();
@@ -2015,7 +2025,20 @@ mod tests {
         let deal2_id = [11u8; 32];
         setup_test_deal(&mut state, deal2_id);
 
-        let assoc2_tx = create_test_association_tx(collateral_id, deal2_id);
+        // Create association with later timestamp (after disassociation)
+        let mut metadata_bytes = [0u8; 64];
+        metadata_bytes[0..32].copy_from_slice(&collateral_id);
+        metadata_bytes[32..64].copy_from_slice(&deal2_id);
+
+        let assoc2_tx = LoanTransaction {
+            transaction_id: [97u8; 32],
+            user_id: [0u8; 32],
+            deal_id: [0u8; 32],
+            transaction_type: TransactionType::CollateralDealAssociation,
+            amount: 0,
+            created_at: 1_641_000_600, // After disassociation
+            metadata: MetadataArray::from_bytes(&metadata_bytes),
+        };
         let result = state.process_transaction(&assoc2_tx);
 
         assert!(
@@ -2291,7 +2314,7 @@ mod tests {
         assert_eq!(state.balance_state.get_balance(&user2_id), 150000); // $1500 remaining
 
         // Verify total system balance decreased correctly
-        assert_eq!(state.compute_total_user_balance(), 220000); // $2200 total
+        assert_eq!(state.compute_total_balance(), 220000); // $2200 total
     }
 
     // Helper function to create test KYC submission transaction
@@ -2407,7 +2430,7 @@ mod tests {
             deal_id: collateral_id, // Use deal_id field for collateral_id
             transaction_type: TransactionType::CollateralCreation,
             amount: 0,
-            created_at: 1_640_995_200,
+            created_at: 1_641_000_000, // Later timestamp to avoid going backward
             metadata: MetadataArray::from_bytes(&metadata_bytes),
         }
     }
@@ -2427,7 +2450,7 @@ mod tests {
             deal_id: collateral_id,
             transaction_type: TransactionType::CollateralUpdate,
             amount: 0,
-            created_at: 1_640_995_300, // Later than creation
+            created_at: 1_641_000_100, // Later than creation
             metadata: MetadataArray::from_bytes(&metadata_bytes),
         }
     }
@@ -2443,7 +2466,7 @@ mod tests {
             deal_id: [0u8; 32], // Zero for association transactions
             transaction_type: TransactionType::CollateralDealAssociation,
             amount: 0,
-            created_at: 1_640_995_400,
+            created_at: 1_641_000_200,
             metadata: MetadataArray::from_bytes(&metadata_bytes),
         }
     }
@@ -2462,7 +2485,7 @@ mod tests {
             deal_id: [0u8; 32],
             transaction_type: TransactionType::CollateralDealDisassociation,
             amount: 0,
-            created_at: 1_640_995_500,
+            created_at: 1_641_000_500,
             metadata: MetadataArray::from_bytes(&metadata_bytes),
         }
     }
@@ -2474,7 +2497,7 @@ mod tests {
             deal_id: collateral_id, // Collateral ID in deal_id field
             transaction_type: TransactionType::CollateralDetectionRequest,
             amount: 0,
-            created_at: 1_640_995_600,
+            created_at: 1_641_000_300,
             metadata: MetadataArray::empty(),
         }
     }
@@ -2486,7 +2509,7 @@ mod tests {
             deal_id: collateral_id,
             transaction_type: TransactionType::CollateralDetectionUpdate,
             amount: 0,
-            created_at: 1_640_995_700,
+            created_at: 1_641_000_400,
             metadata: MetadataArray::empty(),
         }
     }
@@ -2507,7 +2530,7 @@ mod tests {
             deal_id,                // Keep deal_id field name
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount,
-            created_at: 1_640_995_400, // January 1, 2022 - valid timestamp
+            created_at: 1_641_000_150, // After collateral creation, before association
             metadata: MetadataArray::from_bytes(&metadata),
         }
     }
@@ -2523,7 +2546,7 @@ mod tests {
             deal_id,                                        // Keep deal_id field name
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount,                                         // Partial payment
-            created_at: 1_640_995_500,                      // January 1, 2022 - valid timestamp
+            created_at: 1_641_000_250,                      // After association
             metadata: MetadataArray::empty(),
         }
     }
@@ -2535,7 +2558,7 @@ mod tests {
             deal_id,                                         // Keep deal_id field name
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
-            created_at: 1_640_995_700, // January 1, 2022 - valid timestamp
+            created_at: 1_641_000_350, // After payment
             metadata: MetadataArray::empty(),
         }
     }

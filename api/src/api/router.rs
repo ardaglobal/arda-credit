@@ -431,10 +431,6 @@ pub fn create_router(state: ApiState) -> Router {
             delete(crate::handlers::deals::deals::delete_deal_endpoint),
         )
         .route(
-            paths::DEAL_BY_ID,
-            delete(crate::handlers::deals::deals::delete_deal_endpoint),
-        )
-        .route(
             paths::DEALS_STATS,
             get(crate::handlers::deals::deals::get_deal_stats_endpoint),
         )
@@ -475,12 +471,12 @@ pub fn create_router(state: ApiState) -> Router {
         )
         // NEW: Deal Payment Endpoint
         .route(
-            "/api/v1/deal/:deal_id/payment",
+            "/api/v1/deal/{deal_id}/payment",
             post(crate::handlers::deals::deals::make_payment_endpoint),
         )
         // NEW: Deal Closeout Endpoint
         .route(
-            "/api/v1/deal/:deal_id/closeout",
+            "/api/v1/deal/{deal_id}/closeout",
             post(crate::handlers::deals::deals::closeout_deal_endpoint),
         )
         .route(

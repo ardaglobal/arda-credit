@@ -23,6 +23,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use metrics;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
@@ -2320,7 +2321,8 @@ pub async fn make_payment_endpoint(
     // 3. Get deal and validate status
     let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_id)
         .await
-        .map_err(|_| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?;
+        .map_err(|_| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?;
 
     if deal.deal_status != "originated" && deal.deal_status != "active" {
         return Err((
@@ -2357,16 +2359,15 @@ pub async fn make_payment_endpoint(
     sqlx::query!(
         r#"
         INSERT INTO deal_payments (
-            id, deal_id, payer_id, amount, payment_type, notes, created_at
+            id, deal_id, payer_id, amount, payment_type, created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+        VALUES ($1, $2, $3, $4, $5, NOW())
         "#,
         payment_id,
         deal_id,
         payer_id,
         amount,
         payment_type,
-        request.notes,
     )
     .execute(&state.pool)
     .await
@@ -2511,7 +2512,8 @@ pub async fn closeout_deal_endpoint(
     // 3. Get deal and validate status
     let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_id)
         .await
-        .map_err(|_| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?;
+        .map_err(|_| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?;
 
     if deal.deal_status != "paid_off" {
         return Err((
