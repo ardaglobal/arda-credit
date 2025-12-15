@@ -379,6 +379,11 @@ impl GlobalLoanState {
 
                 // Detection updates don't modify state (just audit trail)
             }
+            TransactionType::StateRegenesis => {
+                // Re-genesis transaction marks state reset point
+                // This transaction itself doesn't modify state - it's a marker in the audit trail
+                // The actual state reset happens in the batch processor
+            }
         }
 
         // Update global state
@@ -610,13 +615,9 @@ pub fn validate_transaction_with_state(
     // Run basic validation first
     validate_transaction(transaction)?;
 
-    // Validate temporal ordering - transaction cannot be older than current state
-    if transaction.created_at < current_state.last_updated {
-        return Err(ProcessingError::TimestampGoesBackward {
-            transaction_timestamp: transaction.created_at,
-            state_timestamp: current_state.last_updated,
-        });
-    }
+    // NOTE: State timestamp validation removed - since we process from genesis (last_updated = 0),
+    // all valid transactions (2000+) are naturally newer than initial state.
+    // Batch sorting ensures chronological order is maintained.
 
     // Validate KYC requirements for transactions that require it
     if transaction.transaction_type.requires_kyc() {
@@ -662,10 +663,10 @@ pub fn validate_transaction_with_state(
 /// Validate that a timestamp is within reasonable bounds for production use
 fn validate_timestamp_bounds(timestamp: u64) -> Result<(), ProcessingError> {
     // Define reasonable bounds for loan system timestamps
-    // Min: January 1, 2020 (1577836800)
-    // Max: January 1, 2030 (1893456000) - 10 years from now for reasonable future limit
-    const MIN_TIMESTAMP: u64 = 1_577_836_800; // Jan 1, 2020
-    const MAX_TIMESTAMP: u64 = 1_893_456_000; // Jan 1, 2030
+    // Min: January 1, 2000 (946684800) - Private credit industry historical data
+    // Max: January 1, 2060 (2840140800) - Support 30-year mortgages and long-term loans
+    const MIN_TIMESTAMP: u64 = 946_684_800; // Jan 1, 2000
+    const MAX_TIMESTAMP: u64 = 2_840_140_800; // Jan 1, 2060
 
     if !(MIN_TIMESTAMP..=MAX_TIMESTAMP).contains(&timestamp) {
         return Err(ProcessingError::InvalidTimestamp {

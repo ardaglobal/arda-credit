@@ -1300,13 +1300,36 @@ if balance >= amount {
    - Deterministic and reproducible
    - This is non-negotiable for zkVM
 
-### Next Steps
+---
 
-1. Review [ZK_CIRCUIT_AUDIT.md](../../ZK_CIRCUIT_AUDIT.md) for current state
-2. Check [test-coverage-analysis.md](./test-coverage-analysis.md) for gaps
-3. Implement TransactionRecordingService
-4. Integrate with API endpoints
-5. Update tests and documentation
+## State Progression Model (MVP)
+
+**Current implementation:** Process from genesis for every batch
+
+```
+Batch 1: S0 → S1 (process transactions 1-50)
+Batch 2: S0 → S2 (process transactions 1-68, reprocessing 1-50 + new 51-68)
+Batch 3: S0 → S3 (process transactions 1-85, reprocessing everything)
+```
+
+**Why this works:**
+- Simple and correct
+- No state snapshot management complexity
+- Handles historical imports and real-time operations identically
+- Each proof verifies complete transaction history
+
+**Future optimization:** State snapshots for incremental processing
+```
+Batch 1: S0 → S1 (process tx 1-50, save snapshot)
+Batch 2: S1 → S2 (load snapshot, process only tx 51-68)
+Batch 3: S2 → S3 (load snapshot, process only tx 69-85)
+```
+
+## Related Documentation
+
+- **[Batching and Transaction Ordering](batching-and-ordering.md)** - Simplified global timestamp sorting
+- **[Final Implementation Audit](FINAL_IMPLEMENTATION_AUDIT.md)** - Complete system audit and verification
+- **[Executive Summary](EXECUTIVE_SUMMARY.md)** - High-level overview for stakeholders
 
 ---
 

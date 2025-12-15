@@ -348,7 +348,7 @@ server: up
 		> withdrawal_executor.log 2>&1 &
 	@echo "Withdrawal executor started (logs: withdrawal_executor.log)"
 	@echo "Starting API server..."
-	RUST_LOG=info cargo run --release --bin server -- --cors
+	cargo run --release --bin server -- --cors
 
 ## forge-build: Build smart contracts
 .PHONY: forge-build

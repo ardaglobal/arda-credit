@@ -74,6 +74,8 @@ pub enum TransactionType {
     CollateralDealDisassociation = 23,
     CollateralDetectionRequest = 24,
     CollateralDetectionUpdate = 25,
+    // State management operations
+    StateRegenesis = 30,
 }
 
 impl TransactionType {
@@ -164,6 +166,7 @@ impl std::fmt::Display for TransactionType {
                 write!(f, "collateral_detection_request")
             }
             TransactionType::CollateralDetectionUpdate => write!(f, "collateral_detection_update"),
+            TransactionType::StateRegenesis => write!(f, "state_regenesis"),
         }
     }
 }
@@ -194,6 +197,7 @@ impl std::str::FromStr for TransactionType {
             "collateral_deal_disassociation" => Ok(TransactionType::CollateralDealDisassociation),
             "collateral_detection_request" => Ok(TransactionType::CollateralDetectionRequest),
             "collateral_detection_update" => Ok(TransactionType::CollateralDetectionUpdate),
+            "state_regenesis" => Ok(TransactionType::StateRegenesis),
             _ => Err(format!("Unknown transaction type: {}", s)),
         }
     }

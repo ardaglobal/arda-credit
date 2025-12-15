@@ -51,6 +51,7 @@ use db::{
     },
     create_identity, get_identity_by_email, init_db_with_url, list_deals, Collateral, Deal, User,
 };
+// No direct lib import - use db crate's hash function instead
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use reqwest::Client;
 use rust_decimal::Decimal;
@@ -1069,6 +1070,109 @@ fn generate_csv_deal_row(
     })
 }
 
+// ============================================================================
+// RE-GENESIS SUPPORT
+// ============================================================================
+
+/// Trigger re-genesis to reset proof state
+///
+/// This function:
+/// 1. Creates a StateRegenesis transaction
+/// 2. Marks all existing proofs as superseded
+/// 3. Resets all transactions to pending
+async fn trigger_regenesis_reset(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    println!("🔄 Triggering re-genesis...");
+    println!(
+        "   ℹ️  This will mark old proofs as superseded and reset all transactions to pending"
+    );
+
+    // Get system user for re-genesis transaction
+    let system_user = get_identity_by_email(pool, "engineering@arda.xyz")
+        .await?
+        .ok_or("System user engineering@arda.xyz not found")?;
+
+    // 1. Create re-genesis transaction
+    let regenesis_tx_id = Uuid::new_v4();
+    let metadata = serde_json::json!({
+        "reason": "populate_script_execution",
+        "initiated_by": system_user.id.to_string(),
+        "notes": "Populate script creates historical deals, requiring re-genesis",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+
+    // Hash UUIDs using sha256 (matching lib::hash_uuid implementation)
+    let mut tx_hasher = Sha256::new();
+    tx_hasher.update(regenesis_tx_id.as_bytes());
+    let tx_id_hash = tx_hasher.finalize();
+
+    let mut user_hasher = Sha256::new();
+    user_hasher.update(system_user.id.as_bytes());
+    let user_id_hash = user_hasher.finalize();
+
+    sqlx::query!(
+        r#"
+        INSERT INTO deal_transactions (
+            id, transaction_id_hash, user_id_hash, deal_id_hash,
+            transaction_type, amount, user_id, deal_id, payment_id,
+            included_in_batch_id, metadata, created_at
+        )
+        VALUES ($1, $2, $3, NULL, 'state_regenesis', 0, $4, NULL, NULL, NULL, $5, NOW())
+        "#,
+        regenesis_tx_id,
+        tx_id_hash.as_slice(),
+        user_id_hash.as_slice(),
+        system_user.id,
+        metadata
+    )
+    .execute(pool)
+    .await?;
+
+    println!("  ✅ Created re-genesis transaction: {}", regenesis_tx_id);
+
+    // 2. Mark all existing proofs as superseded
+    let proofs_result = sqlx::query!(
+        r#"
+        UPDATE proof_batches 
+        SET proof_status = 'superseded',
+            superseded_at = NOW(),
+            superseded_by_tx = $1
+        WHERE proof_status IN ('proven', 'ready')
+          AND superseded_at IS NULL
+        "#,
+        regenesis_tx_id
+    )
+    .execute(pool)
+    .await?;
+
+    println!(
+        "  ✅ Superseded {} existing proofs",
+        proofs_result.rows_affected()
+    );
+
+    // 3. Reset all transactions to pending
+    let tx_result = sqlx::query!(
+        r#"
+        UPDATE deal_transactions 
+        SET included_in_batch_id = NULL
+        WHERE included_in_batch_id IS NOT NULL
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    println!(
+        "  ✅ Reset {} transactions to pending",
+        tx_result.rows_affected()
+    );
+    println!("🎉 Re-genesis complete - all transactions will be reprocessed from state 0");
+
+    Ok(())
+}
+
+// ============================================================================
+// MAIN ENTRY POINT
+// ============================================================================
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
@@ -1113,6 +1217,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .value_parser(clap::value_parser!(u32)),
         )
+        .arg(
+            Arg::new("no-regenesis")
+                .long("no-regenesis")
+                .help("Skip re-genesis (only use for future-dated deals, not historical data)")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     let email = matches.get_one::<String>("email");
@@ -1120,6 +1230,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clear_data = matches.get_flag("clear");
     let csv_mode = matches.get_flag("csv");
     let double_pledged_count = matches.get_one::<u32>("dp").copied();
+    // Default to triggering re-genesis (since populate creates historical deals)
+    // Only skip if explicitly requested via --no-regenesis
+    let should_trigger_regenesis = !matches.get_flag("no-regenesis");
 
     println!("🚀 Starting deal data population...");
 
@@ -1158,6 +1271,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize database connection
     let pool = init_db_with_url(&database_url).await?;
     println!("✅ Connected to database");
+
+    // Trigger re-genesis if requested (before clearing/generating data)
+    if should_trigger_regenesis {
+        println!("🔄 Triggering re-genesis to reset state...");
+        trigger_regenesis_reset(&pool).await?;
+    }
 
     // Clear existing data if requested
     if clear_data {

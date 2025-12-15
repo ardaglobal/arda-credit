@@ -370,6 +370,37 @@ impl BackgroundBatchProcessor {
         info!("✅ Background batch processor stopped");
     }
 
+    /// Determine processing mode based on database state
+    ///
+    /// Returns Incremental if there are proven non-superseded batches, Genesis otherwise
+    async fn determine_processing_mode(
+        pool: &PgPool,
+    ) -> Result<crate::services::state_builder::StateLoadMode, String> {
+        use crate::services::state_builder::StateLoadMode;
+
+        // Check if there are any non-superseded proven batches
+        let has_proven_state = sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM proof_batches 
+                WHERE proof_status = 'proven' 
+                  AND superseded_at IS NULL
+            ) as "exists!"
+            "#
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to check for proven batches: {}", e))?;
+
+        if has_proven_state {
+            info!("📊 Mode: Incremental (loading from latest proven batch)");
+            Ok(StateLoadMode::Incremental)
+        } else {
+            info!("🔄 Mode: FromGenesis (no proven batches, starting from empty state)");
+            Ok(StateLoadMode::FromGenesis)
+        }
+    }
+
     /// Check if we should process a batch (respecting minimum interval)
     fn should_process_batch(&self, last_batch_time: Instant) -> bool {
         let elapsed = last_batch_time.elapsed();
@@ -394,9 +425,11 @@ impl BackgroundBatchProcessor {
     async fn process_batch(&self, trigger_type: &str) -> Result<Option<i32>, String> {
         let start_time = std::time::Instant::now();
 
+        // Determine processing mode (genesis vs incremental)
+        let mode = Self::determine_processing_mode(&self.pool).await?;
         info!(
-            "🔄 UNIFIED: Processing batch via {} trigger (using unified service)",
-            trigger_type
+            "🔄 UNIFIED: Processing batch via {} trigger (mode: {:?}, using unified service)",
+            trigger_type, mode
         );
 
         // Use unified batch service for consistent ADS integration
@@ -780,14 +813,19 @@ impl BackgroundBatchProcessor {
     pub async fn generate_proof_for_batch(pool: &PgPool, batch_id: i32) -> Result<(), String> {
         info!("🔐 Starting proof generation for batch: {}", batch_id);
 
-        // Build GlobalLoanState from database
+        // Determine processing mode
+        let mode = Self::determine_processing_mode(pool).await?;
+        info!("📊 Processing mode: {:?}", mode);
+
+        // Build GlobalLoanState based on mode
         info!("🔨 Building GlobalLoanState for batch {}", batch_id);
-        let initial_state = crate::services::state_builder::build_global_loan_state(pool)
-            .await
-            .map_err(|e| {
-                error!("❌ Failed to build GlobalLoanState: {}", e);
-                format!("Failed to build GlobalLoanState: {}", e)
-            })?;
+        let initial_state =
+            crate::services::state_builder::build_global_loan_state_with_mode(pool, mode)
+                .await
+                .map_err(|e| {
+                    error!("❌ Failed to build GlobalLoanState: {}", e);
+                    format!("Failed to build GlobalLoanState: {}", e)
+                })?;
 
         // Get ADS state (create empty for now - will be integrated with ADS service)
         let ads_state = arda_credit_lib::ZkVMAds::new();

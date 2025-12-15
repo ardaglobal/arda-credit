@@ -109,6 +109,29 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
         zkvm_transactions.push(zkvm_tx);
     }
 
+    // ============================================================================
+    // SIMPLE GLOBAL TIMESTAMP SORT
+    // ============================================================================
+    //
+    // Since we process from genesis (empty state with last_updated = 0), we only need
+    // to sort all transactions by timestamp globally. Natural chronological order:
+    // - Processes history in real-world order
+    // - Deal lifecycles emerge naturally (origination → payments → closeout)
+    // - Collateral conflicts detected at correct historical moment
+    // - Works for both historical imports and real-time operations
+    //
+    // Stable sort preserves database order for transactions with equal timestamps.
+
+    info!("🔄 Sorting transactions in global chronological order");
+
+    // Simple global timestamp sort (stable to preserve DB order for equal timestamps)
+    zkvm_transactions.sort_by_key(|tx| tx.created_at);
+
+    info!(
+        "✅ Sorted {} transactions in chronological order (oldest to newest)",
+        zkvm_transactions.len()
+    );
+
     // Create batch ID hash from batch number
     let batch_id_bytes = batch_id.to_le_bytes();
     let mut batch_id_hash = [0u8; 32];
