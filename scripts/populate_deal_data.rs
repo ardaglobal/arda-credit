@@ -38,6 +38,7 @@
 //! cargo run --bin populate_deal_data -- --clear --count 100
 //! ```
 
+use base64::Engine;
 use chrono::NaiveDate;
 use chrono::{Duration, Utc};
 use clap::{Arg, Command};
@@ -608,6 +609,8 @@ async fn create_deal_transaction_record(
     amount: Decimal,
     created_at: chrono::DateTime<Utc>,
     payment_id: Option<Uuid>,
+    originator_id: Option<Uuid>, // For deal_origination: the originator company user
+    investor_id: Option<Uuid>,   // For deal_origination: the investor company user
 ) -> Result<(), sqlx::Error> {
     let transaction_id = Uuid::new_v4();
     let transaction_id_hash = hash_uuid(&transaction_id);
@@ -615,6 +618,27 @@ async fn create_deal_transaction_record(
     let dummy_uuid = Uuid::nil();
     let user_id_hash = hash_uuid(&user_id.unwrap_or(dummy_uuid));
     let deal_id_hash = hash_uuid(&deal_id);
+
+    // Build metadata based on transaction type
+    // For deal_origination: metadata contains 64 bytes as base64: originator_hash (32) + investor_hash (32)
+    // For other types: empty 64 bytes
+    let metadata_json = if transaction_type == "deal_origination" {
+        let originator_hash = hash_uuid(&originator_id.unwrap_or(dummy_uuid));
+        let investor_hash = hash_uuid(&investor_id.unwrap_or(dummy_uuid));
+
+        let mut bytes = vec![0u8; 64];
+        bytes[0..32].copy_from_slice(&originator_hash);
+        bytes[32..64].copy_from_slice(&investor_hash);
+
+        json!({
+            "data_base64": base64::engine::general_purpose::STANDARD.encode(&bytes)
+        })
+    } else {
+        // Empty 64-byte array for other transaction types
+        json!({
+            "data_base64": base64::engine::general_purpose::STANDARD.encode(vec![0u8; 64])
+        })
+    };
 
     sqlx::query(
         r#"
@@ -635,10 +659,7 @@ async fn create_deal_transaction_record(
     .bind(user_id)
     .bind(deal_id)
     .bind(payment_id)
-    .bind(json!({
-        "created_by_script": true,
-        "transaction_type": transaction_type
-    }))
+    .bind(metadata_json)
     .bind(created_at)
     .execute(pool)
     .await?;
@@ -669,6 +690,8 @@ async fn create_deal_state_progression(
         deal.principal_amount,
         originated_at,
         None,
+        Some(deal.originator_id), // borrower_id (originator)
+        deal.investor_id,         // lender_id (investor)
     )
     .await?;
 
@@ -699,6 +722,8 @@ async fn create_deal_state_progression(
                     payment_amount,
                     payment_date,
                     None, // No actual payment record created
+                    None, // No originator_id needed for payments
+                    None, // No investor_id needed for payments
                 )
                 .await?;
             }
@@ -735,6 +760,8 @@ async fn create_deal_state_progression(
                     *amount,
                     payment_date,
                     None, // No actual payment record created
+                    None, // No originator_id needed for payments
+                    None, // No investor_id needed for payments
                 )
                 .await?;
             }
@@ -771,6 +798,8 @@ async fn create_deal_state_progression(
                     *amount,
                     payment_date,
                     None, // No actual payment record created
+                    None, // No originator_id needed for payments
+                    None, // No investor_id needed for payments
                 )
                 .await?;
             }
@@ -785,6 +814,8 @@ async fn create_deal_state_progression(
                 Decimal::ZERO,
                 closeout_date,
                 None,
+                None, // No originator_id needed for closeout
+                None, // No investor_id needed for closeout
             )
             .await?;
         }
@@ -1117,13 +1148,6 @@ async fn trigger_regenesis_reset(pool: &sqlx::PgPool) -> Result<(), Box<dyn std:
     let min_valid_timestamp = chrono::NaiveDateTime::from_timestamp_opt(946_684_800, 0)
         .expect("Valid minimum timestamp")
         .and_utc();
-
-    // Debug: Log what we're inserting
-    println!("  🔍 Debug StateRegenesis:");
-    println!("     tx_id_hash length: {}", tx_id_hash.len());
-    println!("     user_id_hash length: {}", user_id_hash.len());
-    println!("     system_user.id: {}", system_user.id);
-    println!("     metadata: {}", metadata);
 
     // Use explicit parameter binding with query() instead of query!() to ensure correct order
     sqlx::query(
@@ -1548,6 +1572,8 @@ async fn generate_user_deals(
                 Decimal::ZERO,
                 user.created_at,
                 None,
+                None, // No originator_id for user registration
+                None, // No investor_id for user registration
             )
             .await?;
 
@@ -1982,6 +2008,8 @@ async fn ensure_user_companies(
             Decimal::ZERO,
             user.created_at, // Use user's actual creation time
             None,
+            None, // No originator_id for user registration
+            None, // No investor_id for user registration
         )
         .await?;
     }

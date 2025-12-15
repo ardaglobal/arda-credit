@@ -997,6 +997,22 @@ impl BackgroundBatchProcessor {
 
         let eth_client = eth_client.unwrap();
 
+        // Check if we're in local environment where Core proofs are used
+        // Core proofs cannot be verified on-chain, so skip contract posting
+        let server_env = std::env::var("SERVER_ENVIRONMENT")
+            .unwrap_or_else(|_| "local".to_string())
+            .to_lowercase();
+
+        if server_env == "local" || server_env == "staging" {
+            info!(
+                "⚠️ Skipping on-chain contract posting for {} environment",
+                server_env
+            );
+            info!("   Core proofs generated locally cannot be verified on-chain");
+            info!("   Only Plonk/Groth16 proofs from Sindri (sandbox/production) support on-chain verification");
+            return Ok(());
+        }
+
         for batch in unposted_batches {
             // Submit to contract with retry logic and confirmation waiting
             match Self::submit_batch_with_retry(pool, &eth_client, &batch, 3).await {

@@ -1193,11 +1193,22 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
             )));
         }
 
-        let mut transitions = Vec::with_capacity(values.len());
+        // CRITICAL: Sort nullifiers in ascending order before insertion
+        // Indexed Merkle Tree requires sorted insertion to maintain the linked list structure
+        let mut sorted_values = values.to_vec();
+        sorted_values.sort_unstable();
+        info!(
+            "🔢 Sorted {} nullifiers for IMT insertion (range: {} to {})",
+            sorted_values.len(),
+            sorted_values.first().unwrap_or(&0),
+            sorted_values.last().unwrap_or(&0)
+        );
+
+        let mut transitions = Vec::with_capacity(sorted_values.len());
 
         // Process each insertion sequentially for now
         // Could be optimized with true batch operations in the future
-        for &value in values {
+        for &value in &sorted_values {
             match self.insert(value).await {
                 Ok(transition) => transitions.push(transition),
                 Err(e) => {

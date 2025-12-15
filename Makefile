@@ -26,6 +26,13 @@ help: Makefile
 install:
 	./install-dependencies.sh
 
+## clean-cache: Clean lib and api build caches to force zkVM binary re-embedding
+.PHONY: clean-cache
+clean-cache:
+	@echo "🧹 Cleaning lib and api caches..."
+	@cargo clean -p lib -p api -p arda-credit
+	@echo "✅ Caches cleaned"
+
 ## build-program: Build SP1 program
 .PHONY: build-program
 build-program:
@@ -308,7 +315,7 @@ bench-zk:
 
 ## server: Start API server locally (in debug mode with verbose logging) with deposit monitor and withdrawal executor
 .PHONY: server
-server: up build-program
+server: clean-cache up build-program
 	@sleep 2
 	@# Deploy contracts if in local/staging environment
 	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \

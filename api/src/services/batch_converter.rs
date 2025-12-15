@@ -170,22 +170,6 @@ fn convert_db_transaction_to_zkvm(db_tx: &DealTransactionDb) -> Result<DealTrans
             hash_uuid(&db_tx.id)
         };
 
-    // Debug logging for StateRegenesis transactions
-    if db_tx.transaction_type == "state_regenesis" {
-        tracing::debug!(
-            "🔍 StateRegenesis conversion: user_id_hash.len={}, user_id={:?}, metadata={:?}",
-            db_tx.user_id_hash.len(),
-            db_tx.user_id,
-            db_tx.metadata
-        );
-        if !db_tx.user_id_hash.is_empty() {
-            tracing::debug!(
-                "🔍 user_id_hash first 32 bytes: {:?}",
-                &db_tx.user_id_hash[..32.min(db_tx.user_id_hash.len())]
-            );
-        }
-    }
-
     let user_id = if !db_tx.user_id_hash.is_empty() && db_tx.user_id_hash.len() == 32 {
         db_tx
             .user_id_hash
@@ -234,12 +218,34 @@ fn convert_db_transaction_to_zkvm(db_tx: &DealTransactionDb) -> Result<DealTrans
 
     // Convert metadata JSON to byte array
     let metadata = if let Some(ref metadata_json) = db_tx.metadata {
-        // Serialize metadata as compact JSON bytes
-        let metadata_str = metadata_json.to_string();
-        MetadataArray::from_bytes(metadata_str.as_bytes())
+        // Check if metadata contains base64-encoded data
+        if let Some(data_base64) = metadata_json.get("data_base64").and_then(|v| v.as_str()) {
+            // Decode base64 to bytes
+            use base64::Engine;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(data_base64)
+                .map_err(|e| format!("Failed to decode metadata base64: {}", e))?;
+            MetadataArray::from_bytes(&bytes)
+        } else {
+            // Fallback: serialize as compact JSON bytes (legacy format)
+            let metadata_str = metadata_json.to_string();
+            MetadataArray::from_bytes(metadata_str.as_bytes())
+        }
     } else {
         MetadataArray::empty()
     };
+
+    // CRITICAL DEBUG: Log EVERY transaction
+    tracing::error!(
+        "🔬 TX: {:?} - user_id[0..4]={:?}, metadata[0..4]={:?}, metadata_preview={:?}",
+        transaction_type,
+        &user_id[..4],
+        &metadata.as_bytes()[..4],
+        db_tx
+            .metadata
+            .as_ref()
+            .map(|m| m.to_string().chars().take(40).collect::<String>())
+    );
 
     Ok(DealTransaction {
         transaction_id,

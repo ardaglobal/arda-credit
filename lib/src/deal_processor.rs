@@ -171,18 +171,19 @@ impl GlobalLoanState {
                 deal_state.process_deal_origination(transaction, &self.users, &self.loan_terms)?; // was process_loan_origination
                 self.loans = deal_state.deals; // Keep loans field for compatibility
 
-                // Create balance updates for loan origination
+                // Create balance updates for deal origination
+                // Metadata format: [originator_id (32 bytes)][investor_id (32 bytes)]
                 let metadata = transaction.metadata.as_bytes();
-                let mut borrower_id = [0u8; 32];
-                let mut lender_id = [0u8; 32];
-                borrower_id.copy_from_slice(&metadata[0..32]);
-                lender_id.copy_from_slice(&metadata[32..64]);
+                let mut originator_id = [0u8; 32];
+                let mut investor_id = [0u8; 32];
+                originator_id.copy_from_slice(&metadata[0..32]);
+                investor_id.copy_from_slice(&metadata[32..64]);
 
                 let balance_updates = self.balance_state.create_origination_updates(
                     transaction.transaction_id,
                     transaction.deal_id, // was loan_id, now deal_id
-                    borrower_id,
-                    lender_id,
+                    originator_id,       // was borrower_id
+                    investor_id,         // was lender_id
                     u128::from(transaction.amount),
                     transaction.created_at,
                 )?;
