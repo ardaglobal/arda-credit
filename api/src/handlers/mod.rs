@@ -12,11 +12,9 @@
 //! - `companies`: Originator and investor company profiles and documents
 //! - `credit`: Credit line management
 //! - `finance`: Financial transactions and withdrawals
-//! - `ai`: AI-powered features
 //! - `taxonomy`: Arda taxonomy document management (credit agreements, fee letters, etc.)
 //! - `loan_tape_handlers`: Loan tape reporting and data export
 
-pub mod ai;
 pub mod auth;
 pub mod companies;
 pub mod core;
@@ -29,7 +27,6 @@ pub mod taxonomy;
 pub mod users;
 
 // Re-export all handler functions for backward compatibility
-pub use ai::*;
 pub use auth::*;
 pub use core::*;
 pub use deals::*;

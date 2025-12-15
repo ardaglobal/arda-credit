@@ -102,6 +102,7 @@ pub struct ApiState {
     pub metrics_handle: Option<Arc<crate::utils::metrics::MetricsHandle>>,
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
     pub metrics_cache: Arc<MetricsCache>,
+    pub event_publisher: Option<Arc<crate::events::CollateralEventPublisher>>,
 }
 
 /// Configuration for API server
@@ -180,11 +181,14 @@ pub fn create_router(state: ApiState) -> Router {
         .route("/api-docs/users.json", get(get_users_spec_handler))
         .route("/api-docs/companies.json", get(get_companies_spec_handler))
         .route("/api-docs/deals.json", get(get_deals_spec_handler))
+        .route("/api-docs/collateral.json", get(get_collateral_spec_handler))
+        .route("/api-docs/loan_tape.json", get(get_loan_tape_spec_handler))
         .route("/api-docs/admin.json", get(get_admin_spec_handler))
         .route("/api-docs/payments.json", get(get_payments_spec_handler))
         .route("/api-docs/state.json", get(get_state_spec_handler))
         .route("/api-docs/taxonomy.json", get(get_taxonomy_spec_handler))
         .route("/api-docs/metrics.json", get(get_metrics_spec_handler))
+        .route("/api-docs/internal.json", get(get_internal_spec_handler))
         .route("/api-docs/dev.json", get(get_dev_spec_handler))
         // Magic Link Authentication endpoints
         .route(paths::AUTH_MAGIC_LINK, post(request_magic_link))
@@ -392,6 +396,10 @@ pub fn create_router(state: ApiState) -> Router {
             post(crate::handlers::deals::deals::create_deal_endpoint),
         )
         .route(
+            paths::DEAL_PROCESS_DOCUMENT_EXTRACTION,
+            post(crate::handlers::deals::document_extraction::process_document_extraction),
+        )
+        .route(
             paths::DEALS,
             get(crate::handlers::deals::deals::list_deals_endpoint),
         )
@@ -466,24 +474,16 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DEAL_PAYMENTS,
             get(crate::handlers::deals::deals::get_deal_payment_history_endpoint),
         )
+        .route(
+            paths::DEAL_AUDIT_TRAIL,
+            get(crate::handlers::deals::deals::get_deal_audit_trail_endpoint),
+        )
         // ========================================================================
         // LOAN TAPE ENDPOINTS
         // ========================================================================
         .route(
-            paths::LOAN_TAPE,
-            get(crate::handlers::loan_tape_handlers::list_loan_tape_handler),
-        )
-        .route(
-            paths::LOAN_TAPE_CREATE,
-            post(crate::handlers::loan_tape_handlers::create_loan_tape_handler),
-        )
-        .route(
             paths::LOAN_TAPE_BULK,
             post(crate::handlers::loan_tape_handlers::create_bulk_loan_tape_handler),
-        )
-        .route(
-            paths::LOAN_TAPE_BY_ID,
-            get(crate::handlers::loan_tape_handlers::get_loan_tape_handler),
         )
         // ========================================================================
         // CONTRACT CONFIGURATION ENDPOINTS
@@ -873,9 +873,64 @@ pub fn create_router(state: ApiState) -> Router {
             paths::TAXONOMY_SECONDARY_TRADE_BY_ID,
             delete(crate::handlers::taxonomy::secondary_trades::delete_secondary_trade_handler),
         )
+        // Collateral
+        .route(
+            paths::COLLATERAL,
+            get(crate::handlers::taxonomy::collateral::list_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL,
+            post(crate::handlers::taxonomy::collateral::create_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL_BATCH,
+            post(crate::handlers::taxonomy::collateral::create_collateral_batch_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_ID,
+            put(crate::handlers::taxonomy::collateral::update_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_ID,
+            delete(crate::handlers::taxonomy::collateral::delete_collateral_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_CUSTOM_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler),
+        )
+        .route(
+            paths::COLLATERAL_BY_DEAL_ID,
+            get(crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler),
+        )
+        .route(
+            "/api/v1/collateral/{id}/audit-trail",
+            get(crate::handlers::taxonomy::collateral::get_collateral_audit_trail_handler),
+        )
+        // Internal API: Collateral fetch for arda-collateral-intel
+        .route(
+            "/api/v1/internal/collateral/{id}",
+            get(crate::handlers::taxonomy::collateral::get_collateral_internal_handler),
+        )
+        // Internal API: Detection results from arda-collateral-intel
+        .route(
+            "/api/v1/internal/collateral/{id}/detection",
+            post(crate::handlers::taxonomy::detection::receive_detection_result),
+        )
         // Set maximum request body size to 100MB for document uploads
         // Default Axum limit is 2MB which is too small for PDFs
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024)) // 100MB
+        // Apply session authentication middleware BEFORE with_state
+        .layer(axum::middleware::from_fn({
+            let state_clone = state.clone();
+            move |request, next| {
+                let state = state_clone.clone();
+                crate::middleware::session_middleware::session_auth_middleware(state, request, next)
+            }
+        }))
         .with_state(state)
 }
 
@@ -1021,6 +1076,20 @@ fn filter_openapi_by_tags(
             tags if tags.contains(&"Metrics") => {
                 vec!["Metrics", "Market", "Pie", "Chart", "Value", "Refresh"]
             }
+            tags if tags.contains(&"Loan Tape") => {
+                vec!["LoanTape", "Loan", "Tape", "BulkLoan", "ListLoan"]
+            }
+            tags if tags.contains(&"Collateral") => vec![
+                "Collateral",
+                "Match",
+                "Duplicate",
+                "ErrorResponse",
+                "DeleteResponse",
+                "BatchOperation",
+            ],
+            tags if tags.contains(&"Internal") => {
+                vec!["Internal", "Detection", "Collateral", "ErrorResponse"]
+            }
             tags if tags.contains(&"Dev") => vec!["Faucet", "Network", "Health", "Info"],
             _ => vec![
                 "Credit",
@@ -1093,6 +1162,11 @@ pub async fn get_deals_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     Json(spec)
 }
 
+pub async fn get_loan_tape_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Loan Tape"]);
+    Json(spec)
+}
+
 pub async fn get_admin_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Admin"]);
     Json(spec)
@@ -1105,6 +1179,11 @@ pub async fn get_payments_spec_handler() -> Json<utoipa::openapi::OpenApi> {
 
 pub async fn get_state_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["State"]);
+    Json(spec)
+}
+
+pub async fn get_collateral_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Collateral"]);
     Json(spec)
 }
 
@@ -1130,6 +1209,11 @@ pub async fn get_taxonomy_spec_handler() -> Json<utoipa::openapi::OpenApi> {
 
 pub async fn get_metrics_spec_handler() -> Json<utoipa::openapi::OpenApi> {
     let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Metrics"]);
+    Json(spec)
+}
+
+pub async fn get_internal_spec_handler() -> Json<utoipa::openapi::OpenApi> {
+    let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["Internal"]);
     Json(spec)
 }
 

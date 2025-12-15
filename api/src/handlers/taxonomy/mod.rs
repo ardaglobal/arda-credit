@@ -34,8 +34,10 @@
 
 pub mod account_control_agreements;
 pub mod assignments;
+pub mod collateral;
 pub mod common;
 pub mod credit_agreements;
+pub mod detection;
 pub mod fee_letters;
 pub mod guaranties;
 pub mod helpers;
@@ -49,8 +51,10 @@ pub mod ucc_financing_statements;
 // Re-export commonly used items
 pub use account_control_agreements::*;
 pub use assignments::*;
+pub use collateral::*;
 pub use common::*;
 pub use credit_agreements::*;
+pub use detection::*;
 pub use fee_letters::*;
 pub use guaranties::*;
 pub use legal_opinions::*;

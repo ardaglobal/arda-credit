@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO collateral_transactions (\n            collateral_id, transaction_type, created_by, deal_id, metadata\n        )\n        VALUES ($1, $2, $3, $4, $5)\n        RETURNING\n            transaction_id,\n            collateral_id,\n            transaction_type,\n            created_at as \"created_at!\",\n            created_by,\n            deal_id,\n            metadata\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "transaction_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "collateral_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "transaction_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "deal_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "metadata",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Varchar",
+        "Uuid",
+        "Uuid",
+        "Jsonb"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "45355acabd553b4bd9c5fd561d035b2ef3f2179e16cad9ca3c1ee81adb8657ed"
+}

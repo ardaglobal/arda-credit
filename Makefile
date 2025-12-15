@@ -5,7 +5,7 @@ REGISTRY ?= ghcr.io
 OWNER ?= ardaglobal
 IMAGE_NAME ?= arda-credit
 DOCKER_TAG ?= $(shell whoami)-dev
-PLATFORM ?= linux/amd64
+PLATFORM ?= linux/arm64
 APPNAME ?= arda-credit
 
 # Anvil default private key (from foundry docs)
@@ -151,7 +151,6 @@ docker-lint:
 	@command -v hadolint >/dev/null 2>&1 || { echo "❌ hadolint not found. Run 'make install' to install dependencies."; exit 1; }
 	hadolint Dockerfile
 	hadolint Dockerfile.contract-deployer
-	hadolint Dockerfile.data-populator
 	@echo "✅ Dockerfile linting completed"
 
 ## docker-lint-fix: Lint and show suggestions to fix Dockerfile issues
@@ -665,6 +664,15 @@ clean-anvil:
 	@rm contracts/deployments/staging-deployment.json 2>/dev/null || true
 	@echo "✅ Anvil state cleaned (blockchain reset)"
 	@echo "💡 Run 'make deploy-contracts' to redeploy contracts after reset"
+
+## clean-db: Clean Postgres database (purge all data)
+.PHONY: clean-db
+clean-db:
+	@echo "🧹 Cleaning Postgres database..."
+	@docker compose down postgres -v
+	@docker volume rm arda-credit_postgres_data 2>/dev/null || true
+	@echo "✅ Postgres database cleaned (all data removed)"
+	@echo "💡 Run 'make initDB' to reinitialize the database with fresh migrations"
 
 ## clean-docker: Clean up Docker resources
 .PHONY: clean-docker

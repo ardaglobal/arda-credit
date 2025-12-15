@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use std::env;
 use std::str::FromStr;
 use tracing::{debug, instrument};
@@ -359,6 +359,8 @@ pub struct Deal {
     pub id: uuid::Uuid,
     pub originator_id: uuid::Uuid, // Company ID of the originator (was borrower_id, now references companies)
     pub investor_id: Option<uuid::Uuid>, // Company ID of the investor (was lender_id, now references companies) - optional for draft deals
+    pub borrower_id: Option<uuid::Uuid>, // Company ID of the borrower (optional third party) - NULL means no borrower exists
+    pub borrower_legal_name: Option<String>, // Legal name of the borrower company (joined from companies table)
     pub principal_amount: rust_decimal::Decimal,
     pub outstanding_balance: rust_decimal::Decimal,
     pub interest_rate_bps: i32, // Basis points
@@ -389,6 +391,9 @@ pub struct Deal {
     pub dscr: Option<rust_decimal::Decimal>,      // Debt Service Coverage Ratio
     pub state_transition_hash: Option<Vec<u8>>,   // Blockchain hash
     pub proof_included: bool,                     // Whether included in ZK proof batch
+
+    // Collateral reference
+    pub collateral_id: Option<uuid::Uuid>, // UUID of collateral asset (from collateral table)
 }
 
 impl Deal {
@@ -506,6 +511,47 @@ pub struct DealTransactionDb {
     pub included_in_batch_id: Option<i32>,
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
+}
+
+/// Get complete transaction history for a deal with enriched context
+pub async fn get_deal_transaction_history(
+    pool: &PgPool,
+    deal_id: uuid::Uuid,
+) -> Result<Vec<DealTransactionDb>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT 
+            id, transaction_id_hash, user_id_hash, deal_id_hash,
+            transaction_type, amount, user_id, deal_id, payment_id,
+            included_in_batch_id, metadata, created_at
+        FROM deal_transactions
+        WHERE deal_id = $1
+        ORDER BY created_at DESC
+        "#,
+    )
+    .bind(deal_id)
+    .fetch_all(pool)
+    .await?;
+
+    let transactions: Vec<DealTransactionDb> = rows
+        .into_iter()
+        .map(|row| DealTransactionDb {
+            id: row.get("id"),
+            transaction_id_hash: row.get("transaction_id_hash"),
+            user_id_hash: row.get("user_id_hash"),
+            deal_id_hash: row.get("deal_id_hash"),
+            transaction_type: row.get("transaction_type"),
+            amount: row.get("amount"),
+            user_id: row.get("user_id"),
+            deal_id: row.get("deal_id"),
+            payment_id: row.get("payment_id"),
+            included_in_batch_id: row.get("included_in_batch_id"),
+            metadata: row.get("metadata"),
+            created_at: row.get("created_at"),
+        })
+        .collect();
+
+    Ok(transactions)
 }
 
 /// State snapshot for auditing
@@ -1937,6 +1983,7 @@ pub async fn create_deal(
     pool: &PgPool,
     originator_id: uuid::Uuid, // Company ID of the originator (was borrower_id, now references companies)
     investor_id: Option<uuid::Uuid>, // Company ID of the investor (was lender_id, now references companies) - optional for draft deals
+    borrower_id: Option<uuid::Uuid>, // Company ID of the borrower (optional third party) - NULL means no borrower exists
     principal_amount: rust_decimal::Decimal,
     interest_rate_bps: i32,
     maturity_date: Option<DateTime<Utc>>,
@@ -1951,6 +1998,7 @@ pub async fn create_deal(
     asset_class: Option<&str>,
     region: Option<&str>,
     minimum_investment: Option<rust_decimal::Decimal>,
+    collateral_id: Option<uuid::Uuid>, // UUID of collateral asset
 ) -> Result<Deal, sqlx::Error> {
     // was Loan
     let id = uuid::Uuid::new_v4();
@@ -1961,19 +2009,20 @@ pub async fn create_deal(
     sqlx::query!(
         r#"
         INSERT INTO deals (
-            id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, deal_status, maturity_date, originated_at, created_at, updated_at,
+            id, originator_id, investor_id, borrower_id, principal_amount, outstanding_balance, interest_rate_bps, deal_status, maturity_date, originated_at, created_at, updated_at,
             custom_deal_id, status, industry, document_ids,
-            title, description, risk_level, asset_class, region, minimum_investment
+            title, description, risk_level, asset_class, region, minimum_investment, collateral_id
         )
         VALUES (
-            $1, $2, $3, $4, $4, $5, $6, $7, $8, $8, $8,
-            $9, $10, $11, $12,
-            $13, $14, $15, $16, $17, $18
+            $1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $9, $9,
+            $10, $11, $12, $13,
+            $14, $15, $16, $17, $18, $19, $20
         )
         "#,  // was loans, borrower_id, lender_id - now originator_id and investor_id reference companies
         id,
         originator_id,  // Company ID of originator
         investor_id,    // Company ID of investor (optional)
+        borrower_id,    // Company ID of borrower (optional)
         principal_amount,
         interest_rate_bps,
         deal_status.unwrap_or("originated"),
@@ -1988,7 +2037,8 @@ pub async fn create_deal(
         risk_level,
         asset_class,
         region,
-        minimum_investment
+        minimum_investment,
+        collateral_id
     )
     .execute(pool)
     .await?;
@@ -1996,8 +2046,10 @@ pub async fn create_deal(
     let deal = Deal {
         // was Loan
         id,
-        originator_id, // Company ID of originator
-        investor_id,   // Company ID of investor (optional)
+        originator_id,             // Company ID of originator
+        investor_id,               // Company ID of investor (optional)
+        borrower_id,               // Company ID of borrower (optional)
+        borrower_legal_name: None, // Will be populated by query joins
         principal_amount,
         outstanding_balance: principal_amount,
         interest_rate_bps,
@@ -2025,6 +2077,9 @@ pub async fn create_deal(
         dscr: None,
         state_transition_hash: None,
         proof_included: false,
+
+        // Collateral reference
+        collateral_id,
     };
 
     Ok(deal)
@@ -2036,37 +2091,41 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
     let row = sqlx::query!(
         r#"
         SELECT
-            id,
-            originator_id,    -- Company ID of originator
-            investor_id,      -- Company ID of investor (optional)
-            principal_amount,
-            outstanding_balance,
-            interest_rate_bps,
-            deal_status,
-            originated_at,
-            maturity_date,
-            created_at,
-            updated_at,
-            custom_deal_id,
-            status,
-            industry,
-            document_ids,
-            title,
-            description,
-            risk_level,
-            asset_class,
-            region,
-            minimum_investment,
-            payment_frequency,
-            collateral_type,
-            collateral_value,
-            ltv_ratio,
-            credit_score,
-            dscr,
-            state_transition_hash,
-            proof_included
-        FROM deals  -- was loans
-        WHERE id = $1
+            d.id,
+            d.originator_id,    -- Company ID of originator
+            d.investor_id,      -- Company ID of investor (optional)
+            d.borrower_id,      -- Company ID of borrower (optional)
+            bc.company_name as borrower_legal_name,  -- Borrower company legal name
+            d.principal_amount,
+            d.outstanding_balance,
+            d.interest_rate_bps,
+            d.deal_status,
+            d.originated_at,
+            d.maturity_date,
+            d.created_at,
+            d.updated_at,
+            d.custom_deal_id,
+            d.status,
+            d.industry,
+            d.document_ids,
+            d.title,
+            d.description,
+            d.risk_level,
+            d.asset_class,
+            d.region,
+            d.minimum_investment,
+            d.payment_frequency,
+            d.collateral_type,
+            d.collateral_value,
+            d.ltv_ratio,
+            d.credit_score,
+            d.dscr,
+            d.state_transition_hash,
+            d.proof_included,
+            d.collateral_id
+        FROM deals d  -- was loans
+        LEFT JOIN companies bc ON d.borrower_id = bc.id
+        WHERE d.id = $1
         "#,
         id
     )
@@ -2079,6 +2138,8 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             id: row.id,
             originator_id: row.originator_id, // Company ID of originator
             investor_id: row.investor_id,     // Company ID of investor (optional)
+            borrower_id: row.borrower_id,     // Company ID of borrower (optional)
+            borrower_legal_name: row.borrower_legal_name, // Borrower company legal name
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
@@ -2106,6 +2167,9 @@ pub async fn get_deal_by_id(pool: &PgPool, id: uuid::Uuid) -> Result<Option<Deal
             dscr: row.dscr,
             state_transition_hash: row.state_transition_hash,
             proof_included: row.proof_included.unwrap_or(false),
+
+            // Collateral reference
+            collateral_id: row.collateral_id,
         })),
         None => Ok(None),
     }
@@ -2127,6 +2191,7 @@ pub async fn list_deals(
     status: Option<&str>,
     originator_id: Option<uuid::Uuid>, // was borrower_id
     investor_id: Option<uuid::Uuid>,   // was lender_id
+    borrower_id: Option<uuid::Uuid>,   // Company ID of borrower (optional third party)
     industry: Option<&str>,
 ) -> Result<DealsWithCount, sqlx::Error> {
     // was Loan
@@ -2138,11 +2203,13 @@ pub async fn list_deals(
         WHERE ($1::text IS NULL OR deal_status = $1)
           AND ($2::uuid IS NULL OR originator_id = $2)
           AND ($3::uuid IS NULL OR investor_id = $3)
-          AND ($4::text IS NULL OR industry = $4)
+          AND ($4::uuid IS NULL OR borrower_id = $4)
+          AND ($5::text IS NULL OR industry = $5)
         "#,
         status,
         originator_id,
         investor_id,
+        borrower_id,
         industry
     )
     .fetch_one(pool)
@@ -2154,46 +2221,52 @@ pub async fn list_deals(
     let rows = sqlx::query!(
         r#"
         SELECT
-            id,
-            originator_id,    -- Company ID of originator
-            investor_id,      -- Company ID of investor (optional)
-            principal_amount,
-            outstanding_balance,
-            interest_rate_bps,
-            deal_status,
-            originated_at,
-            maturity_date,
-            created_at,
-            updated_at,
-            custom_deal_id,
-            status,
-            industry,
-            document_ids,
-            title,
-            description,
-            risk_level,
-            asset_class,
-            region,
-            minimum_investment,
-            payment_frequency,
-            collateral_type,
-            collateral_value,
-            ltv_ratio,
-            credit_score,
-            dscr,
-            state_transition_hash,
-            proof_included
-        FROM deals  -- was loans
-        WHERE ($1::text IS NULL OR deal_status = $1)
-          AND ($2::uuid IS NULL OR originator_id = $2)  -- Company ID filter
-          AND ($3::uuid IS NULL OR investor_id = $3)    -- Company ID filter
-          AND ($4::text IS NULL OR industry = $4)
-        ORDER BY created_at DESC
-        LIMIT $5 OFFSET $6
+            d.id,
+            d.originator_id,    -- Company ID of originator
+            d.investor_id,      -- Company ID of investor (optional)
+            d.borrower_id,      -- Company ID of borrower (optional)
+            bc.company_name as borrower_legal_name,  -- Borrower company legal name
+            d.principal_amount,
+            d.outstanding_balance,
+            d.interest_rate_bps,
+            d.deal_status,
+            d.originated_at,
+            d.maturity_date,
+            d.created_at,
+            d.updated_at,
+            d.custom_deal_id,
+            d.status,
+            d.industry,
+            d.document_ids,
+            d.title,
+            d.description,
+            d.risk_level,
+            d.asset_class,
+            d.region,
+            d.minimum_investment,
+            d.payment_frequency,
+            d.collateral_type,
+            d.collateral_value,
+            d.ltv_ratio,
+            d.credit_score,
+            d.dscr,
+            d.state_transition_hash,
+            d.proof_included,
+            d.collateral_id
+        FROM deals d  -- was loans
+        LEFT JOIN companies bc ON d.borrower_id = bc.id
+        WHERE ($1::text IS NULL OR d.deal_status = $1)
+          AND ($2::uuid IS NULL OR d.originator_id = $2)  -- Company ID filter
+          AND ($3::uuid IS NULL OR d.investor_id = $3)    -- Company ID filter
+          AND ($4::uuid IS NULL OR d.borrower_id = $4)    -- Company ID filter
+          AND ($5::text IS NULL OR d.industry = $5)
+        ORDER BY d.created_at DESC
+        LIMIT $6 OFFSET $7
         "#,
         status,
         originator_id, // Company ID of originator
         investor_id,   // Company ID of investor
+        borrower_id,   // Company ID of borrower
         industry,
         limit.unwrap_or(100),
         offset.unwrap_or(0)
@@ -2208,6 +2281,8 @@ pub async fn list_deals(
             id: row.id,
             originator_id: row.originator_id, // Company ID of originator
             investor_id: row.investor_id,     // Company ID of investor (optional)
+            borrower_id: row.borrower_id,     // Company ID of borrower (optional)
+            borrower_legal_name: row.borrower_legal_name, // Borrower company legal name
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
@@ -2235,13 +2310,14 @@ pub async fn list_deals(
             dscr: row.dscr,
             state_transition_hash: row.state_transition_hash,
             proof_included: row.proof_included.unwrap_or(false),
+            collateral_id: row.collateral_id,
         })
         .collect();
 
     Ok(DealsWithCount { deals, total_count })
 }
 
-/// Get deals by company ID (company can be either originator or investor)
+/// Get deals by company ID (company can be originator, investor, or borrower)
 /// This function has been updated from get_deals_by_user_id to work with companies
 pub async fn get_deals_by_company_id(
     pool: &PgPool,
@@ -2255,7 +2331,7 @@ pub async fn get_deals_by_company_id(
         r#"
         SELECT COUNT(*) as count
         FROM deals
-        WHERE (originator_id = $1 OR investor_id = $1)
+        WHERE (originator_id = $1 OR investor_id = $1 OR borrower_id = $1)
           AND ($2::text IS NULL OR deal_status = $2)
         "#,
         company_id,
@@ -2269,39 +2345,43 @@ pub async fn get_deals_by_company_id(
     let rows = sqlx::query!(
         r#"
         SELECT
-            id,
-            originator_id,
-            investor_id,
-            principal_amount,
-            outstanding_balance,
-            interest_rate_bps,
-            deal_status,
-            originated_at,
-            maturity_date,
-            created_at,
-            updated_at,
-            custom_deal_id,
-            status,
-            industry,
-            document_ids,
-            title,
-            description,
-            risk_level,
-            asset_class,
-            region,
-            minimum_investment,
-            payment_frequency,
-            collateral_type,
-            collateral_value,
-            ltv_ratio,
-            credit_score,
-            dscr,
-            state_transition_hash,
-            proof_included
-        FROM deals
-        WHERE (originator_id = $1 OR investor_id = $1)
-          AND ($2::text IS NULL OR deal_status = $2)
-        ORDER BY created_at DESC
+            d.id,
+            d.originator_id,
+            d.investor_id,
+            d.borrower_id,
+            bc.company_name as borrower_legal_name,
+            d.principal_amount,
+            d.outstanding_balance,
+            d.interest_rate_bps,
+            d.deal_status,
+            d.originated_at,
+            d.maturity_date,
+            d.created_at,
+            d.updated_at,
+            d.custom_deal_id,
+            d.status,
+            d.industry,
+            d.document_ids,
+            d.title,
+            d.description,
+            d.risk_level,
+            d.asset_class,
+            d.region,
+            d.minimum_investment,
+            d.payment_frequency,
+            d.collateral_type,
+            d.collateral_value,
+            d.ltv_ratio,
+            d.credit_score,
+            d.dscr,
+            d.state_transition_hash,
+            d.proof_included,
+            d.collateral_id
+        FROM deals d
+        LEFT JOIN companies bc ON d.borrower_id = bc.id
+        WHERE (d.originator_id = $1 OR d.investor_id = $1 OR d.borrower_id = $1)
+          AND ($2::text IS NULL OR d.deal_status = $2)
+        ORDER BY d.created_at DESC
         LIMIT $3 OFFSET $4
         "#,
         company_id,
@@ -2318,6 +2398,8 @@ pub async fn get_deals_by_company_id(
             id: row.id,
             originator_id: row.originator_id,
             investor_id: row.investor_id,
+            borrower_id: row.borrower_id,
+            borrower_legal_name: row.borrower_legal_name,
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
@@ -2345,6 +2427,7 @@ pub async fn get_deals_by_company_id(
             dscr: row.dscr,
             state_transition_hash: row.state_transition_hash,
             proof_included: row.proof_included.unwrap_or(false),
+            collateral_id: row.collateral_id,
         })
         .collect();
 
@@ -2377,39 +2460,43 @@ pub async fn get_draft_deals_by_company_id(
     let rows = sqlx::query!(
         r#"
         SELECT
-            id,
-            originator_id,
-            investor_id,
-            principal_amount,
-            outstanding_balance,
-            interest_rate_bps,
-            deal_status,
-            originated_at,
-            maturity_date,
-            created_at,
-            updated_at,
-            custom_deal_id,
-            status,
-            industry,
-            document_ids,
-            title,
-            description,
-            risk_level,
-            asset_class,
-            region,
-            minimum_investment,
-            payment_frequency,
-            collateral_type,
-            collateral_value,
-            ltv_ratio,
-            credit_score,
-            dscr,
-            state_transition_hash,
-            proof_included
-        FROM deals
-        WHERE originator_id = $1
-          AND status = 'draft'
-        ORDER BY created_at DESC
+            d.id,
+            d.originator_id,
+            d.investor_id,
+            d.borrower_id,
+            bc.company_name as borrower_legal_name,
+            d.principal_amount,
+            d.outstanding_balance,
+            d.interest_rate_bps,
+            d.deal_status,
+            d.originated_at,
+            d.maturity_date,
+            d.created_at,
+            d.updated_at,
+            d.custom_deal_id,
+            d.status,
+            d.industry,
+            d.document_ids,
+            d.title,
+            d.description,
+            d.risk_level,
+            d.asset_class,
+            d.region,
+            d.minimum_investment,
+            d.payment_frequency,
+            d.collateral_type,
+            d.collateral_value,
+            d.ltv_ratio,
+            d.credit_score,
+            d.dscr,
+            d.state_transition_hash,
+            d.proof_included,
+            d.collateral_id
+        FROM deals d
+        LEFT JOIN companies bc ON d.borrower_id = bc.id
+        WHERE d.originator_id = $1
+          AND d.status = 'draft'
+        ORDER BY d.created_at DESC
         LIMIT $2 OFFSET $3
         "#,
         company_id,
@@ -2425,6 +2512,8 @@ pub async fn get_draft_deals_by_company_id(
             id: row.id,
             originator_id: row.originator_id,
             investor_id: row.investor_id,
+            borrower_id: row.borrower_id,
+            borrower_legal_name: row.borrower_legal_name,
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,
@@ -2452,6 +2541,7 @@ pub async fn get_draft_deals_by_company_id(
             dscr: row.dscr,
             state_transition_hash: row.state_transition_hash,
             proof_included: row.proof_included.unwrap_or(false),
+            collateral_id: row.collateral_id,
         })
         .collect();
 
@@ -2502,12 +2592,15 @@ pub async fn update_deal(
     deal_status: Option<&str>,
     maturity_date: Option<Option<DateTime<Utc>>>, // Option<Option<T>> to handle setting to NULL
     custom_deal_id: Option<Option<&str>>,         // Option<Option<T>> to handle setting to NULL
+    borrower_id: Option<Option<uuid::Uuid>>,      // Option<Option<T>> to handle setting to NULL
     status: Option<&str>,                         // Deal negotiation status
-    title: Option<Option<&str>>,                  // Option<Option<T>> to handle setting to NULL
-    description: Option<Option<&str>>,            // Option<Option<T>> to handle setting to NULL
-    risk_level: Option<Option<&str>>,             // Option<Option<T>> to handle setting to NULL
-    asset_class: Option<Option<&str>>,            // Option<Option<T>> to handle setting to NULL
-    region: Option<Option<&str>>,                 // Option<Option<T>> to handle setting to NULL
+    industry: Option<&str>,                       // Industry sector
+    document_ids: Option<Option<&serde_json::Value>>, // Document IDs array, Option<Option<T>> to handle setting to NULL
+    title: Option<Option<&str>>,                      // Option<Option<T>> to handle setting to NULL
+    description: Option<Option<&str>>,                // Option<Option<T>> to handle setting to NULL
+    risk_level: Option<Option<&str>>,                 // Option<Option<T>> to handle setting to NULL
+    asset_class: Option<Option<&str>>,                // Option<Option<T>> to handle setting to NULL
+    region: Option<Option<&str>>,                     // Option<Option<T>> to handle setting to NULL
     minimum_investment: Option<Option<rust_decimal::Decimal>>, // Option<Option<T>> to handle setting to NULL
 ) -> Result<Option<Deal>, sqlx::Error> {
     // was Loan
@@ -2531,7 +2624,18 @@ pub async fn update_deal(
         Some(None) => None,
         None => existing_deal.custom_deal_id,
     };
+    let new_borrower_id = match borrower_id {
+        Some(Some(value)) => Some(value),
+        Some(None) => None,
+        None => existing_deal.borrower_id,
+    };
     let new_status = status.unwrap_or(&existing_deal.status);
+    let new_industry = industry.map(|s| s.to_string()).or(existing_deal.industry);
+    let new_document_ids = match document_ids {
+        Some(Some(value)) => Some(value.clone()),
+        Some(None) => None,
+        None => existing_deal.document_ids,
+    };
     let new_title = match title {
         Some(Some(value)) => Some(value.to_string()),
         Some(None) => None,
@@ -2572,14 +2676,17 @@ pub async fn update_deal(
             interest_rate_bps = $4,
             deal_status = $5,
             maturity_date = $6,
-            custom_deal_id = $8,
-            status = $9,
-            title = $10,
-            description = $11,
-            risk_level = $12,
-            asset_class = $13,
-            region = $14,
-            minimum_investment = $15,
+            borrower_id = $8,
+            custom_deal_id = $9,
+            status = $10,
+            industry = $11,
+            document_ids = $12,
+            title = $13,
+            description = $14,
+            risk_level = $15,
+            asset_class = $16,
+            region = $17,
+            minimum_investment = $18,
             updated_at = $7
         WHERE id = $1
         "#,
@@ -2590,8 +2697,11 @@ pub async fn update_deal(
         new_deal_status,
         new_maturity,
         now,
+        new_borrower_id,
         new_custom_deal_id,
         new_status,
+        new_industry,
+        new_document_ids,
         new_title,
         new_description,
         new_risk_level,
@@ -2604,6 +2714,17 @@ pub async fn update_deal(
 
     // Return the updated deal (was loan)
     get_deal_by_id(pool, id).await // was get_loan_by_id
+}
+
+/// Delete a deal by ID
+/// Returns true if the deal was deleted, false if it didn't exist
+/// CASCADE behavior will automatically delete related records (payments, listings, transfers, transactions)
+pub async fn delete_deal(pool: &PgPool, deal_id: uuid::Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query!("DELETE FROM deals WHERE id = $1", deal_id)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected() > 0)
 }
 
 /// Record a deal payment - Simple implementation for now (was create_payment)
@@ -4633,6 +4754,7 @@ pub struct LoanTapeRecord {
     pub deal_title: Option<String>,
     pub state_transition_hash: Option<Vec<u8>>,
     pub proof_included: bool,
+    pub document_ids: Option<serde_json::Value>, // JSON array of document UUIDs
 
     // Timestamps
     pub created_at: DateTime<Utc>,
@@ -4666,6 +4788,8 @@ pub async fn create_loan_tape_record(
     industry: Option<&str>,
     state_transition_hash: Option<Vec<u8>>,
     proof_included: bool,
+    collateral_id: Option<uuid::Uuid>,
+    document_id: Option<uuid::Uuid>,
 ) -> Result<Deal, sqlx::Error> {
     let id = uuid::Uuid::new_v4();
     let now = Utc::now();
@@ -4678,6 +4802,13 @@ pub async fn create_loan_tape_record(
         "finalized"
     };
 
+    // Build document_ids JSONB array
+    let document_ids_json = if let Some(doc_id) = document_id {
+        serde_json::json!([doc_id.to_string()])
+    } else {
+        serde_json::json!([])
+    };
+
     sqlx::query!(
         r#"
         INSERT INTO deals (
@@ -4686,7 +4817,7 @@ pub async fn create_loan_tape_record(
             created_at, updated_at, custom_deal_id, status,
             title, description, payment_frequency, collateral_type, collateral_value,
             ltv_ratio, credit_score, dscr, risk_level, asset_class, region, industry,
-            state_transition_hash, proof_included,
+            state_transition_hash, proof_included, collateral_id,
             document_ids, minimum_investment
         )
         VALUES (
@@ -4695,8 +4826,8 @@ pub async fn create_loan_tape_record(
             $10, $10, $11, $12,
             $13, $14, $15, $16, $17,
             $18, $19, $20, $21, $22, $23, $24,
-            $25, $26,
-            '[]'::jsonb, NULL
+            $25, $26, $27,
+            $28, NULL
         )
         "#,
         id,
@@ -4724,7 +4855,9 @@ pub async fn create_loan_tape_record(
         region,
         industry,
         state_transition_hash,
-        proof_included
+        proof_included,
+        collateral_id,
+        document_ids_json
     )
     .execute(pool)
     .await?;
@@ -4732,266 +4865,4 @@ pub async fn create_loan_tape_record(
     get_deal_by_id(pool, id)
         .await?
         .ok_or_else(|| sqlx::Error::RowNotFound)
-}
-
-/// Get loan tape records with full detail (joins + aggregations)
-pub async fn get_loan_tape_records(
-    pool: &PgPool,
-    status_filter: Option<&str>,
-    limit: i64,
-    offset: i64,
-) -> Result<Vec<LoanTapeRecord>, sqlx::Error> {
-    let records = sqlx::query!(
-        r#"
-        SELECT
-            d.id as loan_id,
-            d.custom_deal_id as deal_id,
-            d.originator_id,
-            oc.name as originator_name,
-            oc.kyb_status as originator_kyb_status,
-            d.investor_id,
-            ic.name as investor_name,
-            ic.kyb_status as investor_kyb_status,
-            d.principal_amount,
-            d.outstanding_balance,
-            d.interest_rate_bps,
-            CAST(d.interest_rate_bps AS DECIMAL) / 100.0 as interest_rate_apr,
-            d.deal_status as loan_status,
-            d.originated_at,
-            d.maturity_date,
-            CASE
-                WHEN d.maturity_date IS NOT NULL
-                THEN EXTRACT(DAY FROM d.maturity_date - NOW())::INTEGER
-                ELSE NULL
-            END as days_to_maturity,
-            d.payment_frequency,
-            (
-                SELECT MAX(dp.processed_at)
-                FROM deal_payments dp
-                WHERE dp.deal_id = d.id
-            ) as last_payment_date,
-            (
-                SELECT dp.amount
-                FROM deal_payments dp
-                WHERE dp.deal_id = d.id
-                ORDER BY dp.processed_at DESC
-                LIMIT 1
-            ) as last_payment_amount,
-            (
-                SELECT COUNT(*)
-                FROM deal_payments dp
-                WHERE dp.deal_id = d.id
-            ) as "total_payments_made!",
-            (
-                SELECT COALESCE(SUM(dp.amount), 0)
-                FROM deal_payments dp
-                WHERE dp.deal_id = d.id
-                AND dp.payment_type = 'interest'
-            ) as "total_interest_paid!",
-            d.collateral_type,
-            d.collateral_value,
-            d.ltv_ratio,
-            d.risk_level,
-            d.asset_class,
-            d.region,
-            oc.industry as borrower_industry,
-            d.credit_score,
-            d.dscr,
-            d.title as deal_title,
-            d.state_transition_hash,
-            d.proof_included,
-            d.created_at,
-            d.updated_at
-        FROM deals d
-        LEFT JOIN companies oc ON d.originator_id = oc.id
-        LEFT JOIN companies ic ON d.investor_id = ic.id
-        WHERE ($1::TEXT IS NULL OR d.deal_status = $1)
-        ORDER BY d.originated_at DESC
-        LIMIT $2 OFFSET $3
-        "#,
-        status_filter,
-        limit,
-        offset
-    )
-    .fetch_all(pool)
-    .await?;
-
-    Ok(records
-        .into_iter()
-        .map(|r| LoanTapeRecord {
-            loan_id: r.loan_id,
-            deal_id: r.deal_id,
-            originator_id: r.originator_id,
-            originator_name: r.originator_name,
-            originator_kyb_status: r.originator_kyb_status,
-            investor_id: r.investor_id,
-            investor_name: Some(r.investor_name),
-            investor_kyb_status: Some(r.investor_kyb_status),
-            principal_amount: r.principal_amount,
-            outstanding_balance: r.outstanding_balance,
-            interest_rate_bps: r.interest_rate_bps,
-            interest_rate_apr: r
-                .interest_rate_apr
-                .unwrap_or_else(|| rust_decimal::Decimal::ZERO),
-            loan_status: r.loan_status,
-            originated_at: r.originated_at.unwrap_or_else(|| Utc::now()),
-            maturity_date: r.maturity_date,
-            days_to_maturity: r.days_to_maturity,
-            payment_frequency: r.payment_frequency,
-            last_payment_date: r.last_payment_date,
-            last_payment_amount: r.last_payment_amount,
-            total_payments_made: r.total_payments_made,
-            total_interest_paid: r.total_interest_paid,
-            collateral_type: r.collateral_type,
-            collateral_value: r.collateral_value,
-            ltv_ratio: r.ltv_ratio,
-            risk_level: r.risk_level,
-            asset_class: r.asset_class,
-            region: r.region,
-            borrower_industry: r.borrower_industry,
-            credit_score: r.credit_score,
-            dscr: r.dscr,
-            deal_title: r.deal_title,
-            state_transition_hash: r.state_transition_hash,
-            proof_included: r.proof_included.unwrap_or(false),
-            created_at: r.created_at.unwrap_or_else(|| Utc::now()),
-            updated_at: r.updated_at.unwrap_or_else(|| Utc::now()),
-        })
-        .collect())
-}
-
-/// Get single loan tape record by deal ID
-pub async fn get_loan_tape_record_by_id(
-    pool: &PgPool,
-    deal_id: uuid::Uuid,
-) -> Result<Option<LoanTapeRecord>, sqlx::Error> {
-    let record = sqlx::query!(
-        r#"
-        SELECT
-            d.id as loan_id,
-            d.custom_deal_id as deal_id,
-            d.originator_id,
-            oc.name as originator_name,
-            oc.kyb_status as originator_kyb_status,
-            d.investor_id,
-            ic.name as investor_name,
-            ic.kyb_status as investor_kyb_status,
-            d.principal_amount,
-            d.outstanding_balance,
-            d.interest_rate_bps,
-            CAST(d.interest_rate_bps AS DECIMAL) / 100.0 as interest_rate_apr,
-            d.deal_status as loan_status,
-            d.originated_at,
-            d.maturity_date,
-            CASE
-                WHEN d.maturity_date IS NOT NULL
-                THEN EXTRACT(DAY FROM d.maturity_date - NOW())::INTEGER
-                ELSE NULL
-            END as days_to_maturity,
-            d.payment_frequency,
-            (
-                SELECT MAX(dp.processed_at)
-                FROM deal_payments dp
-                WHERE dp.deal_id = d.id
-            ) as last_payment_date,
-            (
-                SELECT dp.amount
-                FROM deal_payments dp
-                WHERE dp.deal_id = d.id
-                ORDER BY dp.processed_at DESC
-                LIMIT 1
-            ) as last_payment_amount,
-            (
-                SELECT COUNT(*)
-                FROM deal_payments dp
-                WHERE dp.deal_id = d.id
-            ) as "total_payments_made!",
-            (
-                SELECT COALESCE(SUM(dp.amount), 0)
-                FROM deal_payments dp
-                WHERE dp.deal_id = d.id
-                AND dp.payment_type = 'interest'
-            ) as "total_interest_paid!",
-            d.collateral_type,
-            d.collateral_value,
-            d.ltv_ratio,
-            d.risk_level,
-            d.asset_class,
-            d.region,
-            oc.industry as borrower_industry,
-            d.credit_score,
-            d.dscr,
-            d.title as deal_title,
-            d.state_transition_hash,
-            d.proof_included,
-            d.created_at,
-            d.updated_at
-        FROM deals d
-        LEFT JOIN companies oc ON d.originator_id = oc.id
-        LEFT JOIN companies ic ON d.investor_id = ic.id
-        WHERE d.id = $1
-        "#,
-        deal_id
-    )
-    .fetch_optional(pool)
-    .await?;
-
-    Ok(record.map(|r| LoanTapeRecord {
-        loan_id: r.loan_id,
-        deal_id: r.deal_id,
-        originator_id: r.originator_id,
-        originator_name: r.originator_name,
-        originator_kyb_status: r.originator_kyb_status,
-        investor_id: r.investor_id,
-        investor_name: Some(r.investor_name),
-        investor_kyb_status: Some(r.investor_kyb_status),
-        principal_amount: r.principal_amount,
-        outstanding_balance: r.outstanding_balance,
-        interest_rate_bps: r.interest_rate_bps,
-        interest_rate_apr: r
-            .interest_rate_apr
-            .unwrap_or_else(|| rust_decimal::Decimal::ZERO),
-        loan_status: r.loan_status,
-        originated_at: r.originated_at.unwrap_or_else(|| Utc::now()),
-        maturity_date: r.maturity_date,
-        days_to_maturity: r.days_to_maturity,
-        payment_frequency: r.payment_frequency,
-        last_payment_date: r.last_payment_date,
-        last_payment_amount: r.last_payment_amount,
-        total_payments_made: r.total_payments_made,
-        total_interest_paid: r.total_interest_paid,
-        collateral_type: r.collateral_type,
-        collateral_value: r.collateral_value,
-        ltv_ratio: r.ltv_ratio,
-        risk_level: r.risk_level,
-        asset_class: r.asset_class,
-        region: r.region,
-        borrower_industry: r.borrower_industry,
-        credit_score: r.credit_score,
-        dscr: r.dscr,
-        deal_title: r.deal_title,
-        state_transition_hash: r.state_transition_hash,
-        proof_included: r.proof_included.unwrap_or(false),
-        created_at: r.created_at.unwrap_or_else(|| Utc::now()),
-        updated_at: r.updated_at.unwrap_or_else(|| Utc::now()),
-    }))
-}
-
-/// Count total loan tape records matching filter
-pub async fn count_loan_tape_records(
-    pool: &PgPool,
-    status_filter: Option<&str>,
-) -> Result<i64, sqlx::Error> {
-    let result = sqlx::query!(
-        r#"
-        SELECT COUNT(*) as "count!"
-        FROM deals d
-        WHERE ($1::TEXT IS NULL OR d.deal_status = $1)
-        "#,
-        status_filter
-    )
-    .fetch_one(pool)
-    .await?;
-
-    Ok(result.count)
 }

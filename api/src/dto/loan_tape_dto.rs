@@ -11,13 +11,13 @@ use validator::Validate;
 /// Request to create a single loan tape record
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct CreateLoanTapeRequest {
-    /// Originating company UUID
-    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
-    pub originator_id: Uuid,
+    /// Originating company name
+    #[schema(example = "TechFlow Solutions Inc")]
+    pub originator_name: String,
 
-    /// Investing company UUID (optional for draft deals)
-    #[schema(example = "550e8400-e29b-41d4-a716-446655440001")]
-    pub investor_id: Option<Uuid>,
+    /// Investing company name
+    #[schema(example = "Apex Credit Partners LP")]
+    pub investor_name: String,
 
     /// Principal amount of the deal
     #[schema(value_type = String, example = "2500000.00")]
@@ -59,9 +59,25 @@ pub struct CreateLoanTapeRequest {
     #[schema(example = "monthly")]
     pub payment_frequency: Option<String>,
 
+    /// Collateral asset UUID (for linking to collateral table)
+    #[schema(example = "450e8400-e29b-41d4-a716-446655440003")]
+    pub collateral_id: Option<String>,
+
+    /// Collateral asset name/identifier
+    #[schema(example = "Warehouse Property - 123 Main St")]
+    pub collateral_name: Option<String>,
+
     /// Collateral type (free text)
     #[schema(example = "Equipment")]
     pub collateral_type: Option<String>,
+
+    /// Collateral physical or legal address
+    #[schema(example = "123 Main St, New York, NY 10001")]
+    pub collateral_address: Option<String>,
+
+    /// Custom collateral identifier (user-defined)
+    #[schema(example = "COLL-202412-1234")]
+    pub collateral_custom_id: Option<String>,
 
     /// Collateral value in USD
     #[schema(value_type = Option<String>, example = "3500000.00")]
@@ -107,6 +123,14 @@ pub struct CreateLoanTapeRequest {
 /// Request to create multiple loan tape records in bulk
 #[derive(Debug, Clone, Serialize, Deserialize, Validate, utoipa::ToSchema)]
 pub struct BulkCreateLoanTapeRequest {
+    /// User ID of the uploader (must be associated with the consistent company)
+    #[schema(example = "550e8400-e29b-41d4-a716-446655440000")]
+    pub user_id: Uuid,
+
+    /// Optional document ID from the ingestion service that created these deals
+    #[schema(example = "650e8400-e29b-41d4-a716-446655440000")]
+    pub document_id: Uuid,
+
     /// Array of loan tape records to create
     #[validate(length(min = 1, max = 100))]
     pub records: Vec<CreateLoanTapeRequest>,
@@ -241,28 +265,13 @@ pub struct LoanTapeRecord {
     #[schema(example = true)]
     pub proof_included: bool,
 
+    /// Document IDs that were used to create this deal (JSONB array of UUIDs)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub document_ids: Option<serde_json::Value>,
+
     /// Record creation timestamp
     pub created_at: DateTime<Utc>,
 
     /// Record last update timestamp
     pub updated_at: DateTime<Utc>,
-}
-
-/// Paginated response for loan tape records
-#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct LoanTapeListResponse {
-    /// Array of loan tape records
-    pub records: Vec<LoanTapeRecord>,
-
-    /// Total number of records matching the query
-    pub total: i64,
-
-    /// Number of records in this response
-    pub count: usize,
-
-    /// Offset used for pagination
-    pub offset: i64,
-
-    /// Limit used for pagination
-    pub limit: i64,
 }

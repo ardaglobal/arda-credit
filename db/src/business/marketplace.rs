@@ -49,8 +49,10 @@ pub struct MarketplaceDeal {
     pub status: String,
 
     // Deal data (from Deal struct)
-    pub originator_id: Uuid,       // was borrower_id
-    pub investor_id: Option<Uuid>, // was lender_id - optional for draft deals
+    pub originator_id: Uuid,                 // was borrower_id
+    pub investor_id: Option<Uuid>,           // was lender_id - optional for draft deals
+    pub borrower_id: Option<Uuid>,           // Company ID of the borrower (optional third party)
+    pub borrower_legal_name: Option<String>, // Legal name of the borrower company
     pub principal_amount: Decimal,
     pub outstanding_balance: Decimal,
     pub interest_rate_bps: i32,
@@ -240,6 +242,8 @@ pub async fn browse_marketplace_deals(
             dl.status as listing_status,
             d.originator_id,         -- was borrower_id
             d.investor_id,           -- was lender_id
+            d.borrower_id,           -- Company ID of borrower (optional)
+            bc.company_name as borrower_legal_name,  -- Borrower company legal name
             d.principal_amount,
             d.outstanding_balance,
             d.interest_rate_bps,
@@ -248,6 +252,7 @@ pub async fn browse_marketplace_deals(
             d.maturity_date
         FROM deal_listings dl       -- was loan_listings
         JOIN deals d ON dl.deal_id = d.id  -- was loans, loan_id
+        LEFT JOIN companies bc ON d.borrower_id = bc.id
         WHERE dl.status != 'delisted'  -- Exclude manually delisted listings
           AND ($1::text IS NULL OR dl.status = $1)
         ORDER BY dl.listed_at DESC
@@ -272,6 +277,8 @@ pub async fn browse_marketplace_deals(
             status: row.listing_status,
             originator_id: row.originator_id, // was borrower_id
             investor_id: row.investor_id,     // was lender_id
+            borrower_id: row.borrower_id,     // Company ID of borrower (optional)
+            borrower_legal_name: row.borrower_legal_name, // Borrower company legal name
             principal_amount: row.principal_amount,
             outstanding_balance: row.outstanding_balance,
             interest_rate_bps: row.interest_rate_bps,

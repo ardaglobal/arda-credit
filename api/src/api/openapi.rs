@@ -14,67 +14,65 @@ use utoipa::{IntoParams, OpenApi, ToSchema};
 
 /// Main API description with links to individual category specifications
 const API_DESCRIPTION: &str = r#"
-Arda API - Comprehensive credit deal management platform with document ingestion, AI analysis, and blockchain integration.
+Arda API - Comprehensive credit deal management platform.
 
 ## 🚀 Quick Access to Individual API Categories (Lightweight):
 
-• **[Auth](./auth.json)** (~2-3KB) - Authentication & authorization
-• **[Users](./users.json)** (~3-4KB) - User management & KYC
-• **[Companies](./companies.json)** (~6-8KB) - Company management & teams  
-• **[Deals](./deals.json)** (~8-10KB) - Deal lifecycle & marketplace ⭐
-• **[Admin](./admin.json)** (~4-5KB) - Administrative operations
-• **[Payments](./payments.json)** (~5-6KB) - Financial transactions
-• **[State](./state.json)** (~4-5KB) - Blockchain integration
-• **[Taxonomy](./taxonomy.json)** (~10-12KB) - Document management
-• **[Dev](./dev.json)** (~1-2KB) - Development utilities
+• **[Auth](./auth.json)** - Authentication & authorization
 
-*Each category contains only relevant endpoints and schemas for ultra-fast loading.*
+• **[Users](./users.json)** - User management & KYC
 
-## ✨ Key Features
+• **[Companies](./companies.json)** - Company management & teams  
 
-- **Anonymized Deal Views**: Use `?anon=true` on `/api/v1/deals` for market overview dashboards
-- **Company-Based Access Control**: Multi-tenant architecture with role-based permissions
-- **Document Management**: Comprehensive taxonomy with 11+ document types
-- **Blockchain Integration**: ZK proofs and authenticated data structures
-- **Magic Link Authentication**: Passwordless authentication with session management
+• **[Deals](./deals.json)** - Deal lifecycle & marketplace ⭐
 
-## 🛠️ Quick Start
+• **[Collateral](./collateral.json)** - Collateral assets & duplicate detection ⭐
 
-1. **Authentication**: `POST /api/v1/auth/magic-link` → `POST /api/v1/auth/verify`
-2. **List Deals**: `GET /api/v1/deals?anon=true&limit=50` (anonymized dashboard view)
-3. **Company Deals**: `GET /api/v1/deals?originator_id={company_id}` (portfolio view)
-4. **API Documentation**: Individual specs at `/api-docs/{category}.json`
+• **[Loan Tape](./loan_tape.json)** - Portfolio upload & management
+
+• **[Admin](./admin.json)** - Administrative operations
+
+• **[Payments](./payments.json)** - Financial transactions
+
+• **[State](./state.json)** - Blockchain integration
+
+• **[Taxonomy](./taxonomy.json)** - Document management
+
+• **[Internal](./internal.json)** - Service-to-service communication
+
+• **[Dev](./dev.json)** - Development utilities
+
 "#;
 
 /// Tag descriptions with focused API spec links
 const AUTH_TAG_DESC: &str = r#"
 Authentication, authorization, and invite code management
 
-📄 **Focused API Spec**: [/api-docs/auth.json](./auth.json) (~2-3KB - Auth endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/auth.json](./auth.json)
 "#;
 
 const USERS_TAG_DESC: &str = r#"
 User account management, KYC verification, balances, and transaction history
 
-📄 **Focused API Spec**: [/api-docs/users.json](./users.json) (~3-4KB - User endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/users.json](./users.json)
 "#;
 
 const COMPANIES_TAG_DESC: &str = r#"
 Originator and investor company profiles, documents, turnover tracking, and AI analysis
 
-📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json)
 "#;
 
 const COMPANY_MEMBERSHIPS_TAG_DESC: &str = r#"
 Company team member management with originator/investor profile type support. Users can have multiple profiles (originator and investor) in the same company.
 
-📄 **Included in**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas)
+📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json)
 "#;
 
 const COMPANY_WALLETS_TAG_DESC: &str = r#"
 Company wallet address management with permission-based access control. Wallet addresses belong to companies with granular user permissions. Only admin users can authorize transactions.
 
-📄 **Included in**: [/api-docs/companies.json](./companies.json) (~6-8KB - Company endpoints & schemas)
+📄 **Focused API Spec**: [/api-docs/companies.json](./companies.json)
 "#;
 
 const DEALS_TAG_DESC: &str = r#"
@@ -82,43 +80,63 @@ Deal lifecycle management, marketplace operations, ownership transfers, and paym
 
 **NEW**: Supports anonymized responses with `anon=true` parameter for dashboard views.
 
-📄 **Focused API Spec**: [/api-docs/deals.json](./deals.json) (~8-10KB - Deal endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/deals.json](./deals.json)
 "#;
 
 const STATE_TAG_DESC: &str = r#"
 Blockchain state management, batch processing, ZK proof generation, transaction history, and contract integration
 
-📄 **Focused API Spec**: [/api-docs/state.json](./state.json) (~4-5KB - State endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/state.json](./state.json)
 "#;
 
 const ADMIN_TAG_DESC: &str = r#"
 Administrative operations including KYC approval, withdrawal management, and platform oversight
 
-📄 **Focused API Spec**: [/api-docs/admin.json](./admin.json) (~4-5KB - Admin endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/admin.json](./admin.json)
 "#;
 
 const PAYMENTS_TAG_DESC: &str = r#"
 Financial transactions, withdrawal processing, and payment tracking across accounts, pools, and credit lines
 
-📄 **Focused API Spec**: [/api-docs/payments.json](./payments.json) (~5-6KB - Payment endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/payments.json](./payments.json)
+"#;
+
+const COLLATERAL_TAG_DESC: &str = r#"
+Collateral asset management with intelligent duplicate detection. Track collateral assets, detect potential double-pledging, and associate with deals.
+
+📄 **Focused API Spec**: [/api-docs/collateral.json](./collateral.json)
 "#;
 
 const TAXONOMY_TAG_DESC: &str = r#"
 Document taxonomy operations for structured credit document management.
 
-📄 **All Taxonomy Docs**: [/api-docs/taxonomy.json](./taxonomy.json) (~10-12KB - All 11 document types & schemas only)
+📄 **All Taxonomy Docs**: [/api-docs/taxonomy.json](./taxonomy.json)
 "#;
 
 const METRICS_TAG_DESC: &str = r#"
 Market metrics and analytics endpoints for dashboard visualizations including market value charts and distribution analytics.
 
-📄 **Focused API Spec**: [/api-docs/metrics.json](./metrics.json) (~2-3KB - Metrics endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/metrics.json](./metrics.json)
+"#;
+
+const LOAN_TAPE_TAG_DESC: &str = r#"
+Loan tape portfolio upload and management. Upload CSV portfolios (converted to JSON) for single-party (originator or investor) with automatic company creation and validation.
+
+📄 **Focused API Spec**: [/api-docs/loan_tape.json](./loan_tape.json)
 "#;
 
 const DEV_TAG_DESC: &str = r#"
 Development and testing utilities: health checks, API info, faucet operations (local/staging only)
 
-📄 **Focused API Spec**: [/api-docs/dev.json](./dev.json) (~1-2KB - Dev endpoints & schemas only)
+📄 **Focused API Spec**: [/api-docs/dev.json](./dev.json)
+"#;
+
+const INTERNAL_TAG_DESC: &str = r#"
+Internal service-to-service endpoints for communication between Arda microservices.
+
+**⚠️ Note**: These endpoints bypass authentication and are intended for internal use only.
+
+📄 **Focused API Spec**: [/api-docs/internal.json](./internal.json)
 "#;
 
 // Re-export types from handlers module (keeping original structure)
@@ -152,10 +170,12 @@ pub use crate::handlers::{
     CreateDealRequest,
     CurrentStateResponse,
     DateRange,
+    DealAuditTrailResponse,
     DealDetailsResponse,
     DealListingResponse,
     DealPaymentHistoryResponse,
     DealStatsResponse,
+    DealTransactionEvent,
     DealTransferResponse,
     DealTransferValidationResponse,
     DeleteDealResponse,
@@ -315,6 +335,7 @@ fn default_limit() -> u32 {
 
         // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
         crate::handlers::deals::deals::create_deal_endpoint,
+        crate::handlers::deals::document_extraction::process_document_extraction,
         crate::handlers::deals::deals::list_deals_endpoint,
         crate::handlers::deals::deals::get_deals_by_user_id_endpoint,
         crate::handlers::deals::deals::get_deals_by_company_endpoint,
@@ -325,12 +346,10 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::record_deal_payment_endpoint,
         crate::handlers::deals::deals::get_payment_details_endpoint,
         crate::handlers::deals::deals::get_deal_payment_history_endpoint,
+        crate::handlers::deals::deals::get_deal_audit_trail_endpoint,
 
         // Loan Tape endpoints
-        crate::handlers::loan_tape_handlers::create_loan_tape_handler,
         crate::handlers::loan_tape_handlers::create_bulk_loan_tape_handler,
-        crate::handlers::loan_tape_handlers::list_loan_tape_handler,
-        crate::handlers::loan_tape_handlers::get_loan_tape_handler,
 
         // Consolidated Deal Marketplace endpoints (moved from marketplace_handlers)
         crate::handlers::deals::deals::browse_deals_for_sale_endpoint,
@@ -343,6 +362,23 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::get_deal_transfer_history_endpoint,
         crate::handlers::deals::deals::get_user_deal_transfer_history_endpoint,
         crate::handlers::deals::deals::validate_deal_transfer_endpoint,
+
+        // Collateral endpoints
+        crate::handlers::taxonomy::collateral::list_collateral_handler,
+        crate::handlers::taxonomy::collateral::create_collateral_handler,
+        crate::handlers::taxonomy::collateral::create_collateral_batch_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_internal_handler,
+        crate::handlers::taxonomy::collateral::update_collateral_handler,
+        crate::handlers::taxonomy::collateral::delete_collateral_handler,
+        // Note: get_collateral_with_duplicates_handler and get_collateral_with_matches_handler
+        // removed as collateral detection tables were dropped in migration 060
+        crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler,
+        crate::handlers::taxonomy::collateral::get_collateral_audit_trail_handler,
+
+        // Internal endpoints
+        crate::handlers::taxonomy::detection::receive_detection_result,
 
         // Withdrawal endpoints
         crate::handlers::finance::withdrawals::initiate_withdrawal_endpoint,
@@ -502,13 +538,15 @@ fn default_limit() -> u32 {
         crate::handlers::metrics::refresh_metrics,
     ),
     tags(
-        // Primary API Groups (9 main groups + Dev) - each with direct access to focused API spec
+        // Primary API Groups (10 main groups + Dev) - each with direct access to focused API spec
         (name = "Auth", description = AUTH_TAG_DESC),
         (name = "Users", description = USERS_TAG_DESC),
         (name = "Companies", description = COMPANIES_TAG_DESC),
         (name = "Company Memberships", description = COMPANY_MEMBERSHIPS_TAG_DESC),
         (name = "Company Wallets", description = COMPANY_WALLETS_TAG_DESC),
         (name = "Deals", description = DEALS_TAG_DESC),
+        (name = "Collateral", description = COLLATERAL_TAG_DESC),
+        (name = "Loan Tape", description = LOAN_TAPE_TAG_DESC),
         (name = "State", description = STATE_TAG_DESC),
         (name = "Admin", description = ADMIN_TAG_DESC),
         (name = "Payments", description = PAYMENTS_TAG_DESC),
@@ -524,7 +562,8 @@ fn default_limit() -> u32 {
         (name = "Taxonomy - SSI Records", description = TAXONOMY_TAG_DESC),
         (name = "Taxonomy - Secondary Trades", description = TAXONOMY_TAG_DESC),
         (name = "Metrics", description = METRICS_TAG_DESC),
-        (name = "Dev", description = DEV_TAG_DESC)
+        (name = "Dev", description = DEV_TAG_DESC),
+        (name = "Internal", description = INTERNAL_TAG_DESC)
     ),
     components(schemas(
         // Authentication types
@@ -610,6 +649,8 @@ fn default_limit() -> u32 {
         ListDealsResponse,
         DealDetailsResponse,
         DealPaymentHistoryResponse,
+        DealAuditTrailResponse,
+        DealTransactionEvent,
         DealStatsResponse,
         PaymentDetailsResponse,
         PaymentResponse,
@@ -628,13 +669,21 @@ fn default_limit() -> u32 {
         ValidateDealTransferRequest,
         DealTransferValidationResponse,
 
+        // Collateral types
+        crate::handlers::taxonomy::collateral::CollateralResponse,
+        crate::handlers::taxonomy::collateral::CreateCollateralApiRequest,
+        crate::handlers::taxonomy::collateral::UpdateCollateralApiRequest,
+
+        // Internal detection types
+        crate::handlers::taxonomy::detection::DetectionResultRequest,
+        crate::handlers::taxonomy::detection::DetectionMatch,
+        crate::handlers::taxonomy::detection::DetectionResultResponse,
+
         // Loan Tape types
         crate::dto::loan_tape_dto::CreateLoanTapeRequest,
         crate::dto::loan_tape_dto::BulkCreateLoanTapeRequest,
         crate::dto::loan_tape_dto::LoanTapeRecord,
-        crate::dto::loan_tape_dto::LoanTapeListResponse,
-        crate::handlers::loan_tape_handlers::ListLoanTapeQuery,
-        crate::handlers::loan_tape_handlers::LoanTapeResponse,
+
         crate::handlers::loan_tape_handlers::BulkLoanTapeResponse,
         crate::handlers::loan_tape_handlers::ErrorResponse,
 

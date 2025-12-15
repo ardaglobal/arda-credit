@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            c1.name as original_name,\n            c1.id as original_id,\n            c2.name as duplicate_name,\n            c2.id as duplicate_id\n        FROM collateral c1\n        INNER JOIN collateral c2 ON c1.double_pledged = c2.id\n        LIMIT 5\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "original_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "original_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "duplicate_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "duplicate_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "55b73972b78c6baaf2935d45e159f0f5d35b9d752c55168b11c00b1b39b63d83"
+}

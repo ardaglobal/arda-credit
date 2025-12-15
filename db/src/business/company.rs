@@ -459,6 +459,71 @@ pub async fn create_company(pool: &PgPool, request: &CreateCompanyRequest) -> Db
     Ok(company)
 }
 
+/// Get or create a company by UUID and/or name
+///
+/// This function implements "upsert" logic with unique name enforcement:
+/// 1. If a company with the provided UUID exists, return it
+/// 2. If a company with the provided company_name exists, return it (ignoring provided UUID)
+/// 3. If neither exists, create a new company with the provided UUID and name
+///
+/// This ensures unique company names while allowing flexible UUID references.
+pub async fn get_or_create_company(
+    pool: &PgPool,
+    company_uuid: Uuid,
+    company_name: &str,
+) -> DbResult<Company> {
+    // First, try to find by UUID
+    if let Ok(company) = get_company_by_id(pool, company_uuid).await {
+        return Ok(company);
+    }
+
+    // Second, try to find by company_name (enforces unique names, case-insensitive)
+    let existing_by_name = sqlx::query_as::<_, Company>(
+        r#"
+        SELECT id, name, description, status, metadata, created_at, updated_at
+        FROM companies
+        WHERE LOWER(company_name) = LOWER($1)
+        "#,
+    )
+    .bind(company_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| DbError::TransactionFailed(format!("Failed to lookup company by name: {}", e)))?;
+
+    if let Some(company) = existing_by_name {
+        return Ok(company);
+    }
+
+    // Third, create new company with provided UUID and name
+    let company = sqlx::query_as::<_, Company>(
+        r#"
+        INSERT INTO companies (id, name, company_name, description, metadata, status)
+        VALUES ($1, $2, $3, $4, $5, 'active')
+        RETURNING id, name, description, status, metadata, created_at, updated_at
+        "#,
+    )
+    .bind(company_uuid)
+    .bind(company_name) // Use company_name for both name and company_name
+    .bind(company_name)
+    .bind(Some(format!("Auto-created from deal for {}", company_name)))
+    .bind(serde_json::json!({"auto_created": true}))
+    .fetch_one(pool)
+    .await
+    .map_err(|e| {
+        // Check if it's a unique constraint violation
+        if e.to_string().contains("duplicate key value") {
+            DbError::TransactionFailed(format!(
+                "Company with name '{}' already exists",
+                company_name
+            ))
+        } else {
+            DbError::TransactionFailed(format!("Failed to create company: {}", e))
+        }
+    })?;
+
+    Ok(company)
+}
+
 /// Get company by ID
 pub async fn get_company_by_id(pool: &PgPool, company_id: Uuid) -> DbResult<Company> {
     let company = sqlx::query_as::<_, Company>(
@@ -474,6 +539,80 @@ pub async fn get_company_by_id(pool: &PgPool, company_id: Uuid) -> DbResult<Comp
     .map_err(|e| DbError::NotFound(format!("Company not found: {}", e)))?;
 
     Ok(company)
+}
+
+/// Get company by name (case-insensitive match)
+pub async fn get_company_by_name(pool: &PgPool, company_name: &str) -> DbResult<Option<Company>> {
+    let company = sqlx::query_as::<_, Company>(
+        r#"
+        SELECT id, name, description, status, metadata, created_at, updated_at
+        FROM companies
+        WHERE LOWER(name) = LOWER($1)
+        "#,
+    )
+    .bind(company_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| DbError::TransactionFailed(format!("Failed to query company by name: {}", e)))?;
+
+    Ok(company)
+}
+
+/// Create a company and immediately add a user as an active admin member
+///
+/// This is useful for loan tape uploads where the company doesn't exist yet
+/// and we want to associate the uploading user with the new company.
+pub async fn create_company_with_membership(
+    pool: &PgPool,
+    company_name: &str,
+    user_id: Uuid,
+    profile_type: ProfileType,
+) -> DbResult<(Company, CompanyMembership)> {
+    // Start transaction
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|e| DbError::TransactionFailed(format!("Failed to start transaction: {}", e)))?;
+
+    // Create company
+    let company = sqlx::query_as::<_, Company>(
+        r#"
+        INSERT INTO companies (name, description, metadata, status)
+        VALUES ($1, $2, $3, 'active')
+        RETURNING id, name, description, status, metadata, created_at, updated_at
+        "#,
+    )
+    .bind(company_name)
+    .bind(Some(format!("Auto-created from loan tape upload")))
+    .bind(serde_json::json!({"auto_created": true, "created_via": "loan_tape_upload"}))
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| DbError::TransactionFailed(format!("Failed to create company: {}", e)))?;
+
+    // Create membership with admin role and active status
+    let permissions = CompanyPermissions::admin_default().to_json();
+
+    let membership = sqlx::query_as::<_, CompanyMembership>(
+        r#"
+        INSERT INTO company_memberships (company_id, user_id, role, profile_type, status, invited_by, accepted_at, permissions)
+        VALUES ($1, $2, 'admin', $3, 'active', NULL, NOW(), $4)
+        RETURNING id, company_id, user_id, role, profile_type, status, invited_by, invited_at, accepted_at, permissions, created_at, updated_at
+        "#,
+    )
+    .bind(company.id)
+    .bind(user_id)
+    .bind(profile_type.to_string())
+    .bind(&permissions)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| DbError::TransactionFailed(format!("Failed to create membership: {}", e)))?;
+
+    // Commit transaction
+    tx.commit()
+        .await
+        .map_err(|e| DbError::TransactionFailed(format!("Failed to commit transaction: {}", e)))?;
+
+    Ok((company, membership))
 }
 
 /// List all companies with optional status filter
@@ -1151,6 +1290,36 @@ pub async fn check_user_permission(
     }
 
     Ok(false)
+}
+
+/// Check if user is a member of either the originator or investor company for a deal
+/// Returns true if the user is an active member of either company involved in the deal
+pub async fn is_user_member_of_deal_companies(
+    pool: &PgPool,
+    user_id: Uuid,
+    deal_id: Uuid,
+) -> DbResult<bool> {
+    let result = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1
+            FROM deals d
+            INNER JOIN company_memberships cm ON (
+                cm.company_id = d.originator_id
+                OR cm.company_id = d.investor_id
+            )
+            WHERE d.id = $1
+              AND cm.user_id = $2
+              AND cm.status = 'active'
+        )
+        "#,
+    )
+    .bind(deal_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(result)
 }
 
 /// Check if user has specific permission for a profile type

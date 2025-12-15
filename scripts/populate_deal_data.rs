@@ -24,13 +24,93 @@ use db::{
         batch_upsert_market_value_metrics, batch_upsert_pie_chart_metrics, clear_all_metrics,
         CreateMarketValueMetricRequest, CreatePieChartMetricRequest,
     },
-    create_identity, get_identity_by_email, init_db_with_url, list_deals, Deal, User,
+    create_identity, get_identity_by_email, init_db_with_url, list_deals, Collateral, Deal, User,
 };
 use rand::{seq::SliceRandom, thread_rng, Rng};
+use reqwest::Client;
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{collections::HashMap, env, str::FromStr};
 use uuid::Uuid;
+
+// ============================================================================
+// CSV EXPORT STRUCTURES
+// ============================================================================
+
+/// CSV row structure for exporting deal data
+#[derive(Debug, Clone, Serialize)]
+struct DealCsvRow {
+    originator_name: String,
+    investor_name: Option<String>,
+    borrower_name: Option<String>,
+    principal_amount: String,
+    outstanding_balance: String,
+    interest_rate_bps: i32,
+    deal_status: String,
+    originated_at: String,
+    maturity_date: Option<String>,
+    status: String,
+    industry: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    risk_level: Option<String>,
+    asset_class: Option<String>,
+    region: Option<String>,
+    minimum_investment: Option<String>,
+    // Collateral fields for testing double pledge detection
+    collateral_id: Option<String>,
+    collateral_name: Option<String>,
+    collateral_type: Option<String>,
+    collateral_address: Option<String>,
+    collateral_custom_id: Option<String>,
+}
+
+// ============================================================================
+// BATCH UPLOAD STRUCTURES (for arda-collateral-intel service)
+// ============================================================================
+
+/// Batch upload request for collateral intel service
+#[derive(Debug, Serialize)]
+struct BatchUploadRequest {
+    deals: Vec<BatchDealPayload>,
+}
+
+/// Deal payload for batch upload
+#[derive(Debug, Serialize)]
+struct BatchDealPayload {
+    deal: BatchDealInfo,
+    collaterals: Vec<BatchCollateralInfo>,
+}
+
+/// Deal info for batch upload
+#[derive(Debug, Serialize)]
+struct BatchDealInfo {
+    id: String,
+    status: String,
+    company_id: String,
+}
+
+/// Collateral info for batch upload
+#[derive(Debug, Serialize)]
+struct BatchCollateralInfo {
+    id: String,
+    name: String,
+    collateral_type: String,
+    address: Option<String>,
+    custom_id: Option<String>,
+    description: Option<String>,
+}
+
+/// Response from batch upload
+#[derive(Debug, Deserialize)]
+struct BatchUploadResponse {
+    total_deals: i32,
+    total_collaterals: i32,
+    tasks_queued: i32,
+    message: String,
+}
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -41,8 +121,8 @@ const DEFAULT_DEAL_COUNT_STR: &str = "25";
 const DEFAULT_DATABASE_URL: &str = "postgresql://postgres:password@127.0.0.1:5432/arda_credit_db";
 
 // Deal generation parameters
-const MIN_PRINCIPAL_AMOUNT: u32 = 10_000;
-const MAX_PRINCIPAL_AMOUNT: u32 = 500_000;
+const MIN_PRINCIPAL_AMOUNT: u64 = 50_000_000;
+const MAX_PRINCIPAL_AMOUNT: u64 = 5_000_000_000;
 const MIN_INTEREST_RATE_BPS: i32 = 400; // 4% APR
 const MAX_INTEREST_RATE_BPS: i32 = 1200; // 12% APR
 const MIN_OUTSTANDING_BALANCE_PCT: u32 = 60; // 60% of principal
@@ -155,6 +235,76 @@ const COMPANY_PREFIXES: &[&str] = &[
     "Future",
 ];
 
+// Collateral data for testing duplicate detection
+const COLLATERAL_NAMES: &[&str] = &[
+    "123 Main Street Property",
+    "456 Oak Avenue Building",
+    "789 Elm Street Commercial Space",
+    "101 Pine Road Industrial Complex",
+    "202 Maple Drive Warehouse",
+    "CAT D8T Bulldozer Fleet",
+    "John Deere 9RX Series Tractors",
+    "Caterpillar 797F Mining Trucks",
+    "Boeing 737-800 Aircraft",
+    "Gulfstream G650 Private Jet",
+    "Inventory - Consumer Electronics",
+    "Inventory - Automotive Parts",
+    "Accounts Receivable Portfolio Q4-2024",
+    "Equipment - CNC Machining Center",
+    "Equipment - Industrial 3D Printers",
+    "Patent Portfolio - AI Technology",
+    "Trademark - Brand Assets Collection",
+    "Server Infrastructure - Data Center A",
+    "Medical Equipment - MRI Scanner",
+    "Oil & Gas Rights - Block 47",
+];
+
+const COLLATERAL_TYPES: &[&str] = &[
+    "real_estate",
+    "commercial_property",
+    "industrial_property",
+    "warehouse",
+    "construction_equipment",
+    "agricultural_equipment",
+    "mining_equipment",
+    "aircraft",
+    "private_aircraft",
+    "inventory",
+    "electronics_inventory",
+    "automotive_inventory",
+    "accounts_receivable",
+    "manufacturing_equipment",
+    "technology_equipment",
+    "intellectual_property",
+    "trademark",
+    "it_infrastructure",
+    "medical_equipment",
+    "mineral_rights",
+];
+
+const COLLATERAL_ADDRESSES: &[&str] = &[
+    "123 Main St, New York, NY 10001",
+    "456 Oak Ave, Los Angeles, CA 90012",
+    "789 Elm St, Chicago, IL 60601",
+    "101 Pine Rd, Houston, TX 77002",
+    "202 Maple Dr, Phoenix, AZ 85003",
+    "303 Cedar Ln, Philadelphia, PA 19102",
+    "404 Birch Way, San Antonio, TX 78201",
+    "505 Spruce Ct, San Diego, CA 92101",
+    "606 Willow St, Dallas, TX 75201",
+    "707 Ash Blvd, San Jose, CA 95110",
+    "808 Broadway, Seattle, WA 98101",
+    "909 Market St, San Francisco, CA 94103",
+    "1010 Congress Ave, Austin, TX 78701",
+    "1111 Peachtree St, Atlanta, GA 30309",
+    "1212 Beacon St, Boston, MA 02215",
+    "GPS: 40.7128° N, 74.0060° W",
+    "GPS: 34.0522° N, 118.2437° W",
+    "GPS: 41.8781° N, 87.6298° W",
+    "Parcel ID: APN-2024-00451-A",
+    "Serial: CAT-2024-D8T-00789",
+];
+
 /// Refresh all metrics data after deal population
 async fn refresh_metrics_data(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::error::Error>> {
     let mut tx = pool.begin().await?;
@@ -163,7 +313,8 @@ async fn refresh_metrics_data(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::er
     clear_all_metrics(&mut tx).await?;
 
     // Get ALL deals for calculation (set high limit to avoid pagination issues)
-    let deals_result = list_deals(pool, Some(1_000_000), None, None, None, None, None).await?;
+    let deals_result =
+        list_deals(pool, Some(1_000_000), None, None, None, None, None, None).await?;
     let deals = &deals_result.deals;
 
     if deals.is_empty() {
@@ -330,6 +481,7 @@ async fn create_deal_with_custom_dates(
     minimum_investment: Option<Decimal>,
     originated_at: chrono::DateTime<Utc>,
     created_at: chrono::DateTime<Utc>,
+    collateral_id: Option<Uuid>,
 ) -> Result<Deal, sqlx::Error> {
     let id = Uuid::new_v4();
     let default_json = serde_json::Value::Array(vec![]);
@@ -340,12 +492,12 @@ async fn create_deal_with_custom_dates(
         INSERT INTO deals (
             id, originator_id, investor_id, principal_amount, outstanding_balance, interest_rate_bps, deal_status, maturity_date, originated_at, created_at, updated_at,
             custom_deal_id, status, industry, document_ids,
-            title, description, risk_level, asset_class, region, minimum_investment
+            title, description, risk_level, asset_class, region, minimum_investment, collateral_id
         )
         VALUES (
             $1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $9,
             $10, $11, $12, $13,
-            $14, $15, $16, $17, $18, $19
+            $14, $15, $16, $17, $18, $19, $20
         )
         "#,
         id,
@@ -366,7 +518,8 @@ async fn create_deal_with_custom_dates(
         risk_level,
         asset_class,
         region,
-        minimum_investment
+        minimum_investment,
+        collateral_id
     )
     .execute(pool)
     .await?;
@@ -375,6 +528,8 @@ async fn create_deal_with_custom_dates(
         id,
         originator_id,
         investor_id,
+        borrower_id: None,         // Optional third-party borrower
+        borrower_legal_name: None, // Borrower company legal name
         principal_amount,
         outstanding_balance: principal_amount,
         interest_rate_bps,
@@ -401,9 +556,491 @@ async fn create_deal_with_custom_dates(
         dscr: None,
         state_transition_hash: None,
         proof_included: false,
+        collateral_id,
     };
 
     Ok(deal)
+}
+
+// ============================================================================
+// DEAL TRANSACTION HISTORY FUNCTIONS
+// ============================================================================
+
+/// Generate SHA256 hash of a UUID for deal_transactions table
+fn hash_uuid(uuid: &Uuid) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    hasher.update(uuid.as_bytes());
+    hasher.finalize().to_vec()
+}
+
+/// Create a deal_transactions record to track state progression events
+async fn create_deal_transaction_record(
+    pool: &sqlx::PgPool,
+    transaction_type: &str, // "deal_origination", "deal_payment", "deal_closeout"
+    deal_id: Uuid,
+    user_id: Option<Uuid>, // Optional for script-generated deals
+    amount: Decimal,
+    created_at: chrono::DateTime<Utc>,
+    payment_id: Option<Uuid>,
+) -> Result<(), sqlx::Error> {
+    let transaction_id = Uuid::new_v4();
+    let transaction_id_hash = hash_uuid(&transaction_id);
+    // Use a dummy UUID for hash if user_id is None
+    let dummy_uuid = Uuid::nil();
+    let user_id_hash = hash_uuid(&user_id.unwrap_or(dummy_uuid));
+    let deal_id_hash = hash_uuid(&deal_id);
+
+    sqlx::query(
+        r#"
+        INSERT INTO deal_transactions (
+            id, transaction_id_hash, user_id_hash, deal_id_hash,
+            transaction_type, amount, user_id, deal_id, payment_id,
+            metadata, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        "#,
+    )
+    .bind(transaction_id)
+    .bind(transaction_id_hash)
+    .bind(user_id_hash)
+    .bind(deal_id_hash)
+    .bind(transaction_type)
+    .bind(amount)
+    .bind(user_id)
+    .bind(deal_id)
+    .bind(payment_id)
+    .bind(json!({
+        "created_by_script": true,
+        "transaction_type": transaction_type
+    }))
+    .bind(created_at)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+/// Create realistic state progression history for a deal based on its target status
+async fn create_deal_state_progression(
+    pool: &sqlx::PgPool,
+    deal: &Deal,
+    target_status: &str,
+    rng: &mut impl Rng,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let originated_at = deal.originated_at;
+    let maturity_date = deal
+        .maturity_date
+        .unwrap_or(originated_at + Duration::days(365));
+
+    // Always create deal_origination transaction
+    // Note: user_id is None for script-generated deals without specific users
+    create_deal_transaction_record(
+        pool,
+        "deal_origination",
+        deal.id,
+        None, // No specific user for script-generated deals
+        deal.principal_amount,
+        originated_at,
+        None,
+    )
+    .await?;
+
+    match target_status {
+        "originated" => {
+            // Just the origination event, no payments yet
+        }
+        "active" => {
+            // Create 1-2 partial payment transactions
+            let num_payments = rng.gen_range(1..=2);
+            let total_days = (maturity_date - originated_at).num_days();
+
+            for _i in 0..num_payments {
+                // Spread payments across 20-60% of deal lifetime
+                let days_offset = rng.gen_range(30..=(total_days * 6 / 10).max(30));
+                let payment_date = originated_at + Duration::days(days_offset);
+
+                // Partial payment (10-30% of principal each)
+                let payment_pct = rng.gen_range(10..=30);
+                let payment_amount =
+                    deal.principal_amount * Decimal::from(payment_pct) / Decimal::from(100);
+
+                create_deal_transaction_record(
+                    pool,
+                    "deal_payment",
+                    deal.id,
+                    None, // No specific user for script-generated deals
+                    payment_amount,
+                    payment_date,
+                    None, // No actual payment record created
+                )
+                .await?;
+            }
+        }
+        "paid_off" => {
+            // Create 3-5 payment transactions that sum to principal amount
+            let num_payments = rng.gen_range(3..=5);
+            let total_days = (maturity_date - originated_at).num_days();
+
+            // Calculate payment amounts that sum to principal
+            let mut remaining = deal.principal_amount;
+            let mut payment_amounts = Vec::new();
+
+            for _i in 0..(num_payments - 1) {
+                // Each payment is 15-35% of remaining balance
+                let pct = rng.gen_range(15..=35);
+                let amount = (remaining * Decimal::from(pct) / Decimal::from(100)).round_dp(2);
+                payment_amounts.push(amount);
+                remaining -= amount;
+            }
+            // Last payment is exactly the remaining balance
+            payment_amounts.push(remaining);
+
+            // Create evenly spaced payment transactions
+            for (i, amount) in payment_amounts.iter().enumerate() {
+                let days_offset = ((i + 1) as i64 * total_days) / (num_payments as i64);
+                let payment_date = originated_at + Duration::days(days_offset.min(total_days - 1));
+
+                create_deal_transaction_record(
+                    pool,
+                    "deal_payment",
+                    deal.id,
+                    None, // No specific user for script-generated deals
+                    *amount,
+                    payment_date,
+                    None, // No actual payment record created
+                )
+                .await?;
+            }
+        }
+        "closed" => {
+            // Create full payment history + closeout transaction
+            let num_payments = rng.gen_range(3..=5);
+            let total_days = (maturity_date - originated_at).num_days();
+
+            // Calculate payment amounts that sum to principal
+            let mut remaining = deal.principal_amount;
+            let mut payment_amounts = Vec::new();
+
+            for _i in 0..(num_payments - 1) {
+                let pct = rng.gen_range(15..=35);
+                let amount = (remaining * Decimal::from(pct) / Decimal::from(100)).round_dp(2);
+                payment_amounts.push(amount);
+                remaining -= amount;
+            }
+            payment_amounts.push(remaining);
+
+            // Create payment transactions
+            let mut last_payment_date = originated_at;
+            for (i, amount) in payment_amounts.iter().enumerate() {
+                let days_offset = ((i + 1) as i64 * total_days) / (num_payments as i64);
+                let payment_date = originated_at + Duration::days(days_offset.min(total_days - 1));
+                last_payment_date = payment_date;
+
+                create_deal_transaction_record(
+                    pool,
+                    "deal_payment",
+                    deal.id,
+                    None, // No specific user for script-generated deals
+                    *amount,
+                    payment_date,
+                    None, // No actual payment record created
+                )
+                .await?;
+            }
+
+            // Create closeout transaction a few days after final payment
+            let closeout_date = last_payment_date + Duration::days(rng.gen_range(3..=14));
+            create_deal_transaction_record(
+                pool,
+                "deal_closeout",
+                deal.id,
+                None, // No specific user for script-generated deals
+                Decimal::ZERO,
+                closeout_date,
+                None,
+            )
+            .await?;
+        }
+        _ => {
+            // Unknown status, just create origination
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// CSV EXPORT FUNCTIONS
+// ============================================================================
+
+/// Write deal data to a CSV file
+fn write_deals_to_csv(deals: Vec<DealCsvRow>) -> Result<String, Box<dyn std::error::Error>> {
+    // Generate timestamped filename
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H%M%S");
+    let filename = format!("loan_tape_{}.csv", timestamp);
+
+    println!("📝 Writing {} deals to {}", deals.len(), filename);
+
+    // Create CSV writer
+    let mut wtr = csv::Writer::from_path(&filename)?;
+
+    // Write all deals
+    for deal in deals {
+        wtr.serialize(deal)?;
+    }
+
+    wtr.flush()?;
+
+    println!("✅ CSV file created: {}", filename);
+    Ok(filename)
+}
+
+/// Generate deal data for a specific user (CSV mode - no database operations)
+/// Creates a single-party portfolio with user as originator and random investors
+fn generate_user_deals_csv(
+    email: &str,
+    count: u32,
+) -> Result<Vec<DealCsvRow>, Box<dyn std::error::Error>> {
+    let mut deals = Vec::new();
+    let mut rng = thread_rng();
+
+    // Generate synthetic company name from email for the ORIGINATOR (consistent party)
+    let user_name = email.split('@').next().unwrap_or("User");
+    let user_name_formatted = user_name
+        .split('.')
+        .map(|s| {
+            let mut chars = s.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let originator_company_name = format!("{} Originator Corp", user_name_formatted);
+
+    // Create random investor company names (need enough variety)
+    let investor_count = (count / 3).max(5) as usize; // At least 5 investors
+    let mut investor_company_names = Vec::new();
+    for i in 0..investor_count {
+        let prefix = COMPANY_PREFIXES.choose(&mut rng).unwrap();
+        let suffix = COMPANY_TYPES.choose(&mut rng).unwrap();
+        investor_company_names.push(format!("{} {} #{}", prefix, suffix, i + 1));
+    }
+
+    println!(
+        "🏢 Creating single-party portfolio: {} as originator with {} random investors",
+        originator_company_name,
+        investor_company_names.len()
+    );
+
+    // Generate ALL deals with same originator, different investors
+    for i in 0..count {
+        let investor_name = investor_company_names.choose(&mut rng).unwrap().clone();
+        let deal = generate_csv_deal_row(
+            originator_company_name.clone(),
+            Some(investor_name),
+            &format!("Portfolio Deal #{}", i + 1),
+            &mut rng,
+        )?;
+        deals.push(deal);
+    }
+
+    println!(
+        "✅ Generated {} deals for single-party portfolio (originator: {})",
+        deals.len(),
+        originator_company_name
+    );
+
+    Ok(deals)
+}
+
+/// Generate random deal data (CSV mode - no database operations)
+/// Creates a single-party portfolio with one consistent originator and random investors
+fn generate_random_deals_csv(count: u32) -> Result<Vec<DealCsvRow>, Box<dyn std::error::Error>> {
+    let mut deals = Vec::new();
+    let mut rng = thread_rng();
+
+    // Generate synthetic company names
+    let company_count = (count / COMPANY_COUNT_DIVISOR).max(MIN_RANDOM_COMPANIES as u32) as usize;
+    let mut company_names = Vec::new();
+
+    for i in 0..company_count {
+        let prefix = COMPANY_PREFIXES.choose(&mut rng).unwrap();
+        let suffix = COMPANY_TYPES.choose(&mut rng).unwrap();
+        company_names.push(format!("{} {} #{}", prefix, suffix, i + 1));
+    }
+
+    // Use first company as consistent originator
+    let originator_name = company_names[0].clone();
+
+    // Remaining companies are the investor pool
+    let investor_pool: Vec<String> = company_names.iter().skip(1).cloned().collect();
+
+    println!(
+        "🏢 Creating single-party portfolio: {} as originator with {} potential investors",
+        originator_name,
+        investor_pool.len()
+    );
+
+    // Generate ALL deals with same originator, random investors
+    for i in 0..count {
+        let investor_name = investor_pool.choose(&mut rng).unwrap().clone();
+
+        let deal = generate_csv_deal_row(
+            originator_name.clone(),
+            Some(investor_name),
+            &format!("Portfolio Deal #{}", i + 1),
+            &mut rng,
+        )?;
+        deals.push(deal);
+    }
+
+    println!(
+        "✅ Generated {} deals for single-party portfolio (originator: {})",
+        deals.len(),
+        originator_name
+    );
+
+    Ok(deals)
+}
+
+/// Generate a single CSV deal row with realistic randomized data
+fn generate_csv_deal_row(
+    originator_name: String,
+    investor_name: Option<String>,
+    title_prefix: &str,
+    rng: &mut impl Rng,
+) -> Result<DealCsvRow, Box<dyn std::error::Error>> {
+    // Realistic principal amounts
+    let principal_amount =
+        Decimal::from(rng.gen_range(MIN_PRINCIPAL_AMOUNT..=MAX_PRINCIPAL_AMOUNT));
+
+    // Interest rates
+    let interest_rate_bps = rng.gen_range(MIN_INTEREST_RATE_BPS..=MAX_INTEREST_RATE_BPS);
+
+    // Deal statuses with realistic distribution
+    let deal_statuses = [
+        ("active", DEAL_STATUS_ACTIVE_WEIGHT),
+        ("originated", DEAL_STATUS_ORIGINATED_WEIGHT),
+        ("paid_off", DEAL_STATUS_PAID_OFF_WEIGHT),
+        ("closed", DEAL_STATUS_CLOSED_WEIGHT),
+    ];
+
+    let total_weight: u32 = deal_statuses.iter().map(|(_, weight)| weight).sum();
+    let random_weight = rng.gen_range(0..total_weight);
+    let mut cumulative_weight = 0;
+    let mut selected_status = "active";
+
+    for (status, weight) in &deal_statuses {
+        cumulative_weight += weight;
+        if random_weight < cumulative_weight {
+            selected_status = status;
+            break;
+        }
+    }
+
+    // Risk levels distribution
+    let risk_levels = [
+        ("low", RISK_LEVEL_LOW_WEIGHT),
+        ("medium", RISK_LEVEL_MEDIUM_WEIGHT),
+        ("high", RISK_LEVEL_HIGH_WEIGHT),
+    ];
+    let risk_total: u32 = risk_levels.iter().map(|(_, w)| w).sum();
+    let risk_rand = rng.gen_range(0..risk_total);
+    let mut risk_cumulative = 0;
+    let mut selected_risk = "medium";
+
+    for (risk, weight) in &risk_levels {
+        risk_cumulative += weight;
+        if risk_rand < risk_cumulative {
+            selected_risk = risk;
+            break;
+        }
+    }
+
+    // Calculate dates
+    let maturity_months = rng.gen_range(MIN_MATURITY_MONTHS..=MAX_MATURITY_MONTHS);
+    let originated_at = Utc::now() - Duration::days(rng.gen_range(0..=MAX_DAYS_AGO_ORIGINATED));
+    let maturity_date = originated_at + Duration::days(maturity_months * 30);
+
+    // Outstanding balance (percentage of principal for active deals, 0 for paid_off/closed)
+    let outstanding_balance = if selected_status == "paid_off" || selected_status == "closed" {
+        Decimal::ZERO
+    } else {
+        let percentage = rng.gen_range(MIN_OUTSTANDING_BALANCE_PCT..=MAX_OUTSTANDING_BALANCE_PCT);
+        principal_amount * Decimal::from_str(&format!("0.{}", percentage)).unwrap()
+    };
+
+    let industry = INDUSTRIES.choose(rng).unwrap();
+    let asset_class = ASSET_CLASSES.choose(rng).unwrap();
+    let region = REGIONS.choose(rng).unwrap();
+
+    let description = format!(
+        "{} deal in {} sector with {} risk profile. Principal: ${}, Rate: {}% APR",
+        asset_class,
+        industry,
+        selected_risk,
+        principal_amount,
+        (interest_rate_bps as f64) / 100.0
+    );
+
+    // Generate collateral data (70% probability, matching database mode behavior)
+    let (collateral_id, collateral_name, collateral_type, collateral_address, collateral_custom_id) =
+        if rng.gen_bool(0.7) {
+            // Generate collateral UUID and data
+            let coll_id = Uuid::new_v4();
+            let coll_name = COLLATERAL_NAMES.choose(rng).unwrap().to_string();
+            let coll_type = COLLATERAL_TYPES.choose(rng).unwrap().to_string();
+            let coll_address = COLLATERAL_ADDRESSES.choose(rng).unwrap().to_string();
+
+            // Generate custom_id 50% of the time
+            let coll_custom_id = if rng.gen_bool(0.5) {
+                Some(format!(
+                    "COLL-{}-{:04}",
+                    chrono::Utc::now().format("%Y%m"),
+                    rng.gen_range(1000..9999)
+                ))
+            } else {
+                None
+            };
+
+            (
+                Some(coll_id.to_string()),
+                Some(coll_name),
+                Some(coll_type),
+                Some(coll_address),
+                coll_custom_id,
+            )
+        } else {
+            (None, None, None, None, None)
+        };
+
+    Ok(DealCsvRow {
+        originator_name,
+        investor_name,
+        borrower_name: None,
+        principal_amount: principal_amount.to_string(),
+        outstanding_balance: outstanding_balance.to_string(),
+        interest_rate_bps,
+        deal_status: selected_status.to_string(),
+        originated_at: originated_at.to_rfc3339(),
+        maturity_date: Some(maturity_date.to_rfc3339()),
+        status: "active".to_string(),
+        industry: Some(industry.to_string()),
+        title: Some(title_prefix.to_string()),
+        description: Some(description),
+        risk_level: Some(selected_risk.to_string()),
+        asset_class: Some(asset_class.to_string()),
+        region: Some(region.to_string()),
+        minimum_investment: None,
+        collateral_id,
+        collateral_name,
+        collateral_type,
+        collateral_address,
+        collateral_custom_id,
+    })
 }
 
 #[tokio::main]
@@ -435,14 +1072,59 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("Clear existing deal data before generating new data")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("csv")
+                .long("csv")
+                .help("Export to CSV instead of writing to database")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("dp")
+                .long("dp")
+                .value_name("NUMBER")
+                .help(
+                    "Number of double-pledged deals to create (uses same collateral intentionally)",
+                )
+                .value_parser(clap::value_parser!(u32)),
+        )
         .get_matches();
 
     let email = matches.get_one::<String>("email");
     let count = *matches.get_one::<u32>("count").unwrap();
     let clear_data = matches.get_flag("clear");
+    let csv_mode = matches.get_flag("csv");
+    let double_pledged_count = matches.get_one::<u32>("dp").copied();
 
     println!("🚀 Starting deal data population...");
 
+    // CSV mode: Generate and export to CSV without database operations
+    if csv_mode {
+        println!("📊 CSV Export Mode: No database operations will be performed");
+
+        let deals = match email {
+            Some(user_email) => {
+                println!("👤 User mode: Generating deals for {}", user_email);
+                generate_user_deals_csv(user_email, count)?
+            }
+            None => {
+                println!("🎲 Random mode: Generating {} random deals", count);
+                generate_random_deals_csv(count)?
+            }
+        };
+
+        let filename = write_deals_to_csv(deals)?;
+
+        println!("🎉 CSV export completed successfully!");
+        println!("\n📁 Output file: {}", filename);
+        println!("\n💡 Next steps:");
+        println!("   1. Upload this CSV to your frontend application");
+        println!("   2. The frontend will map the data to your database");
+        println!("   3. View the portfolio information in your profile");
+
+        return Ok(());
+    }
+
+    // Database mode: Traditional behavior (create deals in database)
     // Get database URL from environment
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());
@@ -461,11 +1143,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match email {
         Some(user_email) => {
             println!("👤 User mode: Generating deals for {}", user_email);
-            generate_user_deals(&pool, user_email, count).await?;
+            if let Some(dp_count) = double_pledged_count {
+                println!(
+                    "🔗 Will create {} double-pledged deals for duplicate testing",
+                    dp_count
+                );
+            }
+            generate_user_deals(&pool, user_email, count, double_pledged_count).await?;
         }
         None => {
             println!("🎲 Random mode: Generating {} random deals", count);
-            generate_random_deals(&pool, count).await?;
+            if let Some(dp_count) = double_pledged_count {
+                println!(
+                    "🔗 Will create {} double-pledged deals for duplicate testing",
+                    dp_count
+                );
+            }
+            generate_random_deals(&pool, count, double_pledged_count).await?;
         }
     }
 
@@ -494,6 +1188,11 @@ async fn clear_existing_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
         .await?;
     sqlx::query!("DELETE FROM deals").execute(pool).await?;
 
+    // Clear collateral data
+    // Note: collateral_matches, collateral_check_queue, and collateral_checks tables
+    // were removed in migration 060 - functionality moved to arda-collateral-intel service
+    sqlx::query!("DELETE FROM collateral").execute(pool).await?;
+
     // Clear metrics data (must be done before deleting companies due to FK constraints)
     sqlx::query!("DELETE FROM metrics_market_value_daily")
         .execute(pool)
@@ -512,7 +1211,132 @@ async fn clear_existing_data(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
-    println!("✅ Cleared existing deal, metrics, and test company data");
+    println!("✅ Cleared existing deal, metrics, collateral, and test company data");
+    Ok(())
+}
+
+/// Report on duplicate matches found
+async fn report_duplicate_matches(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    let result = sqlx::query!(
+        r#"
+        SELECT 
+            COUNT(*) as total_collateral,
+            COUNT(DISTINCT double_pledged) FILTER (WHERE double_pledged IS NOT NULL) as unique_duplicates,
+            COUNT(*) FILTER (WHERE double_pledged IS NOT NULL) as collateral_with_duplicates
+        FROM collateral
+        "#
+    )
+    .fetch_one(pool)
+    .await?;
+
+    println!("  📊 Duplicate Detection Summary:");
+    println!(
+        "     Total collateral: {}",
+        result.total_collateral.unwrap_or(0)
+    );
+    println!(
+        "     Collateral with duplicates: {}",
+        result.collateral_with_duplicates.unwrap_or(0)
+    );
+    println!(
+        "     Unique duplicate groups: {}",
+        result.unique_duplicates.unwrap_or(0)
+    );
+
+    // Show some examples
+    let examples = sqlx::query!(
+        r#"
+        SELECT 
+            c1.name as original_name,
+            c1.id as original_id,
+            c2.name as duplicate_name,
+            c2.id as duplicate_id
+        FROM collateral c1
+        INNER JOIN collateral c2 ON c1.double_pledged = c2.id
+        LIMIT 5
+        "#
+    )
+    .fetch_all(pool)
+    .await?;
+
+    if !examples.is_empty() {
+        println!("  🔗 Example duplicate matches:");
+        for ex in examples {
+            println!(
+                "     '{}' matched with '{}'",
+                ex.original_name, ex.duplicate_name
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Submit batch upload request to collateral intel service
+async fn submit_batch_to_intel_service(
+    deals_with_collateral: Vec<(Deal, Vec<Collateral>)>,
+    intel_service_url: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if deals_with_collateral.is_empty() {
+        println!("ℹ️  No deals with collateral to submit to intel service");
+        return Ok(());
+    }
+
+    println!(
+        "🚀 Submitting {} deals with collateral to intel service at {}",
+        deals_with_collateral.len(),
+        intel_service_url
+    );
+
+    // Build batch upload request
+    let batch_request = BatchUploadRequest {
+        deals: deals_with_collateral
+            .into_iter()
+            .map(|(deal, collaterals)| BatchDealPayload {
+                deal: BatchDealInfo {
+                    id: deal.id.to_string(),
+                    status: deal.deal_status.clone(),
+                    company_id: deal.originator_id.to_string(),
+                },
+                collaterals: collaterals
+                    .into_iter()
+                    .map(|c| BatchCollateralInfo {
+                        id: c.id.to_string(),
+                        name: c.name.clone(),
+                        collateral_type: c.collateral_type.clone().unwrap_or_default(),
+                        address: c.address.clone(),
+                        custom_id: c.custom_id.clone(),
+                        description: c.description.clone(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+    };
+
+    // Submit to intel service
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let url = format!("{}/api/v1/batch/upload", intel_service_url);
+    let response = client.post(&url).json(&batch_request).send().await?;
+
+    if response.status().is_success() {
+        let batch_response: BatchUploadResponse = response.json().await?;
+        println!(
+            "✅ Batch upload successful: {} deals, {} collaterals, {} tasks queued",
+            batch_response.total_deals,
+            batch_response.total_collaterals,
+            batch_response.tasks_queued
+        );
+        println!("   {}", batch_response.message);
+    } else {
+        let status = response.status();
+        let body = response.text().await?;
+        eprintln!("❌ Batch upload failed with status {}: {}", status, body);
+        return Err(format!("Batch upload failed: {} - {}", status, body).into());
+    }
+
     Ok(())
 }
 
@@ -521,6 +1345,7 @@ async fn generate_user_deals(
     pool: &sqlx::PgPool,
     email: &str,
     count: u32,
+    double_pledged_count: Option<u32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Look up user by email, create if doesn't exist
     let user = match get_identity_by_email(pool, email).await? {
@@ -542,6 +1367,15 @@ async fn generate_user_deals(
     // Get or create additional random companies for pairing
     let random_companies = ensure_random_companies(pool, 5).await?;
 
+    // Track if we should create double-pledged deals
+    let mut rng = thread_rng();
+    let mut dp_remaining = double_pledged_count.unwrap_or(0);
+    let mut shared_collateral: Option<Collateral> = None;
+    let dp_collateral_index = rng.gen_range(0..COLLATERAL_NAMES.len());
+
+    // Track all deals and collateral for batch submission
+    let mut all_deals_with_collateral: Vec<(Deal, Vec<Collateral>)> = Vec::new();
+
     // Generate deals with 50/50 split
     let investor_deals = count / 2;
     let originator_deals = count - investor_deals;
@@ -549,34 +1383,169 @@ async fn generate_user_deals(
     println!("💰 Creating {} deals as investor", investor_deals);
     for i in 0..investor_deals {
         let originator = random_companies
-            .choose(&mut thread_rng())
+            .choose(&mut rng)
             .unwrap_or(&originator_company);
 
-        create_realistic_deal(
+        // Create collateral for this deal
+        let collateral = if dp_remaining > 0 {
+            // Create intentional duplicate
+            if shared_collateral.is_none() {
+                // First double-pledged deal - create the shared collateral
+                let coll =
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?;
+                println!(
+                    "  🔗 Created shared collateral {} for {} double-pledged deals",
+                    coll.id,
+                    double_pledged_count.unwrap()
+                );
+                shared_collateral = Some(coll.clone());
+                Some(coll)
+            } else {
+                dp_remaining -= 1;
+
+                if dp_remaining > 0 {
+                    // Create another collateral with same attributes (should be detected as duplicate)
+                    Some(
+                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                            .await?,
+                    )
+                } else {
+                    // Last double-pledged deal uses the original
+                    shared_collateral.clone()
+                }
+            }
+        } else {
+            // Random collateral (70% of deals have collateral)
+            if rng.gen_bool(0.7) {
+                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+            } else {
+                None
+            }
+        };
+
+        let (deal, collateral_opt) = create_realistic_deal(
             pool,
             originator.id,
             Some(investor_company.id),
             &format!("User Investment Deal #{}", i + 1),
+            collateral.clone(),
         )
         .await?;
+
+        // Track deal with its collateral for batch submission
+        if let Some(coll) = collateral_opt {
+            all_deals_with_collateral.push((deal, vec![coll]));
+        }
     }
 
     println!("🏢 Creating {} deals as originator", originator_deals);
     for i in 0..originator_deals {
         let investor = random_companies
-            .choose(&mut thread_rng())
+            .choose(&mut rng)
             .unwrap_or(&investor_company);
 
-        create_realistic_deal(
+        // Create collateral for this deal
+        let collateral = if dp_remaining > 0 {
+            // Create intentional duplicate
+            if shared_collateral.is_none() {
+                // First double-pledged deal - create the shared collateral
+                let coll =
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?;
+                println!(
+                    "  🔗 Created shared collateral {} for {} double-pledged deals",
+                    coll.id,
+                    double_pledged_count.unwrap()
+                );
+                shared_collateral = Some(coll.clone());
+                Some(coll)
+            } else {
+                dp_remaining -= 1;
+
+                if dp_remaining > 0 {
+                    // Create another collateral with same attributes (should be detected as duplicate)
+                    Some(
+                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                            .await?,
+                    )
+                } else {
+                    // Last double-pledged deal uses the original
+                    shared_collateral.clone()
+                }
+            }
+        } else {
+            // Random collateral (70% of deals have collateral)
+            if rng.gen_bool(0.7) {
+                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+            } else {
+                None
+            }
+        };
+
+        let (deal, collateral_opt) = create_realistic_deal(
             pool,
             originator_company.id,
             Some(investor.id),
             &format!("User Origination Deal #{}", i + 1),
+            collateral.clone(),
         )
         .await?;
+
+        // Track deal with its collateral for batch submission
+        if let Some(coll) = collateral_opt {
+            all_deals_with_collateral.push((deal, vec![coll]));
+        }
     }
 
     println!("✅ Created {} deals for user {}", count, email);
+    println!("   📊 Collateral breakdown:");
+    println!(
+        "      • {} deals WITH collateral ({}%)",
+        all_deals_with_collateral.len(),
+        (all_deals_with_collateral.len() as f64 / count as f64 * 100.0).round()
+    );
+    println!(
+        "      • {} deals WITHOUT collateral ({}%)",
+        count as usize - all_deals_with_collateral.len(),
+        ((count as usize - all_deals_with_collateral.len()) as f64 / count as f64 * 100.0).round()
+    );
+
+    // Submit batch to collateral intel service if configured
+    if let Ok(intel_url) = env::var("COLLATERAL_INTEL_SERVICE_URL") {
+        if !all_deals_with_collateral.is_empty() {
+            println!(
+                "ℹ️  Note: Only deals with collateral are submitted to intel service for analysis"
+            );
+            println!(
+                "🔗 Submitting {} of {} deals to intel service (only deals with collateral)...",
+                all_deals_with_collateral.len(),
+                count
+            );
+            if let Err(e) =
+                submit_batch_to_intel_service(all_deals_with_collateral, &intel_url).await
+            {
+                eprintln!(
+                    "⚠️  Warning: Failed to submit batch to intel service: {}",
+                    e
+                );
+                eprintln!("   Continuing without intel service submission...");
+            }
+        } else {
+            println!("ℹ️  No deals with collateral - skipping intel service submission");
+        }
+    } else {
+        println!("ℹ️  COLLATERAL_INTEL_SERVICE_URL not set, skipping intel service submission");
+    }
+
+    if double_pledged_count.is_some() && double_pledged_count.unwrap() > 0 {
+        println!("🔍 Waiting 5 seconds for duplicate detection to process...");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        // Report on duplicate detection
+        println!("📊 Checking duplicate detection results...");
+        report_duplicate_matches(pool).await?;
+    }
 
     // Refresh metrics after creating deals
     println!("📊 Refreshing metrics data...");
@@ -590,7 +1559,10 @@ async fn generate_user_deals(
 async fn generate_random_deals(
     pool: &sqlx::PgPool,
     count: u32,
+    double_pledged_count: Option<u32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let mut rng = thread_rng();
+
     // Create random companies for originators and investors
     let companies = ensure_random_companies(
         pool,
@@ -598,23 +1570,123 @@ async fn generate_random_deals(
     )
     .await?;
 
-    println!("💰 Generating {} random deals", count);
+    println!("💰 Generating {} random deals with collateral", count);
+
+    // Track if we should create double-pledged deals
+    let mut dp_remaining = double_pledged_count.unwrap_or(0);
+    let mut shared_collateral: Option<Collateral> = None;
+    let dp_collateral_index = rng.gen_range(0..COLLATERAL_NAMES.len());
+
+    // Track all deals and collateral for batch submission
+    let mut all_deals_with_collateral: Vec<(Deal, Vec<Collateral>)> = Vec::new();
+
     for i in 0..count {
-        let originator = companies.choose(&mut thread_rng()).unwrap();
+        let originator = companies.choose(&mut rng).unwrap();
         let investor_candidates: Vec<&Company> =
             companies.iter().filter(|c| c.id != originator.id).collect();
-        let investor = investor_candidates.choose(&mut thread_rng()).unwrap();
+        let investor = investor_candidates.choose(&mut rng).unwrap();
 
-        create_realistic_deal(
+        // Create collateral for this deal
+        let collateral = if dp_remaining > 0 {
+            // Create intentional duplicate
+            if shared_collateral.is_none() {
+                // First double-pledged deal - create the shared collateral
+                let coll =
+                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                        .await?;
+                println!(
+                    "  🔗 Created shared collateral {} for {} double-pledged deals",
+                    coll.id,
+                    double_pledged_count.unwrap()
+                );
+                shared_collateral = Some(coll.clone());
+                Some(coll)
+            } else {
+                dp_remaining -= 1;
+
+                if dp_remaining > 0 {
+                    // Create another collateral with same attributes (should be detected as duplicate)
+                    Some(
+                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
+                            .await?,
+                    )
+                } else {
+                    // Last double-pledged deal uses the original
+                    shared_collateral.clone()
+                }
+            }
+        } else {
+            // Random collateral (70% of deals have collateral)
+            if rng.gen_bool(0.7) {
+                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+            } else {
+                None
+            }
+        };
+
+        let (deal, collateral_opt) = create_realistic_deal(
             pool,
             originator.id,
             Some(investor.id),
             &format!("Random Deal #{}", i + 1),
+            collateral.clone(),
         )
         .await?;
+
+        // Track deal with its collateral for batch submission
+        if let Some(coll) = collateral_opt {
+            all_deals_with_collateral.push((deal, vec![coll]));
+        }
     }
 
     println!("✅ Generated {} random deals", count);
+    println!("   📊 Collateral breakdown:");
+    println!(
+        "      • {} deals WITH collateral ({}%)",
+        all_deals_with_collateral.len(),
+        (all_deals_with_collateral.len() as f64 / count as f64 * 100.0).round()
+    );
+    println!(
+        "      • {} deals WITHOUT collateral ({}%)",
+        count as usize - all_deals_with_collateral.len(),
+        ((count as usize - all_deals_with_collateral.len()) as f64 / count as f64 * 100.0).round()
+    );
+
+    // Submit batch to collateral intel service if configured
+    if let Ok(intel_url) = env::var("COLLATERAL_INTEL_SERVICE_URL") {
+        if !all_deals_with_collateral.is_empty() {
+            println!(
+                "ℹ️  Note: Only deals with collateral are submitted to intel service for analysis"
+            );
+            println!(
+                "🔗 Submitting {} of {} deals to intel service (only deals with collateral)...",
+                all_deals_with_collateral.len(),
+                count
+            );
+            if let Err(e) =
+                submit_batch_to_intel_service(all_deals_with_collateral, &intel_url).await
+            {
+                eprintln!(
+                    "⚠️  Warning: Failed to submit batch to intel service: {}",
+                    e
+                );
+                eprintln!("   Continuing without intel service submission...");
+            }
+        } else {
+            println!("ℹ️  No deals with collateral - skipping intel service submission");
+        }
+    } else {
+        println!("ℹ️  COLLATERAL_INTEL_SERVICE_URL not set, skipping intel service submission");
+    }
+
+    if double_pledged_count.is_some() && double_pledged_count.unwrap() > 0 {
+        println!("🔍 Waiting 5 seconds for duplicate detection to process...");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        // Report on duplicate detection
+        println!("📊 Checking duplicate detection results...");
+        report_duplicate_matches(pool).await?;
+    }
 
     // Refresh metrics after creating deals
     println!("📊 Refreshing metrics data...");
@@ -711,13 +1783,75 @@ async fn ensure_random_companies(
     Ok(companies)
 }
 
+/// Create a collateral asset with randomized data
+async fn create_random_collateral(
+    pool: &sqlx::PgPool,
+    rng: &mut impl Rng,
+    force_duplicate: bool,
+    duplicate_index: Option<usize>,
+) -> Result<Collateral, Box<dyn std::error::Error>> {
+    use db::{create_collateral, CreateCollateralRequest};
+
+    let (name, collateral_type, address) = if force_duplicate && duplicate_index.is_some() {
+        // Use fixed index for intentional duplicates
+        let idx = duplicate_index.unwrap();
+        (
+            COLLATERAL_NAMES[idx].to_string(),
+            Some(COLLATERAL_TYPES[idx].to_string()),
+            Some(COLLATERAL_ADDRESSES[idx].to_string()),
+        )
+    } else {
+        // Random selection
+        (
+            COLLATERAL_NAMES.choose(rng).unwrap().to_string(),
+            Some(COLLATERAL_TYPES.choose(rng).unwrap().to_string()),
+            Some(COLLATERAL_ADDRESSES.choose(rng).unwrap().to_string()),
+        )
+    };
+
+    let description = Some(format!(
+        "Collateral asset of type {} located at {}",
+        collateral_type.as_ref().unwrap(),
+        address.as_ref().unwrap()
+    ));
+
+    // Generate custom_id 50% of the time
+    let custom_id = if rng.gen_bool(0.5) {
+        Some(format!(
+            "COLL-{}-{:04}",
+            chrono::Utc::now().format("%Y%m"),
+            rng.gen_range(1000..9999)
+        ))
+    } else {
+        None
+    };
+
+    let request = CreateCollateralRequest {
+        name,
+        collateral_type,
+        description,
+        address,
+        custom_id,
+        metadata: Some(json!({
+            "created_by_script": true,
+            "is_duplicate_test": force_duplicate
+        })),
+        created_by: None,
+    };
+
+    let collateral = create_collateral(pool, request).await?;
+    Ok(collateral)
+}
+
 /// Create a realistic deal with randomized but reasonable data
+/// Returns the deal and optionally the collateral if one was provided
 async fn create_realistic_deal(
     pool: &sqlx::PgPool,
     originator_id: Uuid,
     investor_id: Option<Uuid>,
     title_prefix: &str,
-) -> Result<Deal, Box<dyn std::error::Error>> {
+    collateral: Option<Collateral>,
+) -> Result<(Deal, Option<Collateral>), Box<dyn std::error::Error>> {
     let mut rng = thread_rng();
 
     // Realistic principal amounts
@@ -807,9 +1941,10 @@ async fn create_realistic_deal(
         Some(selected_risk),
         Some(ASSET_CLASSES.choose(&mut rng).unwrap()),
         Some(REGIONS.choose(&mut rng).unwrap()),
-        None,          // minimum_investment
-        originated_at, // custom originated_at
-        originated_at, // set created_at to same as originated_at
+        None,                              // minimum_investment
+        originated_at,                     // custom originated_at
+        originated_at,                     // set created_at to same as originated_at
+        collateral.as_ref().map(|c| c.id), // Collateral UUID (optional)
     )
     .await?;
 
@@ -824,12 +1959,22 @@ async fn create_realistic_deal(
         .await?;
     }
 
+    // Create state progression history (transaction records showing how deal reached current state)
+    create_deal_state_progression(pool, &deal, selected_status, &mut rng).await?;
+
+    let collateral_msg = if collateral.is_some() {
+        " with collateral"
+    } else {
+        ""
+    };
+
     println!(
-        "  💰 Created deal: ${} at {}% APR ({})",
+        "  💰 Created deal: ${} at {}% APR ({}{})",
         principal_amount,
         (interest_rate_bps as f64) / 100.0,
-        selected_status
+        selected_status,
+        collateral_msg
     );
 
-    Ok(deal)
+    Ok((deal, collateral))
 }

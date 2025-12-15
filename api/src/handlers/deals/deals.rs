@@ -31,22 +31,32 @@ use crate::middleware::session_middleware::extract_current_user;
 use arda_credit_db::{
     // Marketplace functions (consolidated)
     browse_marketplace_deals, // was browse_marketplace_loans
-    cancel_transfer,          // was cancel_transfer
-    // ... other imports
-    create_deal,         // was create_loan
-    create_deal_listing, // was create_payment
-    // Transfer functions (consolidated)
-    execute_deal_transfer,         // was execute_loan_transfer
-    get_deal_by_id,                // was get_loan_by_id
-    get_deal_transfer_history,     // was get_loan_transfer_history
-    get_deals_by_user_id,          // new function to get deals by user ID
-    list_deals,                    // was list_loans
-    remove_deal_listing,           // was remove_loan_listing
-    update_deal,                   // was update_loan
-    validate_transfer_eligibility, // was validate_transfer_eligibility
     // get_marketplace_deal_stats, // was get_marketplace_loan_stats - TODO: implement if needed
     // get_user_deal_transfer_history, // was get_user_transfer_history (if exists) - TODO: implement if needed
 
+    // Company functions
+    business::company::get_or_create_company,
+
+    cancel_transfer, // was cancel_transfer
+    // ... other imports
+    create_deal,         // was create_loan
+    create_deal_listing, // was create_payment
+    delete_deal,         // Delete deal function
+    // Transfer functions (consolidated)
+    execute_deal_transfer,     // was execute_loan_transfer
+    get_deal_by_id,            // was get_loan_by_id
+    get_deal_transfer_history, // was get_loan_transfer_history
+    get_deals_by_user_id,      // new function to get deals by user ID
+    list_deals,                // was list_loans
+
+    remove_deal_listing, // was remove_loan_listing
+    // Collateral functions
+    taxonomy::collateral::{
+        get_collateral_by_id, get_deals_by_collateral_id,
+        record_collateral_deal_association_transaction,
+    },
+    update_deal,                   // was update_loan
+    validate_transfer_eligibility, // was validate_transfer_eligibility
     // Enums for validation
     DealNegotiationStatus,
     DealPaymentStatus,
@@ -65,7 +75,7 @@ use uuid::Uuid;
 ///
 /// This function sends a non-blocking command to the background batch processor
 /// to refresh metrics. The API response is not delayed by the metrics refresh.
-fn trigger_metrics_refresh_async(state: &ApiState) {
+pub fn trigger_metrics_refresh_async(state: &ApiState) {
     if let Some(batch_processor) = &state.batch_processor {
         if let Err(e) = batch_processor.refresh_metrics() {
             warn!("Failed to trigger async metrics refresh: {}", e);
@@ -79,7 +89,7 @@ fn trigger_metrics_refresh_async(state: &ApiState) {
 }
 
 /// Invalidate metrics cache entries after deal operations
-fn invalidate_metrics_cache(state: &ApiState) {
+pub fn invalidate_metrics_cache(state: &ApiState) {
     let cache = state.metrics_cache.clone();
     tokio::spawn(async move {
         match tokio::time::timeout(std::time::Duration::from_secs(5), cache.invalidate_all()).await
@@ -99,24 +109,66 @@ fn invalidate_metrics_cache(state: &ApiState) {
 // ============================================================================
 
 /// Create new deal request (converted from CreateLoanRequest)
+///
+/// ## Auto-Create Companies Feature
+/// Companies can be automatically created or looked up during deal creation:
+/// - If `originator_name` is provided, the system will look up or create the originator company
+/// - If `investor_name` is provided, the system will look up or create the investor company
+/// - If `borrower_name` is provided, the system will look up or create the borrower company
+///
+/// The system enforces unique company names:
+/// - If a company with the provided name already exists, that company will be used
+/// - If no company exists with that name, a new company will be created
+/// - Companies are identified by both UUID and name for flexible referencing
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 #[schema(example = json!({
     "originator_id": "123e4567-e89b-12d3-a456-426614174000",
-    "investor_id": null,
+    "originator_name": "Acme Real Estate LLC",
+    "investor_id": "987fcdeb-51a2-43d7-b987-123456789abc",
+    "investor_name": "Capital Investors Fund",
+    "borrower_id": null,
+    "borrower_name": null,
     "principal_amount": "50000",
     "interest_rate_bps": 500,
     "term_days": 365,
     "loan_status": "originated",
     "status": "draft",
-    "title": "Real Estate Development Deal - Brooklyn"
+    "title": "Real Estate Development Deal - Brooklyn",
+    "description": "Commercial real estate development opportunity in Brooklyn",
+    "risk_level": "medium",
+    "asset_class": "commercial_real_estate"
 }))]
 pub struct CreateDealRequest {
     // was CreateLoanRequest
-    pub originator_id: String,       // was borrower_id
-    pub investor_id: Option<String>, // was lender_id - now optional for draft deals
-    pub principal_amount: String,    // Amount in cents as string
-    pub interest_rate_bps: u16,      // Interest rate in basis points
-    pub term_days: Option<u32>,      // Optional deal term
+    /// UUID of the originating company (required)
+    #[schema(example = "123e4567-e89b-12d3-a456-426614174000")]
+    pub originator_id: String,
+
+    /// Company name for originator (optional). If provided, system will look up or auto-create the company with this name.
+    #[schema(example = "Acme Real Estate LLC")]
+    pub originator_name: Option<String>,
+
+    /// UUID of the investing company (optional for draft deals)
+    #[schema(example = "987fcdeb-51a2-43d7-b987-123456789abc")]
+    pub investor_id: Option<String>,
+
+    /// Company name for investor (optional). If provided, system will look up or auto-create the company with this name.
+    #[schema(example = "Capital Investors Fund")]
+    pub investor_name: Option<String>,
+
+    /// UUID of the borrower company (optional third party)
+    #[schema(example = "456e7890-a123-45b6-c789-012345678def")]
+    pub borrower_id: Option<String>,
+
+    /// Company name for borrower (optional). If provided, system will look up or auto-create the company with this name.
+    #[schema(example = "Brooklyn Development Corp")]
+    pub borrower_name: Option<String>,
+
+    /// Principal amount in cents (e.g., "50000" for $500.00)
+    #[schema(example = "50000")]
+    pub principal_amount: String, // Amount in cents as string
+    pub interest_rate_bps: u16, // Interest rate in basis points
+    pub term_days: Option<u32>, // Optional deal term
 
     /// Payment status. Valid values: originated, active, paid_off, closed, defaulted
     #[schema(example = "originated")]
@@ -139,15 +191,21 @@ pub struct CreateDealRequest {
     pub asset_class: Option<String>,
     pub region: Option<String>,
     pub minimum_investment: Option<String>,
+
+    /// UUID of collateral asset (optional)
+    #[schema(example = "789e0123-b456-78c9-d012-345678901abc")]
+    pub collateral_id: Option<String>,
 }
 
 /// Deal details response (converted from LoanDetailsResponse)
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DealDetailsResponse {
     // was LoanDetailsResponse
-    pub deal_id: String,               // was loan_id, now deal_id
-    pub originator_id: Option<String>, // was borrower_id - optional for anonymized responses
+    pub deal_id: String,                     // was loan_id, now deal_id
+    pub originator_id: Option<String>,       // was borrower_id - optional for anonymized responses
     pub investor_id: Option<String>, // was lender_id - optional for draft deals and anonymized responses
+    pub borrower_id: Option<String>, // Company ID of the borrower (optional third party)
+    pub borrower_legal_name: Option<String>, // Legal name of the borrower company (from MVP spec)
     pub principal_amount: String,
     pub outstanding_balance: String,
     pub interest_rate_bps: u16,
@@ -166,6 +224,13 @@ pub struct DealDetailsResponse {
     pub asset_class: Option<String>,
     pub region: Option<String>,
     pub minimum_investment: Option<String>,
+
+    /// UUID of collateral asset (optional, deprecated - use collateral field instead)
+    pub collateral_id: Option<String>,
+
+    /// Full collateral object with detection metadata (preferred over collateral_id)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collateral: Option<crate::handlers::taxonomy::collateral::CollateralResponse>,
 }
 
 /// List deals query parameters (converted from ListLoansQuery)
@@ -175,10 +240,11 @@ pub struct ListDealsQuery {
     pub status: Option<String>,
     pub originator_id: Option<String>, // was borrower_id
     pub investor_id: Option<String>,   // was lender_id
+    pub borrower_id: Option<String>,   // Company ID of the borrower (optional third party)
     pub industry: Option<String>,      // Filter by industry sector
     pub limit: Option<i32>,
     pub offset: Option<i32>,
-    /// Anonymize response by hiding company identifiers (originator_id, investor_id)
+    /// Anonymize response by hiding company identifiers (originator_id, investor_id, borrower_id)
     #[schema(example = false)]
     pub anon: Option<bool>,
 }
@@ -221,10 +287,17 @@ pub struct UpdateDealRequest {
 
     pub maturity_date: Option<Option<String>>, // Optional maturity date (ISO 8601), Option<Option<T>> to handle NULL
     pub custom_deal_id: Option<Option<String>>, // Optional custom deal ID, Option<Option<T>> to handle NULL
+    pub borrower_id: Option<Option<String>>, // Company ID of borrower, Option<Option<T>> to handle NULL
 
     /// Negotiation status. Valid values: draft, under_review, negotiation, finalized, executed, funding_readiness, pending_funding, active, amendment, suspended, closed, cancelled
     #[schema(example = "under_review")]
     pub status: Option<String>,
+
+    pub industry: Option<String>, // Industry sector for the deal
+
+    /// Array of document UUIDs associated with this deal, Option<Option<T>> to handle NULL
+    #[schema(example = json!(["123e4567-e89b-12d3-a456-426614174000"]))]
+    pub document_ids: Option<Option<Vec<String>>>,
 
     // Marketplace-friendly fields
     pub title: Option<Option<String>>,
@@ -233,6 +306,9 @@ pub struct UpdateDealRequest {
     pub asset_class: Option<Option<String>>,
     pub region: Option<Option<String>>,
     pub minimum_investment: Option<Option<String>>,
+
+    /// UUID of collateral asset (optional), Option<Option<T>> to handle NULL
+    pub collateral_id: Option<Option<String>>,
 }
 
 /// Update deal response (converted from UpdateLoanResponse)
@@ -298,6 +374,29 @@ pub struct DealPaymentHistoryResponse {
     pub payments: Vec<PaymentDetailsResponse>,
     pub total_payments: usize,
     pub total_amount_paid: String,
+}
+
+/// Response for deal transaction history (audit trail)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DealAuditTrailResponse {
+    pub deal_id: String,
+    pub deal_status: String,
+    pub transactions: Vec<DealTransactionEvent>,
+    pub total_count: usize,
+}
+
+/// Individual transaction event in the audit trail
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DealTransactionEvent {
+    pub id: String,
+    pub transaction_type: String,
+    pub amount: String,
+    pub created_at: String,
+    pub user_id: Option<String>,
+    pub payment_id: Option<String>,
+    pub included_in_batch_id: Option<i32>,
+    pub metadata: Option<serde_json::Value>,
+    pub description: String, // Human-readable description
 }
 
 // ============================================================================
@@ -422,18 +521,94 @@ pub struct DealTransferValidationResponse {
 }
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Fetch collateral data for a list of deals
+///
+/// Returns a HashMap of collateral_id -> CollateralResponse with deal counts computed
+async fn fetch_collateral_for_deals(
+    pool: &sqlx::PgPool,
+    deals: &[arda_credit_db::Deal],
+) -> std::collections::HashMap<uuid::Uuid, crate::handlers::taxonomy::collateral::CollateralResponse>
+{
+    use std::collections::HashMap;
+
+    // Extract unique collateral IDs from deals
+    let mut collateral_ids: Vec<uuid::Uuid> =
+        deals.iter().filter_map(|d| d.collateral_id).collect();
+    collateral_ids.sort();
+    collateral_ids.dedup();
+
+    if collateral_ids.is_empty() {
+        return HashMap::new();
+    }
+
+    // Fetch all collateral records
+    let mut collateral_map = HashMap::new();
+    for coll_id in collateral_ids {
+        if let Ok(collateral) = get_collateral_by_id(pool, coll_id).await {
+            // Get deal IDs for this collateral
+            let deal_ids = get_deals_by_collateral_id(pool, coll_id)
+                .await
+                .unwrap_or_default();
+
+            let deal_count = deal_ids.len() as i64;
+            let is_double_pledged = deal_count > 1;
+
+            // Build CollateralResponse
+            let response = crate::handlers::taxonomy::collateral::CollateralResponse {
+                id: collateral.id.to_string(),
+                name: collateral.name,
+                collateral_type: collateral.collateral_type,
+                description: collateral.description,
+                address: collateral.address,
+                custom_id: collateral.custom_id,
+                double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+                has_potential_duplicates: collateral.has_potential_duplicates,
+                created_at: collateral.created_at.to_rfc3339(),
+                updated_at: collateral.updated_at.to_rfc3339(),
+                metadata: collateral.metadata,
+                deal_count: Some(deal_count),
+                deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+                is_double_pledged: Some(is_double_pledged),
+                has_detection: Some(collateral.has_detection),
+                detection_count: Some(collateral.detection_count),
+                last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+                detection_status: collateral.detection_status,
+            };
+
+            collateral_map.insert(coll_id, response);
+        }
+    }
+
+    collateral_map
+}
+
+// ============================================================================
 // DEAL MANAGEMENT ENDPOINTS
 // ============================================================================
 
 /// Create a new deal (converted from create_loan_endpoint)
+///
+/// ## Auto-Create Companies
+/// This endpoint can automatically create or lookup companies during deal creation.
+/// If `originator_name`, `investor_name`, or `borrower_name` are provided in the request,
+/// the system will:
+/// 1. Check if a company with the provided UUID exists
+/// 2. Check if a company with the provided name exists (enforces unique names)
+/// 3. Create a new company if neither exists
+/// 4. Use the resulting company UUID for the deal
+///
+/// This allows seamless deal creation from document extraction without pre-registering companies.
 #[utoipa::path(
     post,
     path = "/api/v1/deal",  // will be updated in paths later
     request_body = CreateDealRequest,
     responses(
-        (status = 201, description = "Deal created successfully", body = DealDetailsResponse),
-        (status = 400, description = "Invalid request"),
-        (status = 500, description = "Internal server error")
+        (status = 201, description = "Deal created successfully. Companies may have been auto-created.", body = DealDetailsResponse),
+        (status = 400, description = "Invalid request - check UUID format or field validation"),
+        (status = 500, description = "Internal server error - may indicate company creation failure")
     ),
     tag = "Deals"  // was "Loans"
 )]
@@ -480,6 +655,24 @@ pub async fn create_deal_endpoint(
         }
     } else {
         // No investor provided (draft deals)
+        None
+    };
+
+    // Parse borrower_id if provided (optional third party)
+    let borrower_id = if let Some(ref borrower_id_str) = request.borrower_id {
+        if borrower_id_str.is_empty() {
+            // Empty string means no borrower
+            None
+        } else {
+            Some(uuid::Uuid::parse_str(borrower_id_str).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid borrower ID format".to_string(),
+                )
+            })?)
+        }
+    } else {
+        // No borrower provided
         None
     };
 
@@ -555,13 +748,148 @@ pub async fn create_deal_endpoint(
         }
     }
 
+    // Auto-create or lookup companies if company names are provided
+    // This ensures companies exist before creating the deal
+    let final_originator_id = if let Some(ref originator_name) = request.originator_name {
+        info!(
+            "🏢 Looking up or creating originator company: {}",
+            originator_name
+        );
+        get_or_create_company(&state.pool, originator_id, originator_name)
+            .await
+            .map_err(|e| {
+                error!("❌ Failed to create/lookup originator company: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to create/lookup originator company: {}", e),
+                )
+            })?
+            .id
+    } else {
+        originator_id
+    };
+
+    let final_investor_id = if let Some(investor_uuid) = investor_id {
+        if let Some(ref investor_name) = request.investor_name {
+            info!(
+                "🏢 Looking up or creating investor company: {}",
+                investor_name
+            );
+            Some(
+                get_or_create_company(&state.pool, investor_uuid, investor_name)
+                    .await
+                    .map_err(|e| {
+                        error!("❌ Failed to create/lookup investor company: {}", e);
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to create/lookup investor company: {}", e),
+                        )
+                    })?
+                    .id,
+            )
+        } else {
+            Some(investor_uuid)
+        }
+    } else {
+        None
+    };
+
+    let final_borrower_id = if let Some(borrower_uuid) = borrower_id {
+        if let Some(ref borrower_name) = request.borrower_name {
+            info!(
+                "🏢 Looking up or creating borrower company: {}",
+                borrower_name
+            );
+            Some(
+                get_or_create_company(&state.pool, borrower_uuid, borrower_name)
+                    .await
+                    .map_err(|e| {
+                        error!("❌ Failed to create/lookup borrower company: {}", e);
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to create/lookup borrower company: {}", e),
+                        )
+                    })?
+                    .id,
+            )
+        } else {
+            Some(borrower_uuid)
+        }
+    } else {
+        None
+    };
+
+    // Validate that all parties are different companies
+    if let Some(investor) = final_investor_id {
+        if final_originator_id == investor {
+            error!(
+                "❌ Originator and investor cannot be the same company: {}",
+                final_originator_id
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Originator and investor must be different companies. Both resolved to company ID: {}. \
+                    This can happen when company names are reused. Please ensure unique companies are selected.",
+                    final_originator_id
+                ),
+            ));
+        }
+    }
+
+    if let Some(borrower) = final_borrower_id {
+        if final_originator_id == borrower {
+            error!(
+                "❌ Originator and borrower cannot be the same company: {}",
+                final_originator_id
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "Originator and borrower must be different companies. Both resolved to company ID: {}",
+                    final_originator_id
+                ),
+            ));
+        }
+
+        if let Some(investor) = final_investor_id {
+            if investor == borrower {
+                error!(
+                    "❌ Investor and borrower cannot be the same company: {}",
+                    investor
+                );
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    format!(
+                        "Investor and borrower must be different companies. Both resolved to company ID: {}",
+                        investor
+                    ),
+                ));
+            }
+        }
+    }
+
+    // Parse collateral_id if provided
+    let collateral_uuid = if let Some(coll_id_str) = &request.collateral_id {
+        Some(Uuid::parse_str(coll_id_str).map_err(|e| {
+            error!("❌ Invalid collateral ID format: {}", e);
+            (
+                StatusCode::BAD_REQUEST,
+                format!("Invalid collateral ID format: {}", e),
+            )
+        })?)
+    } else {
+        None
+    };
+
     // Create deal in database
-    // Note: originator_id and investor_id now reference companies directly
+    // Note: originator_id, investor_id, and borrower_id now reference companies directly
     let deal = create_deal(
         // was create_loan
         &state.pool,
-        originator_id, // Company ID of the originator (was borrower_id)
-        investor_id,   // Company ID of the investor (was lender_id) - optional for draft deals
+        final_originator_id, // Company ID of the originator (was borrower_id)
+        final_investor_id, // Company ID of the investor (was lender_id) - optional for draft deals
+        final_borrower_id, // Company ID of the borrower (optional third party)
         principal_amount,
         request.interest_rate_bps as i32,
         maturity_date,
@@ -576,6 +904,7 @@ pub async fn create_deal_endpoint(
         request.asset_class.as_deref(),
         request.region.as_deref(),
         minimum_investment,
+        collateral_uuid, // Collateral UUID
     )
     .await
     .map_err(|e| {
@@ -596,11 +925,104 @@ pub async fn create_deal_endpoint(
         }
     });
 
+    // Publish DealCreated event (fire-and-forget)
+    if let Some(publisher) = &state.event_publisher {
+        let collateral_ids = deal.collateral_id.map(|id| vec![id]).unwrap_or_default();
+        let event = crate::events::DealEvent::DealCreated {
+            event_id: uuid::Uuid::new_v4(),
+            timestamp: chrono::Utc::now(),
+            deal: crate::events::DealPayload {
+                id: deal.id,
+                status: deal.deal_status.clone(),
+                company_id: deal.originator_id,
+            },
+            collateral_ids: collateral_ids.clone(),
+        };
+        let publisher_clone = publisher.clone();
+        tokio::spawn(async move {
+            if let Err(e) = publisher_clone.publish_deal(event).await {
+                tracing::warn!("Failed to publish DealCreated event: {}", e);
+            }
+        });
+
+        // If collateral is linked, also publish DealCollateralLinked event
+        if !collateral_ids.is_empty() {
+            let event = crate::events::DealEvent::DealCollateralLinked {
+                event_id: uuid::Uuid::new_v4(),
+                timestamp: chrono::Utc::now(),
+                deal_id: deal.id,
+                collateral_ids,
+            };
+            let publisher_clone = publisher.clone();
+            tokio::spawn(async move {
+                if let Err(e) = publisher_clone.publish_deal(event).await {
+                    tracing::warn!("Failed to publish DealCollateralLinked event: {}", e);
+                }
+            });
+        }
+    }
+
+    // Record collateral-deal association transaction for audit trail
+    if let Some(coll_id) = deal.collateral_id {
+        if let Err(e) = record_collateral_deal_association_transaction(
+            &state.pool,
+            coll_id,
+            deal.id,
+            None, // System event - no specific user
+        )
+        .await
+        {
+            tracing::warn!(
+                "Failed to record collateral-deal association transaction: {}",
+                e
+            );
+        }
+    }
+
+    // Fetch collateral if available
+    let collateral = if let Some(coll_id) = deal.collateral_id {
+        if let Ok(collateral) = get_collateral_by_id(&state.pool, coll_id).await {
+            let deal_ids = get_deals_by_collateral_id(&state.pool, coll_id)
+                .await
+                .unwrap_or_default();
+
+            let deal_count = deal_ids.len() as i64;
+            let is_double_pledged = deal_count > 1;
+
+            Some(crate::handlers::taxonomy::collateral::CollateralResponse {
+                id: collateral.id.to_string(),
+                name: collateral.name,
+                collateral_type: collateral.collateral_type,
+                description: collateral.description,
+                address: collateral.address,
+                custom_id: collateral.custom_id,
+                double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+                has_potential_duplicates: collateral.has_potential_duplicates,
+                created_at: collateral.created_at.to_rfc3339(),
+                updated_at: collateral.updated_at.to_rfc3339(),
+                metadata: collateral.metadata,
+                deal_count: Some(deal_count),
+                deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+                is_double_pledged: Some(is_double_pledged),
+                has_detection: Some(collateral.has_detection),
+                detection_count: Some(collateral.detection_count),
+                last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+                detection_status: collateral.detection_status,
+            })
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let response = DealDetailsResponse {
         // was LoanDetailsResponse
         deal_id: deal.id.to_string(), // was loan_id, now deal_id
         originator_id: Some(deal.originator_id.to_string()), // was borrower_id
         investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
+        borrower_id: deal.borrower_id.map(|id| id.to_string()), // Company ID of borrower (optional)
+        borrower_legal_name: deal.borrower_legal_name.clone(), // Borrower company legal name
         principal_amount: deal.principal_amount.to_string(),
         outstanding_balance: deal.outstanding_balance.to_string(),
         interest_rate_bps: deal.interest_rate_bps as u16,
@@ -617,6 +1039,8 @@ pub async fn create_deal_endpoint(
         asset_class: deal.asset_class,
         region: deal.region,
         minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+        collateral_id: deal.collateral_id.map(|id| id.to_string()),
+        collateral,
     };
 
     // Record function execution time
@@ -678,6 +1102,17 @@ pub async fn list_deals_endpoint(
         None
     };
 
+    let borrower_id = if let Some(id_str) = &query.borrower_id {
+        Some(uuid::Uuid::parse_str(id_str).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "Invalid borrower ID format".to_string(),
+            )
+        })?)
+    } else {
+        None
+    };
+
     let result = list_deals(
         // was list_loans
         &state.pool,
@@ -686,6 +1121,7 @@ pub async fn list_deals_endpoint(
         query.status.as_deref(),
         originator_id, // was borrower_id
         investor_id,   // was lender_id
+        borrower_id,   // Company ID of borrower (optional third party)
         query.industry.as_deref(),
     )
     .await
@@ -699,6 +1135,9 @@ pub async fn list_deals_endpoint(
 
     // Check if anonymized response is requested
     let is_anonymized = query.anon.unwrap_or(false);
+
+    // Fetch collateral data for all deals
+    let collateral_map = fetch_collateral_for_deals(&state.pool, &result.deals).await;
 
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = result
@@ -714,11 +1153,18 @@ pub async fn list_deals_endpoint(
                 }
             });
 
+            // Get collateral if available
+            let collateral = deal
+                .collateral_id
+                .and_then(|coll_id| collateral_map.get(&coll_id).cloned());
+
             let mut response = DealDetailsResponse {
                 // was loan, LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: None,
                 investor_id: None,
+                borrower_id: None,
+                borrower_legal_name: None,
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
@@ -735,12 +1181,16 @@ pub async fn list_deals_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: None,
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             };
 
             // Populate sensitive fields only if not anonymized
             if !is_anonymized {
                 response.originator_id = Some(deal.originator_id.to_string());
                 response.investor_id = deal.investor_id.map(|id| id.to_string());
+                response.borrower_id = deal.borrower_id.map(|id| id.to_string());
+                response.borrower_legal_name = deal.borrower_legal_name.clone();
                 response.custom_deal_id = deal.custom_deal_id;
                 response.document_ids = document_ids_response;
                 response.title = deal.title;
@@ -814,32 +1264,46 @@ pub async fn get_deals_by_user_id_endpoint(
         )
     })?;
 
+    // Fetch collateral data for all deals
+    let collateral_map = fetch_collateral_for_deals(&state.pool, &result.deals).await;
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = result
         .deals
         .into_iter()
-        .map(|deal| DealDetailsResponse {
-            deal_id: deal.id.to_string(),
-            originator_id: Some(deal.originator_id.to_string()),
-            investor_id: deal.investor_id.map(|id| id.to_string()),
-            principal_amount: deal.principal_amount.to_string(),
-            outstanding_balance: deal.outstanding_balance.to_string(),
-            interest_rate_bps: deal.interest_rate_bps as u16,
-            loan_status: deal.deal_status,
-            originated_at: deal.originated_at,
-            last_updated: Some(deal.updated_at),
-            custom_deal_id: deal.custom_deal_id,
-            status: deal.status,
-            industry: deal.industry,
-            document_ids: deal
-                .document_ids
-                .and_then(|ids| serde_json::from_value::<Vec<String>>(ids).ok()),
-            title: deal.title,
-            description: deal.description,
-            risk_level: deal.risk_level,
-            asset_class: deal.asset_class,
-            region: deal.region,
-            minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+        .map(|deal| {
+            // Get collateral if available
+            let collateral = deal
+                .collateral_id
+                .and_then(|coll_id| collateral_map.get(&coll_id).cloned());
+
+            DealDetailsResponse {
+                deal_id: deal.id.to_string(),
+                originator_id: Some(deal.originator_id.to_string()),
+                investor_id: deal.investor_id.map(|id| id.to_string()),
+                borrower_id: deal.borrower_id.map(|id| id.to_string()),
+                borrower_legal_name: deal.borrower_legal_name.clone(),
+                principal_amount: deal.principal_amount.to_string(),
+                outstanding_balance: deal.outstanding_balance.to_string(),
+                interest_rate_bps: deal.interest_rate_bps as u16,
+                loan_status: deal.deal_status,
+                originated_at: deal.originated_at,
+                last_updated: Some(deal.updated_at),
+                custom_deal_id: deal.custom_deal_id,
+                status: deal.status,
+                industry: deal.industry,
+                document_ids: deal
+                    .document_ids
+                    .and_then(|ids| serde_json::from_value::<Vec<String>>(ids).ok()),
+                title: deal.title,
+                description: deal.description,
+                risk_level: deal.risk_level,
+                asset_class: deal.asset_class,
+                region: deal.region,
+                minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
+            }
         })
         .collect();
 
@@ -906,6 +1370,9 @@ pub async fn get_deals_by_company_endpoint(
         )
     })?;
 
+    // Fetch collateral data for all deals
+    let collateral_map = fetch_collateral_for_deals(&state.pool, &result.deals).await;
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = result
         .deals
@@ -920,10 +1387,17 @@ pub async fn get_deals_by_company_endpoint(
                 }
             });
 
+            // Get collateral if available
+            let collateral = deal
+                .collateral_id
+                .and_then(|coll_id| collateral_map.get(&coll_id).cloned());
+
             DealDetailsResponse {
                 deal_id: deal.id.to_string(),
                 originator_id: Some(deal.originator_id.to_string()),
                 investor_id: deal.investor_id.map(|id| id.to_string()),
+                borrower_id: deal.borrower_id.map(|id| id.to_string()),
+                borrower_legal_name: deal.borrower_legal_name.clone(),
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
@@ -940,6 +1414,8 @@ pub async fn get_deals_by_company_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             }
         })
         .collect();
@@ -1005,6 +1481,9 @@ pub async fn get_draft_deals_by_company_endpoint(
         )
     })?;
 
+    // Fetch collateral data for all deals
+    let collateral_map = fetch_collateral_for_deals(&state.pool, &result.deals).await;
+
     // Convert to response format
     let deal_responses: Vec<DealDetailsResponse> = result
         .deals
@@ -1019,10 +1498,17 @@ pub async fn get_draft_deals_by_company_endpoint(
                 }
             });
 
+            // Get collateral if available
+            let collateral = deal
+                .collateral_id
+                .and_then(|coll_id| collateral_map.get(&coll_id).cloned());
+
             DealDetailsResponse {
                 deal_id: deal.id.to_string(),
                 originator_id: Some(deal.originator_id.to_string()),
                 investor_id: deal.investor_id.map(|id| id.to_string()),
+                borrower_id: deal.borrower_id.map(|id| id.to_string()),
+                borrower_legal_name: deal.borrower_legal_name.clone(),
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
@@ -1039,6 +1525,8 @@ pub async fn get_draft_deals_by_company_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             }
         })
         .collect();
@@ -1109,11 +1597,50 @@ pub async fn get_deal_details_endpoint(
                 }
             });
 
+            // Fetch collateral if available
+            let collateral = if let Some(coll_id) = deal.collateral_id {
+                if let Ok(collateral) = get_collateral_by_id(&state.pool, coll_id).await {
+                    let deal_ids = get_deals_by_collateral_id(&state.pool, coll_id)
+                        .await
+                        .unwrap_or_default();
+
+                    let deal_count = deal_ids.len() as i64;
+                    let is_double_pledged = deal_count > 1;
+
+                    Some(crate::handlers::taxonomy::collateral::CollateralResponse {
+                        id: collateral.id.to_string(),
+                        name: collateral.name,
+                        collateral_type: collateral.collateral_type,
+                        description: collateral.description,
+                        address: collateral.address,
+                        custom_id: collateral.custom_id,
+                        double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+                        has_potential_duplicates: collateral.has_potential_duplicates,
+                        created_at: collateral.created_at.to_rfc3339(),
+                        updated_at: collateral.updated_at.to_rfc3339(),
+                        metadata: collateral.metadata,
+                        deal_count: Some(deal_count),
+                        deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+                        is_double_pledged: Some(is_double_pledged),
+                        has_detection: Some(collateral.has_detection),
+                        detection_count: Some(collateral.detection_count),
+                        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+                        detection_status: collateral.detection_status,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             let response = DealDetailsResponse {
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: Some(deal.originator_id.to_string()), // was borrower_id
                 investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
+                borrower_id: deal.borrower_id.map(|id| id.to_string()), // Company ID of borrower (optional)
+                borrower_legal_name: deal.borrower_legal_name.clone(), // Borrower company legal name
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
@@ -1130,6 +1657,8 @@ pub async fn get_deal_details_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             };
 
             info!("✅ Deal details retrieved: {}", deal_id); // updated log message
@@ -1220,6 +1749,9 @@ pub async fn update_deal_endpoint(
         )
     })?;
 
+    // Fetch old deal state for change detection (Option<Deal>)
+    let old_deal = get_deal_by_id(&state.pool, deal_uuid).await.ok().flatten();
+
     // Convert request fields to database types
     let principal_amount = if let Some(amount_str) = &request.principal_amount {
         Some(amount_str.parse::<rust_decimal::Decimal>().map_err(|_| {
@@ -1280,6 +1812,21 @@ pub async fn update_deal_endpoint(
         None
     };
 
+    // Parse borrower_id
+    let borrower_id = if let Some(borrower_opt) = &request.borrower_id {
+        Some(match borrower_opt {
+            Some(borrower_str) => Some(uuid::Uuid::parse_str(borrower_str).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid borrower ID format".to_string(),
+                )
+            })?),
+            None => None,
+        })
+    } else {
+        None
+    };
+
     // Validate loan_status if provided
     if let Some(ref loan_status_str) = request.loan_status {
         if DealPaymentStatus::from_db(loan_status_str).is_none() {
@@ -1300,6 +1847,21 @@ pub async fn update_deal_endpoint(
         }
     }
 
+    // Parse document_ids into JSON format
+    let document_ids_json = if let Some(doc_ids_opt) = &request.document_ids {
+        Some(match doc_ids_opt {
+            Some(doc_ids) => Some(serde_json::to_value(doc_ids).map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Invalid document IDs format".to_string(),
+                )
+            })?),
+            None => None,
+        })
+    } else {
+        None
+    };
+
     // Update the deal in the database
     let updated_deal = update_deal(
         // was update_loan
@@ -1311,7 +1873,10 @@ pub async fn update_deal_endpoint(
         request.loan_status.as_deref(),
         maturity_date,
         request.custom_deal_id.as_ref().map(|opt| opt.as_deref()),
-        request.status.as_deref(), // Deal negotiation status
+        borrower_id,                 // Company ID of borrower (optional third party)
+        request.status.as_deref(),   // Deal negotiation status
+        request.industry.as_deref(), // Industry sector
+        document_ids_json.as_ref().map(|opt| opt.as_ref()), // Document IDs array
         request.title.as_ref().map(|opt| opt.as_deref()),
         request.description.as_ref().map(|opt| opt.as_deref()),
         request.risk_level.as_ref().map(|opt| opt.as_deref()),
@@ -1363,12 +1928,51 @@ pub async fn update_deal_endpoint(
                 }
             });
 
+            // Fetch collateral if available
+            let collateral = if let Some(coll_id) = deal.collateral_id {
+                if let Ok(collateral) = get_collateral_by_id(&state.pool, coll_id).await {
+                    let deal_ids = get_deals_by_collateral_id(&state.pool, coll_id)
+                        .await
+                        .unwrap_or_default();
+
+                    let deal_count = deal_ids.len() as i64;
+                    let is_double_pledged = deal_count > 1;
+
+                    Some(crate::handlers::taxonomy::collateral::CollateralResponse {
+                        id: collateral.id.to_string(),
+                        name: collateral.name,
+                        collateral_type: collateral.collateral_type,
+                        description: collateral.description,
+                        address: collateral.address,
+                        custom_id: collateral.custom_id,
+                        double_pledged: collateral.double_pledged.map(|u| u.to_string()),
+                        has_potential_duplicates: collateral.has_potential_duplicates,
+                        created_at: collateral.created_at.to_rfc3339(),
+                        updated_at: collateral.updated_at.to_rfc3339(),
+                        metadata: collateral.metadata,
+                        deal_count: Some(deal_count),
+                        deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
+                        is_double_pledged: Some(is_double_pledged),
+                        has_detection: Some(collateral.has_detection),
+                        detection_count: Some(collateral.detection_count),
+                        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
+                        detection_status: collateral.detection_status,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             // Convert to response format
             let deal_details = DealDetailsResponse {
                 // was LoanDetailsResponse
                 deal_id: deal.id.to_string(), // was loan_id, now deal_id
                 originator_id: Some(deal.originator_id.to_string()), // was borrower_id
                 investor_id: deal.investor_id.map(|id| id.to_string()), // was lender_id - now optional
+                borrower_id: deal.borrower_id.map(|id| id.to_string()), // Company ID of borrower (optional)
+                borrower_legal_name: deal.borrower_legal_name.clone(), // Borrower company legal name
                 principal_amount: deal.principal_amount.to_string(),
                 outstanding_balance: deal.outstanding_balance.to_string(),
                 interest_rate_bps: deal.interest_rate_bps as u16,
@@ -1385,7 +1989,43 @@ pub async fn update_deal_endpoint(
                 asset_class: deal.asset_class,
                 region: deal.region,
                 minimum_investment: deal.minimum_investment.map(|d| d.to_string()),
+                collateral_id: deal.collateral_id.map(|id| id.to_string()),
+                collateral,
             };
+
+            // Publish events based on changes (fire-and-forget)
+            if let Some(publisher) = &state.event_publisher {
+                let collateral_ids = deal.collateral_id.map(|id| vec![id]).unwrap_or_default();
+
+                // Check if deal_status changed
+                if let Some(ref new_status) = request.loan_status {
+                    if let Some(ref old) = old_deal {
+                        if *new_status != old.deal_status {
+                            let event = crate::events::DealEvent::DealStatusChanged {
+                                event_id: uuid::Uuid::new_v4(),
+                                timestamp: chrono::Utc::now(),
+                                deal_id: deal.id,
+                                previous_status: old.deal_status.clone(),
+                                new_status: new_status.clone(),
+                                collateral_ids: collateral_ids.clone(),
+                            };
+                            let publisher = publisher.clone();
+                            tokio::spawn(async move {
+                                if let Err(e) = publisher.publish_deal(event).await {
+                                    tracing::warn!(
+                                        "Failed to publish DealStatusChanged event: {}",
+                                        e
+                                    );
+                                }
+                            });
+                        }
+                    }
+                }
+
+                // Check if collateral_id changed
+                // Note: collateral_id is not in the update request, so we can't detect changes here
+                // This would require adding collateral_id to UpdateDealRequest in the future
+            }
 
             let response = UpdateDealResponse {
                 // was UpdateLoanResponse
@@ -1408,54 +2048,67 @@ pub async fn update_deal_endpoint(
     }
 }
 
-/// Delete/close deal (converted from delete_loan_endpoint)
+/// Delete deal (converted from delete_loan_endpoint)
 #[utoipa::path(
     delete,
-    path = "/api/v1/deal/{deal_id}",  // was loan_id, now deal_id
+    path = "/api/v1/deal/{deal_id}",
     responses(
-        (status = 200, description = "Deal closed successfully", body = DeleteDealResponse),  // was Loan
-        (status = 404, description = "Deal not found"),  // was Loan
+        (status = 200, description = "Deal deleted successfully", body = DeleteDealResponse),
+        (status = 400, description = "Invalid deal ID format"),
+        (status = 401, description = "Authentication required"),
+        (status = 403, description = "Not authorized to delete this deal"),
+        (status = 404, description = "Deal not found"),
         (status = 500, description = "Internal server error")
     ),
     params(
-        ("deal_id" = String, Path, description = "Deal ID")  // was loan_id, now deal_id
+        ("deal_id" = String, Path, description = "Deal UUID")
     ),
-    tag = "Deals"  // was "Loans"
+    tag = "Deals"
 )]
-#[instrument(skip(_state), level = "info")]
+#[instrument(skip(state), level = "info")]
 pub async fn delete_deal_endpoint(
-    // was delete_loan_endpoint
-    State(_state): State<ApiState>,
-    Path(deal_id): Path<String>, // was loan_id, now deal_id
+    State(state): State<ApiState>,
+    Path(deal_id): Path<String>,
 ) -> Result<Json<DeleteDealResponse>, (StatusCode, String)> {
-    // was DeleteLoanResponse
-    info!("🗑️ API: Closing deal: deal_id={}", deal_id); // updated log message
+    info!("🗑️ API: Deleting deal: deal_id={}", deal_id);
 
-    let _deal_uuid = uuid::Uuid::parse_str(&deal_id).map_err(|_| {
-        // was loan_id, now deal_id
+    // Parse deal ID
+    let deal_uuid = uuid::Uuid::parse_str(&deal_id).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
-            "Invalid deal ID format".to_string(), // was loan ID
+            "Invalid deal ID format".to_string(),
         )
     })?;
 
-    // TODO: Implement deal closure with database integration
-    // For now, simulate successful closure
-    let _updated_rows = 1; // Simulate one row updated
+    // Check if deal exists
+    let deal = get_deal_by_id(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?;
 
-    let response = DeleteDealResponse {
-        // was DeleteLoanResponse
-        deal_id, // was loan_id, now deal_id
+    // Delete the deal (CASCADE will handle related records)
+    let deleted = delete_deal(&state.pool, deal_uuid).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to delete deal: {}", e),
+        )
+    })?;
+
+    if !deleted {
+        return Err((StatusCode::NOT_FOUND, "Deal not found".to_string()));
+    }
+
+    // 6. Trigger metrics refresh
+    trigger_metrics_refresh_async(&state);
+
+    info!("✅ API: Deal deleted successfully: deal_id={}", deal_id);
+
+    Ok(Json(DeleteDealResponse {
+        deal_id,
         deleted: true,
         deleted_at: Utc::now(),
-        final_status: "closed".to_string(),
-    };
-
-    // Trigger async metrics refresh if enabled
-    trigger_metrics_refresh_async(&_state);
-
-    info!("✅ API: Deal closed successfully"); // updated log message
-    Ok(Json(response))
+        final_status: deal.deal_status.clone(),
+    }))
 }
 
 /// Record a deal payment (converted from record_payment_endpoint)
@@ -1571,6 +2224,98 @@ pub async fn get_deal_payment_history_endpoint(
     };
 
     info!("✅ API: Payment history retrieved");
+    Ok(Json(response))
+}
+
+/// Get deal transaction history (audit trail)
+#[utoipa::path(
+    get,
+    path = "/api/v1/deal/{deal_id}/audit-trail",
+    summary = "Get deal transaction history",
+    description = "Retrieve complete transaction history showing deal state progression events",
+    params(
+        ("deal_id" = String, Path, description = "Deal UUID")
+    ),
+    responses(
+        (status = 200, description = "Transaction history retrieved", body = DealAuditTrailResponse),
+        (status = 400, description = "Invalid deal ID"),
+        (status = 404, description = "Deal not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals"
+)]
+#[instrument(skip(state))]
+pub async fn get_deal_audit_trail_endpoint(
+    State(state): State<ApiState>,
+    Path(deal_id): Path<String>,
+) -> Result<Json<DealAuditTrailResponse>, (StatusCode, String)> {
+    info!("Getting audit trail for deal: {}", deal_id);
+
+    let deal_uuid = uuid::Uuid::parse_str(&deal_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid deal ID".to_string()))?;
+
+    // Get deal to verify it exists and get current status
+    let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch deal: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            error!("Deal not found: {}", deal_id);
+            (StatusCode::NOT_FOUND, "Deal not found".to_string())
+        })?;
+
+    // Get transaction history
+    let transactions = arda_credit_db::get_deal_transaction_history(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch transaction history: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    let total_count = transactions.len();
+
+    // Convert to response format with descriptions
+    let transaction_events: Vec<DealTransactionEvent> = transactions
+        .into_iter()
+        .map(|tx| {
+            let description = match tx.transaction_type.as_str() {
+                "deal_origination" => format!("Deal originated with principal of ${}", tx.amount),
+                "deal_payment" => format!("Payment of ${} received", tx.amount),
+                "deal_closeout" => "Deal closed".to_string(),
+                _ => format!("{} transaction", tx.transaction_type),
+            };
+
+            DealTransactionEvent {
+                id: tx.id.to_string(),
+                transaction_type: tx.transaction_type,
+                amount: tx.amount.to_string(),
+                created_at: tx.created_at.to_rfc3339(),
+                user_id: tx.user_id.map(|u| u.to_string()),
+                payment_id: tx.payment_id.map(|p| p.to_string()),
+                included_in_batch_id: tx.included_in_batch_id,
+                metadata: tx.metadata,
+                description,
+            }
+        })
+        .collect();
+
+    let response = DealAuditTrailResponse {
+        deal_id: deal_uuid.to_string(),
+        deal_status: deal.deal_status,
+        transactions: transaction_events,
+        total_count,
+    };
+
+    info!(
+        "Successfully retrieved {} transaction events for deal {}",
+        total_count, deal_id
+    );
+
     Ok(Json(response))
 }
 

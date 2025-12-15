@@ -171,13 +171,27 @@ pub use taxonomy::secondary_trades::{
     UpdateSecondaryTradeRequest,
 };
 
+pub use taxonomy::collateral::{
+    create_collateral, create_collateral_batch, delete_collateral, get_collateral_by_custom_id,
+    get_collateral_by_deal_id, get_collateral_by_id, get_collateral_transaction_history,
+    get_collateral_with_deal_count, get_deals_by_collateral_id, list_collateral,
+    list_multi_deal_collateral, record_collateral_creation_transaction,
+    record_collateral_deal_association_transaction,
+    record_collateral_deal_disassociation_transaction,
+    record_collateral_detection_request_transaction,
+    record_collateral_detection_update_transaction, record_collateral_transaction,
+    record_collateral_update_transaction, store_collateral_matches, update_collateral,
+    update_collateral_detection_status, Collateral, CollateralMatchInsert, CollateralTransaction,
+    CollateralTransactionWithUser, CollateralWithDealCount, CreateCollateralRequest,
+    UpdateCollateralRequest,
+};
+
 // Re-export batch processing types and functions
 pub use db::{
     approve_withdrawal_request,
     // Invite code functions
     check_invite_code,
     // Loan tape functions
-    count_loan_tape_records,
     // Financial transaction functions
     create_account_financial_transaction,
     // Batch functions
@@ -196,6 +210,7 @@ pub use db::{
     // Withdrawal functions
     create_withdrawal,
     create_withdrawal_request,
+    delete_deal,
     delete_identity,
     generate_invite_code,
     get_all_batches,
@@ -206,6 +221,7 @@ pub use db::{
     get_current_counter_value,
     get_current_state,
     get_deal_by_id,
+    get_deal_transaction_history,
     get_deals_by_company_id,
     get_deals_by_user_id,
     get_deposit_by_tx_hash,
@@ -218,8 +234,6 @@ pub use db::{
     get_investor_profile_with_identity,
     get_invite_code_info,
     get_kyc_statistics,
-    get_loan_tape_record_by_id,
-    get_loan_tape_records,
     get_payments_by_deal,
     get_pending_transactions,
     get_pending_withdrawal_requests,

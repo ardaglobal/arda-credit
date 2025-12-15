@@ -209,21 +209,15 @@ pub const DEAL_AUDIT_TRAIL: &str = api_path!("/deal/{deal_id}/audit-trail");
 /// Deal lifecycle summary - was LOAN_LIFECYCLE_SUMMARY
 pub const DEAL_LIFECYCLE_SUMMARY: &str = api_path!("/deal/{deal_id}/lifecycle-summary");
 
+/// Process document extraction - create companies and pre-fill deal data
+pub const DEAL_PROCESS_DOCUMENT_EXTRACTION: &str = api_path!("/deals/process-document-extraction");
+
 // ============================================================================
 // LOAN TAPE PATHS
 // ============================================================================
 
-/// Loan tape collection (list loan tape records)
-pub const LOAN_TAPE: &str = api_path!("/loan-tape");
-
-/// Create single loan tape record
-pub const LOAN_TAPE_CREATE: &str = api_path!("/loan-tape");
-
-/// Create multiple loan tape records in bulk
+/// Upload loan tape portfolio (bulk create from CSV → JSON)
 pub const LOAN_TAPE_BULK: &str = api_path!("/loan-tape/bulk");
-
-/// Get individual loan tape record by deal ID
-pub const LOAN_TAPE_BY_ID: &str = api_path!("/loan-tape/{id}");
 
 // ============================================================================
 // DEAL MARKETPLACE PATHS (consolidated from separate marketplace paths)
@@ -668,6 +662,28 @@ pub const TAXONOMY_SECONDARY_TRADE_BY_ID: &str = api_path!("/taxonomy/secondary-
 
 /// Secondary trades batch create endpoint
 pub const TAXONOMY_SECONDARY_TRADES_BATCH: &str = api_path!("/taxonomy/secondary-trades/batch");
+
+// ============================================================================
+// COLLATERAL PATHS
+// ============================================================================
+
+/// Collateral list endpoint
+pub const COLLATERAL: &str = api_path!("/collateral");
+
+/// Collateral by ID endpoint
+pub const COLLATERAL_BY_ID: &str = api_path!("/collateral/{id}");
+
+/// Collateral by custom ID endpoint
+pub const COLLATERAL_BY_CUSTOM_ID: &str = api_path!("/collateral/custom/{custom_id}");
+
+/// Collateral by deal ID endpoint
+pub const COLLATERAL_BY_DEAL_ID: &str = api_path!("/collateral/deal/{deal_id}");
+
+/// Collateral batch create endpoint
+pub const COLLATERAL_BATCH: &str = api_path!("/collateral/batch");
+
+/// Internal: Detection result callback from arda-collateral-intel
+pub const COLLATERAL_DETECTION_RESULT: &str = api_path!("/internal/collateral/{id}/detection");
 
 // ============================================================================
 // TRANSACTION HISTORY PATHS

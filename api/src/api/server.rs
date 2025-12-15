@@ -168,6 +168,17 @@ impl ApiServer {
         let metrics_cache = Arc::new(crate::services::MetricsCache::new(cache_config));
 
         // Create API state
+        // Initialize event publisher if configured
+        let event_publisher = std::env::var("COLLATERAL_INTEL_SERVICE_URL")
+            .ok()
+            .map(|url| {
+                info!(
+                    "🔗 Initializing event publisher for collateral intel service: {}",
+                    url
+                );
+                Arc::new(crate::events::CollateralEventPublisher::new(url))
+            });
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
@@ -182,6 +193,7 @@ impl ApiServer {
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
             metrics_cache,
+            event_publisher,
         };
 
         let server = Self { config, state };
@@ -319,6 +331,17 @@ impl ApiServer {
         };
         let metrics_cache = Arc::new(crate::services::MetricsCache::new(cache_config));
 
+        // Initialize event publisher if configured
+        let event_publisher = std::env::var("COLLATERAL_INTEL_SERVICE_URL")
+            .ok()
+            .map(|url| {
+                info!(
+                    "🔗 Initializing event publisher for collateral intel service: {}",
+                    url
+                );
+                Arc::new(crate::events::CollateralEventPublisher::new(url))
+            });
+
         let state = ApiState {
             pool,
             config: config.api_config.clone(),
@@ -333,6 +356,7 @@ impl ApiServer {
             metrics_handle: Some(Arc::new(metrics_handle)),
             email_rate_limiter: None, // Will be set in create_router
             metrics_cache,
+            event_publisher,
         };
 
         Ok(Self { config, state })
@@ -432,6 +456,7 @@ impl ApiServer {
             metrics_handle: self.state.metrics_handle.clone(),
             email_rate_limiter: Some(email_rate_limiter),
             metrics_cache: self.state.metrics_cache.clone(),
+            event_publisher: self.state.event_publisher.clone(),
         };
 
         // Use REST API routes (includes health endpoints and state)
@@ -445,24 +470,7 @@ impl ApiServer {
                 .with_state(api_state.clone())
         };
 
-        // TODO: Apply session authentication middleware (replaces JWT middleware)
-        // Currently commented out due to axum middleware complexity.
-        // Session authentication should be implemented at the handler level
-        // or using a different middleware approach.
-        // let api_state_arc = Arc::new(api_state.clone());
-        // let router = router.layer(axum::middleware::from_fn({
-        //     let api_state = Arc::clone(&api_state_arc);
-        //     move |cookies, mut request, next| {
-        //         let api_state = (*api_state).clone();
-        //         async move {
-        //             match session_auth_middleware(api_state, cookies, request, next).await {
-        //                 Ok(response) => response,
-        //                 Err(_) => create_unauthorized_response("Authentication error"),
-        //             }
-        //         }
-        //     }
-        // }));
-
+        // Session authentication middleware is now applied in router.rs
         // Add other middleware layers
         let router = self.add_middleware_with_state(router);
 

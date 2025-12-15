@@ -4,10 +4,9 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
-use axum_extra::extract::CookieJar;
 use chrono::Utc;
 use serde_json::json;
-use tracing::{debug, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use crate::services::session_service::SessionError;
 
@@ -39,10 +38,9 @@ impl Default for SessionConfig {
 }
 
 /// Session-based authentication middleware (replaces JWT middleware)
-#[instrument(skip(api_state, cookies, request, next), level = "debug")]
+#[instrument(skip(api_state, request, next), level = "debug")]
 pub async fn session_auth_middleware(
     api_state: crate::api::router::ApiState,
-    cookies: CookieJar,
     mut request: Request,
     next: Next,
 ) -> Result<Response, std::convert::Infallible> {
@@ -65,14 +63,15 @@ pub async fn session_auth_middleware(
         return Ok(next.run(request).await);
     }
 
-    // Extract session token from cookie
-    let session_token = match cookies.get(&config.cookie_name) {
-        Some(cookie) => cookie.value().to_string(),
-        None => {
-            warn!("No session cookie found for path: {}", path);
-            return Ok(create_unauthorized_response("Session required"));
-        }
-    };
+    // Extract session token from cookie header (manually parse)
+    let session_token =
+        match extract_session_token_from_cookie_header(request.headers(), &config.cookie_name) {
+            Some(token) => token,
+            None => {
+                warn!("No session cookie found for path: {}", path);
+                return Ok(create_unauthorized_response("Session required"));
+            }
+        };
 
     // Validate session and get user identity
     match api_state
@@ -81,9 +80,9 @@ pub async fn session_auth_middleware(
         .await
     {
         Ok(identity) => {
-            debug!(
-                "Session valid for user: {} ({})",
-                identity.email, identity.user_type
+            info!(
+                "✅ Session valid for user: {} ({}) - path: {}",
+                identity.email, identity.user_type, path
             );
 
             // Add user information to request headers for downstream handlers
@@ -91,6 +90,11 @@ pub async fn session_auth_middleware(
             headers.insert("x-user-id", identity.id.to_string().parse().unwrap());
             headers.insert("x-user-email", identity.email.parse().unwrap());
             headers.insert("x-user-type", identity.user_type.parse().unwrap());
+
+            info!(
+                "📌 Added headers: x-user-id={}, x-user-email={}",
+                identity.id, identity.email
+            );
 
             Ok(next.run(request).await)
         }
@@ -131,6 +135,27 @@ fn create_server_error_response(message: &str) -> Response {
     });
 
     (StatusCode::INTERNAL_SERVER_ERROR, axum::Json(error_body)).into_response()
+}
+
+/// Extract session token from cookie header
+fn extract_session_token_from_cookie_header(
+    headers: &HeaderMap,
+    cookie_name: &str,
+) -> Option<String> {
+    let cookie_header = headers.get("cookie")?.to_str().ok()?;
+
+    // Parse cookies to find the session token
+    for cookie in cookie_header.split(';') {
+        let cookie = cookie.trim();
+        if let Some(eq_pos) = cookie.find('=') {
+            let (name, value) = cookie.split_at(eq_pos);
+            if name.trim() == cookie_name {
+                return Some(value[1..].to_string()); // Skip the '=' character
+            }
+        }
+    }
+
+    None
 }
 
 /// Helper to extract current user from request headers (for handlers)
