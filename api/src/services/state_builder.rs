@@ -179,7 +179,7 @@ pub async fn build_global_loan_state(pool: &PgPool) -> Result<GlobalLoanState, S
         balance_state,
         loan_terms: LoanTerms::default(),
         transaction_count: 0, // Will be updated by zkVM
-        last_updated: Utc::now().timestamp() as u64,
+        last_updated: 0,      // Set to 0 to allow all transactions to be processed
     };
 
     info!(

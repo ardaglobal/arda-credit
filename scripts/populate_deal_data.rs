@@ -651,6 +651,7 @@ async fn create_deal_state_progression(
     deal: &Deal,
     target_status: &str,
     rng: &mut impl Rng,
+    system_user_id: Uuid, // System user for script-generated transactions
 ) -> Result<(), Box<dyn std::error::Error>> {
     let originated_at = deal.originated_at;
     let maturity_date = deal
@@ -658,12 +659,12 @@ async fn create_deal_state_progression(
         .unwrap_or(originated_at + Duration::days(365));
 
     // Always create deal_origination transaction
-    // Note: user_id is None for script-generated deals without specific users
+    // Use system user (engineering@arda.xyz) for script-generated deals
     create_deal_transaction_record(
         pool,
         "deal_origination",
         deal.id,
-        None, // No specific user for script-generated deals
+        Some(system_user_id), // Use system user instead of None
         deal.principal_amount,
         originated_at,
         None,
@@ -693,7 +694,7 @@ async fn create_deal_state_progression(
                     pool,
                     "deal_payment",
                     deal.id,
-                    None, // No specific user for script-generated deals
+                    Some(system_user_id), // Use system user
                     payment_amount,
                     payment_date,
                     None, // No actual payment record created
@@ -729,7 +730,7 @@ async fn create_deal_state_progression(
                     pool,
                     "deal_payment",
                     deal.id,
-                    None, // No specific user for script-generated deals
+                    Some(system_user_id), // Use system user
                     *amount,
                     payment_date,
                     None, // No actual payment record created
@@ -765,7 +766,7 @@ async fn create_deal_state_progression(
                     pool,
                     "deal_payment",
                     deal.id,
-                    None, // No specific user for script-generated deals
+                    Some(system_user_id), // Use system user
                     *amount,
                     payment_date,
                     None, // No actual payment record created
@@ -779,7 +780,7 @@ async fn create_deal_state_progression(
                 pool,
                 "deal_closeout",
                 deal.id,
-                None, // No specific user for script-generated deals
+                Some(system_user_id), // Use system user
                 Decimal::ZERO,
                 closeout_date,
                 None,
@@ -1372,6 +1373,17 @@ async fn generate_user_deals(
     count: u32,
     double_pledged_count: Option<u32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Get system user (engineering@arda.xyz) for script-generated transactions
+    let system_user = get_identity_by_email(pool, "engineering@arda.xyz")
+        .await?
+        .ok_or_else(|| {
+            "System user engineering@arda.xyz not found. Please ensure database is initialized with seed data."
+        })?;
+    println!(
+        "🔧 Using system user {} for script-generated transactions",
+        system_user.email
+    );
+
     // Look up user by email, create if doesn't exist
     let user = match get_identity_by_email(pool, email).await? {
         Some(user) => {
@@ -1430,9 +1442,14 @@ async fn generate_user_deals(
             // Create intentional duplicate
             if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                let coll =
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?;
+                let coll = create_random_collateral(
+                    pool,
+                    &mut rng,
+                    true,
+                    Some(dp_collateral_index),
+                    system_user.id,
+                )
+                .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
                     coll.id,
@@ -1446,8 +1463,14 @@ async fn generate_user_deals(
                 if dp_remaining > 0 {
                     // Create another collateral with same attributes (should be detected as duplicate)
                     Some(
-                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                            .await?,
+                        create_random_collateral(
+                            pool,
+                            &mut rng,
+                            true,
+                            Some(dp_collateral_index),
+                            system_user.id,
+                        )
+                        .await?,
                     )
                 } else {
                     // Last double-pledged deal uses the original
@@ -1457,7 +1480,7 @@ async fn generate_user_deals(
         } else {
             // Random collateral (70% of deals have collateral)
             if rng.gen_bool(0.7) {
-                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+                Some(create_random_collateral(pool, &mut rng, false, None, system_user.id).await?)
             } else {
                 None
             }
@@ -1469,6 +1492,7 @@ async fn generate_user_deals(
             Some(investor_company.id),
             &format!("User Investment Deal #{}", i + 1),
             collateral.clone(),
+            system_user.id,
         )
         .await?;
 
@@ -1489,9 +1513,14 @@ async fn generate_user_deals(
             // Create intentional duplicate
             if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                let coll =
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?;
+                let coll = create_random_collateral(
+                    pool,
+                    &mut rng,
+                    true,
+                    Some(dp_collateral_index),
+                    system_user.id,
+                )
+                .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
                     coll.id,
@@ -1505,8 +1534,14 @@ async fn generate_user_deals(
                 if dp_remaining > 0 {
                     // Create another collateral with same attributes (should be detected as duplicate)
                     Some(
-                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                            .await?,
+                        create_random_collateral(
+                            pool,
+                            &mut rng,
+                            true,
+                            Some(dp_collateral_index),
+                            system_user.id,
+                        )
+                        .await?,
                     )
                 } else {
                     // Last double-pledged deal uses the original
@@ -1516,7 +1551,7 @@ async fn generate_user_deals(
         } else {
             // Random collateral (70% of deals have collateral)
             if rng.gen_bool(0.7) {
-                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+                Some(create_random_collateral(pool, &mut rng, false, None, system_user.id).await?)
             } else {
                 None
             }
@@ -1528,6 +1563,7 @@ async fn generate_user_deals(
             Some(investor.id),
             &format!("User Origination Deal #{}", i + 1),
             collateral.clone(),
+            system_user.id,
         )
         .await?;
 
@@ -1600,6 +1636,17 @@ async fn generate_random_deals(
     count: u32,
     double_pledged_count: Option<u32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Get system user (engineering@arda.xyz) for script-generated transactions
+    let system_user = get_identity_by_email(pool, "engineering@arda.xyz")
+        .await?
+        .ok_or_else(|| {
+            "System user engineering@arda.xyz not found. Please ensure database is initialized with seed data."
+        })?;
+    println!(
+        "🔧 Using system user {} for script-generated transactions",
+        system_user.email
+    );
+
     let mut rng = thread_rng();
 
     // Create random companies for originators and investors
@@ -1630,9 +1677,14 @@ async fn generate_random_deals(
             // Create intentional duplicate
             if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                let coll =
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?;
+                let coll = create_random_collateral(
+                    pool,
+                    &mut rng,
+                    true,
+                    Some(dp_collateral_index),
+                    system_user.id,
+                )
+                .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
                     coll.id,
@@ -1646,8 +1698,14 @@ async fn generate_random_deals(
                 if dp_remaining > 0 {
                     // Create another collateral with same attributes (should be detected as duplicate)
                     Some(
-                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                            .await?,
+                        create_random_collateral(
+                            pool,
+                            &mut rng,
+                            true,
+                            Some(dp_collateral_index),
+                            system_user.id,
+                        )
+                        .await?,
                     )
                 } else {
                     // Last double-pledged deal uses the original
@@ -1657,7 +1715,7 @@ async fn generate_random_deals(
         } else {
             // Random collateral (70% of deals have collateral)
             if rng.gen_bool(0.7) {
-                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+                Some(create_random_collateral(pool, &mut rng, false, None, system_user.id).await?)
             } else {
                 None
             }
@@ -1669,6 +1727,7 @@ async fn generate_random_deals(
             Some(investor.id),
             &format!("Random Deal #{}", i + 1),
             collateral.clone(),
+            system_user.id,
         )
         .await?;
 
@@ -1848,6 +1907,7 @@ async fn create_random_collateral(
     rng: &mut impl Rng,
     force_duplicate: bool,
     duplicate_index: Option<usize>,
+    system_user_id: Uuid, // System user for script-generated transactions
 ) -> Result<Collateral, Box<dyn std::error::Error>> {
     use db::{create_collateral, CreateCollateralRequest};
 
@@ -1909,8 +1969,8 @@ async fn create_random_collateral(
         pool,
         collateral.id,
         "collateral_creation",
-        None, // No specific user for script-generated collateral
-        None, // No deal association yet
+        Some(system_user_id), // Use system user instead of None
+        None,                 // No deal association yet
         Some(serde_json::json!({"created_by_script": true})),
     )
     .await?;
@@ -1926,6 +1986,7 @@ async fn create_realistic_deal(
     investor_id: Option<Uuid>,
     title_prefix: &str,
     collateral: Option<Collateral>,
+    system_user_id: Uuid, // System user for script-generated transactions
 ) -> Result<(Deal, Option<Collateral>), Box<dyn std::error::Error>> {
     let mut rng = thread_rng();
 
@@ -2030,8 +2091,8 @@ async fn create_realistic_deal(
             pool,
             coll.id,
             "collateral_deal_association",
-            None,          // No specific user for script-generated deals
-            Some(deal.id), // Associated with this deal
+            Some(system_user_id), // Use system user instead of None
+            Some(deal.id),        // Associated with this deal
             Some(serde_json::json!({
                 "created_by_script": true,
                 "deal_id": deal.id,
@@ -2052,7 +2113,7 @@ async fn create_realistic_deal(
     }
 
     // Create state progression history (transaction records showing how deal reached current state)
-    create_deal_state_progression(pool, &deal, selected_status, &mut rng).await?;
+    create_deal_state_progression(pool, &deal, selected_status, &mut rng, system_user_id).await?;
 
     let collateral_msg = if collateral.is_some() {
         " with collateral"
