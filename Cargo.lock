@@ -823,7 +823,7 @@ dependencies = [
  "jsonwebtoken 10.2.0",
  "lib",
  "metrics",
- "metrics-exporter-prometheus",
+ "metrics-exporter-prometheus 0.18.1",
  "metrics-util",
  "once_cell",
  "opentelemetry",
@@ -1889,7 +1889,7 @@ dependencies = [
  "http-body 1.0.1",
  "matchit 0.8.4",
  "metrics",
- "metrics-exporter-prometheus",
+ "metrics-exporter-prometheus 0.17.2",
  "pin-project-lite",
  "tokio",
  "tower 0.5.2",
@@ -4993,6 +4993,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b166dea96003ee2531cf14833efedced545751d800f03535801d833313f8c15"
 dependencies = [
  "base64 0.22.1",
+ "indexmap 2.11.4",
+ "metrics",
+ "metrics-util",
+ "quanta",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "metrics-exporter-prometheus"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3589659543c04c7dc5526ec858591015b87cd8746583b51b48ef4353f99dbcda"
+dependencies = [
+ "base64 0.22.1",
  "http-body-util",
  "hyper 1.8.1",
  "hyper-rustls 0.27.7",
@@ -5002,6 +5016,7 @@ dependencies = [
  "metrics",
  "metrics-util",
  "quanta",
+ "rustls 0.23.34",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
