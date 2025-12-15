@@ -217,6 +217,7 @@ pub use db::{
     get_all_batches,
     get_balance,
     get_batch_by_id,
+    get_batch_proof_data,
     get_contract_submission_data,
     // State functions
     get_current_counter_value,
@@ -276,6 +277,7 @@ pub use db::{
     set_password_reset_token,
     // ADS/Merkle functions
     store_ads_state_commit,
+    store_batch_proof_data,
     submit_kyc_data,
     // Transaction functions
     submit_transaction,
@@ -327,6 +329,7 @@ pub use db::{
     LoanTapeRecord,
     ProofBatch,
     RegisterResult,
+    SindriProofData,
     StateSnapshot,
     TransactionWithProofInfo,
     UpdateInvestorProfileRequest,

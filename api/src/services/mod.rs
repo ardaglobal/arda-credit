@@ -13,6 +13,7 @@
 
 pub mod auth;
 pub mod balance_service;
+pub mod batch_converter;
 pub mod batch_processor;
 pub mod collateral_intel_client;
 pub mod company_service;
@@ -24,6 +25,7 @@ pub mod metrics_cache;
 pub mod metrics_service;
 pub mod session_service;
 pub mod simple_withdrawal_executor;
+pub mod state_builder;
 pub mod team_invitation_service;
 pub mod trading_auth;
 pub mod transaction_conversion;

@@ -42,6 +42,10 @@ mod zkvm_ads_consistency_tests; // Consistency tests for zkVM ADS
 #[cfg(feature = "sp1")]
 pub mod proof;
 
+// Re-export proof types (conditionally)
+#[cfg(feature = "sp1")]
+pub use proof::{get_sindri_proof_data, SindriProofData};
+
 sol! {
     /// Loan batch public values - what gets committed on-chain for loan processing
     /// Individual loan details, amounts, and user identities remain private.

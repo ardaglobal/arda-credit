@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::env;
 use std::str::FromStr;
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 
 use crate::error::DbError;
 
@@ -39,6 +39,25 @@ pub struct ProofBatch {
     pub proof_status: String, // pending, proven, failed
     pub created_at: DateTime<Utc>,
     pub proven_at: Option<DateTime<Utc>>,
+    // Proof data storage (self-sufficient architecture)
+    pub proof_bytes: Option<Vec<u8>>,
+    pub public_values: Option<Vec<u8>>,
+    pub verifying_key: Option<Vec<u8>>,
+    pub proof_size_bytes: Option<i32>,
+    pub public_values_size_bytes: Option<i32>,
+    pub stored_at: Option<DateTime<Utc>>,
+    pub posted_to_contract: bool, // NOT NULL DEFAULT FALSE in database
+    pub posted_to_contract_at: Option<DateTime<Utc>>,
+    pub contract_tx_hash: Option<String>,
+}
+
+/// Proof data structure for self-sufficient contract submission
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SindriProofData {
+    pub proof_id: String,
+    pub proof_bytes: Vec<u8>,
+    pub public_values: Vec<u8>,
+    pub verifying_key: Vec<u8>,
 }
 
 /// ADS/Merkle tree state commitment for smart contract
@@ -1145,7 +1164,10 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
     let row = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at
+               sindri_proof_id, proof_status, created_at, proven_at,
+               proof_bytes, public_values, verifying_key,
+               proof_size_bytes, public_values_size_bytes, stored_at,
+               posted_to_contract, posted_to_contract_at, contract_tx_hash
         FROM proof_batches
         WHERE id = $1
         ",
@@ -1163,6 +1185,15 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
         proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
         created_at: row.created_at.unwrap_or_else(|| Utc::now()),
         proven_at: row.proven_at,
+        proof_bytes: row.proof_bytes,
+        public_values: row.public_values,
+        verifying_key: row.verifying_key,
+        proof_size_bytes: row.proof_size_bytes,
+        public_values_size_bytes: row.public_values_size_bytes,
+        stored_at: row.stored_at,
+        posted_to_contract: row.posted_to_contract,
+        posted_to_contract_at: row.posted_to_contract_at,
+        contract_tx_hash: row.contract_tx_hash,
     };
 
     debug!(
@@ -1213,6 +1244,15 @@ pub async fn get_all_batches(
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
+            proof_bytes: None,
+            public_values: None,
+            verifying_key: None,
+            proof_size_bytes: None,
+            public_values_size_bytes: None,
+            stored_at: None,
+            posted_to_contract: false, // NOT NULL DEFAULT FALSE
+            posted_to_contract_at: None,
+            contract_tx_hash: None,
         })
         .collect();
 
@@ -1260,6 +1300,162 @@ pub async fn update_batch_proof(
 
     debug!("Batch updated successfully");
     Ok(())
+}
+
+/// Store complete proof data for a batch (self-sufficient architecture)
+///
+/// This function stores the actual proof bytes, public values, and verifying key
+/// in the database, eliminating dependency on external services (Sindri) for
+/// contract submission.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `batch_id` - Batch ID to update
+/// * `proof_id` - Proof identifier (e.g., Sindri ID or "local-<timestamp>")
+/// * `proof_bytes` - Complete ZK proof bytes (1-10 MB typically)
+/// * `public_values` - Public inputs/outputs from proof
+/// * `verifying_key` - Verification key for on-chain verification
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool, proof_bytes, public_values, verifying_key),
+    fields(
+        operation = "store_proof_data",
+        table = "proof_batches",
+        layer = "database",
+        batch_id = %batch_id,
+        proof_size = %proof_bytes.len(),
+        public_values_size = %public_values.len()
+    ),
+    level = "info"
+)]
+pub async fn store_batch_proof_data(
+    pool: &PgPool,
+    batch_id: i32,
+    proof_id: &str,
+    proof_bytes: &[u8],
+    public_values: &[u8],
+    verifying_key: &[u8],
+) -> Result<(), sqlx::Error> {
+    debug!(
+        "Storing proof data for batch {}: {} bytes proof, {} bytes public values",
+        batch_id,
+        proof_bytes.len(),
+        public_values.len()
+    );
+
+    sqlx::query!(
+        r#"
+        UPDATE proof_batches
+        SET 
+            sindri_proof_id = $1,
+            proof_bytes = $2,
+            public_values = $3,
+            verifying_key = $4,
+            proof_size_bytes = $5,
+            public_values_size_bytes = $6,
+            proof_status = 'proven',
+            proven_at = NOW(),
+            stored_at = NOW()
+        WHERE id = $7
+        "#,
+        proof_id,
+        proof_bytes,
+        public_values,
+        verifying_key,
+        proof_bytes.len() as i32,
+        public_values.len() as i32,
+        batch_id
+    )
+    .execute(pool)
+    .await?;
+
+    info!(
+        "Stored complete proof data for batch {}: {} KB proof, {} KB public values",
+        batch_id,
+        proof_bytes.len() / 1024,
+        public_values.len() / 1024
+    );
+
+    Ok(())
+}
+
+/// Retrieve proof data from database for contract submission
+///
+/// This function retrieves the stored proof bytes, enabling self-sufficient
+/// contract submission without depending on external services.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `batch_id` - Batch ID to retrieve proof data for
+///
+/// # Returns
+/// * `Ok(Some(SindriProofData))` - If proof data is stored in database
+/// * `Ok(None)` - If batch exists but no proof data stored
+/// * `Err` - If database error occurs
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(
+        operation = "get_proof_data",
+        table = "proof_batches",
+        layer = "database",
+        batch_id = %batch_id
+    ),
+    level = "info"
+)]
+pub async fn get_batch_proof_data(
+    pool: &PgPool,
+    batch_id: i32,
+) -> Result<Option<SindriProofData>, sqlx::Error> {
+    debug!("Retrieving proof data for batch {}", batch_id);
+
+    let row = sqlx::query!(
+        r#"
+        SELECT 
+            sindri_proof_id,
+            proof_bytes,
+            public_values,
+            verifying_key
+        FROM proof_batches
+        WHERE id = $1
+        "#,
+        batch_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some(r) if r.proof_bytes.is_some() => {
+            let proof_data = SindriProofData {
+                proof_id: r
+                    .sindri_proof_id
+                    .unwrap_or_else(|| format!("batch-{}", batch_id)),
+                proof_bytes: r.proof_bytes.unwrap(),
+                public_values: r.public_values.unwrap_or_default(),
+                verifying_key: r.verifying_key.unwrap_or_default(),
+            };
+
+            debug!(
+                "Retrieved proof data for batch {}: {} KB",
+                batch_id,
+                proof_data.proof_bytes.len() / 1024
+            );
+
+            Ok(Some(proof_data))
+        }
+        Some(_) => {
+            debug!("Batch {} exists but has no stored proof data", batch_id);
+            Ok(None)
+        }
+        None => {
+            debug!("Batch {} not found", batch_id);
+            Ok(None)
+        }
+    }
 }
 
 // ============================================================================
@@ -1499,6 +1695,15 @@ pub async fn get_proven_unposted_batches(
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
+            proof_bytes: None,
+            public_values: None,
+            verifying_key: None,
+            proof_size_bytes: None,
+            public_values_size_bytes: None,
+            stored_at: None,
+            posted_to_contract: false, // NOT NULL DEFAULT FALSE
+            posted_to_contract_at: None,
+            contract_tx_hash: None,
         })
         .collect();
 
@@ -1611,6 +1816,15 @@ pub async fn get_potential_stuck_batches(
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
+            proof_bytes: None,
+            public_values: None,
+            verifying_key: None,
+            proof_size_bytes: None,
+            public_values_size_bytes: None,
+            stored_at: None,
+            posted_to_contract: false, // NOT NULL DEFAULT FALSE
+            posted_to_contract_at: None,
+            contract_tx_hash: None,
         })
         .collect();
 

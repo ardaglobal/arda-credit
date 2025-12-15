@@ -39,8 +39,9 @@ impl ProofSystem {
 /// Request for proof generation (batch processing)
 #[derive(Debug, Clone)]
 pub struct ProofGenerationRequest {
-    pub initial_balance: i32,
-    pub transactions: Vec<i32>,
+    pub initial_state: crate::GlobalLoanState,
+    pub ads_state: crate::ZkVMAds,
+    pub batch: crate::DealBatch,
     pub proof_system: ProofSystem,
     pub generate_fixtures: bool,
 }
@@ -57,6 +58,9 @@ pub struct ProofGenerationResponse {
     pub circuit_tag: String,
     pub verification_command: String,
     pub proof_info: ProofInfoResponse,
+    /// Complete proof data for database storage (self-sufficient architecture)
+    /// Contains actual proof bytes, public values, and verifying key
+    pub proof_data: Option<SindriProofData>,
 }
 
 /// Request for proof verification (loan batch)
@@ -165,7 +169,7 @@ pub async fn generate_batch_proof(
 /// Generate a batch proof using local SP1 prover (for local/staging)
 ///
 /// This function:
-/// 1. Creates SP1 stdin with initial balance and transactions
+/// 1. Creates SP1 stdin with ZkVMBatchInput (full state structures)
 /// 2. Uses local ProverClient to generate Core proofs
 /// 3. Verifies the proof locally
 /// 4. Marks the proof as "Ready" immediately (no async proof generation)
@@ -184,20 +188,26 @@ async fn generate_batch_proof_local(
 ) -> Result<ProofGenerationResponse, ProofError> {
     use sp1_sdk::{ProverClient, SP1Stdin};
 
-    let final_balance = request.initial_balance + request.transactions.iter().sum::<i32>();
+    let transaction_count = request.batch.transactions.len();
 
     info!(
-        "🔐 Generating local SP1 Core proof: {} + {:?} = {}",
-        request.initial_balance, request.transactions, final_balance
+        "🔐 Generating local SP1 Core proof for batch with {} transactions",
+        transaction_count
     );
 
     // Create prover client
     let client = ProverClient::from_env();
 
+    // Create ZkVMBatchInput structure
+    let zkvm_input = crate::ZkVMBatchInput {
+        initial_loan_state: request.initial_state,
+        initial_ads_state: request.ads_state,
+        batch: request.batch,
+    };
+
     // Create inputs
     let mut stdin = SP1Stdin::new();
-    stdin.write(&request.initial_balance);
-    stdin.write(&request.transactions);
+    stdin.write(&zkvm_input);
 
     // Get the ELF from the program build
     // Note: Use relative path from lib crate to build directory
@@ -220,6 +230,25 @@ async fn generate_batch_proof_local(
         .map_err(|e| ProofError::VerificationFailed(e.to_string()))?;
 
     info!("✅ Local proof verification passed!");
+
+    // ✅ NEW: Extract proof bytes for database storage (self-sufficient architecture)
+    let proof_bytes = proof.bytes();
+    let public_values = proof.public_values.as_slice().to_vec();
+
+    // Extract verifying key bytes
+    let vkey_hash = vk.hash_u32();
+    // Convert [u32; 8] to bytes
+    let mut vkey_bytes = Vec::new();
+    for word in vkey_hash.iter() {
+        vkey_bytes.extend_from_slice(&word.to_be_bytes());
+    }
+
+    info!(
+        "💾 Extracted proof data: {} KB proof, {} KB public values, {} bytes vkey",
+        proof_bytes.len() / 1024,
+        public_values.len() / 1024,
+        vkey_bytes.len()
+    );
 
     // Create a pseudo proof ID for local proofs
     let proof_id = format!("local-{}", chrono::Utc::now().timestamp());
@@ -256,6 +285,13 @@ async fn generate_batch_proof_local(
         circuit_tag: "local".to_string(),
         verification_command: format!("Local proof verified (proof_id: {})", proof_id),
         proof_info,
+        // ✅ NEW: Include actual proof data for database storage
+        proof_data: Some(SindriProofData {
+            proof_id: proof_id.clone(),
+            proof_bytes,
+            public_values,
+            verifying_key: vkey_bytes,
+        }),
     })
 }
 
@@ -272,24 +308,25 @@ async fn generate_batch_proof_local(
 async fn generate_batch_proof_sindri(
     request: BatchProofGenerationRequest,
 ) -> Result<ProofGenerationResponse, ProofError> {
-    let final_balance = request.initial_balance + request.transactions.iter().sum::<i32>();
+    let transaction_count = request.batch.transactions.len();
 
     info!(
-        "🔐 Generating {} batch proof: {} + {:?} = {} via Sindri",
+        "🔐 Generating {} batch proof via Sindri with {} transactions",
         request.proof_system.to_sindri_scheme().to_uppercase(),
-        request.initial_balance,
-        request.transactions,
-        final_balance
+        transaction_count
     );
+
+    // Create ZkVMBatchInput structure
+    let zkvm_input = crate::ZkVMBatchInput {
+        initial_loan_state: request.initial_state,
+        initial_ads_state: request.ads_state,
+        batch: request.batch,
+    };
 
     // Create SP1 inputs for batch processing and serialize for Sindri
-    info!(
-        "📝 Creating SP1 stdin with initial_balance={} and transactions={:?}",
-        request.initial_balance, request.transactions
-    );
+    info!("📝 Creating SP1 stdin with ZkVMBatchInput");
     let mut stdin = SP1Stdin::new();
-    stdin.write(&request.initial_balance);
-    stdin.write(&request.transactions);
+    stdin.write(&zkvm_input);
     info!("✅ SP1 stdin created successfully");
 
     info!("📝 Serializing SP1 stdin to JSON for Sindri");
@@ -367,8 +404,8 @@ async fn generate_batch_proof_sindri(
     };
 
     let verification_command = format!(
-        "cargo run --release -- --verify --proof-id {} --initial-balance {} --transactions {:?}",
-        proof_info.proof_id, request.initial_balance, request.transactions
+        "cargo run --release -- --verify --proof-id {} (batch with {} transactions)",
+        proof_info.proof_id, transaction_count
     );
 
     info!(
@@ -377,6 +414,43 @@ async fn generate_batch_proof_sindri(
         proof_info.proof_id
     );
 
+    // ✅ NEW: Wait for proof to be ready and extract proof bytes for database storage
+    let proof_data = if proof_info.status == JobStatus::Ready {
+        info!("✅ Proof is already ready, extracting data immediately");
+        match extract_proof_data_from_sindri(&proof_info) {
+            Ok(data) => Some(data),
+            Err(e) => {
+                warn!("⚠️  Failed to extract proof data from ready proof: {}", e);
+                None
+            }
+        }
+    } else {
+        info!("⏳ Proof is pending, will poll for completion (timeout: 300s)");
+        match wait_for_proof_ready(&proof_info.proof_id, 300).await {
+            Ok(ready_proof_info) => {
+                info!("✅ Proof is now ready, extracting data");
+                match extract_proof_data_from_sindri(&ready_proof_info) {
+                    Ok(data) => {
+                        info!(
+                            "💾 Extracted Sindri proof data: {} KB proof, {} KB public values",
+                            data.proof_bytes.len() / 1024,
+                            data.public_values.len() / 1024
+                        );
+                        Some(data)
+                    }
+                    Err(e) => {
+                        warn!("⚠️  Failed to extract proof data: {}", e);
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("⚠️  Proof not ready within timeout: {}", e);
+                None
+            }
+        }
+    };
+
     let response = ProofGenerationResponse {
         proof_id: proof_info.proof_id.clone(),
         status,
@@ -384,21 +458,12 @@ async fn generate_batch_proof_sindri(
         circuit_tag,
         verification_command,
         proof_info,
+        proof_data, // ✅ NEW: Include proof data if available
     };
 
-    // Generate EVM fixture if requested
+    // Note: EVM fixture generation skipped for new format (would need update)
     if request.generate_fixtures {
-        if let Err(e) = create_batch_evm_fixture(
-            &response.proof_info,
-            request.initial_balance,
-            &request.transactions,
-            final_balance,
-            request.proof_system,
-        )
-        .await
-        {
-            warn!("⚠️  Failed to generate EVM fixture: {}", e);
-        }
+        warn!("⚠️  EVM fixture generation not yet implemented for new format");
     }
 
     Ok(response)
@@ -418,14 +483,13 @@ pub async fn generate_sindri_proof(
     request: ProofGenerationRequest,
 ) -> Result<ProofGenerationResponse, ProofError> {
     let start_time = std::time::Instant::now();
-    let final_balance = request.initial_balance + request.transactions.iter().sum::<i32>();
+
+    let transaction_count = request.batch.transactions.len();
 
     info!(
-        "🔐 Generating {} batch proof: {} + {:?} = {} via Sindri",
+        "🔐 Generating {} batch proof via Sindri with {} transactions",
         request.proof_system.to_sindri_scheme().to_uppercase(),
-        request.initial_balance,
-        request.transactions,
-        final_balance
+        transaction_count
     );
 
     // Record Sindri API request
@@ -433,13 +497,19 @@ pub async fn generate_sindri_proof(
     {
         use metrics::{counter, histogram};
         counter!("sindri_api_requests_total", "operation" => "prove_circuit").increment(1);
-        histogram!("sindri_proof_transactions_per_batch").record(request.transactions.len() as f64);
+        histogram!("sindri_proof_transactions_per_batch").record(transaction_count as f64);
     }
+
+    // Create ZkVMBatchInput structure
+    let zkvm_input = crate::ZkVMBatchInput {
+        initial_loan_state: request.initial_state,
+        initial_ads_state: request.ads_state,
+        batch: request.batch,
+    };
 
     // Create SP1 inputs for batch processing and serialize for Sindri
     let mut stdin = SP1Stdin::new();
-    stdin.write(&request.initial_balance);
-    stdin.write(&request.transactions);
+    stdin.write(&zkvm_input);
 
     let stdin_json =
         serde_json::to_string(&stdin).map_err(|e| ProofError::SerializationError(e.to_string()))?;
@@ -472,8 +542,8 @@ pub async fn generate_sindri_proof(
     };
 
     let verification_command = format!(
-        "cargo run --release -- --verify --proof-id {} --initial-balance {} --transactions {:?}",
-        proof_info.proof_id, request.initial_balance, request.transactions
+        "cargo run --release -- --verify --proof-id {} (batch with {} transactions)",
+        proof_info.proof_id, transaction_count
     );
 
     info!(
@@ -489,21 +559,12 @@ pub async fn generate_sindri_proof(
         circuit_tag,
         verification_command,
         proof_info,
+        proof_data: None, // Will be populated when proof is retrieved
     };
 
-    // Generate EVM fixture if requested
+    // Note: EVM fixture generation skipped for new format (would need update)
     if request.generate_fixtures {
-        if let Err(e) = create_evm_fixture(
-            &response.proof_info,
-            request.initial_balance,
-            &request.transactions,
-            final_balance,
-            request.proof_system,
-        )
-        .await
-        {
-            warn!("⚠️  Failed to generate EVM fixture: {}", e);
-        }
+        warn!("⚠️  EVM fixture generation not yet implemented for new format");
     }
 
     // Record proof generation metrics
@@ -764,6 +825,38 @@ pub async fn get_sindri_proof_info(proof_id: &str) -> Result<ProofInfoResponse, 
 pub async fn is_proof_ready(proof_id: &str) -> Result<bool, ProofError> {
     let proof_info = get_sindri_proof_info(proof_id).await?;
     Ok(proof_info.status == JobStatus::Ready)
+}
+
+/// Extract proof data from a ProofInfoResponse (helper function)
+///
+/// # Errors
+///
+/// Returns `ProofError` if:
+/// - Proof extraction fails
+/// - Verifying key cannot be decoded
+fn extract_proof_data_from_sindri(
+    proof_info: &ProofInfoResponse,
+) -> Result<SindriProofData, ProofError> {
+    // Extract SP1 proof data using Sindri's methods
+    let sp1_proof = proof_info
+        .to_sp1_proof_with_public()
+        .map_err(|e| ProofError::SindriError(format!("Failed to extract SP1 proof: {e}")))?;
+
+    let verifying_key = proof_info
+        .get_sp1_verifying_key()
+        .map_err(|e| ProofError::SindriError(format!("Failed to extract verification key: {e}")))?;
+
+    // Convert hex string to bytes for verifying key
+    let vkey_hex = verifying_key.bytes32();
+    let vkey_bytes = hex::decode(vkey_hex.strip_prefix("0x").unwrap_or(&vkey_hex))
+        .map_err(|e| ProofError::SindriError(format!("Failed to decode verifying key hex: {e}")))?;
+
+    Ok(SindriProofData {
+        proof_id: proof_info.proof_id.clone(),
+        proof_bytes: sp1_proof.bytes(),
+        public_values: sp1_proof.public_values.as_slice().to_vec(),
+        verifying_key: vkey_bytes,
+    })
 }
 
 /// Retrieve actual proof data from Sindri for smart contract submission

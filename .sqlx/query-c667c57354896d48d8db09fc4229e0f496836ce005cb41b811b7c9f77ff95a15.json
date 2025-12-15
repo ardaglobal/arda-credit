@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE proof_batches\n        SET \n            sindri_proof_id = $1,\n            proof_bytes = $2,\n            public_values = $3,\n            verifying_key = $4,\n            proof_size_bytes = $5,\n            public_values_size_bytes = $6,\n            proof_status = 'proven',\n            proven_at = NOW(),\n            stored_at = NOW()\n        WHERE id = $7\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Bytea",
+        "Bytea",
+        "Bytea",
+        "Int4",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c667c57354896d48d8db09fc4229e0f496836ce005cb41b811b7c9f77ff95a15"
+}

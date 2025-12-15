@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT COALESCE(SUM(\n                CASE \n                    WHEN transaction_type IN ('deposit', 'credit_line_repayment') THEN amount\n                    WHEN transaction_type IN ('withdrawal', 'credit_line_drawdown') THEN -amount\n                    ELSE 0\n                END\n            ), 0) as \"net_balance!\"\n            FROM account_financial_transactions\n            WHERE user_id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "net_balance!",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "a3670b0ed66760d504e7c020f7f6d039f7e7e856711feb3baaf2b7e6363d747a"
+}
