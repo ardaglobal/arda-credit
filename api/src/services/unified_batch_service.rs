@@ -276,11 +276,22 @@ impl UnifiedBatchService {
         }
 
         // Step 2: Determine batch size
-        let batch_size = requested_batch_size
-            .map(|s| s as usize)
-            .unwrap_or(pending_transactions.len())
-            .min(self.max_batch_size as usize)
-            .min(pending_transactions.len());
+        // SPECIAL CASE: If StateRegenesis is present, include ALL pending transactions in a single batch
+        // This ensures complete historical reprocessing from genesis without splitting across batches
+        let has_state_regenesis = pending_transactions
+            .iter()
+            .any(|tx| tx.transaction_type == "state_regenesis");
+
+        let batch_size = if has_state_regenesis {
+            info!("🔄 UNIFIED: StateRegenesis detected - including ALL {} pending transactions in batch", pending_transactions.len());
+            pending_transactions.len()
+        } else {
+            requested_batch_size
+                .map(|s| s as usize)
+                .unwrap_or(pending_transactions.len())
+                .min(self.max_batch_size as usize)
+                .min(pending_transactions.len())
+        };
 
         let batch_transactions = &pending_transactions[..batch_size];
 

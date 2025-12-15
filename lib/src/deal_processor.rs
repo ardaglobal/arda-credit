@@ -750,11 +750,13 @@ impl LoanOperation {
         }
     }
 
-    /// Convert operation to nullifier hash for Merkle tree
+    /// Convert operation to nullifier hash for Merkle tree using Poseidon2
     #[must_use]
     pub fn to_nullifier(&self) -> [u8; 32] {
         use sha2::{Digest, Sha256};
 
+        // Use SHA-256 to combine the operation data into a single value
+        // then use that as input to Poseidon for the final hash
         let mut hasher = Sha256::new();
         match self {
             Self::LoanCreation {
@@ -795,7 +797,12 @@ impl LoanOperation {
                 hasher.update(new_balance.to_le_bytes());
             }
         }
-        hasher.finalize().into()
+        let sha_hash: [u8; 32] = hasher.finalize().into();
+
+        // Apply Poseidon2 to the SHA-256 hash for ZK-friendly final hash
+        // This two-stage approach ensures we can handle arbitrary-length inputs
+        use crate::hash::hash_internal_poseidon;
+        hash_internal_poseidon(&sha_hash, &[0u8; 32])
     }
 }
 
@@ -828,9 +835,10 @@ impl MerkleTree {
         self.root
     }
 
-    /// Compute the Merkle root from all leaves
+    /// Compute the Merkle root from all leaves using Poseidon2
     fn compute_root(&self) -> [u8; 32] {
-        use sha2::{Digest, Sha256};
+        use crate::hash::hash_internal_poseidon;
+
         if self.leaves.is_empty() {
             return [0u8; 32];
         }
@@ -840,14 +848,13 @@ impl MerkleTree {
             let mut next_level = Vec::new();
 
             for chunk in current_level.chunks(2) {
-                let mut hasher = Sha256::new();
-                hasher.update(chunk[0]);
-                if chunk.len() > 1 {
-                    hasher.update(chunk[1]);
+                let hash = if chunk.len() > 1 {
+                    hash_internal_poseidon(&chunk[0], &chunk[1])
                 } else {
-                    hasher.update(chunk[0]); // Duplicate if odd number
-                }
-                next_level.push(hasher.finalize().into());
+                    // Duplicate if odd number
+                    hash_internal_poseidon(&chunk[0], &chunk[0])
+                };
+                next_level.push(hash);
             }
 
             current_level = next_level;

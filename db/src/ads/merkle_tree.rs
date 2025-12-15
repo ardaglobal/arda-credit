@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
+use lib::{hash_internal_poseidon, hash_leaf_poseidon};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -1828,45 +1828,39 @@ impl IndexedMerkleTree {
         })
     }
 
-    /// Generate leaf hash from nullifier data (as per algorithm specification)
+    /// Generate leaf hash from nullifier data using Poseidon2 (as per algorithm specification)
     #[instrument(skip(self, nullifier), level = "debug")]
     fn hash_nullifier_leaf(&self, nullifier: &Nullifier) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(nullifier.value.to_be_bytes());
-        hasher.update(nullifier.next_index.unwrap_or(0).to_be_bytes());
-        hasher.update(nullifier.next_value.to_be_bytes());
-        let result: [u8; 32] = hasher.finalize().into();
+        let result =
+            hash_leaf_poseidon(nullifier.value, nullifier.next_index, nullifier.next_value);
         debug!(
-            "Hashed nullifier leaf: value={}, hash={:02x?}",
+            "Hashed nullifier leaf (Poseidon2): value={}, hash={:02x?}",
             nullifier.value,
             &result[..8]
         );
         result
     }
 
-    /// Generate leaf hash for LowNullifier state
+    /// Generate leaf hash for LowNullifier state using Poseidon2
     #[instrument(skip(self, low_nullifier), level = "debug")]
     fn hash_low_nullifier_leaf(&self, low_nullifier: &LowNullifier) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(low_nullifier.value.to_be_bytes());
-        hasher.update(low_nullifier.next_index.unwrap_or(0).to_be_bytes());
-        hasher.update(low_nullifier.next_value.to_be_bytes());
-        let result: [u8; 32] = hasher.finalize().into();
+        let result = hash_leaf_poseidon(
+            low_nullifier.value,
+            low_nullifier.next_index,
+            low_nullifier.next_value,
+        );
         debug!(
-            "Hashed low nullifier leaf: value={}, hash={:02x?}",
+            "Hashed low nullifier leaf (Poseidon2): value={}, hash={:02x?}",
             low_nullifier.value,
             &result[..8]
         );
         result
     }
 
-    /// Hash two child nodes to create parent node
+    /// Hash two child nodes to create parent node using Poseidon2
     #[instrument(skip(self, left, right), level = "debug")]
     fn hash_internal_node(&self, left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(left);
-        hasher.update(right);
-        hasher.finalize().into()
+        hash_internal_poseidon(left, right)
     }
 
     /// Efficiently update tree for both low_nullifier and new_nullifier

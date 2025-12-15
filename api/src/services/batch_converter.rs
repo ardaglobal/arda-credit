@@ -170,6 +170,22 @@ fn convert_db_transaction_to_zkvm(db_tx: &DealTransactionDb) -> Result<DealTrans
             hash_uuid(&db_tx.id)
         };
 
+    // Debug logging for StateRegenesis transactions
+    if db_tx.transaction_type == "state_regenesis" {
+        tracing::debug!(
+            "🔍 StateRegenesis conversion: user_id_hash.len={}, user_id={:?}, metadata={:?}",
+            db_tx.user_id_hash.len(),
+            db_tx.user_id,
+            db_tx.metadata
+        );
+        if !db_tx.user_id_hash.is_empty() {
+            tracing::debug!(
+                "🔍 user_id_hash first 32 bytes: {:?}",
+                &db_tx.user_id_hash[..32.min(db_tx.user_id_hash.len())]
+            );
+        }
+    }
+
     let user_id = if !db_tx.user_id_hash.is_empty() && db_tx.user_id_hash.len() == 32 {
         db_tx
             .user_id_hash
@@ -256,6 +272,7 @@ fn parse_transaction_type(type_str: &str) -> Result<TransactionType, String> {
         "collateral_deal_disassociation" => Ok(TransactionType::CollateralDealDisassociation),
         "collateral_detection_request" => Ok(TransactionType::CollateralDetectionRequest),
         "collateral_detection_update" => Ok(TransactionType::CollateralDetectionUpdate),
+        "state_regenesis" => Ok(TransactionType::StateRegenesis),
         other => Err(format!("Unknown transaction type: {}", other)),
     }
 }

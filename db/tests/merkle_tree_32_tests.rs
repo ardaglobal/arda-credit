@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use db::ads::merkle_tree_32::{BatchUpdate, MerkleTree32};
-    use sha2::{Digest, Sha256};
     use sqlx::PgPool;
     use tracing::info;
     use tracing_test::traced_test;
@@ -352,7 +351,7 @@ mod tests {
         let tree_32_hashes = 32; // Path length for 32-level tree
         let tree_256_hashes = 256; // Path length for traditional tree
 
-        let tree_32_constraints = tree_32_hashes * 8; // Poseidon constraints per hash
+        let tree_32_constraints = tree_32_hashes * 8; // Poseidon2 constraints per hash
         let tree_256_constraints = tree_256_hashes * 8;
 
         info!("🔍 Constraint Analysis:");

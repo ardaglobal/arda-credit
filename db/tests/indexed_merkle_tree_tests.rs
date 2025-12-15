@@ -303,7 +303,7 @@ mod tests {
             );
 
             // Verify constraint components
-            let expected_hash_constraints = metrics.hash_operations * 8; // Poseidon constraints
+            let expected_hash_constraints = metrics.hash_operations * 8; // Poseidon2 constraints
             let expected_range_constraints = metrics.range_checks * 250; // Range check constraints
             let expected_total = expected_hash_constraints + expected_range_constraints + 10; // +10 for equality
 

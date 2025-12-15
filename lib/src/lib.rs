@@ -30,6 +30,7 @@ pub mod balance;
 pub mod collateral;
 pub mod deal;
 pub mod deal_processor;
+pub mod hash; // ZK-friendly hash functions (Poseidon2)
 pub mod transactions;
 pub mod user;
 pub mod utils;
@@ -73,6 +74,7 @@ pub use balance::{
 };
 pub use collateral::{Collateral, CollateralAssociation, CollateralError, CollateralState};
 pub use deal::{Deal, DealError, LoanStatus, LoanTerms};
+pub use hash::{hash_internal_poseidon, hash_leaf_poseidon};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};
 pub use utils::{cents_to_decimal, decimal_to_cents, hash_uuid};

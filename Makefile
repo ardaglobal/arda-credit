@@ -31,6 +31,15 @@ install:
 build-program:
 	cd program && cargo prove build --output-directory ../build
 
+## run: SP1 deal processing test (proof method determined by SERVER_ENVIRONMENT)
+## Default: local (uses local SP1 prover, fast ~8s Core proofs)
+## Sindri: Set SERVER_ENVIRONMENT=sandbox or production (uses Sindri service)
+.PHONY: run
+run: build-program
+	@echo "🌍 Server Environment: $${SERVER_ENVIRONMENT:-local} (determines proof method)"
+	@echo ""
+	cargo run --release
+
 ## fmt: Format code
 .PHONY: fmt
 fmt: yamllint-fix actionlint-fix docker-lint-fix
@@ -299,7 +308,7 @@ bench-zk:
 
 ## server: Start API server locally (in debug mode with verbose logging) with deposit monitor and withdrawal executor
 .PHONY: server
-server: up
+server: up build-program
 	@sleep 2
 	@# Deploy contracts if in local/staging environment
 	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \

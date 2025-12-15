@@ -1109,21 +1109,45 @@ async fn trigger_regenesis_reset(pool: &sqlx::PgPool) -> Result<(), Box<dyn std:
     user_hasher.update(system_user.id.as_bytes());
     let user_id_hash = user_hasher.finalize();
 
-    sqlx::query!(
+    // IMPORTANT: Use minimum valid timestamp (2000-01-01) to ensure StateRegenesis is processed FIRST
+    // when transactions are sorted chronologically. Historical deal transactions
+    // have timestamps from their originated_at dates, so StateRegenesis must be
+    // older to appear first in the sorted batch.
+    // zkVM validation requires timestamps >= 946684800 (Jan 1, 2000)
+    let min_valid_timestamp = chrono::NaiveDateTime::from_timestamp_opt(946_684_800, 0)
+        .expect("Valid minimum timestamp")
+        .and_utc();
+
+    // Debug: Log what we're inserting
+    println!("  🔍 Debug StateRegenesis:");
+    println!("     tx_id_hash length: {}", tx_id_hash.len());
+    println!("     user_id_hash length: {}", user_id_hash.len());
+    println!("     system_user.id: {}", system_user.id);
+    println!("     metadata: {}", metadata);
+
+    // Use explicit parameter binding with query() instead of query!() to ensure correct order
+    sqlx::query(
         r#"
         INSERT INTO deal_transactions (
             id, transaction_id_hash, user_id_hash, deal_id_hash,
             transaction_type, amount, user_id, deal_id, payment_id,
             included_in_batch_id, metadata, created_at
         )
-        VALUES ($1, $2, $3, NULL, 'state_regenesis', 0, $4, NULL, NULL, NULL, $5, NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         "#,
-        regenesis_tx_id,
-        tx_id_hash.as_slice(),
-        user_id_hash.as_slice(),
-        system_user.id,
-        metadata
     )
+    .bind(regenesis_tx_id) // $1 = id
+    .bind(tx_id_hash.as_slice()) // $2 = transaction_id_hash
+    .bind(user_id_hash.as_slice()) // $3 = user_id_hash
+    .bind(None::<Vec<u8>>) // $4 = deal_id_hash (NULL)
+    .bind("state_regenesis") // $5 = transaction_type
+    .bind(rust_decimal::Decimal::ZERO) // $6 = amount
+    .bind(system_user.id) // $7 = user_id
+    .bind(None::<Uuid>) // $8 = deal_id (NULL)
+    .bind(None::<Uuid>) // $9 = payment_id (NULL)
+    .bind(None::<i32>) // $10 = included_in_batch_id (NULL)
+    .bind(metadata) // $11 = metadata
+    .bind(min_valid_timestamp) // $12 = created_at
     .execute(pool)
     .await?;
 
