@@ -194,7 +194,7 @@ impl DeploymentService {
         environment: &str,
     ) -> Result<NetworkConfig, DeploymentError> {
         let rpc_url = match environment {
-            "local" | "staging" => "http://127.0.0.1:8545".to_string(),
+            "local" | "dev" | "staging" => "http://127.0.0.1:8545".to_string(),
             _ => return Err(DeploymentError::UnsupportedEnvironment {
                 environment: environment.to_string(),
                 message:

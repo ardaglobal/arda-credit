@@ -77,7 +77,7 @@ make clean-anvil    # Reset Anvil blockchain state
 
 ### Local Anvil Development
 
-For local/staging environments, use Anvil devnet:
+For local/dev/staging environments, use Anvil devnet:
 
 ```bash
 # Faucet (get test ETH + USDC)
@@ -87,12 +87,15 @@ make faucet-stats                   # View statistics
 
 # Contract deployment (environment-aware)
 SERVER_ENVIRONMENT=local make deploy-contracts      # → Anvil with mocks
+SERVER_ENVIRONMENT=dev make deploy-contracts        # → Anvil with mocks
+SERVER_ENVIRONMENT=staging make deploy-contracts    # → Anvil with mocks
 SERVER_ENVIRONMENT=sandbox make deploy-contracts    # → Sepolia testnet
 ```
 
 **What gets deployed:**
-- **Local/Staging**: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier
-- **Sandbox/Production**: ARDA only (requires RPC URL, verifier, program key)
+- **Local/Dev/Staging**: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier (Anvil)
+- **Sandbox**: ARDA only on Sepolia (requires RPC URL, verifier, program key)
+- **Production**: ARDA only on mainnet (requires RPC URL, verifier, program key)
 
 ### API Server Usage
 
@@ -127,10 +130,12 @@ echo "EMAIL_DEBUG_MODE=true" >> .env
 
 **Key variables:**
 - `DATABASE_URL` - PostgreSQL connection string
-- `SERVER_ENVIRONMENT` - `local`, `staging`, `sandbox`, or `production`
-  - `local`/`staging` use local SP1 prover
-  - `sandbox`/`production` use Sindri service
-- `SINDRI_API_KEY` - Required for sandbox/production proof generation
+- `SERVER_ENVIRONMENT` - `local`, `dev`, `staging`, `sandbox`, or `production`
+  - `local`/`dev` use local SP1 prover (core proofs), no smart contract posting
+  - `staging` uses Sindri service (Groth16 proofs), posts to Anvil
+  - `sandbox` uses Sindri service (Groth16 proofs), posts to Sepolia
+  - `production` uses Sindri service (Groth16 proofs), posts to mainnet
+- `SINDRI_API_KEY` - Required for staging/sandbox/production proof generation
 - `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
 - `ETHEREUM_RPC_URL` - Ethereum RPC endpoint
 - `ETHEREUM_ARDA_CONTRACT_ADDRESS` - Deployed ARDA contract address

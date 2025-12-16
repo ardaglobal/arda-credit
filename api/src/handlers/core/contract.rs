@@ -119,8 +119,8 @@ pub async fn get_contract_config(
     let environment = std::env::var("SERVER_ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
 
     let (contract_address, rpc_url, chain_id, deployment_block) = match environment.as_str() {
-        // Local and staging environments: Use centralized deployment service
-        "local" | "staging" => {
+        // Local, dev, and staging environments: Use centralized deployment service (Anvil)
+        "local" | "dev" | "staging" => {
             info!(
                 "📁 Reading contract configuration from deployment service for environment: {}",
                 environment
@@ -198,7 +198,7 @@ pub async fn get_contract_config(
         // Unknown environment
         _ => {
             error!("Unknown SERVER_ENVIRONMENT: {}", environment);
-            error!("💡 Valid environments: local, staging, sandbox, production");
+            error!("💡 Valid environments: local, dev, staging, sandbox, production");
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
     };

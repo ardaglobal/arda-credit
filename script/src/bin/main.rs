@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "local".to_string())
         .to_lowercase();
 
-    let use_sindri = matches!(server_env.as_str(), "sandbox" | "production");
+    let use_sindri = matches!(server_env.as_str(), "staging" | "sandbox" | "production");
 
     let args = Args {
         sindri: use_sindri,

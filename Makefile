@@ -73,7 +73,7 @@ deploy:
 .PHONY: up
 up:
 	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
-	if [ "$$SERVER_ENV" = "local" ] || [ "$$SERVER_ENV" = "staging" ]; then \
+	if [ "$$SERVER_ENV" = "local" ] || [ "$$SERVER_ENV" = "dev" ] || [ "$$SERVER_ENV" = "staging" ]; then \
 		echo "🌍 Starting services with Anvil ($$SERVER_ENV environment)..."; \
 		COMPOSE_PROFILES=$$SERVER_ENV docker compose up -d; \
 	else \
@@ -86,7 +86,7 @@ up:
 .PHONY: down
 down:
 	@# Stop all services including those with profiles
-	@COMPOSE_PROFILES=local,staging docker compose down -v || docker compose down -v
+	@COMPOSE_PROFILES=local,dev,staging docker compose down -v || docker compose down -v
 	@echo "✅ All services stopped"
 
 ## docker-build: Build image locally
@@ -289,15 +289,15 @@ NUM_PROOFS=1
 NUM_TRANSACTIONS=100
 
 ## bench-zk: Run a zk benchmark test. Usage: make bench-zk NUM_PROOFS=50 NUM_TRANSACTIONS=500
-## Note: Uses SERVER_ENVIRONMENT to determine proof method (local/staging=local, sandbox/production=Sindri)
+## Note: Uses SERVER_ENVIRONMENT to determine proof method (local/dev=local, staging/sandbox/production=Sindri)
 .PHONY: bench-zk
 bench-zk:
 	@echo ""
 	@echo "Prerequisites:"
-	@echo "  • For Sindri benchmarks: Set SERVER_ENVIRONMENT=sandbox or production"
+	@echo "  • For Sindri benchmarks: Set SERVER_ENVIRONMENT=staging, sandbox, or production"
 	@echo "  • For Sindri benchmarks: SINDRI_API_KEY set in .env"
 	@echo "  • For Sindri benchmarks: Circuit deployed (make deploy)"
-	@echo "  • For local benchmarks: Set SERVER_ENVIRONMENT=local or staging (default)"
+	@echo "  • For local benchmarks: Set SERVER_ENVIRONMENT=local or dev (default)"
 	@echo ""
 	@TOTAL_TXS=$$(($(NUM_PROOFS) * $(NUM_TRANSACTIONS))); \
 	echo "🎛️  Running benchmark test..."; \
