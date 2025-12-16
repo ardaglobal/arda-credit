@@ -606,19 +606,6 @@ async fn create_company_registration_transaction(
     company: &Company,
     creator_user_id: Uuid,
 ) -> Result<(), sqlx::Error> {
-    // #region agent log
-    // DEBUG: Log company registration transaction creation (Hypothesis C - Company registration missing)
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-    {
-        use std::io::Write;
-        let log = serde_json::json!({"sessionId":"debug-session","runId":"populate-script","hypothesisId":"C","location":"populate_deal_data.rs:607","message":"Creating CompanyRegistration transaction","data":{"company_id":company.id.to_string(),"company_name":company.name.clone(),"creator_user_id":creator_user_id.to_string()},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-        let _ = writeln!(file, "{}", log);
-    }
-    // #endregion
-
     let transaction_id = Uuid::new_v4();
     let transaction_id_hash = hash_uuid(&transaction_id);
     let user_id_hash = hash_uuid(&creator_user_id);
@@ -692,19 +679,6 @@ async fn create_deal_transaction_record(
     let metadata_json = if transaction_type == "deal_origination" {
         let originator_hash = hash_uuid(&originator_id.unwrap_or(dummy_uuid));
         let investor_hash = hash_uuid(&investor_id.unwrap_or(dummy_uuid));
-
-        // #region agent log
-        // DEBUG: Log metadata construction (Hypothesis B, C - Company IDs in metadata)
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-        {
-            use std::io::Write;
-            let log = serde_json::json!({"sessionId":"debug-session","runId":"populate-script","hypothesisId":"B,C","location":"populate_deal_data.rs:685","message":"DealOrigination metadata created","data":{"originator_company_id":originator_id.map(|id| id.to_string()),"investor_company_id":investor_id.map(|id| id.to_string()),"originator_hash_first_8":format!("{:?}", &originator_hash[..8]),"investor_hash_first_8":format!("{:?}", &investor_hash[..8]),"user_id":user_id.map(|id| id.to_string()),"user_id_hash_first_8":format!("{:?}", &user_id_hash[..8])},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-            let _ = writeln!(file, "{}", log);
-        }
-        // #endregion
 
         let mut bytes = vec![0u8; 64];
         bytes[0..32].copy_from_slice(&originator_hash);

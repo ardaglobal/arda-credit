@@ -181,19 +181,6 @@ impl DealState {
             return Err(DealError::DuplicateDeal { deal_id });
         }
 
-        // #region agent log
-        // DEBUG: Log transaction fields vs metadata (Hypothesis A, C, D)
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-        {
-            use std::io::Write;
-            let log = serde_json::json!({"sessionId":"debug-session","runId":"deal-origination","hypothesisId":"A,C,D","location":"deal.rs:185","message":"DealOrigination field extraction","data":{"originator_company_id_field":format!("{:?}", &transaction.originator_company_id[..8]),"investor_company_id_field":format!("{:?}", &transaction.investor_company_id[..8]),"metadata_first_32":format!("{:?}", &transaction.metadata.as_bytes()[..8]),"metadata_second_32":format!("{:?}", &transaction.metadata.as_bytes()[32..40]),"user_id":format!("{:?}", &transaction.user_id[..8])},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-            let _ = writeln!(file, "{}", log);
-        }
-        // #endregion
-
         // Extract company IDs from explicit fields (NOT metadata)
         let originator_company_id = transaction.originator_company_id;
         let investor_company_id = transaction.investor_company_id;

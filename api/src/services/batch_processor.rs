@@ -994,7 +994,28 @@ impl BackgroundBatchProcessor {
                                 "ℹ️  Ethereum client not available in {} environment: {}",
                                 server_env, e
                             );
-                            debug!("   Smart contract posting skipped (expected for local development)");
+                            debug!("   Marking batches as local-only (no contract posting)");
+
+                            // Mark all unposted batches as "local-only" to prevent retry loop
+                            for batch in &unposted_batches {
+                                if let Err(mark_err) = mark_batch_posted_to_contract_with_tx_hash(
+                                    pool,
+                                    batch.id,
+                                    "local-only",
+                                )
+                                .await
+                                {
+                                    warn!(
+                                        "⚠️  Failed to mark batch {} as local-only: {}",
+                                        batch.id, mark_err
+                                    );
+                                } else {
+                                    debug!(
+                                        "✅ Marked batch {} as local-only (no contract posting)",
+                                        batch.id
+                                    );
+                                }
+                            }
                         } else {
                             error!("❌ Failed to initialize Ethereum client: {}", e);
                             error!("   Smart contract posting will be skipped");
@@ -1009,7 +1030,25 @@ impl BackgroundBatchProcessor {
                         "ℹ️  Ethereum config not set in {} environment (expected)",
                         server_env
                     );
-                    debug!("   Local proofs are stored in database only, not posted to contract");
+                    debug!("   Marking batches as local-only (no contract posting)");
+
+                    // Mark all unposted batches as "local-only" to prevent retry loop
+                    for batch in &unposted_batches {
+                        if let Err(mark_err) =
+                            mark_batch_posted_to_contract_with_tx_hash(pool, batch.id, "local-only")
+                                .await
+                        {
+                            warn!(
+                                "⚠️  Failed to mark batch {} as local-only: {}",
+                                batch.id, mark_err
+                            );
+                        } else {
+                            debug!(
+                                "✅ Marked batch {} as local-only (no contract posting)",
+                                batch.id
+                            );
+                        }
+                    }
                 } else {
                     error!("❌ Ethereum configuration not found: {}", e);
                     error!("   Smart contract posting will be skipped");

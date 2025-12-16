@@ -417,37 +417,11 @@ impl GlobalLoanState {
                 // The actual state reset happens in the batch processor
             }
             TransactionType::CompanyRegistration => {
-                // #region agent log
-                // DEBUG: Log company registration (Hypothesis C - Company registration missing)
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-                {
-                    use std::io::Write;
-                    let log = serde_json::json!({"sessionId":"debug-session","runId":"deal-processor","hypothesisId":"C","location":"deal_processor.rs:422","message":"CompanyRegistration processing","data":{"originator_company_id_first_8":format!("{:?}", &transaction.originator_company_id[..8]),"user_id_first_8":format!("{:?}", &transaction.user_id[..8]),"companies_before":self.companies.len()},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-                    let _ = writeln!(file, "{}", log);
-                }
-                // #endregion
-
                 let mut company_state = crate::company::CompanyState {
                     companies: self.companies.clone(),
                 };
                 company_state.process_company_registration(transaction)?;
                 self.companies = company_state.companies;
-
-                // #region agent log
-                // DEBUG: Log company registration result
-                if let Ok(mut file) = std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-                {
-                    use std::io::Write;
-                    let log = serde_json::json!({"sessionId":"debug-session","runId":"deal-processor","hypothesisId":"C","location":"deal_processor.rs:439","message":"CompanyRegistration completed","data":{"companies_after":self.companies.len()},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-                    let _ = writeln!(file, "{}", log);
-                }
-                // #endregion
             }
             TransactionType::CompanyUpdate => {
                 let mut company_state = crate::company::CompanyState {

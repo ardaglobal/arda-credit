@@ -102,19 +102,6 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
     for db_user in &db_users {
         let user = convert_db_user_to_zkvm(db_user)?;
 
-        // #region agent log
-        // DEBUG: Log each user being added to state (Hypothesis A - System user missing)
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-        {
-            use std::io::Write;
-            let log = serde_json::json!({"sessionId":"debug-session","runId":"state-builder","hypothesisId":"A","location":"state_builder.rs:105","message":"User added to genesis state","data":{"user_email":db_user.email.clone(),"user_id_hash_first_8":format!("{:?}", &user.user_id[..8]),"user_type":format!("{:?}", user.user_type),"kyc_status":format!("{:?}", user.kyc_status)},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-            let _ = writeln!(file, "{}", log);
-        }
-        // #endregion
-
         users.insert(user.user_id, user);
     }
 

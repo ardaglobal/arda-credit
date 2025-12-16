@@ -130,27 +130,6 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
 
     // Convert database transactions to zkVM transactions
     let mut zkvm_transactions = Vec::new();
-
-    // #region agent log
-    // DEBUG: Log transaction types in batch (Hypothesis C - verify CompanyRegistration in batch)
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-    {
-        use std::io::Write;
-        let type_counts: std::collections::HashMap<String, usize> =
-            db_transactions
-                .iter()
-                .fold(std::collections::HashMap::new(), |mut acc, tx| {
-                    *acc.entry(tx.transaction_type.clone()).or_insert(0) += 1;
-                    acc
-                });
-        let log = serde_json::json!({"sessionId":"debug-session","runId":"batch-converter","hypothesisId":"C","location":"batch_converter.rs:133","message":"Transaction types in batch","data":{"type_counts":type_counts,"total_count":db_transactions.len()},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-        let _ = writeln!(file, "{}", log);
-    }
-    // #endregion
-
     for db_tx in &db_transactions {
         let zkvm_tx = convert_db_transaction_to_zkvm(db_tx, &deal_company_lookup)?;
         zkvm_transactions.push(zkvm_tx);
@@ -201,24 +180,6 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
         "✅ Sorted {} transactions in chronological order with dependency ordering",
         zkvm_transactions.len()
     );
-
-    // #region agent log
-    // DEBUG: Log ALL transaction types after sorting (Hypothesis C - verify CompanyRegistration position)
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-    {
-        use std::io::Write;
-        let tx_types: Vec<String> = zkvm_transactions
-            .iter()
-            .enumerate()
-            .map(|(i, tx)| format!("{}:{:?}", i, tx.transaction_type))
-            .collect();
-        let log = serde_json::json!({"sessionId":"debug-session","runId":"batch-converter","hypothesisId":"C","location":"batch_converter.rs:196","message":"Transaction order after sorting","data":{"transaction_types":tx_types},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-        let _ = writeln!(file, "{}", log);
-    }
-    // #endregion
 
     // Create batch ID hash from batch number
     let batch_id_bytes = batch_id.to_le_bytes();
