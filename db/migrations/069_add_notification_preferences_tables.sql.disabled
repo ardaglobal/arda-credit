@@ -9,7 +9,7 @@
 -- Table for storing user-specific notification preferences
 CREATE TABLE user_notification_preferences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     enabled_notifications JSONB NOT NULL DEFAULT '[]'::jsonb, -- Array of enabled notification types
     delivery_preferences JSONB NOT NULL DEFAULT '{}'::jsonb,  -- Map of notification_type -> delivery methods
     quiet_hours_start TIME,                                   -- Start of quiet hours (HH:MM)
@@ -29,7 +29,7 @@ CREATE TABLE user_notification_preferences (
 -- Table for storing webhook configurations for users/organizations
 CREATE TABLE user_webhook_configs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     url TEXT NOT NULL,
     secret VARCHAR(255),                                       -- Webhook secret for signature verification
@@ -77,7 +77,7 @@ CREATE TABLE webhook_delivery_logs (
 CREATE TABLE email_delivery_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     notification_id UUID NOT NULL REFERENCES ai_analysis_notifications(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     email_address VARCHAR(255) NOT NULL,
     subject VARCHAR(500) NOT NULL,
     email_provider VARCHAR(50),                               -- sendgrid, ses, smtp, etc.
@@ -97,7 +97,7 @@ CREATE TABLE email_delivery_logs (
 CREATE TABLE sms_delivery_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     notification_id UUID NOT NULL REFERENCES ai_analysis_notifications(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     phone_number VARCHAR(20) NOT NULL,
     message TEXT NOT NULL,
     sms_provider VARCHAR(50),                                 -- twilio, aws sns, etc.
@@ -145,7 +145,7 @@ CREATE TABLE notification_templates (
 -- Table for user-specific template customizations
 CREATE TABLE user_notification_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     template_id VARCHAR(100) NOT NULL REFERENCES notification_templates(id) ON DELETE CASCADE,
     title_template TEXT,                                     -- User's custom title template
     message_template TEXT,                                   -- User's custom message template

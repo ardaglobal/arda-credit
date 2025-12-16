@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id \n        FROM proof_batches \n        WHERE proof_status = 'proven' \n          AND superseded_at IS NULL\n        ORDER BY id DESC \n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c36087aac77a27a11b8a8bb932fe51f0ac4988f24eafd2d2ab3480f914ff7368"
+}

@@ -6,8 +6,8 @@
 //! CRITICAL: All logic in this module MUST exactly match the database implementation
 //! to ensure state root consistency between off-chain processing and ZK proofs.
 
+use crate::hash::{hash_internal_poseidon, hash_leaf_poseidon};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 // Re-export transaction prefixes constants to ensure consistency
 pub mod transaction_prefixes {
@@ -239,19 +239,14 @@ impl ZkVMAds {
         Self::compute_merkle_root_from_leaves(&leaves)
     }
 
-    /// Hash a nullifier for Merkle tree leaf
+    /// Hash a nullifier for Merkle tree leaf using Poseidon2
     /// This creates a leaf node hash from nullifier data
     fn hash_nullifier(nullifier: &ZkVMNullifier) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(nullifier.value.to_le_bytes());
-        hasher.update(nullifier.tree_index.to_le_bytes());
-        hasher.update(nullifier.next_value.to_le_bytes());
-        if let Some(next_idx) = nullifier.next_index {
-            hasher.update(next_idx.to_le_bytes());
-        } else {
-            hasher.update([0u8; 8]); // Pad for None case
-        }
-        hasher.finalize().into()
+        hash_leaf_poseidon(
+            nullifier.value,
+            nullifier.next_index.map(|v| v as i64),
+            nullifier.next_value,
+        )
     }
 
     /// Compute Merkle root from leaf hashes using standard binary tree construction
@@ -286,12 +281,9 @@ impl ZkVMAds {
         current_level[0]
     }
 
-    /// Hash two nodes together for parent node
+    /// Hash two nodes together for parent node using Poseidon2
     fn hash_pair(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(left);
-        hasher.update(right);
-        hasher.finalize().into()
+        hash_internal_poseidon(&left, &right)
     }
 
     /// Get the current root hash
@@ -325,6 +317,8 @@ mod tests {
         LoanTransaction {
             transaction_id,
             user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [2u8; 32], // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount,

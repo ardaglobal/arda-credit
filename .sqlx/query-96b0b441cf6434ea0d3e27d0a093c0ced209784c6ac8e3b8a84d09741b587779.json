@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, originator_id, investor_id\n        FROM deals\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "originator_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "96b0b441cf6434ea0d3e27d0a093c0ced209784c6ac8e3b8a84d09741b587779"
+}

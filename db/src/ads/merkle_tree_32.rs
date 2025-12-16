@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
+use lib::{hash_internal_poseidon, hash_leaf_poseidon};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Transaction};
 use std::collections::HashMap;
 use tracing::{debug, info, instrument, warn};
@@ -42,7 +42,7 @@ pub struct TreeMetrics {
     pub hash_operations: u32,     // Target: 96 for 32-level tree (3 * 32)
     pub database_operations: u32, // Minimized with batch operations
     pub proof_size: usize,        // 32 hashes = 1024 bytes
-    pub constraint_count: u32,    // ~96 * 8 = 768 Poseidon constraints
+    pub constraint_count: u32,    // ~96 * 8 = 768 Poseidon2 constraints
 }
 
 /// Tree statistics and state information
@@ -91,37 +91,36 @@ impl MerkleTree32 {
         &self.zero_hashes
     }
 
-    /// Precompute zero hashes for empty subtrees at each level
+    /// Precompute zero hashes for empty subtrees at each level using Poseidon2
     /// This eliminates database lookups for empty nodes, significantly improving performance
     #[instrument(level = "debug")]
     fn compute_zero_hashes(tree_height: usize) -> Vec<[u8; 32]> {
-        info!("🔢 Computing zero hashes for {} levels", tree_height);
+        info!(
+            "🔢 Computing Poseidon2 zero hashes for {} levels",
+            tree_height
+        );
         let mut zero_hashes = Vec::with_capacity(tree_height + 1);
 
-        // Level 0: hash of empty leaf (zero bytes)
-        let mut hasher = Sha256::new();
-        hasher.update(&[0u8; 32]); // Empty leaf value
-        let level0_hash: [u8; 32] = hasher.finalize().into();
+        // Level 0: hash of empty leaf (zero values)
+        let level0_hash = hash_leaf_poseidon(0, None, 0);
         zero_hashes.push(level0_hash);
 
-        debug!("Level 0 zero hash: {:02x?}", &level0_hash[..8]);
+        debug!("Level 0 zero hash (Poseidon2): {:02x?}", &level0_hash[..8]);
 
         // Each level: hash of two zero hashes from level below
         for level in 1..=tree_height {
-            let mut hasher = Sha256::new();
-            hasher.update(&zero_hashes[level - 1]);
-            hasher.update(&zero_hashes[level - 1]);
-            let current_level_hash: [u8; 32] = hasher.finalize().into();
+            let current_level_hash =
+                hash_internal_poseidon(&zero_hashes[level - 1], &zero_hashes[level - 1]);
             zero_hashes.push(current_level_hash);
 
             debug!(
-                "Level {} zero hash: {:02x?}",
+                "Level {} zero hash (Poseidon2): {:02x?}",
                 level,
                 &current_level_hash[..8]
             );
         }
 
-        info!("✅ Zero hash precomputation complete");
+        info!("✅ Poseidon2 zero hash precomputation complete");
         zero_hashes
     }
 
@@ -315,10 +314,7 @@ impl MerkleTree32 {
     /// Hash two 32-byte values using SHA-256
     #[instrument(skip(self, left, right), level = "debug")]
     fn hash_pair(&self, left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(left);
-        hasher.update(right);
-        hasher.finalize().into()
+        hash_internal_poseidon(left, right)
     }
 
     /// Generate Merkle proof for a leaf (32 sibling hashes)
@@ -648,7 +644,7 @@ impl MerkleTree32 {
             hash_operations: operations * 32,     // 32 hash ops per path to root
             database_operations: operations * 33, // 32 internal nodes + 1 leaf + root update
             proof_size: 32 * 32,                  // 32 hashes * 32 bytes = 1024 bytes
-            constraint_count: operations * 32 * 8, // Poseidon constraints: 8 per hash
+            constraint_count: operations * 32 * 8, // Poseidon2 constraints: 8 per hash
         }
     }
 }
@@ -673,15 +669,11 @@ impl MerkleProof32 {
         for (level, sibling_hash) in self.proof_hashes.iter().enumerate() {
             let is_right_child = (current_index % 2) == 1;
 
-            let mut hasher = Sha256::new();
-            if is_right_child {
-                hasher.update(sibling_hash);
-                hasher.update(&current_hash);
+            current_hash = if is_right_child {
+                hash_internal_poseidon(sibling_hash, &current_hash)
             } else {
-                hasher.update(&current_hash);
-                hasher.update(sibling_hash);
-            }
-            current_hash = hasher.finalize().into();
+                hash_internal_poseidon(&current_hash, sibling_hash)
+            };
             current_index = current_index / 2;
 
             debug!("Level {}: hash {:02x?}", level, &current_hash[..8]);
@@ -711,15 +703,11 @@ impl MerkleProof32 {
         for sibling_hash in &self.proof_hashes {
             let is_right_child = (current_index % 2) == 1;
 
-            let mut hasher = Sha256::new();
-            if is_right_child {
-                hasher.update(sibling_hash);
-                hasher.update(&current_hash);
+            current_hash = if is_right_child {
+                hash_internal_poseidon(sibling_hash, &current_hash)
             } else {
-                hasher.update(&current_hash);
-                hasher.update(sibling_hash);
-            }
-            current_hash = hasher.finalize().into();
+                hash_internal_poseidon(&current_hash, sibling_hash)
+            };
             current_index = current_index / 2;
         }
 

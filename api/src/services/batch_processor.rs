@@ -17,9 +17,9 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::config::types::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
 use arda_credit_db::{
-    get_batch_by_id, get_contract_submission_data, get_pending_transactions,
-    get_proven_unposted_batches, mark_batch_posted_to_contract_with_tx_hash, update_batch_proof,
-    IndexedMerkleTreeADS,
+    get_batch_proof_data, get_contract_submission_data, get_pending_deal_transactions,
+    get_proven_unposted_batches, mark_batch_posted_to_contract_with_tx_hash,
+    store_batch_proof_data, update_batch_proof, IndexedMerkleTreeADS,
 };
 use arda_credit_lib::proof::{generate_batch_proof, BatchProofGenerationRequest, ProofSystem};
 use ethereum_client::{Config as EthConfig, EthereumClient};
@@ -370,6 +370,37 @@ impl BackgroundBatchProcessor {
         info!("✅ Background batch processor stopped");
     }
 
+    /// Determine processing mode based on database state
+    ///
+    /// Returns Incremental if there are proven non-superseded batches, Genesis otherwise
+    async fn determine_processing_mode(
+        pool: &PgPool,
+    ) -> Result<crate::services::state_builder::StateLoadMode, String> {
+        use crate::services::state_builder::StateLoadMode;
+
+        // Check if there are any non-superseded proven batches
+        let has_proven_state = sqlx::query_scalar!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM proof_batches 
+                WHERE proof_status = 'proven' 
+                  AND superseded_at IS NULL
+            ) as "exists!"
+            "#
+        )
+        .fetch_one(pool)
+        .await
+        .map_err(|e| format!("Failed to check for proven batches: {}", e))?;
+
+        if has_proven_state {
+            info!("📊 Mode: Incremental (loading from latest proven batch)");
+            Ok(StateLoadMode::Incremental)
+        } else {
+            info!("🔄 Mode: FromGenesis (no proven batches, starting from empty state)");
+            Ok(StateLoadMode::FromGenesis)
+        }
+    }
+
     /// Check if we should process a batch (respecting minimum interval)
     fn should_process_batch(&self, last_batch_time: Instant) -> bool {
         let elapsed = last_batch_time.elapsed();
@@ -378,13 +409,14 @@ impl BackgroundBatchProcessor {
 
     /// Check if count trigger should fire
     async fn check_count_trigger(&self) -> Result<bool, String> {
-        match get_pending_transactions(&self.pool).await {
+        // Use new deal_transactions table instead of incoming_transactions
+        match get_pending_deal_transactions(&self.pool, Some(1000)).await {
             Ok(transactions) => {
                 let count = transactions.len();
-                debug!("📊 Current pending transactions: {}", count);
+                debug!("📊 Current pending deal transactions: {}", count);
                 Ok(count >= self.config.count_trigger_threshold)
             }
-            Err(e) => Err(format!("Failed to get pending transactions: {}", e)),
+            Err(e) => Err(format!("Failed to get pending deal transactions: {}", e)),
         }
     }
 
@@ -393,9 +425,11 @@ impl BackgroundBatchProcessor {
     async fn process_batch(&self, trigger_type: &str) -> Result<Option<i32>, String> {
         let start_time = std::time::Instant::now();
 
+        // Determine processing mode (genesis vs incremental)
+        let mode = Self::determine_processing_mode(&self.pool).await?;
         info!(
-            "🔄 UNIFIED: Processing batch via {} trigger (using unified service)",
-            trigger_type
+            "🔄 UNIFIED: Processing batch via {} trigger (mode: {:?}, using unified service)",
+            trigger_type, mode
         );
 
         // Use unified batch service for consistent ADS integration
@@ -633,38 +667,36 @@ impl BackgroundBatchProcessor {
     async fn submit_proof_fast(pool: &PgPool, batch_id: i32) -> Result<(), String> {
         info!("🚀 Fast proof submission for batch {}", batch_id);
 
-        // Get batch details and transaction amounts
-        let batch = get_batch_by_id(pool, batch_id)
+        // Build GlobalLoanState from database
+        info!("🔨 Building GlobalLoanState for batch {}", batch_id);
+        let initial_state = crate::services::state_builder::build_global_loan_state(pool)
             .await
-            .map_err(|e| format!("Failed to get batch {}: {}", batch_id, e))?;
+            .map_err(|e| format!("Failed to build GlobalLoanState: {}", e))?;
 
-        let transaction_amounts: Vec<i32> = sqlx::query!(
-            "SELECT amount FROM incoming_transactions WHERE id = ANY($1) ORDER BY id",
-            &batch.transaction_ids
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| format!("Failed to get transaction amounts: {}", e))?
-        .into_iter()
-        .map(|row| row.amount)
-        .collect();
+        // Get ADS state (create empty for now - will be integrated with ADS service)
+        let ads_state = arda_credit_lib::ZkVMAds::new();
 
-        let initial_balance = batch.previous_counter_value as i32;
+        // Convert batch to DealBatch format
+        info!("🔄 Converting batch {} to DealBatch format", batch_id);
+        let deal_batch = crate::services::batch_converter::convert_to_deal_batch(pool, batch_id)
+            .await
+            .map_err(|e| format!("Failed to convert batch: {}", e))?;
 
-        // Create proof request
+        // Create proof request with full state structures
         let proof_request = BatchProofGenerationRequest {
-            initial_balance,
-            transactions: transaction_amounts,
+            initial_state,
+            ads_state,
+            batch: deal_batch,
             proof_system: ProofSystem::default(),
             generate_fixtures: false,
         };
 
-        // Submit to Sindri and immediately store the proof ID
+        // Generate proof (local or Sindri based on environment) and store immediately
         match generate_batch_proof(proof_request).await {
             Ok(proof_response) => {
                 info!(
-                    "✅ Got Sindri proof ID for batch {}: {}",
-                    batch_id, proof_response.proof_id
+                    "✅ Generated proof for batch {}: {} (status: {})",
+                    batch_id, proof_response.proof_id, proof_response.status
                 );
 
                 // Immediately store the proof ID in database
@@ -674,21 +706,49 @@ impl BackgroundBatchProcessor {
                     _ => "pending",
                 };
 
-                if let Err(e) =
-                    update_batch_proof(pool, batch_id, &proof_response.proof_id, status).await
-                {
-                    error!("❌ Failed to store proof ID for batch {}: {}", batch_id, e);
-                    return Err(format!("Failed to store proof ID: {}", e));
-                }
+                // ✅ NEW: Store complete proof data if available (self-sufficient architecture)
+                if let Some(proof_data) = &proof_response.proof_data {
+                    if let Err(e) = arda_credit_db::store_batch_proof_data(
+                        pool,
+                        batch_id,
+                        &proof_response.proof_id,
+                        &proof_data.proof_bytes,
+                        &proof_data.public_values,
+                        &proof_data.verifying_key,
+                    )
+                    .await
+                    {
+                        error!(
+                            "❌ Failed to store proof data for batch {}: {}",
+                            batch_id, e
+                        );
+                        return Err(format!("Failed to store proof data: {}", e));
+                    }
 
-                info!(
-                    "📝 Stored proof ID {} for batch {} with status {}",
-                    proof_response.proof_id, batch_id, status
-                );
+                    info!(
+                        "💾 Stored complete proof data for batch {}: {} KB proof, {} KB public values",
+                        batch_id,
+                        proof_data.proof_bytes.len() / 1024,
+                        proof_data.public_values.len() / 1024
+                    );
+                } else {
+                    // Fallback: Only store proof_id (for async Sindri proofs that aren't ready yet)
+                    if let Err(e) =
+                        update_batch_proof(pool, batch_id, &proof_response.proof_id, status).await
+                    {
+                        error!("❌ Failed to store proof ID for batch {}: {}", batch_id, e);
+                        return Err(format!("Failed to store proof ID: {}", e));
+                    }
+
+                    info!(
+                        "📝 Stored proof ID {} for batch {} with status {} (proof data pending)",
+                        proof_response.proof_id, batch_id, status
+                    );
+                }
                 Ok(())
             }
             Err(e) => {
-                error!("❌ Sindri submission failed for batch {}: {}", batch_id, e);
+                error!("❌ Proof generation failed for batch {}: {}", batch_id, e);
 
                 // Store error state
                 let error_id = format!("error_{}", batch_id);
@@ -701,7 +761,7 @@ impl BackgroundBatchProcessor {
                     );
                 }
 
-                Err(format!("Sindri submission failed: {}", e))
+                Err(format!("Proof generation failed: {}", e))
             }
         }
     }
@@ -753,68 +813,37 @@ impl BackgroundBatchProcessor {
     pub async fn generate_proof_for_batch(pool: &PgPool, batch_id: i32) -> Result<(), String> {
         info!("🔐 Starting proof generation for batch: {}", batch_id);
 
-        // Get batch details
-        info!("📋 Fetching batch details for batch {}", batch_id);
-        let batch = get_batch_by_id(pool, batch_id).await.map_err(|e| {
-            error!("❌ Failed to get batch {}: {}", batch_id, e);
-            format!("Failed to get batch {}: {}", batch_id, e)
-        })?;
-        info!(
-            "✅ Retrieved batch details: transaction_ids={:?}",
-            batch.transaction_ids
-        );
+        // Determine processing mode
+        let mode = Self::determine_processing_mode(pool).await?;
+        info!("📊 Processing mode: {:?}", mode);
 
-        // Get individual transaction amounts for the batch
-        info!("📋 Fetching transaction amounts for batch {}", batch_id);
-        let transaction_amounts: Vec<i32> = sqlx::query!(
-            "SELECT amount FROM incoming_transactions WHERE id = ANY($1) ORDER BY id",
-            &batch.transaction_ids
-        )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| {
-            error!(
-                "❌ Failed to get transaction amounts for batch {}: {}",
-                batch_id, e
-            );
-            format!("Failed to get transaction amounts: {}", e)
-        })?
-        .into_iter()
-        .map(|row| row.amount)
-        .collect();
-        info!(
-            "✅ Retrieved transaction amounts: {:?}",
-            transaction_amounts
-        );
+        // Build GlobalLoanState based on mode
+        info!("🔨 Building GlobalLoanState for batch {}", batch_id);
+        let initial_state =
+            crate::services::state_builder::build_global_loan_state_with_mode(pool, mode)
+                .await
+                .map_err(|e| {
+                    error!("❌ Failed to build GlobalLoanState: {}", e);
+                    format!("Failed to build GlobalLoanState: {}", e)
+                })?;
 
-        let initial_balance = batch.previous_counter_value as i32;
-        let expected_final = initial_balance + transaction_amounts.iter().sum::<i32>();
-        let actual_final = batch.final_counter_value as i32;
+        // Get ADS state (create empty for now - will be integrated with ADS service)
+        let ads_state = arda_credit_lib::ZkVMAds::new();
+
+        // Convert batch to DealBatch format
+        info!("🔄 Converting batch {} to DealBatch format", batch_id);
+        let deal_batch = crate::services::batch_converter::convert_to_deal_batch(pool, batch_id)
+            .await
+            .map_err(|e| {
+                error!("❌ Failed to convert batch: {}", e);
+                format!("Failed to convert batch: {}", e)
+            })?;
 
         info!(
-            "🧮 Batch {} calculation check: initial={}, sum={}, expected_final={}, actual_final={}",
-            batch_id,
-            initial_balance,
-            transaction_amounts.iter().sum::<i32>(),
-            expected_final,
-            actual_final
-        );
-
-        // Sanity check
-        if expected_final != actual_final {
-            error!(
-                "❌ Batch {} transaction sum mismatch: expected {}, got {}",
-                batch_id, expected_final, actual_final
-            );
-            return Err(format!(
-                "Batch {} transaction sum mismatch: expected {}, got {}",
-                batch_id, expected_final, actual_final
-            ));
-        }
-
-        info!(
-            "📊 Batch {} proof parameters: initial={}, transactions={:?}, final={}",
-            batch_id, initial_balance, transaction_amounts, actual_final
+            "✅ Prepared proof inputs: {} users, {} deals, {} transactions",
+            initial_state.users.len(),
+            initial_state.loans.len(),
+            deal_batch.transactions.len()
         );
 
         // Create batch proof generation request
@@ -823,15 +852,12 @@ impl BackgroundBatchProcessor {
             batch_id
         );
         let proof_request = BatchProofGenerationRequest {
-            initial_balance,
-            transactions: transaction_amounts.clone(),
+            initial_state,
+            ads_state,
+            batch: deal_batch,
             proof_system: ProofSystem::default(), // Use Groth16 by default
             generate_fixtures: false,             // Don't generate fixtures in production
         };
-        info!(
-            "✅ Created proof request: initial={}, transactions={:?}, proof_system={:?}",
-            proof_request.initial_balance, proof_request.transactions, proof_request.proof_system
-        );
 
         // Generate proof via Sindri
         info!(
@@ -852,17 +878,41 @@ impl BackgroundBatchProcessor {
                     _ => "pending", // Default for "Pending" or other statuses
                 };
 
-                if let Err(e) =
-                    update_batch_proof(pool, batch_id, &proof_response.proof_id, status).await
-                {
-                    error!("Failed to update batch {} with proof ID: {}", batch_id, e);
-                    return Err(format!("Failed to update batch with proof ID: {}", e));
-                }
+                // ✅ NEW: Store complete proof data if available (self-sufficient architecture)
+                if let Some(proof_data) = &proof_response.proof_data {
+                    if let Err(e) = store_batch_proof_data(
+                        pool,
+                        batch_id,
+                        &proof_response.proof_id,
+                        &proof_data.proof_bytes,
+                        &proof_data.public_values,
+                        &proof_data.verifying_key,
+                    )
+                    .await
+                    {
+                        error!("Failed to store proof data for batch {}: {}", batch_id, e);
+                        return Err(format!("Failed to store proof data: {}", e));
+                    }
 
-                info!(
-                    "📝 Updated batch {} with Sindri proof ID: {} (status: {})",
-                    batch_id, proof_response.proof_id, status
-                );
+                    info!(
+                        "💾 Stored complete proof data for batch {}: {} KB",
+                        batch_id,
+                        proof_data.proof_bytes.len() / 1024
+                    );
+                } else {
+                    // Fallback: Only store proof_id
+                    if let Err(e) =
+                        update_batch_proof(pool, batch_id, &proof_response.proof_id, status).await
+                    {
+                        error!("Failed to update batch {} with proof ID: {}", batch_id, e);
+                        return Err(format!("Failed to update batch with proof ID: {}", e));
+                    }
+
+                    info!(
+                        "📝 Updated batch {} with proof ID: {} (status: {}, data pending)",
+                        batch_id, proof_response.proof_id, status
+                    );
+                }
 
                 if status == "failed" {
                     Err(format!(
@@ -929,23 +979,101 @@ impl BackgroundBatchProcessor {
         }
 
         // Try to initialize Ethereum client (graceful fallback if not configured)
+        // Check if we're in local environment where contract posting is not expected
+        let server_env =
+            std::env::var("SERVER_ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
+        let is_local = server_env == "local" || server_env == "staging";
+
         let eth_client = match EthConfig::from_env() {
-            Ok(config) => match EthereumClient::new(config).await {
-                Ok(client) => Some(client),
-                Err(e) => {
-                    error!("❌ Failed to initialize Ethereum client: {}", e);
-                    error!("   Smart contract posting will be skipped");
-                    return Ok(());
+            Ok(config) => {
+                match EthereumClient::new(config).await {
+                    Ok(client) => Some(client),
+                    Err(e) => {
+                        if is_local {
+                            debug!(
+                                "ℹ️  Ethereum client not available in {} environment: {}",
+                                server_env, e
+                            );
+                            debug!("   Marking batches as local-only (no contract posting)");
+
+                            // Mark all unposted batches as "local-only" to prevent retry loop
+                            for batch in &unposted_batches {
+                                if let Err(mark_err) = mark_batch_posted_to_contract_with_tx_hash(
+                                    pool,
+                                    batch.id,
+                                    "local-only",
+                                )
+                                .await
+                                {
+                                    warn!(
+                                        "⚠️  Failed to mark batch {} as local-only: {}",
+                                        batch.id, mark_err
+                                    );
+                                } else {
+                                    debug!(
+                                        "✅ Marked batch {} as local-only (no contract posting)",
+                                        batch.id
+                                    );
+                                }
+                            }
+                        } else {
+                            error!("❌ Failed to initialize Ethereum client: {}", e);
+                            error!("   Smart contract posting will be skipped");
+                        }
+                        return Ok(());
+                    }
                 }
-            },
+            }
             Err(e) => {
-                error!("❌ Ethereum configuration not found: {}", e);
-                error!("   Smart contract posting will be skipped");
+                if is_local {
+                    debug!(
+                        "ℹ️  Ethereum config not set in {} environment (expected)",
+                        server_env
+                    );
+                    debug!("   Marking batches as local-only (no contract posting)");
+
+                    // Mark all unposted batches as "local-only" to prevent retry loop
+                    for batch in &unposted_batches {
+                        if let Err(mark_err) =
+                            mark_batch_posted_to_contract_with_tx_hash(pool, batch.id, "local-only")
+                                .await
+                        {
+                            warn!(
+                                "⚠️  Failed to mark batch {} as local-only: {}",
+                                batch.id, mark_err
+                            );
+                        } else {
+                            debug!(
+                                "✅ Marked batch {} as local-only (no contract posting)",
+                                batch.id
+                            );
+                        }
+                    }
+                } else {
+                    error!("❌ Ethereum configuration not found: {}", e);
+                    error!("   Smart contract posting will be skipped");
+                }
                 return Ok(());
             }
         };
 
         let eth_client = eth_client.unwrap();
+
+        // Check if we're in local environment where Core proofs are used
+        // Core proofs cannot be verified on-chain, so skip contract posting
+        let server_env = std::env::var("SERVER_ENVIRONMENT")
+            .unwrap_or_else(|_| "local".to_string())
+            .to_lowercase();
+
+        if server_env == "local" || server_env == "staging" {
+            info!(
+                "⚠️ Skipping on-chain contract posting for {} environment",
+                server_env
+            );
+            info!("   Core proofs generated locally cannot be verified on-chain");
+            info!("   Only Plonk/Groth16 proofs from Sindri (sandbox/production) support on-chain verification");
+            return Ok(());
+        }
 
         for batch in unposted_batches {
             // Submit to contract with retry logic and confirmation waiting
@@ -1058,29 +1186,80 @@ impl BackgroundBatchProcessor {
     ) -> Result<FixedBytes<32>, String> {
         info!("🚀 Submitting batch {} to smart contract", batch.id);
 
-        // Get the Sindri proof ID from the batch
-        let sindri_proof_id = batch
-            .sindri_proof_id
-            .as_ref()
-            .ok_or_else(|| "Batch has no Sindri proof ID".to_string())?;
-
-        // Fetch actual proof data from Sindri
+        // ✅ NEW: Fetch proof data from DATABASE (self-sufficient architecture)
         info!(
-            "📥 Fetching real proof data from Sindri for proof ID: {}",
-            sindri_proof_id
+            "💾 Retrieving proof data from DATABASE for batch {}",
+            batch.id
         );
-        let proof_data = match arda_credit_lib::proof::get_sindri_proof_data(sindri_proof_id).await
-        {
-            Ok(data) => {
-                info!("✅ Successfully retrieved proof data from Sindri");
-                info!("   Proof size: {} bytes", data.proof_bytes.len());
+        let proof_data = match get_batch_proof_data(pool, batch.id).await {
+            Ok(Some(data)) => {
+                info!(
+                    "✅ Retrieved proof data from DATABASE for batch {}",
+                    batch.id
+                );
+                info!(
+                    "   Proof size: {} bytes ({} KB)",
+                    data.proof_bytes.len(),
+                    data.proof_bytes.len() / 1024
+                );
                 info!("   Public values size: {} bytes", data.public_values.len());
                 info!("   Verifying key size: {} bytes", data.verifying_key.len());
                 data
             }
+            Ok(None) => {
+                // No proof data in database - try Sindri fallback
+                warn!("⚠️  No proof data in database for batch {}", batch.id);
+
+                let sindri_proof_id = batch.sindri_proof_id.as_ref().ok_or_else(|| {
+                    "Batch has no proof data in DB and no Sindri proof ID".to_string()
+                })?;
+
+                warn!(
+                    "⚠️  Attempting fallback to Sindri for proof ID: {}",
+                    sindri_proof_id
+                );
+
+                match arda_credit_lib::proof::get_sindri_proof_data(sindri_proof_id).await {
+                    Ok(lib_data) => {
+                        info!("✅ Retrieved proof data from Sindri (fallback)");
+                        info!("   Proof size: {} bytes", lib_data.proof_bytes.len());
+
+                        // Store in database for future use
+                        if let Err(e) = store_batch_proof_data(
+                            pool,
+                            batch.id,
+                            sindri_proof_id,
+                            &lib_data.proof_bytes,
+                            &lib_data.public_values,
+                            &lib_data.verifying_key,
+                        )
+                        .await
+                        {
+                            warn!("⚠️  Failed to cache proof data in database: {}", e);
+                        } else {
+                            info!("💾 Cached proof data in database for future use");
+                        }
+
+                        // Convert lib::SindriProofData to db::SindriProofData
+                        arda_credit_db::SindriProofData {
+                            proof_id: lib_data.proof_id,
+                            proof_bytes: lib_data.proof_bytes,
+                            public_values: lib_data.public_values,
+                            verifying_key: lib_data.verifying_key,
+                        }
+                    }
+                    Err(e) => {
+                        error!("❌ Sindri fallback also failed: {}", e);
+                        return Err(format!(
+                            "No proof data in database and Sindri fetch failed: {}",
+                            e
+                        ));
+                    }
+                }
+            }
             Err(e) => {
-                error!("❌ Failed to retrieve proof data from Sindri: {}", e);
-                return Err(format!("Failed to fetch proof data from Sindri: {}", e));
+                error!("❌ Database error retrieving proof data: {}", e);
+                return Err(format!("Database error: {}", e));
             }
         };
 
@@ -1223,7 +1402,7 @@ impl BackgroundBatchProcessor {
                     hex::encode(previous_state_root)
                 );
                 info!("   New state root: 0x{}", hex::encode(new_state_root));
-                info!("   Used Sindri proof ID: {}", sindri_proof_id);
+                info!("   Used proof ID: {}", proof_data.proof_id);
                 info!("   🎉 No more placeholder state roots - using real ADS-generated Merkle roots!");
 
                 // Return the transaction hash for tracking

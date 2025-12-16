@@ -123,7 +123,9 @@ pub async fn receive_detection_result(
         .filter(|m| m.both_deals_active && !m.is_same_deal)
         .collect();
 
-    if !concerning_matches.is_empty() {
+    let has_concerning_matches = !concerning_matches.is_empty();
+
+    if has_concerning_matches {
         warn!(
             "⚠️  Collateral {} has {} concerning matches (both deals active)",
             collateral_id,
@@ -195,6 +197,31 @@ pub async fn receive_detection_result(
             "Failed to record collateral detection update transaction: {}",
             e
         );
+    }
+
+    // Record detection update in deal_transactions for zkVM proof generation
+    if let Err(e) = state
+        .transaction_recording
+        .record_transaction(
+            arda_credit_lib::transactions::TransactionType::CollateralDetectionUpdate,
+            Uuid::nil(), // System transaction (not triggered by specific user)
+            None,        // No specific deal (collateral-level event)
+            rust_decimal::Decimal::ZERO,
+            Some(serde_json::json!({
+                "collateral_id": collateral_id.to_string(),
+                "detection_status": result.detection_status,
+                "match_count": result.match_count,
+                "analyzed_at": result.analyzed_at,
+                "has_concerning_matches": has_concerning_matches,
+            })),
+        )
+        .await
+    {
+        warn!(
+            "Failed to record detection update in deal_transactions for zkVM: {}",
+            e
+        );
+        // Log but don't fail - detection result was already stored
     }
 
     // Store all matches in collateral_matches table

@@ -49,7 +49,7 @@ CREATE TABLE ai_change_analyses (
 -- Table for AI chat sessions and conversations
 CREATE TABLE ai_chat_sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
     deal_id UUID REFERENCES deals(id) ON DELETE CASCADE, -- If integrated with deal management
     session_name VARCHAR(255),
@@ -65,7 +65,7 @@ CREATE TABLE ai_chat_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES ai_chat_sessions(id) ON DELETE CASCADE,
     document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
     content TEXT NOT NULL,
     context JSONB DEFAULT '{}'::jsonb,
@@ -95,7 +95,7 @@ CREATE TABLE ai_negotiation_insights (
     confidence_score DECIMAL(3,2) DEFAULT 0.0,
     tags JSONB DEFAULT '[]'::jsonb,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'addressed', 'dismissed')),
-    created_by_user_id UUID REFERENCES identities(id) ON DELETE SET NULL,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -103,7 +103,7 @@ CREATE TABLE ai_negotiation_insights (
 -- Table for AI model performance and feedback
 CREATE TABLE ai_feedback (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     analysis_id UUID REFERENCES ai_document_analyses(id) ON DELETE CASCADE,
     message_id UUID REFERENCES ai_chat_messages(id) ON DELETE CASCADE,
     insight_id UUID REFERENCES ai_negotiation_insights(id) ON DELETE CASCADE,
@@ -128,7 +128,7 @@ CREATE TABLE ai_analysis_triggers (
     is_active BOOLEAN NOT NULL DEFAULT true,
     last_triggered_at TIMESTAMP WITH TIME ZONE,
     next_trigger_at TIMESTAMP WITH TIME ZONE,
-    created_by_user_id UUID REFERENCES identities(id) ON DELETE SET NULL,
+    created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -137,7 +137,7 @@ CREATE TABLE ai_analysis_triggers (
 CREATE TABLE ai_analysis_notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     analysis_id UUID NOT NULL REFERENCES ai_document_analyses(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     notification_type VARCHAR(50) NOT NULL, -- analysis_complete, critical_change, insight_ready
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
