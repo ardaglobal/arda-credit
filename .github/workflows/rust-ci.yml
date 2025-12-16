@@ -75,7 +75,7 @@ jobs:
           ~/.sp1/bin/cargo-prove prove build
 
       - name: Upload SP1 program artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: sp1-program-${{ github.run_id }}
           path: |
