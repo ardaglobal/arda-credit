@@ -145,7 +145,10 @@ pub async fn generate_batch_proof(
 
     match server_env.as_str() {
         "local" | "dev" => {
-            info!("🏠 Using local SP1 prover for {} environment (no contract posting)", server_env);
+            info!(
+                "🏠 Using local SP1 prover for {} environment (no contract posting)",
+                server_env
+            );
             generate_batch_proof_local(request).await
         }
         "staging" | "sandbox" | "production" => {
