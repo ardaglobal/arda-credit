@@ -394,6 +394,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id,
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id, // was loan_id, now deal_id field
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount,
@@ -448,7 +450,9 @@ mod tests {
         // Then make payment
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id,                         // was borrower_id
+            user_id: originator_id, // was borrower_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                        // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 5000,                                   // $50.00 payment
@@ -486,7 +490,9 @@ mod tests {
         // Full payment
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id,                         // was borrower_id
+            user_id: originator_id, // was borrower_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                        // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 10000,                                  // Full payment
@@ -524,7 +530,9 @@ mod tests {
 
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id,                         // was borrower_id
+            user_id: originator_id, // was borrower_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                        // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 10000,                                  // Full payment
@@ -538,7 +546,9 @@ mod tests {
         // Now closeout
         let closeout_transaction = LoanTransaction {
             transaction_id: [5u8; 32],
-            user_id: originator_id,                          // was borrower_id
+            user_id: originator_id, // was borrower_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                         // was loan_id, now deal_id field
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
@@ -575,7 +585,9 @@ mod tests {
         // Try to closeout without paying off
         let closeout_transaction = LoanTransaction {
             transaction_id: [5u8; 32],
-            user_id: originator_id,                          // was borrower_id
+            user_id: originator_id, // was borrower_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                         // was loan_id, now deal_id field
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
@@ -612,7 +624,9 @@ mod tests {
         // Try to overpay
         let payment_transaction = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id,                         // was borrower_id
+            user_id: originator_id, // was borrower_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                        // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 15000,                                  // More than outstanding balance

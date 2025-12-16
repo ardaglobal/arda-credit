@@ -386,11 +386,11 @@ impl NullifierDb {
         }
 
         // Insert new nullifier with appropriate pointers
-        let (next_index, next_value) = if is_empty_tree {
-            // First nullifier: no next pointer (it's the maximum)
+        let (next_index, next_value) = if is_empty_tree && low_nullifier.next_value == 0 {
+            // Truly empty tree: first nullifier has no next pointer (it's the maximum)
             (None::<i64>, 0i64)
         } else {
-            // Normal insertion: inherit pointers from low nullifier
+            // Normal insertion OR virtual low nullifier: inherit pointers from low nullifier
             (low_nullifier.next_index, low_nullifier.next_value)
         };
 
@@ -1529,10 +1529,8 @@ impl MerkleTreeDb {
         info!("Starting complete nullifier insertion for value: {}", value);
 
         // Use the atomic insertion which handles the full 7-step process
+        // Note: atomic_insert already increments total_nullifiers in the SQL function
         let result = self.nullifiers.atomic_insert(value).await?;
-
-        // Update tree state
-        self.state.increment_nullifier_count(None).await?;
 
         // Validate the chain integrity after insertion
         let chain_valid = self.nullifiers.validate_chain().await?;
@@ -1802,6 +1800,9 @@ impl IndexedMerkleTree {
         metrics.database_rounds += 1;
         let new_root = self.get_root().await?;
         debug!("📊 New root: {:02x?}", &new_root[..8]);
+
+        // Increment nullifier count in tree_state
+        self.db.state.increment_nullifier_count(None).await?;
 
         // Generate proofs (additional hash operations)
         let (insertion_proof, proof_metrics) = self

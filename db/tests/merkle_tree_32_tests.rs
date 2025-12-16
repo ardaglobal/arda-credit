@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use db::ads::merkle_tree_32::{BatchUpdate, MerkleTree32};
+    use lib::{hash_internal_poseidon, hash_leaf_poseidon};
     use sqlx::PgPool;
     use tracing::info;
     use tracing_test::traced_test;
@@ -65,21 +66,16 @@ mod tests {
         // Verify zero hash computation properties
         let zero_hashes = tree.zero_hashes();
 
-        // Level 0 should be hash of 32 zero bytes
-        let mut hasher = Sha256::new();
-        hasher.update(&[0u8; 32]);
-        let expected_level_0: [u8; 32] = hasher.finalize().into();
+        // Level 0 should be hash_leaf_poseidon(0, None, 0)
+        let expected_level_0 = hash_leaf_poseidon(0, None, 0);
         assert_eq!(
             zero_hashes[0], expected_level_0,
             "Level 0 zero hash incorrect"
         );
 
-        // Each level should be hash of two hashes from level below
+        // Each level should be Poseidon2 hash of two hashes from level below
         for level in 1..=32 {
-            let mut hasher = Sha256::new();
-            hasher.update(&zero_hashes[level - 1]);
-            hasher.update(&zero_hashes[level - 1]);
-            let expected: [u8; 32] = hasher.finalize().into();
+            let expected = hash_internal_poseidon(&zero_hashes[level - 1], &zero_hashes[level - 1]);
             assert_eq!(
                 zero_hashes[level], expected,
                 "Level {} zero hash incorrect",

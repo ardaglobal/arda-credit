@@ -859,6 +859,9 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
             .await
             .map_err(|e| AdsError::InsertionFailed(e.to_string()))?;
 
+        // Increment nullifier count after successful insertion
+        tree_guard.db.state.increment_nullifier_count(None).await?;
+
         drop(tree_guard); // Release lock early
 
         // Generate witness data for ZK circuits

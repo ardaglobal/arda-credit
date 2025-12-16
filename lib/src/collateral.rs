@@ -719,6 +719,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [98u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: collateral_id,
             transaction_type: TransactionType::CollateralUpdate,
             amount: 0,

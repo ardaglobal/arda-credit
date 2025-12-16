@@ -963,6 +963,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [1u8; 32],
             user_id,
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
@@ -975,11 +977,31 @@ mod tests {
         LoanTransaction {
             transaction_id: [2u8; 32],
             user_id,
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::KycVerification,
             amount: 0,
             created_at: 1_640_995_300, // January 1, 2022 - valid timestamp
             metadata: MetadataArray::from_bytes(&[u8::from(approved)]),
+        }
+    }
+
+    fn create_company_registration(company_id: [u8; 32], created_at: u64) -> LoanTransaction {
+        use crate::company::CompanyStatus;
+        let mut metadata = MetadataArray::empty();
+        metadata.as_mut_bytes()[0] = CompanyStatus::Active as u8;
+
+        LoanTransaction {
+            transaction_id: [11u8; 32], // Unique ID for company registration
+            user_id: [0u8; 32],         // System transaction
+            originator_company_id: company_id,
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32],
+            transaction_type: TransactionType::CompanyRegistration,
+            amount: 0,
+            created_at,
+            metadata,
         }
     }
 
@@ -996,7 +1018,9 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id: originator_id, // was borrower_id
-            deal_id,                // Keep deal_id field name
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
+            deal_id,                                            // Keep deal_id field name
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount,
             created_at: 1_640_995_400, // January 1, 2022 - valid timestamp
@@ -1032,7 +1056,13 @@ mod tests {
         assert_eq!(originator.kyc_status, KycStatus::Approved);
         assert_eq!(investor.kyc_status, KycStatus::Approved);
 
-        // 3. Give investor sufficient balance for deal origination (for testing)
+        // 3. Register companies before deal origination
+        let originator_company_reg = create_company_registration(originator_id, 1_640_995_050);
+        let investor_company_reg = create_company_registration(investor_id, 1_640_995_060);
+        state.process_transaction(&originator_company_reg).unwrap();
+        state.process_transaction(&investor_company_reg).unwrap();
+
+        // 4. Give investor sufficient balance for deal origination (for testing)
         let initial_funding = BalanceUpdate::new(
             [99u8; 32],  // funding transaction ID
             investor_id, // was lender_id
@@ -1047,7 +1077,7 @@ mod tests {
         .unwrap();
         state.balance_state.apply_update(initial_funding).unwrap();
 
-        // 4. Deal origination
+        // 5. Deal origination
         let deal_origination = create_deal_origination(deal_id, originator_id, investor_id, 50000);
         state.process_transaction(&deal_origination).unwrap();
 
@@ -1058,7 +1088,9 @@ mod tests {
         // 5. Deal payment
         let payment = LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: originator_id,                         // was borrower_id
+            user_id: originator_id, // was borrower_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                        // Keep deal_id field name
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 25000,                                  // Partial payment
@@ -1074,7 +1106,9 @@ mod tests {
         // 5. Final payment
         let final_payment = LoanTransaction {
             transaction_id: [5u8; 32],
-            user_id: originator_id,                         // was borrower_id
+            user_id: originator_id, // was borrower_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                        // Keep deal_id field name
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 25000,                                  // Final payment
@@ -1090,7 +1124,9 @@ mod tests {
         // 6. Deal closeout
         let closeout = LoanTransaction {
             transaction_id: [6u8; 32],
-            user_id: investor_id,                            // was lender_id
+            user_id: investor_id, // was lender_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                         // Keep deal_id field name
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,
@@ -1103,7 +1139,16 @@ mod tests {
         assert_eq!(deal.deal_status, LoanStatus::Closed); // Keep loan_status for compatibility
 
         // Verify transaction count
-        assert_eq!(state.transaction_count, 8); // 2 registrations + 2 KYC verifications + 1 origination + 2 payments + 1 closeout
+        // 4 user regs + 4 company regs + 4 KYC submissions + 4 KYC verifications + 3 deal origination + 4 payments + 2 closeout
+        // Transaction count:
+        // - 2 user registrations
+        // - 2 KYC verifications
+        // - 2 company registrations
+        // - 1 deal origination
+        // - 2 payments
+        // - 1 closeout
+        // Total = 10
+        assert_eq!(state.transaction_count, 10);
     }
 
     #[test]
@@ -1185,7 +1230,9 @@ mod tests {
         let base_timestamp = 1_640_995_200; // January 1, 2022
         let deal_tx = LoanTransaction {
             transaction_id: [10u8; 32],
-            user_id: investor_id,                               // was lender_id
+            user_id: investor_id, // was lender_id
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id,                                            // Keep deal_id field name
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount: 1_000_000,                                  // $10,000 in cents
@@ -1247,7 +1294,9 @@ mod tests {
         let originator_reg_tx = LoanTransaction {
             transaction_id: [4u8; 32],
             user_id: originator_id, // was borrower_id
-            deal_id: [0u8; 32],     // Keep deal_id field name
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
             created_at: base_timestamp + 1000,
@@ -1261,7 +1310,9 @@ mod tests {
         let investor_reg_tx = LoanTransaction {
             transaction_id: [5u8; 32],
             user_id: investor_id, // was lender_id
-            deal_id: [0u8; 32],   // Keep deal_id field name
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
             created_at: base_timestamp + 1100,
@@ -1269,11 +1320,20 @@ mod tests {
         };
         state.process_transaction(&investor_reg_tx).unwrap();
 
+        // Register companies for deal participation
+        let originator_company_reg =
+            create_company_registration(originator_id, base_timestamp + 1500);
+        let investor_company_reg = create_company_registration(investor_id, base_timestamp + 1600);
+        state.process_transaction(&originator_company_reg).unwrap();
+        state.process_transaction(&investor_company_reg).unwrap();
+
         // Submit KYC for originator
         let originator_kyc_submit_tx = LoanTransaction {
             transaction_id: [6u8; 32],
             user_id: originator_id, // was borrower_id
-            deal_id: [0u8; 32],     // Keep deal_id field name
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
             created_at: base_timestamp + 2000,
@@ -1287,7 +1347,9 @@ mod tests {
         let investor_kyc_submit_tx = LoanTransaction {
             transaction_id: [7u8; 32],
             user_id: investor_id, // was lender_id
-            deal_id: [0u8; 32],   // Keep deal_id field name
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
             created_at: base_timestamp + 2100,
@@ -1301,7 +1363,9 @@ mod tests {
         let originator_kyc_verify_tx = LoanTransaction {
             transaction_id: [8u8; 32],
             user_id: originator_id, // was borrower_id
-            deal_id: [0u8; 32],     // Keep deal_id field name
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::KycVerification,
             amount: 0,
             created_at: base_timestamp + 3000,
@@ -1317,7 +1381,9 @@ mod tests {
         let investor_kyc_verify_tx = LoanTransaction {
             transaction_id: [9u8; 32],
             user_id: investor_id, // was lender_id
-            deal_id: [0u8; 32],   // Keep deal_id field name
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::KycVerification,
             amount: 0,
             created_at: base_timestamp + 3100,
@@ -1331,6 +1397,8 @@ mod tests {
         let valid_transaction = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
@@ -1343,22 +1411,26 @@ mod tests {
         let old_transaction = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 1_000_000_000, // September 9, 2001 - too old
+            created_at: 900_000_000, // December 1999 - before MIN_TIMESTAMP (Jan 1, 2000)
             metadata: MetadataArray::empty(),
         };
         assert!(validate_transaction(&old_transaction).is_err());
 
-        // Test invalid timestamp (too far in future)
+        // Test invalid timestamp (too far in future - after year 2060)
         let future_transaction = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
-            created_at: 2_000_000_000, // May 18, 2033 - too far in future
+            created_at: 3_000_000_000, // January 24, 2065 - after MAX_TIMESTAMP (Jan 1, 2060)
             metadata: MetadataArray::empty(),
         };
         assert!(validate_transaction(&future_transaction).is_err());
@@ -1373,6 +1445,8 @@ mod tests {
         let newer_transaction = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
@@ -1385,6 +1459,8 @@ mod tests {
         let older_transaction = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
@@ -1401,6 +1477,8 @@ mod tests {
             LoanTransaction {
                 transaction_id: [1u8; 32],
                 user_id: [1u8; 32],
+                originator_company_id: [0u8; 32],
+                investor_company_id: [0u8; 32],
                 deal_id: [0u8; 32], // Keep deal_id field name
                 transaction_type: TransactionType::UserRegistration,
                 amount: 0,
@@ -1410,6 +1488,8 @@ mod tests {
             LoanTransaction {
                 transaction_id: [2u8; 32],
                 user_id: [2u8; 32],
+                originator_company_id: [0u8; 32],
+                investor_company_id: [0u8; 32],
                 deal_id: [0u8; 32], // Keep deal_id field name
                 transaction_type: TransactionType::UserRegistration,
                 amount: 0,
@@ -1426,33 +1506,24 @@ mod tests {
         };
         assert!(validate_batch_temporal_ordering(&valid_batch).is_ok());
 
-        // Test invalid batch with backwards timestamps
-        let invalid_transactions = vec![
-            LoanTransaction {
-                transaction_id: [1u8; 32],
-                user_id: [1u8; 32],
-                deal_id: [0u8; 32], // Keep deal_id field name
-                transaction_type: TransactionType::UserRegistration,
-                amount: 0,
-                created_at: 1_640_995_300, // Later time first
-                metadata: MetadataArray::empty(),
-            },
-            LoanTransaction {
-                transaction_id: [2u8; 32],
-                user_id: [2u8; 32],
-                deal_id: [0u8; 32], // Keep deal_id field name
-                transaction_type: TransactionType::UserRegistration,
-                amount: 0,
-                created_at: 1_640_995_200, // Earlier time second - invalid!
-                metadata: MetadataArray::empty(),
-            },
-        ];
+        // Test invalid batch with timestamp outside valid range (before year 2000)
+        let invalid_transactions = vec![LoanTransaction {
+            transaction_id: [1u8; 32],
+            user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32], // Keep deal_id field name
+            transaction_type: TransactionType::UserRegistration,
+            amount: 0,
+            created_at: 900_000_000, // Dec 1999 - before MIN_TIMESTAMP
+            metadata: MetadataArray::empty(),
+        }];
 
         let invalid_batch = LoanBatch {
             batch_id: [1u8; 32],
             transactions: invalid_transactions,
             previous_state_root: [0u8; 32],
-            created_at: 1_640_995_200,
+            created_at: 900_000_000,
         };
         assert!(validate_batch_temporal_ordering(&invalid_batch).is_err());
     }
@@ -1612,6 +1683,8 @@ mod tests {
         let deposit_tx = LoanTransaction {
             transaction_id: [10u8; 32],
             user_id,
+            originator_company_id: user_id, // Deposit goes to user's company
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name // Zero for non-loan transactions
             transaction_type: TransactionType::UserDeposit,
             amount: 50000, // $500 deposit
@@ -1648,6 +1721,8 @@ mod tests {
         let deposit_with_zero_amount = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
+            originator_company_id: [1u8; 32], // Deposit goes to user's company
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::UserDeposit,
             amount: 0, // Should fail validation
@@ -1661,6 +1736,8 @@ mod tests {
         let deposit_with_loan_id = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
+            originator_company_id: [1u8; 32], // Deposit goes to user's company
+            investor_company_id: [0u8; 32],
             deal_id: [1u8; 32], // Should be zero for deposits
             transaction_type: TransactionType::UserDeposit,
             amount: 50000,
@@ -1674,6 +1751,8 @@ mod tests {
         let valid_deposit = LoanTransaction {
             transaction_id: [1u8; 32],
             user_id: [1u8; 32],
+            originator_company_id: [1u8; 32], // Deposit goes to user's company
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name // Zero for deposits
             transaction_type: TransactionType::UserDeposit,
             amount: 50000,
@@ -1706,6 +1785,8 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [1u8; 32],
                         user_id: depositor_id,
+                        originator_company_id: [0u8; 32],
+                        investor_company_id: [0u8; 32],
                         deal_id: [0u8; 32], // Keep deal_id field name
                         transaction_type: TransactionType::UserRegistration,
                         amount: 0,
@@ -1719,6 +1800,8 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [2u8; 32],
                         user_id: borrower_id,
+                        originator_company_id: [0u8; 32],
+                        investor_company_id: [0u8; 32],
                         deal_id: [0u8; 32], // Keep deal_id field name
                         transaction_type: TransactionType::UserRegistration,
                         amount: 0,
@@ -1732,6 +1815,8 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [3u8; 32],
                         user_id: lender_id,
+                        originator_company_id: [0u8; 32],
+                        investor_company_id: [0u8; 32],
                         deal_id: [0u8; 32], // Keep deal_id field name
                         transaction_type: TransactionType::UserRegistration,
                         amount: 0,
@@ -1739,6 +1824,10 @@ mod tests {
                         metadata,
                     }
                 },
+                // Register companies (required for deal origination)
+                create_company_registration(depositor_id, base_timestamp + 1300),
+                create_company_registration(borrower_id, base_timestamp + 1400),
+                create_company_registration(lender_id, base_timestamp + 1500),
                 // KYC verification
                 {
                     let mut metadata = MetadataArray::empty();
@@ -1746,6 +1835,8 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [4u8; 32],
                         user_id: depositor_id,
+                        originator_company_id: [0u8; 32],
+                        investor_company_id: [0u8; 32],
                         deal_id: [0u8; 32], // Keep deal_id field name
                         transaction_type: TransactionType::KycVerification,
                         amount: 0,
@@ -1759,6 +1850,8 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [5u8; 32],
                         user_id: borrower_id,
+                        originator_company_id: [0u8; 32],
+                        investor_company_id: [0u8; 32],
                         deal_id: [0u8; 32], // Keep deal_id field name
                         transaction_type: TransactionType::KycVerification,
                         amount: 0,
@@ -1772,6 +1865,8 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [6u8; 32],
                         user_id: lender_id,
+                        originator_company_id: [0u8; 32],
+                        investor_company_id: [0u8; 32],
                         deal_id: [0u8; 32], // Keep deal_id field name
                         transaction_type: TransactionType::KycVerification,
                         amount: 0,
@@ -1788,6 +1883,8 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [20u8; 32],
                         user_id: depositor_id,
+                        originator_company_id: depositor_id, // Deposit goes to depositor's company
+                        investor_company_id: [0u8; 32],
                         deal_id: [0u8; 32], // Keep deal_id field name
                         transaction_type: TransactionType::UserDeposit,
                         amount: 100000, // $1000 deposit
@@ -1804,6 +1901,8 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [21u8; 32],
                         user_id: lender_id,
+                        originator_company_id: lender_id, // Deposit goes to lender's company
+                        investor_company_id: [0u8; 32],
                         deal_id: [0u8; 32], // Keep deal_id field name
                         transaction_type: TransactionType::UserDeposit,
                         amount: 150000, // $1500 deposit
@@ -1820,7 +1919,9 @@ mod tests {
                     LoanTransaction {
                         transaction_id: [22u8; 32],
                         user_id: lender_id, // Keep lender_id for test compatibility
-                        deal_id,            // was loan_id, now deal_id
+                        originator_company_id: borrower_id,
+                        investor_company_id: lender_id,
+                        deal_id, // was loan_id, now deal_id
                         transaction_type: TransactionType::DealOrigination, // was LoanOrigination
                         amount: 50000,
                         created_at: base_timestamp + 5000,
@@ -1878,8 +1979,9 @@ mod tests {
             BalanceUpdateType::CreditFromDeposit
         ); // Second is the deposit (sorted by timestamp desc)
 
-        // Total transaction count should be 9 (3 registrations + 3 KYC verifications + 2 deposits + 1 loan origination)
-        assert_eq!(state.transaction_count, 9);
+        // Total transaction count:
+        // 3 user registrations + 3 company registrations + 3 KYC verifications + 2 deposits + 1 loan origination = 12
+        assert_eq!(state.transaction_count, 12);
 
         // Verify total system value calculation (total user balances)
         let total_user_balances = state.compute_total_user_balance();
@@ -2088,6 +2190,8 @@ mod tests {
         let assoc2_tx = LoanTransaction {
             transaction_id: [97u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32],
             transaction_type: TransactionType::CollateralDealAssociation,
             amount: 0,
@@ -2256,7 +2360,7 @@ mod tests {
             .metadata
             .as_ref()
             .unwrap()
-            .contains("Withdrawal to wallet 2a2a2a2a"));
+            .contains("Withdrawal to company wallet 2a2a2a2a"));
     }
 
     #[test]
@@ -2379,6 +2483,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [6u8; 32],
             user_id,
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::KycSubmission,
             amount: 0,
@@ -2397,6 +2503,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [7u8; 32],
             user_id,
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name
             transaction_type: TransactionType::KycVerification,
             amount: 0,
@@ -2429,6 +2537,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32], // Mock transaction ID
             user_id,
+            originator_company_id: user_id, // Withdrawal from user's company
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name // No loan associated
             transaction_type: TransactionType::UserWithdrawal,
             amount,
@@ -2461,6 +2571,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [4u8; 32], // Mock transaction ID
             user_id,
+            originator_company_id: user_id, // Deposit goes to user's company
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Keep deal_id field name // No loan associated
             transaction_type: TransactionType::UserDeposit,
             amount,
@@ -2481,7 +2593,9 @@ mod tests {
 
         LoanTransaction {
             transaction_id: [99u8; 32],
-            user_id: [0u8; 32],     // No user for collateral creation
+            user_id: [0u8; 32], // No user for collateral creation
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: collateral_id, // Use deal_id field for collateral_id
             transaction_type: TransactionType::CollateralCreation,
             amount: 0,
@@ -2502,6 +2616,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [98u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: collateral_id,
             transaction_type: TransactionType::CollateralUpdate,
             amount: 0,
@@ -2518,6 +2634,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [97u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Zero for association transactions
             transaction_type: TransactionType::CollateralDealAssociation,
             amount: 0,
@@ -2537,6 +2655,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [96u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32],
             transaction_type: TransactionType::CollateralDealDisassociation,
             amount: 0,
@@ -2549,6 +2669,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [95u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: collateral_id, // Collateral ID in deal_id field
             transaction_type: TransactionType::CollateralDetectionRequest,
             amount: 0,
@@ -2561,6 +2683,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [94u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: collateral_id,
             transaction_type: TransactionType::CollateralDetectionUpdate,
             amount: 0,
@@ -2582,7 +2706,9 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id: originator_id, // was borrower_id
-            deal_id,                // Keep deal_id field name
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
+            deal_id,                                            // Keep deal_id field name
             transaction_type: TransactionType::DealOrigination, // was LoanOrigination
             amount,
             created_at: 1_641_000_150, // After collateral creation, before association
@@ -2597,7 +2723,9 @@ mod tests {
     ) -> LoanTransaction {
         LoanTransaction {
             transaction_id: [4u8; 32],
-            user_id: payer_id,                              // was borrower_id
+            user_id: payer_id, // was borrower_id
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id,                                        // Keep deal_id field name
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount,                                         // Partial payment
@@ -2609,7 +2737,9 @@ mod tests {
     fn create_test_deal_closeout(deal_id: [u8; 32], closer_id: [u8; 32]) -> LoanTransaction {
         LoanTransaction {
             transaction_id: [6u8; 32],
-            user_id: closer_id,                              // was lender_id
+            user_id: closer_id, // was lender_id
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id,                                         // Keep deal_id field name
             transaction_type: TransactionType::DealCloseout, // was LoanCloseout
             amount: 0,

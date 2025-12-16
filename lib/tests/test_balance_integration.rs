@@ -32,6 +32,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [1u8; 32],
             user_id,
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32],
             transaction_type: TransactionType::UserRegistration,
             amount: 0,
@@ -44,6 +46,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [2u8; 32],
             user_id,
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32],
             transaction_type: TransactionType::KycVerification,
             amount: 0,
@@ -65,6 +69,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [3u8; 32],
             user_id: originator_id,
+            originator_company_id: originator_id,
+            investor_company_id: investor_id,
             deal_id, // Keep deal_id field name
             transaction_type: TransactionType::DealOrigination,
             amount,
@@ -83,12 +89,62 @@ mod tests {
         LoanTransaction {
             transaction_id: payment_id,
             user_id: payer_id,
-            deal_id, // Keep deal_id field name
+            originator_company_id: payer_id, // Payment from payer's company
+            investor_company_id: [0u8; 32],  // Will be looked up from deal
+            deal_id,                         // Keep deal_id field name
             transaction_type: TransactionType::DealPayment,
             amount,
             created_at: timestamp,
             metadata: MetadataArray::empty(),
         }
+    }
+
+    fn create_company_registration(company_id: [u8; 32], timestamp: u64) -> LoanTransaction {
+        use lib::transactions::MetadataArray;
+        let mut metadata = MetadataArray::empty();
+        metadata.as_mut_bytes()[0] = 0; // CompanyStatus::Active
+
+        LoanTransaction {
+            transaction_id: [99u8; 32], // Use high ID to avoid conflicts
+            user_id: [0u8; 32],         // System transaction
+            originator_company_id: company_id,
+            investor_company_id: [0u8; 32],
+            deal_id: [0u8; 32],
+            transaction_type: TransactionType::CompanyRegistration,
+            amount: 0,
+            created_at: timestamp,
+            metadata,
+        }
+    }
+
+    fn setup_companies_and_kyc(
+        state: &mut GlobalLoanState,
+        originator_id: [u8; 32],
+        investor_id: [u8; 32],
+    ) {
+        // Register users
+        state
+            .process_transaction(&create_test_user_registration(originator_id, 1))
+            .unwrap();
+        state
+            .process_transaction(&create_test_user_registration(investor_id, 2))
+            .unwrap();
+
+        // KYC verification
+        state
+            .process_transaction(&create_kyc_verification(originator_id, true))
+            .unwrap();
+        state
+            .process_transaction(&create_kyc_verification(investor_id, true))
+            .unwrap();
+
+        // Register companies
+        state
+            .process_transaction(&create_company_registration(originator_id, 1640995250))
+            .unwrap();
+        state
+            .process_transaction(&create_company_registration(investor_id, 1640995260))
+            .unwrap();
     }
 
     #[test]
@@ -99,16 +155,8 @@ mod tests {
         let investor_id = [2u8; 32];
         let deal_id = [10u8; 32];
 
-        // Setup KYC'd users
-        let originator_reg = create_test_user_registration(originator_id, 1); // Investor
-        let investor_reg = create_test_user_registration(investor_id, 2); // Lender
-        let originator_kyc = create_kyc_verification(originator_id, true);
-        let investor_kyc = create_kyc_verification(investor_id, true);
-
-        state.process_transaction(&originator_reg).unwrap();
-        state.process_transaction(&investor_reg).unwrap();
-        state.process_transaction(&originator_kyc).unwrap();
-        state.process_transaction(&investor_kyc).unwrap();
+        // Setup KYC'd users and companies
+        setup_companies_and_kyc(&mut state, originator_id, investor_id);
 
         // Initial balance state should be empty (before funding)
         assert_eq!(state.get_user_balance(&originator_id), 0);
@@ -136,7 +184,7 @@ mod tests {
             .balance_state
             .updates
             .iter()
-            .filter(|u| u.user_id == originator_id)
+            .filter(|u| u.company_id == originator_id)
             .collect();
         assert_eq!(originator_updates.len(), 1);
 
@@ -155,7 +203,7 @@ mod tests {
             .balance_state
             .updates
             .iter()
-            .filter(|u| u.user_id == investor_id)
+            .filter(|u| u.company_id == investor_id)
             .collect();
         assert_eq!(investor_updates.len(), 2); // Funding + DebitFromOrigination
 
@@ -187,21 +235,13 @@ mod tests {
         let investor_id = [2u8; 32];
         let deal_id = [10u8; 32];
 
-        // Setup users and originate deal
-        let originator_reg = create_test_user_registration(originator_id, 1);
-        let investor_reg = create_test_user_registration(investor_id, 2);
-        let originator_kyc = create_kyc_verification(originator_id, true);
-        let investor_kyc = create_kyc_verification(investor_id, true);
-        let deal_origination = create_deal_origination(deal_id, originator_id, investor_id, 50000);
-
-        state.process_transaction(&originator_reg).unwrap();
-        state.process_transaction(&investor_reg).unwrap();
-        state.process_transaction(&originator_kyc).unwrap();
-        state.process_transaction(&investor_kyc).unwrap();
+        // Setup users, companies, and originate deal
+        setup_companies_and_kyc(&mut state, originator_id, investor_id);
 
         // Fund investor for deal origination
         fund_user_account(&mut state, investor_id, 100_000, 1_640_995_150);
 
+        let deal_origination = create_deal_origination(deal_id, originator_id, investor_id, 50000);
         state.process_transaction(&deal_origination).unwrap();
 
         // Check balance updates count (funding + origination)
@@ -220,7 +260,7 @@ mod tests {
         assert_eq!(state.balance_state.updates.len(), 4); // 1 funding + 2 origination + 1 payment
 
         let payment_update = &state.balance_state.updates[3]; // Latest update
-        assert_eq!(payment_update.user_id, investor_id); // Investor receives the payment
+        assert_eq!(payment_update.company_id, investor_id); // Investor receives the payment
         assert_eq!(
             payment_update.update_type,
             BalanceUpdateType::CreditFromPayment
@@ -245,16 +285,7 @@ mod tests {
         let deal_id = [10u8; 32];
 
         // Setup and process full deal lifecycle
-        let setup_transactions = vec![
-            create_test_user_registration(originator_id, 1),
-            create_test_user_registration(investor_id, 2),
-            create_kyc_verification(originator_id, true),
-            create_kyc_verification(investor_id, true),
-        ];
-
-        for tx in setup_transactions {
-            state.process_transaction(&tx).unwrap();
-        }
+        setup_companies_and_kyc(&mut state, originator_id, investor_id);
 
         // Fund investor for deal origination
         fund_user_account(&mut state, investor_id, 200_000, 1_640_995_150);
@@ -336,20 +367,12 @@ mod tests {
         let deal_id = [10u8; 32];
 
         // Setup and create balance update
-        let originator_reg = create_test_user_registration(originator_id, 1);
-        let investor_reg = create_test_user_registration(investor_id, 2);
-        let originator_kyc = create_kyc_verification(originator_id, true);
-        let investor_kyc = create_kyc_verification(investor_id, true);
-        let deal_origination = create_deal_origination(deal_id, originator_id, investor_id, 50000);
-
-        state.process_transaction(&originator_reg).unwrap();
-        state.process_transaction(&investor_reg).unwrap();
-        state.process_transaction(&originator_kyc).unwrap();
-        state.process_transaction(&investor_kyc).unwrap();
+        setup_companies_and_kyc(&mut state, originator_id, investor_id);
 
         // Fund investor for deal origination
         fund_user_account(&mut state, investor_id, 100_000, 1_640_995_150);
 
+        let deal_origination = create_deal_origination(deal_id, originator_id, investor_id, 50000);
         state.process_transaction(&deal_origination).unwrap();
 
         // Get balance updates and test nullifier generation
@@ -443,19 +466,19 @@ mod tests {
         let deal1_id = [10u8; 32];
         let deal2_id = [11u8; 32];
 
-        // Setup users
-        let users = vec![
-            create_test_user_registration(originator1_id, 1),
-            create_test_user_registration(originator2_id, 1),
-            create_test_user_registration(investor_id, 2),
-            create_kyc_verification(originator1_id, true),
-            create_kyc_verification(originator2_id, true),
-            create_kyc_verification(investor_id, true),
-        ];
+        // Setup users and companies
+        setup_companies_and_kyc(&mut state, originator1_id, investor_id);
 
-        for tx in users {
-            state.process_transaction(&tx).unwrap();
-        }
+        // Register originator2 separately
+        state
+            .process_transaction(&create_test_user_registration(originator2_id, 1))
+            .unwrap();
+        state
+            .process_transaction(&create_kyc_verification(originator2_id, true))
+            .unwrap();
+        state
+            .process_transaction(&create_company_registration(originator2_id, 1640995270))
+            .unwrap();
 
         // Fund investor for both deal originations
         fund_user_account(&mut state, investor_id, 200_000, 1_640_995_150); // Enough for both deals
@@ -488,7 +511,7 @@ mod tests {
         let deal1_originator_update = deal1_updates
             .iter()
             .find(|u| {
-                u.user_id == originator1_id
+                u.company_id == originator1_id
                     && u.update_type == BalanceUpdateType::CreditFromOrigination
             })
             .unwrap();
@@ -497,7 +520,7 @@ mod tests {
         let deal2_originator_update = deal2_updates
             .iter()
             .find(|u| {
-                u.user_id == originator2_id
+                u.company_id == originator2_id
                     && u.update_type == BalanceUpdateType::CreditFromOrigination
             })
             .unwrap();
@@ -528,16 +551,7 @@ mod tests {
         let deal_id = [10u8; 32];
 
         // Process full deal lifecycle
-        let setup_transactions = vec![
-            create_test_user_registration(originator_id, 1),
-            create_test_user_registration(investor_id, 2),
-            create_kyc_verification(originator_id, true),
-            create_kyc_verification(investor_id, true),
-        ];
-
-        for tx in setup_transactions {
-            state.process_transaction(&tx).unwrap();
-        }
+        setup_companies_and_kyc(&mut state, originator_id, investor_id);
 
         // Fund investor for deal origination
         fund_user_account(&mut state, investor_id, 200_000, 1_640_995_150);

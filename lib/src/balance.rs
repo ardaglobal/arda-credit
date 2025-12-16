@@ -794,7 +794,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(update.user_id, user_id);
+        assert_eq!(update.company_id, user_id);
         assert_eq!(update.amount, amount);
         assert_eq!(update.previous_balance, previous_balance);
         assert_eq!(update.new_balance, previous_balance + amount);
@@ -951,7 +951,7 @@ mod tests {
 
         // First update should be credit for borrower
         let borrower_update = &updates[0];
-        assert_eq!(borrower_update.user_id, borrower_id);
+        assert_eq!(borrower_update.company_id, borrower_id);
         assert_eq!(
             borrower_update.update_type,
             BalanceUpdateType::CreditFromOrigination
@@ -960,7 +960,7 @@ mod tests {
 
         // Second update should be debit for lender
         let lender_update = &updates[1];
-        assert_eq!(lender_update.user_id, lender_id);
+        assert_eq!(lender_update.company_id, lender_id);
         assert_eq!(
             lender_update.update_type,
             BalanceUpdateType::DebitFromOrigination
