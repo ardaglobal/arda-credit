@@ -1,0 +1,121 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            id, user_type, email, kyc_status,\n            kyc_submitted_at, kyc_verified_at,\n            kyc_investor_type as \"kyc_investor_type: _\",\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            last_login_at, email_verified, email_verification_token,\n            first_name, last_name, jurisdiction, wallet_address\n        FROM users\n        ORDER BY created_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "email",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "kyc_status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "kyc_submitted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "kyc_verified_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "kyc_investor_type: _",
+        "type_info": {
+          "Custom": {
+            "name": "kyc_investor_type",
+            "kind": {
+              "Enum": [
+                "QIB",
+                "QP",
+                "AI"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 9,
+        "name": "last_login_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "email_verified",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 11,
+        "name": "email_verification_token",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 12,
+        "name": "first_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 13,
+        "name": "last_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "jurisdiction",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "wallet_address",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "3d4fe7ce1c1d825ff0290198719559307b95f76abcc292490b0786398c34ea67"
+}

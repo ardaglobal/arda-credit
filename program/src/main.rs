@@ -37,6 +37,23 @@ pub fn main() {
     // Read the complete input structure with ADS state
     let input = sp1_zkvm::io::read::<ZkVMBatchInput>();
 
+    // CRITICAL DEBUG: Log ALL transactions as received
+    println!(
+        "🔬 ZKVM: Received {} transactions, {} users",
+        input.batch.transactions.len(),
+        input.initial_loan_state.users.len()
+    );
+
+    for (i, tx) in input.batch.transactions.iter().enumerate().take(5) {
+        println!(
+            "🔬 ZKVM TX#{}: type={:?}, user_id[0..4]={:?}, metadata[0..4]={:?}",
+            i,
+            tx.transaction_type,
+            &tx.user_id[..4],
+            &tx.metadata.as_bytes()[..4]
+        );
+    }
+
     // Validate all transactions in the batch first
     for transaction in &input.batch.transactions {
         validate_transaction(transaction).expect("Invalid transaction in batch");
@@ -61,8 +78,8 @@ pub fn main() {
     // that don't change the total system value, only redistribute it between users.
     // When users deposit from external wallets → smart contract, this total increases.
     // When users originate deals or make payments, this total stays constant (internal transfers).
-    let previous_total = input.initial_loan_state.compute_total_user_balance();
-    let current_total = final_deal_state.compute_total_user_balance();
+    let previous_total = input.initial_loan_state.compute_total_balance();
+    let current_total = final_deal_state.compute_total_balance();
 
     // Create hash of transaction types for transparency (without revealing details)
     let mut types_hasher = Sha256::new();

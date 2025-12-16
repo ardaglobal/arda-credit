@@ -196,6 +196,7 @@ pub use db::{
     create_account_financial_transaction,
     // Batch functions
     create_batch,
+    create_batch_from_deal_transactions,
     create_deal,
     create_deal_payment,
     // CCR Domain functions
@@ -216,12 +217,14 @@ pub use db::{
     get_all_batches,
     get_balance,
     get_batch_by_id,
+    get_batch_proof_data,
     get_contract_submission_data,
     // State functions
     get_current_counter_value,
     get_current_state,
     get_deal_by_id,
     get_deal_transaction_history,
+    get_deal_transactions_with_proofs,
     get_deals_by_company_id,
     get_deals_by_user_id,
     get_deposit_by_tx_hash,
@@ -235,6 +238,7 @@ pub use db::{
     get_invite_code_info,
     get_kyc_statistics,
     get_payments_by_deal,
+    get_pending_deal_transactions,
     get_pending_transactions,
     get_pending_withdrawal_requests,
     get_potential_stuck_batches,
@@ -273,6 +277,7 @@ pub use db::{
     set_password_reset_token,
     // ADS/Merkle functions
     store_ads_state_commit,
+    store_batch_proof_data,
     submit_kyc_data,
     // Transaction functions
     submit_transaction,
@@ -324,7 +329,9 @@ pub use db::{
     LoanTapeRecord,
     ProofBatch,
     RegisterResult,
+    SindriProofData,
     StateSnapshot,
+    TransactionWithProofInfo,
     UpdateInvestorProfileRequest,
     UsdcDeposit,
     UsdcWithdrawal,

@@ -840,9 +840,9 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
     type Proof = MerkleProof;
     type StateCommitment = StateCommitment;
 
-    #[instrument(skip(self), level = "info")]
+    #[instrument(skip(self), level = "debug")]
     async fn insert(&mut self, value: i64) -> Result<StateTransition, AdsError> {
-        info!("🔄 Inserting nullifier: {}", value);
+        debug!("🔄 Inserting nullifier: {}", value);
         let start_time = std::time::Instant::now();
 
         // Get exclusive access to tree for modification
@@ -858,6 +858,9 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
             .insert_nullifier(value)
             .await
             .map_err(|e| AdsError::InsertionFailed(e.to_string()))?;
+
+        // Increment nullifier count after successful insertion
+        tree_guard.db.state.increment_nullifier_count(None).await?;
 
         drop(tree_guard); // Release lock early
 
@@ -950,7 +953,7 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
         let duration_ms = start_time.elapsed().as_millis() as f64;
         self.update_metrics("insertion", duration_ms).await?;
 
-        info!(
+        debug!(
             "✅ Nullifier {} inserted successfully in {:.2}ms",
             value, duration_ms
         );
@@ -1183,7 +1186,7 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
 
     #[instrument(skip(self, values), level = "info")]
     async fn batch_insert(&mut self, values: &[i64]) -> Result<Vec<StateTransition>, AdsError> {
-        info!("📦 Batch inserting {} nullifiers", values.len());
+        info!("📝 Starting batch insertion of {} nullifiers", values.len());
 
         if values.len() > self.config.batch_size_limit {
             return Err(AdsError::InvalidRange(format!(
@@ -1193,17 +1196,42 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
             )));
         }
 
-        let mut transitions = Vec::with_capacity(values.len());
+        // CRITICAL: Sort nullifiers in ascending order before insertion
+        // Indexed Merkle Tree requires sorted insertion to maintain the linked list structure
+        let mut sorted_values = values.to_vec();
+        sorted_values.sort_unstable();
+        info!(
+            "🔢 Sorted {} nullifiers for IMT insertion (range: {} to {})",
+            sorted_values.len(),
+            sorted_values.first().unwrap_or(&0),
+            sorted_values.last().unwrap_or(&0)
+        );
+
+        let mut transitions = Vec::with_capacity(sorted_values.len());
+        let start_time = std::time::Instant::now();
 
         // Process each insertion sequentially for now
         // Could be optimized with true batch operations in the future
-        for &value in values {
+        for (idx, &value) in sorted_values.iter().enumerate() {
             match self.insert(value).await {
                 Ok(transition) => transitions.push(transition),
                 Err(e) => {
                     warn!("Batch insertion failed for value {}: {:?}", value, e);
                     return Err(e);
                 }
+            }
+
+            // Progress milestone every 25 nullifiers
+            if (idx + 1) % 25 == 0 {
+                let progress_pct = ((idx + 1) as f32 / sorted_values.len() as f32 * 100.0) as u32;
+                let elapsed = start_time.elapsed().as_secs_f64();
+                info!(
+                    "📊 Batch insertion progress: {}/{} nullifiers ({}%) - {:.1}s elapsed",
+                    idx + 1,
+                    sorted_values.len(),
+                    progress_pct,
+                    elapsed
+                );
             }
         }
 
