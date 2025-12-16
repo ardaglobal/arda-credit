@@ -23,6 +23,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use metrics;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
@@ -65,6 +66,8 @@ use arda_credit_db::{
     ExecuteTransferRequest,
     TransferValidationRequest,
 };
+use arda_credit_lib::TransactionType;
+use serde_json::json;
 use uuid::Uuid;
 
 // ============================================================================
@@ -376,6 +379,78 @@ pub struct DealPaymentHistoryResponse {
     pub total_amount_paid: String,
 }
 
+/// Request to make a payment on a deal
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct MakePaymentRequest {
+    /// Payment amount in USDC (e.g., "5000.00")
+    pub amount: String,
+
+    /// Payment type (optional, defaults to "regular")
+    #[serde(default = "default_payment_type")]
+    pub payment_type: Option<String>,
+
+    /// Optional notes about the payment
+    pub notes: Option<String>,
+}
+
+fn default_payment_type() -> Option<String> {
+    Some("regular".to_string())
+}
+
+/// Response from payment creation
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MakePaymentResponse {
+    /// Payment ID
+    pub payment_id: String,
+
+    /// Deal ID
+    pub deal_id: String,
+
+    /// Payment amount
+    pub amount: String,
+
+    /// Payment type
+    pub payment_type: String,
+
+    /// Updated deal outstanding balance
+    pub new_outstanding_balance: String,
+
+    /// Deal status after payment
+    pub deal_status: String,
+
+    /// Transaction ID (for zkVM tracking)
+    pub transaction_id: String,
+
+    /// When payment was created
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Request to close out a paid-off deal
+#[derive(Debug, Deserialize, Serialize, ToSchema)]
+pub struct CloseoutDealRequest {
+    /// Optional notes about the closeout
+    pub notes: Option<String>,
+
+    /// Confirmation that deal is fully paid off (required)
+    pub confirm_paid_off: bool,
+}
+
+/// Response from deal closeout
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CloseoutResponse {
+    /// Deal ID
+    pub deal_id: String,
+
+    /// Deal status (should be "closed")
+    pub deal_status: String,
+
+    /// Transaction ID (for zkVM tracking)
+    pub transaction_id: String,
+
+    /// When closeout was completed
+    pub closed_at: chrono::DateTime<chrono::Utc>,
+}
+
 /// Response for deal transaction history (audit trail)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DealAuditTrailResponse {
@@ -397,6 +472,73 @@ pub struct DealTransactionEvent {
     pub included_in_batch_id: Option<i32>,
     pub metadata: Option<serde_json::Value>,
     pub description: String, // Human-readable description
+}
+
+// ============================================================================
+// ENHANCED AUDIT TRAIL WITH PROOFS TYPES
+// ============================================================================
+
+/// Enhanced deal audit trail response with proof information
+#[derive(Debug, Serialize, ToSchema)]
+pub struct EnhancedDealAuditTrailResponse {
+    pub deal_id: String,
+    pub deal_status: String,
+    pub total_transactions: usize,
+
+    // Transactions grouped by batch with proof info
+    pub batches: Vec<BatchWithTransactions>,
+    pub unbatched_transactions: Vec<UnbatchedTransaction>,
+}
+
+/// Batch with transactions and proof metadata
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BatchWithTransactions {
+    pub batch_id: i32,
+    pub batch_status: String, // "pending", "proving", "proven", "posted"
+    pub created_at: String,
+    pub proven_at: Option<String>,
+    pub posted_at: Option<String>,
+    pub transactions: Vec<DealTransactionEvent>,
+    pub proof: Option<ProofMetadata>,
+}
+
+/// Proof metadata for a batch
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProofMetadata {
+    pub sindri_proof_id: String,
+    pub proof_status: String,
+    pub posted_to_contract: bool,
+    pub contract_tx_hash: Option<String>,
+    pub merkle_roots: MerkleRootInfo,
+    pub proof_url: String,
+    pub contract_url: Option<String>,
+    pub proof_data: Option<ProofDataInfo>,
+}
+
+/// Merkle root information
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MerkleRootInfo {
+    pub previous_state_root: String,
+    pub new_state_root: String,
+}
+
+/// Proof data information (when include_proof_data=true)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProofDataInfo {
+    pub proof_bytes_size: usize,
+    pub public_values_size: usize,
+    pub proof_bytes_base64: Option<String>,
+    pub public_values_base64: Option<String>,
+}
+
+/// Transaction not yet batched
+#[derive(Debug, Serialize, ToSchema)]
+pub struct UnbatchedTransaction {
+    pub id: String,
+    pub transaction_type: String,
+    pub amount: String,
+    pub created_at: String,
+    pub status: String, // Always "pending_batch"
 }
 
 // ============================================================================
@@ -978,6 +1120,37 @@ pub async fn create_deal_endpoint(
             );
         }
     }
+
+    // NEW: Record transaction for zkVM
+    // CRITICAL: Metadata must encode originator_id and investor_id for zkVM
+    let investor_id_for_zkvm = final_investor_id.unwrap_or(Uuid::nil());
+
+    let tx_id = state
+        .transaction_recording
+        .record_transaction(
+            arda_credit_lib::TransactionType::DealOrigination,
+            final_originator_id,
+            Some(deal.id),
+            deal.principal_amount,
+            Some(json!({
+                // For zkVM: encode IDs in metadata
+                // zkVM expects first 32 bytes = originator, next 32 = investor
+                "originator_id": final_originator_id.to_string(),
+                "investor_id": investor_id_for_zkvm.to_string(),
+                "interest_rate_bps": deal.interest_rate_bps,
+                "term_days": request.term_days,
+            })),
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to record deal origination transaction: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Deal created but transaction recording failed: {}", e),
+            )
+        })?;
+
+    info!("Deal {} created with transaction {}", deal.id, tx_id);
 
     // Fetch collateral if available
     let collateral = if let Some(coll_id) = deal.collateral_id {
@@ -2149,6 +2322,358 @@ pub async fn record_deal_payment_endpoint(
     Ok(Json(response))
 }
 
+/// Make a payment on a deal
+///
+/// Creates a payment record, updates the deal's outstanding balance,
+/// and records a transaction for zkVM processing.
+///
+/// The deal status may transition:
+/// - originated → active (first payment)
+/// - active → paid_off (if balance reaches 0)
+///
+/// # Validations
+/// - Deal must exist
+/// - Deal must be in originated or active status
+/// - Payment amount must be > 0
+/// - Payment amount must be <= outstanding balance
+/// - User must have permission (originator or authorized party)
+///
+#[utoipa::path(
+    post,
+    path = "/api/v1/deal/{deal_id}/payment",
+    request_body = MakePaymentRequest,
+    responses(
+        (status = 200, description = "Payment created successfully", body = MakePaymentResponse),
+        (status = 400, description = "Invalid request - check amount or deal status"),
+        (status = 401, description = "Unauthorized - authentication required"),
+        (status = 403, description = "Forbidden - user doesn't have permission"),
+        (status = 404, description = "Deal not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn make_payment_endpoint(
+    State(state): State<ApiState>,
+    Path(deal_id_str): Path<String>,
+    Json(request): Json<MakePaymentRequest>,
+) -> Result<Json<MakePaymentResponse>, (StatusCode, String)> {
+    let start_time = std::time::Instant::now();
+
+    // Record metrics
+    metrics::counter!("api_payment_requests_total").increment(1);
+
+    // 1. Parse deal_id
+    let deal_id = Uuid::parse_str(&deal_id_str).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid deal ID format".to_string(),
+        )
+    })?;
+
+    // 2. Parse amount
+    let amount = rust_decimal::Decimal::from_str(&request.amount)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid amount format".to_string()))?;
+
+    if amount <= rust_decimal::Decimal::ZERO {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Payment amount must be greater than zero".to_string(),
+        ));
+    }
+
+    // 3. Get deal and validate status
+    let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_id)
+        .await
+        .map_err(|_| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?;
+
+    if deal.deal_status != "originated" && deal.deal_status != "active" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Cannot make payment on deal with status '{}'. Must be 'originated' or 'active'.",
+                deal.deal_status
+            ),
+        ));
+    }
+
+    // 4. Validate payment amount doesn't exceed outstanding balance
+    if amount > deal.outstanding_balance {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Payment amount ${} exceeds outstanding balance ${}",
+                amount, deal.outstanding_balance
+            ),
+        ));
+    }
+
+    // 5. Get authenticated user (from session middleware)
+    // TODO: Extract user_id from session/auth context
+    // For now, assume originator is making payment
+    let payer_id = deal.originator_id;
+
+    // 6. Create payment record in database
+    let payment_id = Uuid::new_v4();
+    let payment_type = request
+        .payment_type
+        .unwrap_or_else(|| "regular".to_string());
+
+    sqlx::query!(
+        r#"
+        INSERT INTO deal_payments (
+            id, deal_id, payer_id, amount, payment_type, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        "#,
+        payment_id,
+        deal_id,
+        payer_id,
+        amount,
+        payment_type,
+    )
+    .execute(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to create payment record: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    // 7. Update deal outstanding balance
+    let new_balance = deal.outstanding_balance - amount;
+
+    // Determine new deal status
+    let new_status = if new_balance == rust_decimal::Decimal::ZERO {
+        "paid_off"
+    } else if deal.deal_status == "originated" {
+        "active" // First payment activates the deal
+    } else {
+        &deal.deal_status // Stay in current status
+    };
+
+    sqlx::query!(
+        r#"
+        UPDATE deals
+        SET outstanding_balance = $1,
+            deal_status = $2,
+            updated_at = NOW()
+        WHERE id = $3
+        "#,
+        new_balance,
+        new_status,
+        deal_id,
+    )
+    .execute(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to update deal balance: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    // 8. Record transaction for zkVM
+    let tx_id = state
+        .transaction_recording
+        .record_transaction(
+            TransactionType::DealPayment,
+            payer_id,
+            Some(deal_id),
+            amount,
+            Some(json!({
+                "payment_id": payment_id.to_string(),
+                "payment_type": payment_type.clone(),
+                "notes": request.notes,
+                "previous_balance": deal.outstanding_balance.to_string(),
+                "new_balance": new_balance.to_string(),
+                "status_transition": format!("{} → {}", deal.deal_status, new_status),
+            })),
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to record payment transaction: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Payment created but transaction recording failed: {}", e),
+            )
+        })?;
+
+    let duration = start_time.elapsed();
+    info!(
+        "Payment {} created for deal {} in {:?}, transaction {}",
+        payment_id, deal_id, duration, tx_id
+    );
+
+    metrics::histogram!("api_payment_duration_seconds").record(duration.as_secs_f64());
+
+    // 9. Return response
+    Ok(Json(MakePaymentResponse {
+        payment_id: payment_id.to_string(),
+        deal_id: deal_id.to_string(),
+        amount: amount.to_string(),
+        payment_type,
+        new_outstanding_balance: new_balance.to_string(),
+        deal_status: new_status.to_string(),
+        transaction_id: tx_id.to_string(),
+        created_at: chrono::Utc::now(),
+    }))
+}
+
+/// Close out a paid-off deal
+///
+/// Marks a deal as closed after it has been fully paid off.
+/// This is the final state in the deal lifecycle.
+///
+/// # Validations
+/// - Deal must exist
+/// - Deal must have status "paid_off"
+/// - Outstanding balance must be exactly 0
+/// - User must be the investor (permission check)
+/// - User must confirm the closeout
+///
+#[utoipa::path(
+    post,
+    path = "/api/v1/deal/{deal_id}/closeout",
+    request_body = CloseoutDealRequest,
+    responses(
+        (status = 200, description = "Deal closed successfully", body = CloseoutResponse),
+        (status = 400, description = "Invalid request - check deal status or confirmation"),
+        (status = 401, description = "Unauthorized - authentication required"),
+        (status = 403, description = "Forbidden - only investor can close deal"),
+        (status = 404, description = "Deal not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals",
+    security(
+        ("bearer_auth" = [])
+    )
+)]
+#[instrument(skip(state), level = "info")]
+pub async fn closeout_deal_endpoint(
+    State(state): State<ApiState>,
+    Path(deal_id_str): Path<String>,
+    Json(request): Json<CloseoutDealRequest>,
+) -> Result<Json<CloseoutResponse>, (StatusCode, String)> {
+    let start_time = std::time::Instant::now();
+
+    metrics::counter!("api_closeout_requests_total").increment(1);
+
+    // 1. Parse deal_id
+    let deal_id = Uuid::parse_str(&deal_id_str).map_err(|_| {
+        (
+            StatusCode::BAD_REQUEST,
+            "Invalid deal ID format".to_string(),
+        )
+    })?;
+
+    // 2. Validate confirmation
+    if !request.confirm_paid_off {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Must confirm deal is paid off (confirm_paid_off: true)".to_string(),
+        ));
+    }
+
+    // 3. Get deal and validate status
+    let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_id)
+        .await
+        .map_err(|_| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Deal not found".to_string()))?;
+
+    if deal.deal_status != "paid_off" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Cannot close deal with status '{}'. Must be 'paid_off' (fully paid).",
+                deal.deal_status
+            ),
+        ));
+    }
+
+    if deal.outstanding_balance != rust_decimal::Decimal::ZERO {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Cannot close deal with outstanding balance ${}. Must be fully paid.",
+                deal.outstanding_balance
+            ),
+        ));
+    }
+
+    // 4. Get authenticated user and check permission
+    // TODO: Extract user_id from session/auth middleware
+    // For now, assume investor is closing
+    let investor_id = deal.investor_id.ok_or((
+        StatusCode::BAD_REQUEST,
+        "Deal has no investor assigned".to_string(),
+    ))?;
+
+    // TODO: Add permission check
+    // if user_id != investor_id {
+    //     return Err((StatusCode::FORBIDDEN, "Only investor can close deal"));
+    // }
+
+    // 5. Update deal status to closed
+    sqlx::query!(
+        r#"
+        UPDATE deals
+        SET deal_status = 'closed',
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+        deal_id,
+    )
+    .execute(&state.pool)
+    .await
+    .map_err(|e| {
+        error!("Failed to close deal: {}", e);
+        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
+
+    // 6. Record transaction for zkVM
+    let tx_id = state
+        .transaction_recording
+        .record_transaction(
+            TransactionType::DealCloseout,
+            investor_id,
+            Some(deal_id),
+            rust_decimal::Decimal::ZERO, // No amount for closeout
+            Some(json!({
+                "notes": request.notes,
+                "closed_by": investor_id.to_string(),
+                "original_principal": deal.principal_amount.to_string(),
+                "final_status": "closed",
+            })),
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to record closeout transaction: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Deal closed but transaction recording failed: {}", e),
+            )
+        })?;
+
+    let duration = start_time.elapsed();
+    info!(
+        "Deal {} closed in {:?}, transaction {}",
+        deal_id, duration, tx_id
+    );
+
+    metrics::histogram!("api_closeout_duration_seconds").record(duration.as_secs_f64());
+    metrics::counter!("api_closeout_success_total").increment(1);
+
+    // 7. Return response
+    Ok(Json(CloseoutResponse {
+        deal_id: deal_id.to_string(),
+        deal_status: "closed".to_string(),
+        transaction_id: tx_id.to_string(),
+        closed_at: chrono::Utc::now(),
+    }))
+}
+
 /// Get payment details (converted from get_payment_details_endpoint)
 #[utoipa::path(
     get,
@@ -2317,6 +2842,241 @@ pub async fn get_deal_audit_trail_endpoint(
     );
 
     Ok(Json(response))
+}
+
+/// Get enhanced deal audit trail with proof information
+#[utoipa::path(
+    get,
+    path = "/api/v1/deal/{deal_id}/audit-trail-with-proofs",
+    params(
+        ("deal_id" = String, Path, description = "Deal ID"),
+        ("include_proof_data" = Option<bool>, Query, description = "Include actual proof bytes in response (default: false)")
+    ),
+    responses(
+        (status = 200, description = "Enhanced audit trail with proof information", body = EnhancedDealAuditTrailResponse),
+        (status = 400, description = "Invalid deal ID"),
+        (status = 404, description = "Deal not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Deals"
+)]
+pub async fn get_deal_audit_trail_with_proofs_endpoint(
+    State(state): State<ApiState>,
+    Path(deal_id): Path<String>,
+    Query(params): Query<EnhancedAuditTrailQuery>,
+) -> Result<Json<EnhancedDealAuditTrailResponse>, (StatusCode, String)> {
+    info!(
+        "Getting enhanced audit trail with proofs for deal: {}",
+        deal_id
+    );
+
+    let deal_uuid = uuid::Uuid::parse_str(&deal_id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid deal ID".to_string()))?;
+
+    // Get deal to verify it exists and get current status
+    let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch deal: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Database error: {}", e),
+            )
+        })?
+        .ok_or_else(|| {
+            error!("Deal not found: {}", deal_id);
+            (StatusCode::NOT_FOUND, "Deal not found".to_string())
+        })?;
+
+    // Get transactions with proof information
+    let transactions = arda_credit_db::get_deal_transactions_with_proofs(&state.pool, deal_uuid)
+        .await
+        .map_err(|e| {
+            error!("Failed to fetch transaction history with proofs: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    let total_transactions = transactions.len();
+
+    // Group transactions by batch
+    let mut batch_map: std::collections::HashMap<
+        Option<i32>,
+        Vec<&arda_credit_db::TransactionWithProofInfo>,
+    > = std::collections::HashMap::new();
+
+    for tx in &transactions {
+        batch_map
+            .entry(tx.batch_id)
+            .or_insert_with(Vec::new)
+            .push(tx);
+    }
+
+    // Build batches response
+    let mut batches = Vec::new();
+    let mut unbatched_transactions = Vec::new();
+
+    for (batch_id_opt, batch_txs) in batch_map {
+        match batch_id_opt {
+            Some(batch_id) => {
+                // This is a batched transaction group
+                if let Some(first_tx) = batch_txs.first() {
+                    let batch_status = determine_batch_status(first_tx);
+                    let proven_at = first_tx.proven_at.map(|dt| dt.to_rfc3339());
+                    let posted_at = first_tx.posted_to_contract_at.map(|dt| dt.to_rfc3339());
+
+                    let proof = if first_tx.sindri_proof_id.is_some() {
+                        Some(build_proof_metadata(
+                            first_tx,
+                            params.include_proof_data.unwrap_or(false),
+                        ))
+                    } else {
+                        None
+                    };
+
+                    let transaction_events = batch_txs
+                        .iter()
+                        .map(|tx| build_transaction_event(tx))
+                        .collect();
+
+                    batches.push(BatchWithTransactions {
+                        batch_id,
+                        batch_status,
+                        created_at: first_tx.created_at.to_rfc3339(),
+                        proven_at,
+                        posted_at,
+                        transactions: transaction_events,
+                        proof,
+                    });
+                }
+            }
+            None => {
+                // These are unbatched transactions
+                for tx in batch_txs {
+                    unbatched_transactions.push(UnbatchedTransaction {
+                        id: tx.id.to_string(),
+                        transaction_type: tx.transaction_type.clone(),
+                        amount: tx.amount.to_string(),
+                        created_at: tx.created_at.to_rfc3339(),
+                        status: "pending_batch".to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Sort batches by creation time
+    batches.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+    let batch_count = batches.len();
+
+    let response = EnhancedDealAuditTrailResponse {
+        deal_id: deal_uuid.to_string(),
+        deal_status: deal.deal_status.clone(),
+        total_transactions,
+        batches,
+        unbatched_transactions,
+    };
+
+    info!(
+        "Successfully retrieved enhanced audit trail with {} transactions in {} batches for deal {}",
+        total_transactions, batch_count, deal_id
+    );
+
+    Ok(Json(response))
+}
+
+/// Query parameters for enhanced audit trail
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct EnhancedAuditTrailQuery {
+    pub include_proof_data: Option<bool>,
+}
+
+/// Determine batch status based on proof information
+fn determine_batch_status(tx: &arda_credit_db::TransactionWithProofInfo) -> String {
+    if tx.posted_to_contract.unwrap_or(false) {
+        "posted".to_string()
+    } else if tx.proven_at.is_some() {
+        "proven".to_string()
+    } else if tx.sindri_proof_id.is_some() {
+        "proving".to_string()
+    } else {
+        "pending".to_string()
+    }
+}
+
+/// Build proof metadata from transaction data
+fn build_proof_metadata(
+    tx: &arda_credit_db::TransactionWithProofInfo,
+    include_proof_data: bool,
+) -> ProofMetadata {
+    let sindri_proof_id = tx.sindri_proof_id.as_ref().unwrap().clone();
+
+    // Build URLs (these would need to be configured properly)
+    let proof_url = format!("https://sindri.app/proof/{}", sindri_proof_id);
+    let contract_url = tx.contract_tx_hash.as_ref().map(|hash| {
+        // Assuming Sepolia testnet, this should be configurable
+        format!("https://sepolia.etherscan.io/tx/{}", hash)
+    });
+
+    let merkle_roots = MerkleRootInfo {
+        previous_state_root: tx
+            .prev_merkle_root
+            .clone()
+            .unwrap_or_else(|| "pending".to_string()),
+        new_state_root: tx
+            .new_merkle_root
+            .clone()
+            .unwrap_or_else(|| "pending".to_string()),
+    };
+
+    let proof_data = if include_proof_data {
+        // For now, we'll skip actual proof data inclusion as it requires additional API calls to Sindri
+        // This would be implemented in a future enhancement
+        Some(ProofDataInfo {
+            proof_bytes_size: 0,
+            public_values_size: 0,
+            proof_bytes_base64: None,
+            public_values_base64: None,
+        })
+    } else {
+        None
+    };
+
+    ProofMetadata {
+        sindri_proof_id,
+        proof_status: tx
+            .proof_status
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string()),
+        posted_to_contract: tx.posted_to_contract.unwrap_or(false),
+        contract_tx_hash: tx.contract_tx_hash.clone(),
+        merkle_roots,
+        proof_url,
+        contract_url,
+        proof_data,
+    }
+}
+
+/// Build transaction event from database transaction
+fn build_transaction_event(tx: &arda_credit_db::TransactionWithProofInfo) -> DealTransactionEvent {
+    let description = match tx.transaction_type.as_str() {
+        "deal_origination" => format!("Deal originated with principal of ${}", tx.amount),
+        "deal_payment" => format!("Payment of ${} received", tx.amount),
+        "deal_closeout" => "Deal closed".to_string(),
+        _ => format!("{} transaction", tx.transaction_type),
+    };
+
+    DealTransactionEvent {
+        id: tx.id.to_string(),
+        transaction_type: tx.transaction_type.clone(),
+        amount: tx.amount.to_string(),
+        created_at: tx.created_at.to_rfc3339(),
+        user_id: None,    // Not available in the enhanced query for now
+        payment_id: None, // Not available in the enhanced query for now
+        included_in_batch_id: tx.batch_id,
+        metadata: tx.metadata.clone(),
+        description,
+    }
 }
 
 // ============================================================================

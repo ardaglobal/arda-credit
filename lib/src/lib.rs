@@ -27,8 +27,11 @@ use alloy_sol_types::sol;
 
 // Separated modules for better maintainability
 pub mod balance;
+pub mod collateral;
+pub mod company; // NEW: Company state management
 pub mod deal;
 pub mod deal_processor;
+pub mod hash; // ZK-friendly hash functions (Poseidon2)
 pub mod transactions;
 pub mod user;
 pub mod utils;
@@ -40,6 +43,10 @@ mod zkvm_ads_consistency_tests; // Consistency tests for zkVM ADS
 // Proof module only available for host-side operations
 #[cfg(feature = "sp1")]
 pub mod proof;
+
+// Re-export proof types (conditionally)
+#[cfg(feature = "sp1")]
+pub use proof::{get_sindri_proof_data, SindriProofData};
 
 sol! {
     /// Loan batch public values - what gets committed on-chain for loan processing
@@ -63,10 +70,18 @@ pub use deal_processor::{
 
 // Re-export from new modules
 pub use balance::{
-    BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType,
-    UserBalance,
+    BalanceError,
+    BalanceInclusionProof,
+    BalanceState,
+    BalanceUpdate,
+    BalanceUpdateType,
+    CompanyBalance,
+    UserBalance, // UserBalance is alias for CompanyBalance
 };
+pub use collateral::{Collateral, CollateralAssociation, CollateralError, CollateralState};
+pub use company::{Company, CompanyError, CompanyState, CompanyStatus};
 pub use deal::{Deal, DealError, LoanStatus, LoanTerms};
+pub use hash::{hash_internal_poseidon, hash_leaf_poseidon};
 pub use transactions::*;
 pub use user::{KycStatus, User, UserError, UserState, UserType};
 pub use utils::{cents_to_decimal, decimal_to_cents, hash_uuid};

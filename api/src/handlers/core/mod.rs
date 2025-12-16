@@ -5,9 +5,11 @@
 
 pub mod contract;
 pub mod health;
+pub mod regenesis;
 pub mod state;
 
 // Re-export commonly used items
 pub use contract::*;
 pub use health::*;
+pub use regenesis::*;
 pub use state::*;

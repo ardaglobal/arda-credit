@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO deal_transactions (\n                id,\n                transaction_id_hash,\n                user_id_hash,\n                deal_id_hash,\n                transaction_type,\n                amount,\n                user_id,\n                deal_id,\n                metadata,\n                created_at\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Bytea",
+        "Bytea",
+        "Varchar",
+        "Numeric",
+        "Uuid",
+        "Uuid",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "947eaf3ffbfaa1f98e82e76fc46dd329c7d47a65b53a73d0295ad19d1448a7e7"
+}
