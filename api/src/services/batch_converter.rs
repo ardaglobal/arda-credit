@@ -313,8 +313,8 @@ fn convert_db_transaction_to_zkvm(
         ([0u8; 32], [0u8; 32])
     };
 
-    // CRITICAL DEBUG: Log EVERY transaction
-    tracing::error!(
+    // Debug logging for transaction conversion
+    tracing::info!(
         "🔬 TX: {:?} - user_id[0..4]={:?}, originator[0..4]={:?}, investor[0..4]={:?}",
         transaction_type,
         &user_id[..4],

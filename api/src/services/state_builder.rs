@@ -104,35 +104,15 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
         users.insert(user.user_id, user);
     }
 
-    // Query all companies
-    let db_companies = sqlx::query_as!(
-        DbCompany,
-        r#"
-        SELECT 
-            id, name, description, 
-            status as "status: arda_credit_db::business::company::CompanyStatus",
-            metadata as "metadata!", 
-            created_at as "created_at!", 
-            updated_at as "updated_at!"
-        FROM companies
-        ORDER BY created_at
-        "#
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("Failed to query companies: {}", e))?;
+    // For genesis mode, companies will be created via CompanyRegistration transactions
+    // Don't pre-load them to avoid duplicate registration errors
+    info!(
+        "📋 Genesis mode: Companies will be created via CompanyRegistration transactions in batch"
+    );
+    let companies = HashMap::new();
 
-    info!("✅ Loaded {} companies from database", db_companies.len());
-
-    // Convert DB companies to zkVM companies
-    let mut companies = HashMap::new();
-    for db_company in &db_companies {
-        let company = convert_db_company_to_zkvm(db_company)?;
-        companies.insert(company.company_id, company);
-    }
-
-    // Build BalanceState from company balances
-    let balance_state = build_balance_state_from_companies(pool, &db_companies).await?;
+    // Build empty balance state (balances will be created via transactions)
+    let balance_state = BalanceState::new();
 
     // ============================================================================
     // MVP: RETURN EMPTY STATE (USERS ONLY)

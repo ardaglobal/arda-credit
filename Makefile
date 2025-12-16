@@ -315,8 +315,8 @@ bench-zk:
 
 ## server: Start API server locally (in debug mode with verbose logging) with deposit monitor and withdrawal executor
 .PHONY: server
-server: up
-# server: clean-cache up build-program
+# server: up
+server: clean-cache up build-program
 	@sleep 2
 	@# Deploy contracts if in local/staging environment
 	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
