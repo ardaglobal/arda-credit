@@ -103,9 +103,9 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
         r#"
         SELECT 
             id, transaction_id_hash, user_id_hash, deal_id_hash,
-            transaction_type, amount, user_id, deal_id, payment_id,
+            transaction_type, amount, user_id::uuid as user_id, deal_id::uuid as deal_id, payment_id::uuid as payment_id,
             included_in_batch_id, metadata, created_at as "created_at!"
-        FROM deal_transactions
+        FROM state_transactions
         WHERE included_in_batch_id = $1
         ORDER BY created_at, id
         "#,

@@ -1,6 +1,6 @@
 //! Transaction Recording Service
 //!
-//! This service records transactions in the deal_transactions table for zkVM batch processing.
+//! This service records transactions in the state_transactions table for zkVM batch processing.
 //! It provides a consistent interface for all API endpoints to create transaction records
 //! that will later be batched and proven via zero-knowledge proofs.
 //!
@@ -137,7 +137,7 @@ impl TransactionRecordingService {
 
     /// Record a transaction for zkVM batch processing
     ///
-    /// Creates a record in the deal_transactions table that will later be
+    /// Creates a record in the state_transactions table that will later be
     /// picked up by the batch processor, included in a zkVM proof, and
     /// posted to the smart contract.
     ///
@@ -195,10 +195,10 @@ impl TransactionRecordingService {
         // Convert deal_id_hash Option<Vec<u8>> to Option<&[u8]> for query
         let deal_id_hash_ref = deal_id_hash.as_deref();
 
-        // Insert into deal_transactions table
+        // Insert into state_transactions table (consolidated ZK state transitions)
         sqlx::query!(
             r#"
-            INSERT INTO deal_transactions (
+            INSERT INTO state_transactions (
                 id,
                 transaction_id_hash,
                 user_id_hash,
@@ -207,10 +207,9 @@ impl TransactionRecordingService {
                 amount,
                 user_id,
                 deal_id,
-                metadata,
-                created_at
+                metadata
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             "#,
             transaction_id,
             &transaction_id_hash[..], // Convert Vec<u8> to &[u8]
@@ -275,12 +274,12 @@ impl TransactionRecordingService {
 
             sqlx::query!(
                 r#"
-                INSERT INTO deal_transactions (
+                INSERT INTO state_transactions (
                     id, transaction_id_hash, user_id_hash, deal_id_hash,
                     transaction_type, amount, user_id, deal_id,
-                    metadata, created_at
+                    metadata
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 "#,
                 transaction_id,
                 &transaction_id_hash[..],
@@ -354,7 +353,7 @@ mod tests {
 
         // Verify record was created
         let record = sqlx::query!(
-            "SELECT * FROM deal_transactions WHERE id = $1",
+            "SELECT * FROM state_transactions WHERE id = $1",
             transaction_id
         )
         .fetch_one(&pool)
@@ -392,7 +391,7 @@ mod tests {
 
         // Verify record
         let record = sqlx::query!(
-            "SELECT * FROM deal_transactions WHERE id = $1",
+            "SELECT * FROM state_transactions WHERE id = $1",
             transaction_id
         )
         .fetch_one(&pool)
@@ -444,7 +443,7 @@ mod tests {
 
         // Verify all were created
         let count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM deal_transactions WHERE user_id = $1",
+            "SELECT COUNT(*) as count FROM state_transactions WHERE user_id = $1",
             user_id
         )
         .fetch_one(&pool)
@@ -514,7 +513,7 @@ mod tests {
 
         // Verify all created
         for tx_id in transaction_ids {
-            let exists = sqlx::query!("SELECT id FROM deal_transactions WHERE id = $1", tx_id)
+            let exists = sqlx::query!("SELECT id FROM state_transactions WHERE id = $1", tx_id)
                 .fetch_optional(&pool)
                 .await
                 .unwrap();

@@ -19,12 +19,33 @@ static GLOBAL: Jemalloc = Jemalloc;
 // NEW BATCH PROCESSING TYPES
 // ============================================================================
 
-/// Incoming transaction waiting to be batched
+/// Incoming transaction waiting to be batched (LEGACY - use StateTransaction instead)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct IncomingTransaction {
     pub id: i32,
     pub amount: i32,
     pub included_in_batch_id: Option<i32>,
+    pub created_at: DateTime<Utc>,
+}
+
+// ============================================================================
+// STATE TRANSACTION TYPES (Consolidated ZK state transitions)
+// ============================================================================
+
+/// State transaction - unified representation of all ZK state transition functions
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct StateTransaction {
+    pub id: uuid::Uuid,
+    pub transaction_id_hash: Vec<u8>,
+    pub transaction_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub user_id_hash: Option<Vec<u8>>,
+    pub deal_id_hash: Option<Vec<u8>>,
+    pub user_id: Option<uuid::Uuid>,
+    pub deal_id: Option<uuid::Uuid>,
+    pub payment_id: Option<uuid::Uuid>,
+    pub included_in_batch_id: Option<i32>,
+    pub metadata: serde_json::Value,
     pub created_at: DateTime<Utc>,
 }
 
@@ -913,7 +934,7 @@ pub async fn get_pending_transactions(
     Ok(transactions)
 }
 
-/// Get pending deal transactions for zkVM batch processing
+/// Get pending deal transactions for zkVM batch processing (LEGACY - use get_pending_state_transactions)
 ///
 /// This function queries the deal_transactions table for transactions that haven't
 /// been included in a batch yet (included_in_batch_id IS NULL).
@@ -967,6 +988,412 @@ pub async fn get_pending_deal_transactions(
 
     debug!("Found {} pending deal transactions", rows.len());
     Ok(rows)
+}
+
+// ============================================================================
+// STATE TRANSACTION FUNCTIONS (New Consolidated API)
+// ============================================================================
+
+/// Get pending state transactions for zkVM batch processing
+///
+/// This function queries the state_transactions table for transactions that haven't
+/// been included in a batch yet (included_in_batch_id IS NULL).
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `limit` - Optional maximum number of transactions to retrieve (defaults to 1000)
+///
+/// # Returns
+/// Vector of StateTransaction structs ready for zkVM processing
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_pending_state_transactions(
+    pool: &PgPool,
+    limit: Option<i64>,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    let limit = limit.unwrap_or(1000);
+    debug!("Getting pending state transactions with limit {}", limit);
+
+    let rows = sqlx::query_as!(
+        StateTransaction,
+        r#"
+        SELECT 
+            id,
+            transaction_id_hash,
+            transaction_type,
+            amount,
+            user_id_hash,
+            deal_id_hash,
+            user_id,
+            deal_id,
+            payment_id,
+            included_in_batch_id,
+            metadata as "metadata!",
+            created_at as "created_at!"
+        FROM state_transactions
+        WHERE included_in_batch_id IS NULL
+        ORDER BY created_at ASC
+        LIMIT $1
+        "#,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!("Found {} pending state transactions", rows.len());
+    Ok(rows)
+}
+
+/// Create a new state transaction
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `transaction_id_hash` - SHA256 hash of transaction ID
+/// * `transaction_type` - Type of state transition
+/// * `amount` - Amount for monetary transactions
+/// * `user_id_hash` - Optional hashed user ID
+/// * `deal_id_hash` - Optional hashed deal ID
+/// * `user_id` - Optional user UUID reference
+/// * `deal_id` - Optional deal UUID reference
+/// * `payment_id` - Optional payment UUID reference
+/// * `metadata` - Optional JSON metadata
+///
+/// # Returns
+/// UUID of the created transaction
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool, transaction_id_hash, user_id_hash, deal_id_hash),
+    fields(operation = "insert", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn create_state_transaction(
+    pool: &PgPool,
+    transaction_id_hash: &[u8],
+    transaction_type: &str,
+    amount: rust_decimal::Decimal,
+    user_id_hash: Option<&[u8]>,
+    deal_id_hash: Option<&[u8]>,
+    user_id: Option<uuid::Uuid>,
+    deal_id: Option<uuid::Uuid>,
+    payment_id: Option<uuid::Uuid>,
+    metadata: Option<serde_json::Value>,
+) -> Result<uuid::Uuid, sqlx::Error> {
+    let metadata_value = metadata.unwrap_or(serde_json::json!({}));
+    
+    let row = sqlx::query!(
+        r#"
+        INSERT INTO state_transactions (
+            transaction_id_hash,
+            transaction_type,
+            amount,
+            user_id_hash,
+            deal_id_hash,
+            user_id,
+            deal_id,
+            payment_id,
+            metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+        "#,
+        transaction_id_hash,
+        transaction_type,
+        amount,
+        user_id_hash,
+        deal_id_hash,
+        user_id,
+        deal_id,
+        payment_id,
+        metadata_value
+    )
+    .fetch_one(pool)
+    .await?;
+
+    debug!("Created state transaction: id={}", row.id);
+    Ok(row.id)
+}
+
+/// Get state transaction history for a deal
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `deal_id` - Deal UUID
+///
+/// # Returns
+/// Vector of StateTransaction structs for the deal
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_deal_state_transactions(
+    pool: &PgPool,
+    deal_id: uuid::Uuid,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    debug!("Getting state transactions for deal {}", deal_id);
+
+    let rows = sqlx::query_as!(
+        StateTransaction,
+        r#"
+        SELECT 
+            id,
+            transaction_id_hash,
+            transaction_type,
+            amount,
+            user_id_hash,
+            deal_id_hash,
+            user_id,
+            deal_id,
+            payment_id,
+            included_in_batch_id,
+            metadata as "metadata!",
+            created_at as "created_at!"
+        FROM state_transactions
+        WHERE deal_id = $1
+        ORDER BY created_at ASC
+        "#,
+        deal_id
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!("Found {} state transactions for deal", rows.len());
+    Ok(rows)
+}
+
+/// Get state transaction history for a user
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `user_id` - User UUID
+/// * `limit` - Optional limit on number of transactions (defaults to 100)
+/// * `offset` - Optional offset for pagination (defaults to 0)
+///
+/// # Returns
+/// Vector of StateTransaction structs for the user
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_user_state_transactions(
+    pool: &PgPool,
+    user_id: uuid::Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    let limit = limit.unwrap_or(100);
+    let offset = offset.unwrap_or(0);
+    debug!("Getting state transactions for user {} (limit: {}, offset: {})", user_id, limit, offset);
+
+    let rows = sqlx::query_as!(
+        StateTransaction,
+        r#"
+        SELECT 
+            id,
+            transaction_id_hash,
+            transaction_type,
+            amount,
+            user_id_hash,
+            deal_id_hash,
+            user_id,
+            deal_id,
+            payment_id,
+            included_in_batch_id,
+            metadata as "metadata!",
+            created_at as "created_at!"
+        FROM state_transactions
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        OFFSET $3
+        "#,
+        user_id,
+        limit,
+        offset
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!("Found {} state transactions for user", rows.len());
+    Ok(rows)
+}
+
+/// Mark state transactions as batched
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `transaction_ids` - UUIDs of transactions to mark as batched
+/// * `batch_id` - Batch ID to associate with transactions
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool, transaction_ids),
+    fields(operation = "update", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn mark_state_transactions_batched(
+    pool: &PgPool,
+    transaction_ids: &[uuid::Uuid],
+    batch_id: i32,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        UPDATE state_transactions
+        SET included_in_batch_id = $1
+        WHERE id = ANY($2)
+        "#,
+        batch_id,
+        transaction_ids
+    )
+    .execute(pool)
+    .await?;
+
+    debug!("Marked {} state transactions as batched with batch_id {}", result.rows_affected(), batch_id);
+    Ok(result.rows_affected())
+}
+
+/// Create a batch from state_transactions (new consolidated approach)
+///
+/// This function creates a batch by directly querying state_transactions and marking
+/// them as batched. This is the preferred method going forward.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `batch_size` - Maximum number of transactions to include in the batch
+/// * `transaction_ids` - Optional specific transaction IDs to batch (for testing)
+///
+/// # Returns
+/// Option<ProofBatch> - The created batch, or None if no transactions were available
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(
+        operation = "create_batch_state_transactions",
+        table = "proof_batches",
+        layer = "database"
+    ),
+    level = "info"
+)]
+pub async fn create_batch_from_state_transactions(
+    pool: &PgPool,
+    batch_size: i32,
+    transaction_ids: Option<Vec<uuid::Uuid>>,
+) -> Result<Option<ProofBatch>, sqlx::Error> {
+    debug!(
+        "Creating batch from state_transactions with size {}",
+        batch_size
+    );
+
+    // Start a database transaction for atomicity
+    let mut tx = pool.begin().await?;
+
+    // Step 1: Select unbatched transactions (or specific IDs if provided)
+    let transaction_rows = if let Some(ids) = transaction_ids {
+        // For testing: batch specific transaction IDs
+        sqlx::query!(
+            r#"
+            SELECT id
+            FROM state_transactions
+            WHERE id = ANY($1) AND included_in_batch_id IS NULL
+            ORDER BY created_at ASC
+            "#,
+            &ids
+        )
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        // Normal operation: get oldest unbatched transactions
+        sqlx::query!(
+            r#"
+            SELECT id
+            FROM state_transactions
+            WHERE included_in_batch_id IS NULL
+            ORDER BY created_at ASC
+            LIMIT $1
+            "#,
+            batch_size
+        )
+        .fetch_all(&mut *tx)
+        .await?
+    };
+
+    if transaction_rows.is_empty() {
+        debug!("No unbatched state transactions found");
+        tx.commit().await?;
+        return Ok(None);
+    }
+
+    let selected_ids: Vec<uuid::Uuid> = transaction_rows.into_iter().map(|r| r.id).collect();
+    debug!("Selected {} state transactions for batching", selected_ids.len());
+
+    // Step 2: Get current counter value (for backward compatibility with arithmetic batches)
+    let counter_result = sqlx::query!("SELECT value FROM counter_state WHERE id = 'default'")
+        .fetch_one(&mut *tx)
+        .await?;
+    let previous_counter = counter_result.value;
+    let final_counter = previous_counter; // State transactions don't modify the counter
+
+    // Step 3: Create the batch
+    let batch_row = sqlx::query!(
+        r#"
+        INSERT INTO proof_batches (
+            previous_counter_value,
+            final_counter_value,
+            transaction_ids,
+            proof_status
+        )
+        VALUES ($1, $2, $3, 'pending')
+        RETURNING id, created_at
+        "#,
+        previous_counter,
+        final_counter,
+        &[] as &[i32] // Empty array for compatibility (state transactions use UUIDs)
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let batch_id = batch_row.id;
+    debug!("Created batch with id={}", batch_id);
+
+    // Step 4: Mark transactions as batched
+    sqlx::query!(
+        r#"
+        UPDATE state_transactions
+        SET included_in_batch_id = $1
+        WHERE id = ANY($2)
+        "#,
+        batch_id,
+        &selected_ids
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    debug!("Marked {} state transactions as batched", selected_ids.len());
+
+    // Commit the transaction
+    tx.commit().await?;
+
+    // Step 5: Fetch and return the created batch
+    let batch = get_batch_by_id(pool, batch_id).await?;
+    Ok(Some(batch))
 }
 
 // ============================================================================

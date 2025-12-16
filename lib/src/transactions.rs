@@ -3,11 +3,27 @@
 //! This module consolidates all transaction-related types and definitions
 //! for better maintainability and separation of concerns.
 //!
+//! ## State Transactions vs Financial Transactions
+//!
+//! **State Transactions (this module):**
+//! - Zero-knowledge state transition functions
+//! - Stored in `state_transactions` table (consolidated from `deal_transactions` and `incoming_transactions`)
+//! - Batched and proven via zkVM
+//! - Posted to blockchain for verification
+//!
+//! **Financial Transactions (separate):**
+//! - Actual money movement operations
+//! - **Deposits**: User deposits into the system (`account_financial_transactions` with type DEPOSIT)
+//! - **Withdrawals**: User withdrawals from the system (`account_financial_transactions` with type WITHDRAWAL)
+//! - **Payments**: Money movement between accounts (`deal_payments` table)
+//!
 //! ## Recent Changes
-//! Converted from loan-based terminology to deal-based terminology:
-//! - LoanOrigination → DealOrigination
-//! - LoanPayment → DealPayment
-//! - LoanCloseout → DealCloseout
+//! - **Transaction Table Consolidation**: Unified `deal_transactions` and `incoming_transactions` into `state_transactions`
+//! - **Terminology Update**: Converted from loan-based to deal-based terminology:
+//!   - LoanOrigination → DealOrigination
+//!   - LoanPayment → DealPayment
+//!   - LoanCloseout → DealCloseout
+//! - **Financial Clarity**: Distinguished state transitions from financial transactions (deposits/withdrawals/payments)
 //!
 //! Legacy loan terminology is supported in FromStr for backward compatibility
 //! with existing ZK proof data.

@@ -29,6 +29,7 @@ This file provides guidance to AI agents when working with code in this reposito
 - **Smart Contracts** - ARDA contract for deposits/withdrawals/proof verification
 - **ZK Proofs** - SP1 zkVM batch processing via Sindri service
 - **Merkle Tree ADS** - Database-backed authenticated data structure
+- **State Transactions** - Unified audit trail for all ZK state transitions
 
 ### Core Architecture
 
@@ -427,6 +428,7 @@ See the [`docs/`](docs/) directory for detailed information:
 ### Architecture & Design
 - **Three-Component Architecture**: `docs/architecture/three-component-overview.md`
 - **Deal System**: `docs/architecture/deal-system.md`
+- **Transaction Table Consolidation**: `docs/architecture/transaction-table-consolidation.md` (NEW)
 - **Performance Targets**: `docs/architecture/performance-targets.md`
 
 ### Integration & APIs
@@ -451,6 +453,16 @@ See the [`docs/`](docs/) directory for detailed information:
 - Database field `loan_status` kept for internal compatibility
 - All APIs use "deal" terminology
 - Smart contract renamed from "Loan" to "ARDA"
+
+### Transaction Table Consolidation (NEW)
+- **State Transactions**: Unified `state_transactions` table for all ZK state transition functions
+  - Consolidates `deal_transactions` and `incoming_transactions`
+  - Single audit trail for user lifecycle, deal lifecycle, company operations, etc.
+- **Financial Transactions**: Clear separation of money movement
+  - **Deposits**: User deposits into system (`account_financial_transactions` with type DEPOSIT)
+  - **Withdrawals**: User withdrawals from system (`account_financial_transactions` with type WITHDRAWAL)
+  - **Payments**: Money movement between accounts (`deal_payments` table)
+- See [Transaction Table Consolidation](docs/architecture/transaction-table-consolidation.md) for details
 
 ### ZK Privacy Model
 - **Deal amounts and payments** - Private via batch processing

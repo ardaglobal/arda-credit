@@ -197,6 +197,7 @@ pub use db::{
     // Batch functions
     create_batch,
     create_batch_from_deal_transactions,
+    create_batch_from_state_transactions,
     create_deal,
     create_deal_payment,
     // CCR Domain functions
@@ -240,6 +241,12 @@ pub use db::{
     get_payments_by_deal,
     get_pending_deal_transactions,
     get_pending_transactions,
+    // State transaction functions (new consolidated API)
+    create_state_transaction,
+    get_pending_state_transactions,
+    get_deal_state_transactions,
+    get_user_state_transactions,
+    mark_state_transactions_batched,
     get_pending_withdrawal_requests,
     get_potential_stuck_batches,
     get_proven_unposted_batches,
@@ -331,6 +338,7 @@ pub use db::{
     RegisterResult,
     SindriProofData,
     StateSnapshot,
+    StateTransaction,
     TransactionWithProofInfo,
     UpdateInvestorProfileRequest,
     UsdcDeposit,
