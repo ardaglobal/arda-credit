@@ -979,18 +979,41 @@ impl BackgroundBatchProcessor {
         }
 
         // Try to initialize Ethereum client (graceful fallback if not configured)
+        // Check if we're in local environment where contract posting is not expected
+        let server_env =
+            std::env::var("SERVER_ENVIRONMENT").unwrap_or_else(|_| "local".to_string());
+        let is_local = server_env == "local" || server_env == "staging";
+
         let eth_client = match EthConfig::from_env() {
-            Ok(config) => match EthereumClient::new(config).await {
-                Ok(client) => Some(client),
-                Err(e) => {
-                    error!("❌ Failed to initialize Ethereum client: {}", e);
-                    error!("   Smart contract posting will be skipped");
-                    return Ok(());
+            Ok(config) => {
+                match EthereumClient::new(config).await {
+                    Ok(client) => Some(client),
+                    Err(e) => {
+                        if is_local {
+                            debug!(
+                                "ℹ️  Ethereum client not available in {} environment: {}",
+                                server_env, e
+                            );
+                            debug!("   Smart contract posting skipped (expected for local development)");
+                        } else {
+                            error!("❌ Failed to initialize Ethereum client: {}", e);
+                            error!("   Smart contract posting will be skipped");
+                        }
+                        return Ok(());
+                    }
                 }
-            },
+            }
             Err(e) => {
-                error!("❌ Ethereum configuration not found: {}", e);
-                error!("   Smart contract posting will be skipped");
+                if is_local {
+                    debug!(
+                        "ℹ️  Ethereum config not set in {} environment (expected)",
+                        server_env
+                    );
+                    debug!("   Local proofs are stored in database only, not posted to contract");
+                } else {
+                    error!("❌ Ethereum configuration not found: {}", e);
+                    error!("   Smart contract posting will be skipped");
+                }
                 return Ok(());
             }
         };
