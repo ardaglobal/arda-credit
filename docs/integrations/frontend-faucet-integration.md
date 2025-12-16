@@ -855,7 +855,7 @@ interface Window {
 ### 1. **Auto-Detection** (Highest Priority)
 - Check `GET /api/v1/faucet/info` on app load
 - Only show faucet UI if `available: true`
-- Display environment badge (local/staging/sandbox/production)
+- Display environment badge (local/dev/staging/sandbox/production)
 
 ### 2. **Network Switching** (Critical for UX)
 - Detect if user is on wrong network

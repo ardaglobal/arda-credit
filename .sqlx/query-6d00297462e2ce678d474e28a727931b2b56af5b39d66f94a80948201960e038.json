@@ -1,0 +1,206 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            id, originator_id, investor_id, borrower_id, \n            NULL::text as \"borrower_legal_name?\",\n            principal_amount, outstanding_balance, interest_rate_bps,\n            deal_status as \"deal_status!\", originated_at as \"originated_at!\", maturity_date,\n            created_at as \"created_at!\", updated_at as \"updated_at!\", custom_deal_id, status as \"status!\", industry, document_ids,\n            title, description, risk_level, asset_class, region, minimum_investment,\n            payment_frequency, collateral_type, collateral_value, ltv_ratio,\n            credit_score, dscr, state_transition_hash, proof_included as \"proof_included!\", collateral_id\n        FROM deals\n        ORDER BY originated_at\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "originator_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "borrower_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "borrower_legal_name?",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "principal_amount",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "outstanding_balance",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "interest_rate_bps",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "deal_status!",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "originated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 10,
+        "name": "maturity_date",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "custom_deal_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 14,
+        "name": "status!",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 15,
+        "name": "industry",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 16,
+        "name": "document_ids",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 17,
+        "name": "title",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 18,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 19,
+        "name": "risk_level",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 20,
+        "name": "asset_class",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 21,
+        "name": "region",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 22,
+        "name": "minimum_investment",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 23,
+        "name": "payment_frequency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 24,
+        "name": "collateral_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 25,
+        "name": "collateral_value",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 26,
+        "name": "ltv_ratio",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 27,
+        "name": "credit_score",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 28,
+        "name": "dscr",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 29,
+        "name": "state_transition_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 30,
+        "name": "proof_included!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 31,
+        "name": "collateral_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      null,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "6d00297462e2ce678d474e28a727931b2b56af5b39d66f94a80948201960e038"
+}

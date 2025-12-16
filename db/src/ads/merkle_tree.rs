@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
+use lib::{hash_internal_poseidon, hash_leaf_poseidon};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use sqlx::{FromRow, PgPool};
 use tracing::{debug, error, info, instrument, warn};
 
@@ -351,7 +351,7 @@ impl NullifierDb {
         new_tree_index: i64,
         low_nullifier: &LowNullifier,
     ) -> Result<Nullifier, DbError> {
-        info!(
+        debug!(
             "Inserting nullifier: value={}, tree_index={}, low_nullifier_value={}",
             new_value, new_tree_index, low_nullifier.value
         );
@@ -386,11 +386,11 @@ impl NullifierDb {
         }
 
         // Insert new nullifier with appropriate pointers
-        let (next_index, next_value) = if is_empty_tree {
-            // First nullifier: no next pointer (it's the maximum)
+        let (next_index, next_value) = if is_empty_tree && low_nullifier.next_value == 0 {
+            // Truly empty tree: first nullifier has no next pointer (it's the maximum)
             (None::<i64>, 0i64)
         } else {
-            // Normal insertion: inherit pointers from low nullifier
+            // Normal insertion OR virtual low nullifier: inherit pointers from low nullifier
             (low_nullifier.next_index, low_nullifier.next_value)
         };
 
@@ -413,7 +413,7 @@ impl NullifierDb {
 
         tx.commit().await.map_err(DbError::Database)?;
 
-        info!(
+        debug!(
             "Successfully inserted nullifier with id: {}",
             new_nullifier.id
         );
@@ -422,7 +422,7 @@ impl NullifierDb {
 
     #[instrument(skip(self), level = "debug")]
     pub async fn atomic_insert(&self, new_value: i64) -> Result<InsertionResult, DbError> {
-        info!("Starting atomic insertion for value: {}", new_value);
+        debug!("Starting atomic insertion for value: {}", new_value);
 
         // Check if nullifier already exists
         if self.exists(new_value).await? {
@@ -1435,7 +1435,7 @@ impl TreeStateDb {
         .await
         .map_err(DbError::Database)?;
 
-        info!("Updated tree root for tree_id: {}", id);
+        debug!("Updated tree root for tree_id: {}", id);
         Ok(state)
     }
 
@@ -1529,10 +1529,8 @@ impl MerkleTreeDb {
         info!("Starting complete nullifier insertion for value: {}", value);
 
         // Use the atomic insertion which handles the full 7-step process
+        // Note: atomic_insert already increments total_nullifiers in the SQL function
         let result = self.nullifiers.atomic_insert(value).await?;
-
-        // Update tree state
-        self.state.increment_nullifier_count(None).await?;
 
         // Validate the chain integrity after insertion
         let chain_valid = self.nullifiers.validate_chain().await?;
@@ -1655,7 +1653,7 @@ impl IndexedMerkleTree {
         &mut self,
         new_nullifier: i64,
     ) -> Result<AlgorithmInsertionResult, DbError> {
-        info!(
+        debug!(
             "🚀 Starting 7-step nullifier insertion for value: {}",
             new_nullifier
         );
@@ -1669,10 +1667,10 @@ impl IndexedMerkleTree {
         // Get current root before changes
         metrics.database_rounds += 1;
         let old_root = self.get_root().await?;
-        info!("📊 Old root: {:02x?}", &old_root[..8]);
+        debug!("📊 Old root: {:02x?}", &old_root[..8]);
 
         // STEP 1: Find low_nullifier
-        info!(
+        debug!(
             "🔍 Step 1: Finding low nullifier for value {}",
             new_nullifier
         );
@@ -1693,7 +1691,7 @@ impl IndexedMerkleTree {
         let is_empty_tree_insertion = low_nullifier.value == 0 && low_nullifier.tree_index == 0;
 
         if is_empty_tree_insertion {
-            info!("📝 Skipping membership check for empty tree insertion");
+            debug!("📝 Skipping membership check for empty tree insertion");
         } else {
             metrics.database_rounds += 1;
             if !self.db.nullifiers.exists(low_nullifier.value).await? {
@@ -1706,7 +1704,7 @@ impl IndexedMerkleTree {
         }
 
         // STEP 3: Range validation (exactly 2 range checks as per spec)
-        info!("🔒 Step 3: Performing range validation");
+        debug!("🔒 Step 3: Performing range validation");
 
         metrics.range_checks += 1;
         if is_empty_tree_insertion {
@@ -1721,7 +1719,7 @@ impl IndexedMerkleTree {
                     new_nullifier
                 )));
             }
-            info!(
+            debug!(
                 "📝 Empty tree range check passed for value {}",
                 new_nullifier
             );
@@ -1759,7 +1757,7 @@ impl IndexedMerkleTree {
         // Get next available tree index
         metrics.database_rounds += 1;
         let new_tree_index = self.db.state.get_next_index(None).await?;
-        info!(
+        debug!(
             "📍 Assigned tree index {} for new nullifier",
             new_tree_index
         );
@@ -1783,7 +1781,7 @@ impl IndexedMerkleTree {
             .insert_with_update(new_nullifier, new_tree_index, &low_nullifier)
             .await?;
 
-        info!(
+        debug!(
             "✅ Successfully inserted nullifier with ID: {}",
             new_nullifier_entry.id
         );
@@ -1801,7 +1799,10 @@ impl IndexedMerkleTree {
         // Get new root after changes
         metrics.database_rounds += 1;
         let new_root = self.get_root().await?;
-        info!("📊 New root: {:02x?}", &new_root[..8]);
+        debug!("📊 New root: {:02x?}", &new_root[..8]);
+
+        // Increment nullifier count in tree_state
+        self.db.state.increment_nullifier_count(None).await?;
 
         // Generate proofs (additional hash operations)
         let (insertion_proof, proof_metrics) = self
@@ -1816,7 +1817,7 @@ impl IndexedMerkleTree {
         // Calculate total constraints for ZK circuit
         metrics.constraints_count = self.calculate_constraints(&metrics);
 
-        info!("🎯 Insertion complete - Metrics: {} hashes, {} range checks, {} DB rounds, {} constraints",
+        debug!("🎯 Insertion complete - Metrics: {} hashes, {} range checks, {} DB rounds, {} constraints",
             metrics.hash_operations, metrics.range_checks, metrics.database_rounds, metrics.constraints_count);
 
         Ok(AlgorithmInsertionResult {
@@ -1828,45 +1829,39 @@ impl IndexedMerkleTree {
         })
     }
 
-    /// Generate leaf hash from nullifier data (as per algorithm specification)
+    /// Generate leaf hash from nullifier data using Poseidon2 (as per algorithm specification)
     #[instrument(skip(self, nullifier), level = "debug")]
     fn hash_nullifier_leaf(&self, nullifier: &Nullifier) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(nullifier.value.to_be_bytes());
-        hasher.update(nullifier.next_index.unwrap_or(0).to_be_bytes());
-        hasher.update(nullifier.next_value.to_be_bytes());
-        let result: [u8; 32] = hasher.finalize().into();
+        let result =
+            hash_leaf_poseidon(nullifier.value, nullifier.next_index, nullifier.next_value);
         debug!(
-            "Hashed nullifier leaf: value={}, hash={:02x?}",
+            "Hashed nullifier leaf (Poseidon2): value={}, hash={:02x?}",
             nullifier.value,
             &result[..8]
         );
         result
     }
 
-    /// Generate leaf hash for LowNullifier state
+    /// Generate leaf hash for LowNullifier state using Poseidon2
     #[instrument(skip(self, low_nullifier), level = "debug")]
     fn hash_low_nullifier_leaf(&self, low_nullifier: &LowNullifier) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(low_nullifier.value.to_be_bytes());
-        hasher.update(low_nullifier.next_index.unwrap_or(0).to_be_bytes());
-        hasher.update(low_nullifier.next_value.to_be_bytes());
-        let result: [u8; 32] = hasher.finalize().into();
+        let result = hash_leaf_poseidon(
+            low_nullifier.value,
+            low_nullifier.next_index,
+            low_nullifier.next_value,
+        );
         debug!(
-            "Hashed low nullifier leaf: value={}, hash={:02x?}",
+            "Hashed low nullifier leaf (Poseidon2): value={}, hash={:02x?}",
             low_nullifier.value,
             &result[..8]
         );
         result
     }
 
-    /// Hash two child nodes to create parent node
+    /// Hash two child nodes to create parent node using Poseidon2
     #[instrument(skip(self, left, right), level = "debug")]
     fn hash_internal_node(&self, left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-        let mut hasher = Sha256::new();
-        hasher.update(left);
-        hasher.update(right);
-        hasher.finalize().into()
+        hash_internal_poseidon(left, right)
     }
 
     /// Efficiently update tree for both low_nullifier and new_nullifier
@@ -1881,7 +1876,7 @@ impl IndexedMerkleTree {
         low_nullifier_after: &LowNullifier,
         new_nullifier: &Nullifier,
     ) -> Result<u32, DbError> {
-        info!("🌳 Updating Merkle tree for insertion");
+        debug!("🌳 Updating Merkle tree for insertion");
         let mut hash_count = 0u32;
 
         // Hash operations for leaf updates
@@ -1914,7 +1909,7 @@ impl IndexedMerkleTree {
         // Total: 1 + 1 + 64 = 66 hash operations for tree updates
         // Plus proof generation will add more to reach target of 3n + 3 = 99
 
-        info!("Tree update complete with {} hash operations", hash_count);
+        debug!("Tree update complete with {} hash operations", hash_count);
         Ok(hash_count)
     }
 
@@ -2052,7 +2047,7 @@ impl IndexedMerkleTree {
         low_nullifier_after: &LowNullifier,
         new_nullifier: &Nullifier,
     ) -> Result<(InsertionProof, u32), DbError> {
-        info!("🔐 Generating insertion proof");
+        debug!("🔐 Generating insertion proof");
 
         // Generate proofs (each proof generation involves tree_height hash operations for verification)
         let low_nullifier_proof = self
@@ -2071,7 +2066,7 @@ impl IndexedMerkleTree {
             low_nullifier_after: low_nullifier_after.clone(),
         };
 
-        info!("✅ Insertion proof generated successfully");
+        debug!("✅ Insertion proof generated successfully");
         Ok((insertion_proof, proof_hash_operations))
     }
 

@@ -74,6 +74,11 @@ pub enum TransactionType {
     CollateralDealDisassociation = 23,
     CollateralDetectionRequest = 24,
     CollateralDetectionUpdate = 25,
+    // State management operations
+    StateRegenesis = 30,
+    // Company operations
+    CompanyRegistration = 31,
+    CompanyUpdate = 32,
 }
 
 impl TransactionType {
@@ -109,14 +114,43 @@ impl TransactionType {
 /// Transaction for batch processing (zkVM compatible)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DealTransaction {
-    pub transaction_id: [u8; 32], // Hashed UUID
-    pub user_id: [u8; 32],        // Transaction initiator
-    pub deal_id: [u8; 32],        // All zeros for non-deal transactions
+    pub transaction_id: [u8; 32],        // Hashed UUID
+    pub user_id: [u8; 32],               // User who initiated the transaction
+    pub originator_company_id: [u8; 32], // Originator company (or company for deposits/withdrawals)
+    pub investor_company_id: [u8; 32],   // Investor company (or zeros for non-deal transactions)
+    pub deal_id: [u8; 32],               // Deal ID (or zeros for non-deal transactions)
     pub transaction_type: TransactionType,
     pub amount: u64,     // 0 for non-monetary transactions
     pub created_at: u64, // Unix timestamp
     // Metadata encoded as fixed-size array for zkVM compatibility
     pub metadata: MetadataArray, // Flexible metadata field
+}
+
+impl DealTransaction {
+    /// Create a new transaction with minimal fields (company IDs default to zero)
+    /// This is a helper for tests and legacy code that don't use company IDs yet
+    #[must_use]
+    pub const fn new_simple(
+        transaction_id: [u8; 32],
+        user_id: [u8; 32],
+        deal_id: [u8; 32],
+        transaction_type: TransactionType,
+        amount: u64,
+        created_at: u64,
+        metadata: MetadataArray,
+    ) -> Self {
+        Self {
+            transaction_id,
+            user_id,
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
+            deal_id,
+            transaction_type,
+            amount,
+            created_at,
+            metadata,
+        }
+    }
 }
 
 /// Batch of mixed transaction types
@@ -164,6 +198,9 @@ impl std::fmt::Display for TransactionType {
                 write!(f, "collateral_detection_request")
             }
             TransactionType::CollateralDetectionUpdate => write!(f, "collateral_detection_update"),
+            TransactionType::StateRegenesis => write!(f, "state_regenesis"),
+            TransactionType::CompanyRegistration => write!(f, "company_registration"),
+            TransactionType::CompanyUpdate => write!(f, "company_update"),
         }
     }
 }
@@ -194,6 +231,9 @@ impl std::str::FromStr for TransactionType {
             "collateral_deal_disassociation" => Ok(TransactionType::CollateralDealDisassociation),
             "collateral_detection_request" => Ok(TransactionType::CollateralDetectionRequest),
             "collateral_detection_update" => Ok(TransactionType::CollateralDetectionUpdate),
+            "state_regenesis" => Ok(TransactionType::StateRegenesis),
+            "company_registration" => Ok(TransactionType::CompanyRegistration),
+            "company_update" => Ok(TransactionType::CompanyUpdate),
             _ => Err(format!("Unknown transaction type: {}", s)),
         }
     }

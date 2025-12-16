@@ -2,7 +2,7 @@
 
 ## Overview
 
-For local and staging environments, Arda Credit now uses a **local Anvil devnet** with deployed smart contracts instead of remote Ethereum testnets. This provides:
+For local, dev, and staging environments, Arda Credit now uses a **local Anvil devnet** with deployed smart contracts instead of remote Ethereum testnets. This provides:
 
 - ✅ **Faster development** - No network latency or gas costs
 - ✅ **Consistent state** - Persisted blockchain state across restarts
@@ -14,14 +14,15 @@ For local and staging environments, Arda Credit now uses a **local Anvil devnet*
 
 ### Environment-Based Deployment
 
-| Environment | Blockchain | Contracts Deployed | Faucet Available |
-|------------|------------|-------------------|------------------|
-| **local** | Anvil (localhost:8545) | MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier | ✅ Yes (1M USDC/hr) |
-| **staging** | Anvil (staging server) | MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier | ✅ Yes (1M USDC/hr) |
-| **sandbox** | Sepolia testnet | ARDA + Real USDC | ❌ Use Sepolia faucets |
-| **production** | Ethereum mainnet | ARDA + Real USDC | ❌ Real USDC only |
+| Environment | Blockchain | Contracts Deployed | Faucet Available | Proof Type | Contract Posting |
+|------------|------------|-------------------|------------------|------------|------------------|
+| **local** | Anvil (localhost:8545) | MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier | ✅ Yes (1M USDC/hr) | Core (local) | ❌ No |
+| **dev** | Anvil (dev server) | MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier | ✅ Yes (1M USDC/hr) | Core (local) | ❌ No |
+| **staging** | Anvil (staging server) | MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier | ✅ Yes (1M USDC/hr) | Groth16 (Sindri) | ✅ Yes |
+| **sandbox** | Sepolia testnet | ARDA + Real USDC | ❌ Use Sepolia faucets | Groth16 (Sindri) | ✅ Yes |
+| **production** | Ethereum mainnet | ARDA + Real USDC | ❌ Real USDC only | Groth16 (Sindri) | ✅ Yes |
 
-### Deployed Contracts (Local/Staging)
+### Deployed Contracts (Local/Dev/Staging)
 
 1. **MockUSDC** - ERC20 token with 6 decimals (like real USDC)
 2. **SP1MockVerifier** - Mock ZK proof verifier for testing
@@ -44,7 +45,7 @@ make server
 ```
 
 The `make server` command now automatically:
-- Starts Anvil if in local/staging environment
+- Starts Anvil if in local/dev/staging environment
 - Checks if contracts are deployed
 - Deploys contracts if missing
 - Loads contract addresses from deployment file

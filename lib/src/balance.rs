@@ -1,8 +1,8 @@
-//! User balance tracking for loan operations
+//! Company balance tracking for deal operations
 //!
-//! This module provides comprehensive balance tracking that integrates with
-//! the existing loan payment processing and IMT batching system. Balance updates
-//! are triggered automatically during loan payments and included in the same batches.
+//! This module provides comprehensive balance tracking for companies that participate in deals.
+//! Only companies have balances; users act on behalf of companies but don't have personal balances.
+//! Balance updates are triggered automatically during deal operations and included in IMT batches.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,8 +11,8 @@ use thiserror::Error;
 /// Errors that can occur during balance operations
 #[derive(Error, Debug, Clone)]
 pub enum BalanceError {
-    #[error("User not found: {user_id:?}")]
-    UserNotFound { user_id: [u8; 32] },
+    #[error("Company not found: {company_id:?}")]
+    CompanyNotFound { company_id: [u8; 32] },
 
     #[error("Insufficient balance: requested {requested}, available {available}")]
     InsufficientBalance { requested: u128, available: u128 },
@@ -93,19 +93,19 @@ impl BalanceUpdateType {
 pub struct BalanceUpdate {
     /// Unique identifier for this balance update
     pub update_id: [u8; 32],
-    /// User whose balance is being updated
-    pub user_id: [u8; 32],
-    /// Related loan ID (if applicable)
+    /// Company whose balance is being updated
+    pub company_id: [u8; 32],
+    /// Related deal ID (if applicable)
     pub loan_id: Option<[u8; 32]>,
-    /// Related loan transaction ID that triggered this update
+    /// Related transaction ID that triggered this update
     pub triggering_transaction_id: Option<[u8; 32]>,
     /// Type of balance update
     pub update_type: BalanceUpdateType,
     /// Amount of the balance change (always positive, sign determined by `update_type`)
     pub amount: u128,
-    /// User's balance before this update
+    /// Company's balance before this update
     pub previous_balance: u128,
-    /// User's balance after this update
+    /// Company's balance after this update
     pub new_balance: u128,
     /// Timestamp when update was created
     pub created_at: u64,
@@ -118,10 +118,11 @@ impl BalanceUpdate {
     ///
     /// # Errors
     /// Returns `BalanceError::InvalidAmount` if amount is zero
+    /// Returns `BalanceError::InsufficientBalance` if debit exceeds balance (for recent transactions only)
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         update_id: [u8; 32],
-        user_id: [u8; 32],
+        company_id: [u8; 32],
         loan_id: Option<[u8; 32]>,
         triggering_transaction_id: Option<[u8; 32]>,
         update_type: BalanceUpdateType,
@@ -130,6 +131,38 @@ impl BalanceUpdate {
         created_at: u64,
         metadata: Option<String>,
     ) -> Result<Self, BalanceError> {
+        Self::new_with_validation(
+            update_id,
+            company_id,
+            loan_id,
+            triggering_transaction_id,
+            update_type,
+            amount,
+            previous_balance,
+            created_at,
+            metadata,
+            true, // Enable balance validation by default
+        )
+    }
+
+    /// Create a new balance update with optional balance validation
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
+    /// Returns `BalanceError::InsufficientBalance` if debit exceeds balance and validation enabled
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_validation(
+        update_id: [u8; 32],
+        company_id: [u8; 32],
+        loan_id: Option<[u8; 32]>,
+        triggering_transaction_id: Option<[u8; 32]>,
+        update_type: BalanceUpdateType,
+        amount: u128,
+        previous_balance: u128,
+        created_at: u64,
+        metadata: Option<String>,
+        enforce_balance_check: bool,
+    ) -> Result<Self, BalanceError> {
         if amount == 0 {
             return Err(BalanceError::InvalidAmount { amount });
         }
@@ -137,13 +170,15 @@ impl BalanceUpdate {
         let new_balance = if update_type.is_credit() {
             previous_balance.saturating_add(amount)
         } else if update_type.is_debit() {
-            if previous_balance < amount {
+            // Only enforce balance check if requested (skipped for historical imports)
+            if enforce_balance_check && previous_balance < amount {
                 return Err(BalanceError::InsufficientBalance {
                     requested: amount,
                     available: previous_balance,
                 });
             }
-            previous_balance - amount
+            // Use saturating_sub to handle historical imports with zero starting balance
+            previous_balance.saturating_sub(amount)
         } else {
             // Manual adjustment - amount could be positive or negative
             previous_balance.saturating_add(amount)
@@ -151,7 +186,7 @@ impl BalanceUpdate {
 
         Ok(Self {
             update_id,
-            user_id,
+            company_id,
             loan_id,
             triggering_transaction_id,
             update_type,
@@ -194,7 +229,7 @@ impl BalanceUpdate {
 
         // Add core balance update data
         hasher.update(self.update_id);
-        hasher.update(self.user_id);
+        hasher.update(self.company_id);
         hasher.update([self.update_type as u8]);
         hasher.update(self.amount.to_le_bytes());
         hasher.update(self.previous_balance.to_le_bytes());
@@ -215,39 +250,39 @@ impl BalanceUpdate {
     }
 }
 
-/// User balance state
+/// Company balance state
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct UserBalance {
-    /// User ID
-    pub user_id: [u8; 32],
+pub struct CompanyBalance {
+    /// Company ID
+    pub company_id: [u8; 32],
     /// Current balance
     pub balance: u128,
     /// Last update timestamp
     pub last_updated: u64,
-    /// Number of balance updates for this user
+    /// Number of balance updates for this company
     pub update_count: u64,
 }
 
-impl UserBalance {
-    /// Create a new user balance
+impl CompanyBalance {
+    /// Create a new company balance
     #[must_use]
-    pub const fn new(user_id: [u8; 32], initial_balance: u128, timestamp: u64) -> Self {
+    pub const fn new(company_id: [u8; 32], initial_balance: u128, timestamp: u64) -> Self {
         Self {
-            user_id,
+            company_id,
             balance: initial_balance,
             last_updated: timestamp,
             update_count: 0,
         }
     }
 
-    /// Apply a balance update to this user's balance
+    /// Apply a balance update to this company's balance
     ///
     /// # Errors
-    /// Returns `BalanceError::OperationFailed` if user ID mismatch or balance underflow
+    /// Returns `BalanceError::OperationFailed` if company ID mismatch or balance underflow
     pub fn apply_update(&mut self, update: &BalanceUpdate) -> Result<(), BalanceError> {
-        if update.user_id != self.user_id {
+        if update.company_id != self.company_id {
             return Err(BalanceError::OperationFailed {
-                reason: "User ID mismatch".to_string(),
+                reason: "Company ID mismatch".to_string(),
             });
         }
 
@@ -268,15 +303,20 @@ impl UserBalance {
     }
 }
 
-/// Global balance state for all users
+// Keep UserBalance as alias for backwards compatibility
+pub type UserBalance = CompanyBalance;
+
+/// Global balance state for all companies
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BalanceState {
-    /// User balances indexed by `user_id`
-    pub balances: HashMap<[u8; 32], UserBalance>,
+    /// Company balances indexed by `company_id`
+    pub balances: HashMap<[u8; 32], CompanyBalance>,
     /// All balance updates (for history tracking)
     pub updates: Vec<BalanceUpdate>,
     /// Last update timestamp
     pub last_updated: u64,
+    /// Current batch timestamp (for determining if transactions are historical)
+    pub current_batch_timestamp: u64,
 }
 
 impl BalanceState {
@@ -286,46 +326,74 @@ impl BalanceState {
         Self::default()
     }
 
-    /// Get user's current balance
+    /// Check if a transaction is historical (> 24 hours before current batch)
+    /// Historical transactions skip balance validation for data imports
     #[must_use]
-    pub fn get_balance(&self, user_id: &[u8; 32]) -> u128 {
-        self.balances.get(user_id).map_or(0, |b| b.balance)
+    fn is_historical_transaction(&self, transaction_timestamp: u64) -> bool {
+        const ONE_DAY_SECONDS: u64 = 86400; // 24 hours
+
+        // If no batch timestamp set (= 0), assume we're processing historical data
+        if self.current_batch_timestamp == 0 {
+            return true;
+        }
+
+        // Check if transaction is more than 24 hours before current batch
+        self.current_batch_timestamp
+            .saturating_sub(transaction_timestamp)
+            > ONE_DAY_SECONDS
     }
 
-    /// Get user balance info
+    /// Get company's current balance
     #[must_use]
-    pub fn get_user_balance(&self, user_id: &[u8; 32]) -> Option<&UserBalance> {
-        self.balances.get(user_id)
+    pub fn get_balance(&self, company_id: &[u8; 32]) -> u128 {
+        self.balances.get(company_id).map_or(0, |b| b.balance)
     }
 
-    /// Initialize a user's balance if it doesn't exist
-    pub fn ensure_user_balance(&mut self, user_id: [u8; 32], timestamp: u64) {
+    /// Get company balance info
+    #[must_use]
+    pub fn get_company_balance(&self, company_id: &[u8; 32]) -> Option<&CompanyBalance> {
+        self.balances.get(company_id)
+    }
+
+    /// Keep old method name for backwards compatibility
+    #[must_use]
+    pub fn get_user_balance(&self, user_id: &[u8; 32]) -> Option<&CompanyBalance> {
+        self.get_company_balance(user_id)
+    }
+
+    /// Initialize a company's balance if it doesn't exist
+    pub fn ensure_company_balance(&mut self, company_id: [u8; 32], timestamp: u64) {
         self.balances
-            .entry(user_id)
-            .or_insert_with(|| UserBalance::new(user_id, 0, timestamp));
+            .entry(company_id)
+            .or_insert_with(|| CompanyBalance::new(company_id, 0, timestamp));
+    }
+
+    /// Keep old method name for backwards compatibility
+    pub fn ensure_user_balance(&mut self, company_id: [u8; 32], timestamp: u64) {
+        self.ensure_company_balance(company_id, timestamp);
     }
 
     /// Apply a balance update to the state
     ///
     /// # Errors
-    /// Returns `BalanceError::UserNotFound` if user balance cannot be retrieved
+    /// Returns `BalanceError::CompanyNotFound` if company balance cannot be retrieved
     pub fn apply_update(&mut self, update: BalanceUpdate) -> Result<(), BalanceError> {
-        // Ensure user balance exists
-        self.ensure_user_balance(update.user_id, update.created_at);
+        // Ensure company balance exists
+        self.ensure_company_balance(update.company_id, update.created_at);
 
-        // Get mutable reference to user balance
-        let user_balance =
+        // Get mutable reference to company balance
+        let company_balance =
             self.balances
-                .get_mut(&update.user_id)
-                .ok_or(BalanceError::UserNotFound {
-                    user_id: update.user_id,
+                .get_mut(&update.company_id)
+                .ok_or(BalanceError::CompanyNotFound {
+                    company_id: update.company_id,
                 })?;
 
         // Store timestamp before moving update
         let update_timestamp = update.created_at;
 
         // Apply the update
-        user_balance.apply_update(&update)?;
+        company_balance.apply_update(&update)?;
 
         // Store the update in history
         self.updates.push(update);
@@ -338,8 +406,8 @@ impl BalanceState {
         Ok(())
     }
 
-    /// Create balance updates from loan payment
-    /// This is called automatically during loan payment processing
+    /// Create balance updates from deal payment
+    /// This is called automatically during deal payment processing
     ///
     /// # Errors
     /// Returns `BalanceError::InvalidAmount` if amount is zero
@@ -347,25 +415,25 @@ impl BalanceState {
         &self,
         payment_transaction_id: [u8; 32],
         loan_id: [u8; 32],
-        _payer_id: [u8; 32],    // Not used in current implementation
-        recipient_id: [u8; 32], // Usually the lender
+        _payer_company_id: [u8; 32], // Not used in current implementation
+        recipient_company_id: [u8; 32], // Usually the investor company
         amount: u128,
         timestamp: u64,
     ) -> Result<Vec<BalanceUpdate>, BalanceError> {
         let mut updates = Vec::new();
 
-        // Credit for recipient (lender receives payment)
+        // Credit for recipient company (investor receives payment)
         let credit_update = BalanceUpdate::new(
             self.generate_update_id(payment_transaction_id, 1),
-            recipient_id,
+            recipient_company_id,
             Some(loan_id),
             Some(payment_transaction_id),
             BalanceUpdateType::CreditFromPayment,
             amount,
-            self.get_balance(&recipient_id),
+            self.get_balance(&recipient_company_id),
             timestamp,
             Some(format!(
-                "Payment received from loan {:02x}{:02x}{:02x}{:02x}",
+                "Payment received from deal {:02x}{:02x}{:02x}{:02x}",
                 loan_id[0], loan_id[1], loan_id[2], loan_id[3]
             )),
         )?;
@@ -375,7 +443,7 @@ impl BalanceState {
         Ok(updates)
     }
 
-    /// Create balance updates from loan origination
+    /// Create balance updates from deal origination
     ///
     /// # Errors
     /// Returns `BalanceError::InvalidAmount` if amount is zero
@@ -383,74 +451,79 @@ impl BalanceState {
         &self,
         origination_transaction_id: [u8; 32],
         loan_id: [u8; 32],
-        borrower_id: [u8; 32],
-        lender_id: [u8; 32],
+        originator_company_id: [u8; 32],
+        investor_company_id: [u8; 32],
         amount: u128,
         timestamp: u64,
     ) -> Result<Vec<BalanceUpdate>, BalanceError> {
         let mut updates = Vec::new();
 
-        // Credit for borrower (receives loan funds)
-        let borrower_credit = BalanceUpdate::new(
+        // Determine if this is a historical transaction
+        let skip_validation = self.is_historical_transaction(timestamp);
+
+        // Credit for originator company (receives deal funds)
+        let originator_credit = BalanceUpdate::new_with_validation(
             self.generate_update_id(origination_transaction_id, 1),
-            borrower_id,
+            originator_company_id,
             Some(loan_id),
             Some(origination_transaction_id),
             BalanceUpdateType::CreditFromOrigination,
             amount,
-            self.get_balance(&borrower_id),
+            self.get_balance(&originator_company_id),
             timestamp,
             Some(format!(
-                "Loan origination funds received {:02x}{:02x}{:02x}{:02x}",
+                "Deal origination funds received {:02x}{:02x}{:02x}{:02x}",
                 loan_id[0], loan_id[1], loan_id[2], loan_id[3]
             )),
+            !skip_validation, // Skip balance check for historical transactions
         )?;
 
-        // Debit for lender (funds lent out)
-        let lender_debit = BalanceUpdate::new(
+        // Debit for investor company (funds invested)
+        let investor_debit = BalanceUpdate::new_with_validation(
             self.generate_update_id(origination_transaction_id, 2),
-            lender_id,
+            investor_company_id,
             Some(loan_id),
             Some(origination_transaction_id),
             BalanceUpdateType::DebitFromOrigination,
             amount,
-            self.get_balance(&lender_id),
+            self.get_balance(&investor_company_id),
             timestamp,
             Some(format!(
-                "Loan origination funds lent {:02x}{:02x}{:02x}{:02x}",
+                "Deal origination funds invested {:02x}{:02x}{:02x}{:02x}",
                 loan_id[0], loan_id[1], loan_id[2], loan_id[3]
             )),
+            !skip_validation, // Skip balance check for historical transactions
         )?;
 
-        updates.push(borrower_credit);
-        updates.push(lender_debit);
+        updates.push(originator_credit);
+        updates.push(investor_debit);
 
         Ok(updates)
     }
 
-    /// Create balance update from user deposit
+    /// Create balance update from company deposit
     ///
     /// # Errors
     /// Returns `BalanceError::InvalidAmount` if amount is zero
     pub fn create_deposit_update(
         &self,
         deposit_transaction_id: [u8; 32],
-        user_id: [u8; 32],
-        wallet_address: [u8; 32], // Wallet address where deposit came from
+        company_id: [u8; 32],
+        wallet_address: [u8; 32], // Company wallet address where deposit came from
         amount: u128,
         timestamp: u64,
     ) -> Result<BalanceUpdate, BalanceError> {
         let update = BalanceUpdate::new(
             self.generate_update_id(deposit_transaction_id, 1),
-            user_id,
-            None, // No loan associated with deposits
+            company_id,
+            None, // No deal associated with deposits
             Some(deposit_transaction_id),
             BalanceUpdateType::CreditFromDeposit,
             amount,
-            self.get_balance(&user_id),
+            self.get_balance(&company_id),
             timestamp,
             Some(format!(
-                "Deposit from wallet {:02x}{:02x}{:02x}{:02x}...",
+                "Deposit from company wallet {:02x}{:02x}{:02x}{:02x}...",
                 wallet_address[0], wallet_address[1], wallet_address[2], wallet_address[3]
             )),
         )?;
@@ -458,20 +531,20 @@ impl BalanceState {
         Ok(update)
     }
 
-    /// Create balance update from user withdrawal
+    /// Create balance update from company withdrawal
     ///
     /// # Errors
     /// Returns `BalanceError::InvalidAmount` if amount is zero
-    /// Returns `BalanceError::InsufficientBalance` if user doesn't have enough balance
+    /// Returns `BalanceError::InsufficientBalance` if company doesn't have enough balance
     pub fn create_withdrawal_update(
         &self,
         withdrawal_transaction_id: [u8; 32],
-        user_id: [u8; 32],
-        recipient_address: [u8; 32], // Recipient wallet address for withdrawal
+        company_id: [u8; 32],
+        recipient_address: [u8; 32], // Company wallet address for withdrawal
         amount: u128,
         timestamp: u64,
     ) -> Result<BalanceUpdate, BalanceError> {
-        let current_balance = self.get_balance(&user_id);
+        let current_balance = self.get_balance(&company_id);
 
         // Check for sufficient balance
         if current_balance < amount {
@@ -483,15 +556,15 @@ impl BalanceState {
 
         let update = BalanceUpdate::new(
             self.generate_update_id(withdrawal_transaction_id, 1),
-            user_id,
-            None, // No loan associated with withdrawals
+            company_id,
+            None, // No deal associated with withdrawals
             Some(withdrawal_transaction_id),
             BalanceUpdateType::DebitFromWithdrawal,
             amount,
             current_balance,
             timestamp,
             Some(format!(
-                "Withdrawal to wallet {:02x}{:02x}{:02x}{:02x}...",
+                "Withdrawal to company wallet {:02x}{:02x}{:02x}{:02x}...",
                 recipient_address[0],
                 recipient_address[1],
                 recipient_address[2],
@@ -502,30 +575,40 @@ impl BalanceState {
         Ok(update)
     }
 
-    /// Get balance update history for a user
+    /// Get balance update history for a company
+    #[must_use]
+    pub fn get_company_update_history(
+        &self,
+        company_id: &[u8; 32],
+        limit: Option<usize>,
+    ) -> Vec<&BalanceUpdate> {
+        let mut company_updates: Vec<&BalanceUpdate> = self
+            .updates
+            .iter()
+            .filter(|update| update.company_id == *company_id)
+            .collect();
+
+        // Sort by timestamp (most recent first)
+        company_updates.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        if let Some(limit) = limit {
+            company_updates.truncate(limit);
+        }
+
+        company_updates
+    }
+
+    /// Keep old method name for backwards compatibility
     #[must_use]
     pub fn get_user_update_history(
         &self,
         user_id: &[u8; 32],
         limit: Option<usize>,
     ) -> Vec<&BalanceUpdate> {
-        let mut user_updates: Vec<&BalanceUpdate> = self
-            .updates
-            .iter()
-            .filter(|update| update.user_id == *user_id)
-            .collect();
-
-        // Sort by timestamp (most recent first)
-        user_updates.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-
-        if let Some(limit) = limit {
-            user_updates.truncate(limit);
-        }
-
-        user_updates
+        self.get_company_update_history(user_id, limit)
     }
 
-    /// Get balance updates for a specific loan
+    /// Get balance updates for a specific deal
     #[must_use]
     pub fn get_loan_balance_updates(&self, loan_id: &[u8; 32]) -> Vec<&BalanceUpdate> {
         self.updates
@@ -547,17 +630,17 @@ impl BalanceState {
     pub fn create_credit_drawdown_update(
         &self,
         drawdown_transaction_id: [u8; 32],
-        user_id: [u8; 32],
+        company_id: [u8; 32],
         recipient_address: [u8; 32],
         amount: u128,
         timestamp: u64,
     ) -> Result<BalanceUpdate, BalanceError> {
-        let current_balance = self.get_balance(&user_id);
+        let current_balance = self.get_balance(&company_id);
 
         BalanceUpdate::new(
             self.generate_update_id(drawdown_transaction_id, 1),
-            user_id,
-            None, // No loan ID for credit line operations
+            company_id,
+            None, // No deal ID for credit line operations
             Some(drawdown_transaction_id),
             BalanceUpdateType::DebitFromCreditDrawdown,
             amount,
@@ -577,16 +660,16 @@ impl BalanceState {
     pub fn create_credit_repayment_update(
         &self,
         repayment_transaction_id: [u8; 32],
-        user_id: [u8; 32],
+        company_id: [u8; 32],
         amount: u128,
         timestamp: u64,
     ) -> Result<BalanceUpdate, BalanceError> {
-        let current_balance = self.get_balance(&user_id);
+        let current_balance = self.get_balance(&company_id);
 
         BalanceUpdate::new(
             self.generate_update_id(repayment_transaction_id, 1),
-            user_id,
-            None, // No loan ID for credit line operations
+            company_id,
+            None, // No deal ID for credit line operations
             Some(repayment_transaction_id),
             BalanceUpdateType::CreditFromRepayment,
             amount,
@@ -674,9 +757,9 @@ impl BalanceInclusionProof {
     #[must_use]
     pub fn description(&self) -> String {
         format!(
-            "Balance update proof for user {:02x}{:02x}{:02x}{:02x} - {} {} in batch {:02x}{:02x}{:02x}{:02x}",
-            self.balance_update.user_id[0], self.balance_update.user_id[1],
-            self.balance_update.user_id[2], self.balance_update.user_id[3],
+            "Balance update proof for company {:02x}{:02x}{:02x}{:02x} - {} {} in batch {:02x}{:02x}{:02x}{:02x}",
+            self.balance_update.company_id[0], self.balance_update.company_id[1],
+            self.balance_update.company_id[2], self.balance_update.company_id[3],
             self.balance_update.update_type.as_str(),
             self.balance_update.amount,
             self.batch_id[0], self.batch_id[1], self.batch_id[2], self.batch_id[3]
@@ -711,7 +794,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(update.user_id, user_id);
+        assert_eq!(update.company_id, user_id);
         assert_eq!(update.amount, amount);
         assert_eq!(update.previous_balance, previous_balance);
         assert_eq!(update.new_balance, previous_balance + amount);
@@ -819,7 +902,7 @@ mod tests {
         assert_eq!(updates.len(), 1);
 
         let credit_update = &updates[0];
-        assert_eq!(credit_update.user_id, recipient_id);
+        assert_eq!(credit_update.company_id, recipient_id);
         assert_eq!(
             credit_update.update_type,
             BalanceUpdateType::CreditFromPayment
@@ -868,7 +951,7 @@ mod tests {
 
         // First update should be credit for borrower
         let borrower_update = &updates[0];
-        assert_eq!(borrower_update.user_id, borrower_id);
+        assert_eq!(borrower_update.company_id, borrower_id);
         assert_eq!(
             borrower_update.update_type,
             BalanceUpdateType::CreditFromOrigination
@@ -877,7 +960,7 @@ mod tests {
 
         // Second update should be debit for lender
         let lender_update = &updates[1];
-        assert_eq!(lender_update.user_id, lender_id);
+        assert_eq!(lender_update.company_id, lender_id);
         assert_eq!(
             lender_update.update_type,
             BalanceUpdateType::DebitFromOrigination
