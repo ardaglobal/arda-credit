@@ -148,13 +148,35 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
     //
     // Stable sort preserves database order for transactions with equal timestamps.
 
-    info!("🔄 Sorting transactions in global chronological order");
+    info!("🔄 Sorting transactions in global chronological order with type priority");
 
-    // Simple global timestamp sort (stable to preserve DB order for equal timestamps)
-    zkvm_transactions.sort_by_key(|tx| tx.created_at);
+    // Sort by timestamp first, then by transaction type priority
+    // This ensures proper dependency ordering when timestamps are equal:
+    // 1. StateRegenesis first
+    // 2. CompanyRegistration before DealOrigination
+    // 3. UserRegistration before transactions requiring users
+    zkvm_transactions.sort_by_key(|tx| {
+        let type_priority = match tx.transaction_type {
+            TransactionType::StateRegenesis => 0,
+            TransactionType::UserRegistration => 1,
+            TransactionType::CompanyRegistration => 2,  // Before deals
+            TransactionType::KycSubmission => 3,
+            TransactionType::KycVerification => 4,
+            TransactionType::UserDeposit => 5,
+            TransactionType::CollateralCreation => 6,
+            TransactionType::DealOrigination => 7,      // After companies
+            TransactionType::CollateralDealAssociation => 8,
+            TransactionType::DealPayment => 9,
+            TransactionType::DealCloseout => 10,
+            TransactionType::CollateralDealDisassociation => 11,
+            TransactionType::UserWithdrawal => 12,
+            _ => 99, // Other types at end
+        };
+        (tx.created_at, type_priority)
+    });
 
     info!(
-        "✅ Sorted {} transactions in chronological order (oldest to newest)",
+        "✅ Sorted {} transactions in chronological order with dependency ordering",
         zkvm_transactions.len()
     );
 
