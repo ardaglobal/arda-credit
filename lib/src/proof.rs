@@ -149,11 +149,14 @@ pub async fn generate_batch_proof(
         .to_lowercase();
 
     match server_env.as_str() {
-        "local" | "staging" => {
-            info!("🏠 Using local SP1 prover for {} environment", server_env);
+        "local" | "dev" => {
+            info!(
+                "🏠 Using local SP1 prover for {} environment (no contract posting)",
+                server_env
+            );
             generate_batch_proof_local(request).await
         }
-        "sandbox" | "production" => {
+        "staging" | "sandbox" | "production" => {
             info!("🌐 Using Sindri service for {} environment", server_env);
             generate_batch_proof_sindri(request).await
         }
