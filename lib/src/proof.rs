@@ -57,7 +57,8 @@ pub struct ProofGenerationResponse {
     pub circuit_name: String,
     pub circuit_tag: String,
     pub verification_command: String,
-    pub proof_info: ProofInfoResponse,
+    /// Only populated for Sindri proofs, None for local proofs
+    pub proof_info: Option<ProofInfoResponse>,
     /// Complete proof data for database storage (self-sufficient architecture)
     /// Contains actual proof bytes, public values, and verifying key
     pub proof_data: Option<SindriProofData>,
@@ -231,8 +232,10 @@ async fn generate_batch_proof_local(
 
     info!("✅ Local proof verification passed!");
 
-    // ✅ NEW: Extract proof bytes for database storage (self-sufficient architecture)
-    let proof_bytes = proof.bytes();
+    // ✅ NEW: Extract proof data for database storage (self-sufficient architecture)
+    // NOTE: Core proofs cannot be serialized for on-chain use (only Plonk/Groth16 can).
+    // For local development, we use empty proof bytes since Core proofs won't be posted on-chain.
+    let proof_bytes = vec![]; // Empty for Core proofs (not meant for on-chain verification)
     let public_values = proof.public_values.as_slice().to_vec();
 
     // Extract verifying key bytes
@@ -244,8 +247,7 @@ async fn generate_batch_proof_local(
     }
 
     info!(
-        "💾 Extracted proof data: {} KB proof, {} KB public values, {} bytes vkey",
-        proof_bytes.len() / 1024,
+        "💾 Extracted proof data: Core proof (0 KB on-chain bytes), {} KB public values, {} bytes vkey",
         public_values.len() / 1024,
         vkey_bytes.len()
     );
@@ -253,39 +255,16 @@ async fn generate_batch_proof_local(
     // Create a pseudo proof ID for local proofs
     let proof_id = format!("local-{}", chrono::Utc::now().timestamp());
 
-    // For local proofs, we create a minimal ProofInfoResponse using serde deserialization
-    // This avoids needing to know all the struct fields
-    let circuit_tag = std::env::var("SINDRI_CIRCUIT_TAG").unwrap_or_else(|_| "latest".to_string());
-
-    // Create minimal JSON that satisfies ProofInfoResponse deserialization
-    let proof_info_json = serde_json::json!({
-        "proof_id": proof_id,
-        "status": "Ready",
-        "project_name": "arda-credit-local",
-        "circuit_name": format!("arda-credit:{}", circuit_tag),
-        "circuit_id": "local-circuit",
-        "circuit_type": "sp1",
-        "team": "local-team",
-        "team_avatar_url": null,
-        "team_slug": "local",
-        "date_created": chrono::Utc::now().to_rfc3339(),
-        "perform_verify": false,
-        "finished_processing": true,
-        "verified": true,
-    });
-
-    let proof_info: ProofInfoResponse = serde_json::from_value(proof_info_json).map_err(|e| {
-        ProofError::SerializationError(format!("Failed to create local proof info: {}", e))
-    })?;
-
+    // For local proofs, we don't need ProofInfoResponse (it's a Sindri-specific type).
+    // We only need the proof data for database storage.
     Ok(ProofGenerationResponse {
         proof_id: proof_id.clone(),
         status: "Ready".to_string(),
         circuit_name: "arda-credit-local".to_string(),
         circuit_tag: "local".to_string(),
         verification_command: format!("Local proof verified (proof_id: {})", proof_id),
-        proof_info,
-        // ✅ NEW: Include actual proof data for database storage
+        proof_info: None, // No Sindri proof info for local proofs
+        // ✅ Include actual proof data for database storage
         proof_data: Some(SindriProofData {
             proof_id: proof_id.clone(),
             proof_bytes,
@@ -457,8 +436,8 @@ async fn generate_batch_proof_sindri(
         circuit_name,
         circuit_tag,
         verification_command,
-        proof_info,
-        proof_data, // ✅ NEW: Include proof data if available
+        proof_info: Some(proof_info), // Wrap in Some for Sindri proofs
+        proof_data,                   // ✅ NEW: Include proof data if available
     };
 
     // Note: EVM fixture generation skipped for new format (would need update)
@@ -558,8 +537,8 @@ pub async fn generate_sindri_proof(
         circuit_name,
         circuit_tag,
         verification_command,
-        proof_info,
-        proof_data: None, // Will be populated when proof is retrieved
+        proof_info: Some(proof_info), // Wrap in Some for Sindri proofs
+        proof_data: None,             // Will be populated when proof is retrieved
     };
 
     // Note: EVM fixture generation skipped for new format (would need update)
@@ -574,7 +553,11 @@ pub async fn generate_sindri_proof(
         let duration = start_time.elapsed();
         histogram!("sindri_proof_generation_duration_seconds").record(duration.as_secs_f64());
 
-        let success = response.proof_info.status == JobStatus::Ready;
+        let success = response
+            .proof_info
+            .as_ref()
+            .map(|info| info.status == JobStatus::Ready)
+            .unwrap_or(false);
         counter!("sindri_proof_generation_total", 
                 "status" => if success { "success" } else { "pending" },
                 "proof_system" => request.proof_system.to_sindri_scheme())

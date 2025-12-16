@@ -691,12 +691,12 @@ impl BackgroundBatchProcessor {
             generate_fixtures: false,
         };
 
-        // Submit to Sindri and immediately store the proof ID
+        // Generate proof (local or Sindri based on environment) and store immediately
         match generate_batch_proof(proof_request).await {
             Ok(proof_response) => {
                 info!(
-                    "✅ Got Sindri proof ID for batch {}: {}",
-                    batch_id, proof_response.proof_id
+                    "✅ Generated proof for batch {}: {} (status: {})",
+                    batch_id, proof_response.proof_id, proof_response.status
                 );
 
                 // Immediately store the proof ID in database
@@ -748,7 +748,7 @@ impl BackgroundBatchProcessor {
                 Ok(())
             }
             Err(e) => {
-                error!("❌ Sindri submission failed for batch {}: {}", batch_id, e);
+                error!("❌ Proof generation failed for batch {}: {}", batch_id, e);
 
                 // Store error state
                 let error_id = format!("error_{}", batch_id);
@@ -761,7 +761,7 @@ impl BackgroundBatchProcessor {
                     );
                 }
 
-                Err(format!("Sindri submission failed: {}", e))
+                Err(format!("Proof generation failed: {}", e))
             }
         }
     }

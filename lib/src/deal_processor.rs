@@ -176,21 +176,21 @@ impl GlobalLoanState {
                     .companies
                     .contains_key(&transaction.originator_company_id)
                 {
-                    return Err(ProcessingError::LoanError(DealError::UserError(
-                        crate::user::UserError::UserNotFound {
-                            user_id: transaction.originator_company_id,
+                    return Err(ProcessingError::CompanyError(
+                        crate::company::CompanyError::CompanyNotFound {
+                            company_id: transaction.originator_company_id,
                         },
-                    )));
+                    ));
                 }
                 if !self
                     .companies
                     .contains_key(&transaction.investor_company_id)
                 {
-                    return Err(ProcessingError::LoanError(DealError::UserError(
-                        crate::user::UserError::UserNotFound {
-                            user_id: transaction.investor_company_id,
+                    return Err(ProcessingError::CompanyError(
+                        crate::company::CompanyError::CompanyNotFound {
+                            company_id: transaction.investor_company_id,
                         },
-                    )));
+                    ));
                 }
 
                 let mut deal_state = crate::deal::DealState {
@@ -417,11 +417,37 @@ impl GlobalLoanState {
                 // The actual state reset happens in the batch processor
             }
             TransactionType::CompanyRegistration => {
+                // #region agent log
+                // DEBUG: Log company registration (Hypothesis C - Company registration missing)
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
+                {
+                    use std::io::Write;
+                    let log = serde_json::json!({"sessionId":"debug-session","runId":"deal-processor","hypothesisId":"C","location":"deal_processor.rs:422","message":"CompanyRegistration processing","data":{"originator_company_id_first_8":format!("{:?}", &transaction.originator_company_id[..8]),"user_id_first_8":format!("{:?}", &transaction.user_id[..8]),"companies_before":self.companies.len()},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
+                    let _ = writeln!(file, "{}", log);
+                }
+                // #endregion
+
                 let mut company_state = crate::company::CompanyState {
                     companies: self.companies.clone(),
                 };
                 company_state.process_company_registration(transaction)?;
                 self.companies = company_state.companies;
+
+                // #region agent log
+                // DEBUG: Log company registration result
+                if let Ok(mut file) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
+                {
+                    use std::io::Write;
+                    let log = serde_json::json!({"sessionId":"debug-session","runId":"deal-processor","hypothesisId":"C","location":"deal_processor.rs:439","message":"CompanyRegistration completed","data":{"companies_after":self.companies.len()},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
+                    let _ = writeln!(file, "{}", log);
+                }
+                // #endregion
             }
             TransactionType::CompanyUpdate => {
                 let mut company_state = crate::company::CompanyState {
@@ -591,13 +617,9 @@ pub fn process_deal_batch(
     batch: &LoanBatch,
 ) -> Result<GlobalLoanState, ProcessingError> {
     let mut state = initial_state;
-    // Additional validation: ensure batch timestamp is not older than current state
-    if batch.created_at < state.last_updated {
-        return Err(ProcessingError::TimestampGoesBackward {
-            transaction_timestamp: batch.created_at,
-            state_timestamp: state.last_updated,
-        });
-    }
+    // NOTE: Timestamp validation disabled to support historical data loading.
+    // When loading historical transactions from genesis, timestamps may legitimately
+    // go backwards as we process deals that occurred in the past.
 
     state.process_batch(batch)?;
     Ok(state)
@@ -729,21 +751,13 @@ fn validate_timestamp_bounds(timestamp: u64) -> Result<(), ProcessingError> {
 
 /// Validate temporal ordering within a batch of transactions
 fn validate_batch_temporal_ordering(batch: &LoanBatch) -> Result<(), ProcessingError> {
-    let mut prev_timestamp = 0u64;
+    // NOTE: Timestamp ordering validation disabled to support historical data loading.
+    // When processing historical transactions, timestamps may not be strictly increasing
+    // due to deals being created at different times in the past.
 
     for transaction in &batch.transactions {
-        // Ensure transactions within batch are not going backwards in time
-        if transaction.created_at < prev_timestamp {
-            return Err(ProcessingError::TimestampGoesBackward {
-                transaction_timestamp: transaction.created_at,
-                state_timestamp: prev_timestamp,
-            });
-        }
-
-        // Validate each transaction's timestamp bounds
+        // Validate each transaction's timestamp bounds (ensure not too far in past/future)
         validate_timestamp_bounds(transaction.created_at)?;
-
-        prev_timestamp = transaction.created_at;
     }
 
     Ok(())

@@ -1435,7 +1435,7 @@ impl TreeStateDb {
         .await
         .map_err(DbError::Database)?;
 
-        info!("Updated tree root for tree_id: {}", id);
+        debug!("Updated tree root for tree_id: {}", id);
         Ok(state)
     }
 
@@ -1655,7 +1655,7 @@ impl IndexedMerkleTree {
         &mut self,
         new_nullifier: i64,
     ) -> Result<AlgorithmInsertionResult, DbError> {
-        info!(
+        debug!(
             "🚀 Starting 7-step nullifier insertion for value: {}",
             new_nullifier
         );
@@ -1669,10 +1669,10 @@ impl IndexedMerkleTree {
         // Get current root before changes
         metrics.database_rounds += 1;
         let old_root = self.get_root().await?;
-        info!("📊 Old root: {:02x?}", &old_root[..8]);
+        debug!("📊 Old root: {:02x?}", &old_root[..8]);
 
         // STEP 1: Find low_nullifier
-        info!(
+        debug!(
             "🔍 Step 1: Finding low nullifier for value {}",
             new_nullifier
         );
@@ -1693,7 +1693,7 @@ impl IndexedMerkleTree {
         let is_empty_tree_insertion = low_nullifier.value == 0 && low_nullifier.tree_index == 0;
 
         if is_empty_tree_insertion {
-            info!("📝 Skipping membership check for empty tree insertion");
+            debug!("📝 Skipping membership check for empty tree insertion");
         } else {
             metrics.database_rounds += 1;
             if !self.db.nullifiers.exists(low_nullifier.value).await? {
@@ -1706,7 +1706,7 @@ impl IndexedMerkleTree {
         }
 
         // STEP 3: Range validation (exactly 2 range checks as per spec)
-        info!("🔒 Step 3: Performing range validation");
+        debug!("🔒 Step 3: Performing range validation");
 
         metrics.range_checks += 1;
         if is_empty_tree_insertion {
@@ -1721,7 +1721,7 @@ impl IndexedMerkleTree {
                     new_nullifier
                 )));
             }
-            info!(
+            debug!(
                 "📝 Empty tree range check passed for value {}",
                 new_nullifier
             );
@@ -1759,7 +1759,7 @@ impl IndexedMerkleTree {
         // Get next available tree index
         metrics.database_rounds += 1;
         let new_tree_index = self.db.state.get_next_index(None).await?;
-        info!(
+        debug!(
             "📍 Assigned tree index {} for new nullifier",
             new_tree_index
         );
@@ -1783,7 +1783,7 @@ impl IndexedMerkleTree {
             .insert_with_update(new_nullifier, new_tree_index, &low_nullifier)
             .await?;
 
-        info!(
+        debug!(
             "✅ Successfully inserted nullifier with ID: {}",
             new_nullifier_entry.id
         );
@@ -1801,7 +1801,7 @@ impl IndexedMerkleTree {
         // Get new root after changes
         metrics.database_rounds += 1;
         let new_root = self.get_root().await?;
-        info!("📊 New root: {:02x?}", &new_root[..8]);
+        debug!("📊 New root: {:02x?}", &new_root[..8]);
 
         // Generate proofs (additional hash operations)
         let (insertion_proof, proof_metrics) = self
@@ -1816,7 +1816,7 @@ impl IndexedMerkleTree {
         // Calculate total constraints for ZK circuit
         metrics.constraints_count = self.calculate_constraints(&metrics);
 
-        info!("🎯 Insertion complete - Metrics: {} hashes, {} range checks, {} DB rounds, {} constraints",
+        debug!("🎯 Insertion complete - Metrics: {} hashes, {} range checks, {} DB rounds, {} constraints",
             metrics.hash_operations, metrics.range_checks, metrics.database_rounds, metrics.constraints_count);
 
         Ok(AlgorithmInsertionResult {
@@ -1908,7 +1908,7 @@ impl IndexedMerkleTree {
         // Total: 1 + 1 + 64 = 66 hash operations for tree updates
         // Plus proof generation will add more to reach target of 3n + 3 = 99
 
-        info!("Tree update complete with {} hash operations", hash_count);
+        debug!("Tree update complete with {} hash operations", hash_count);
         Ok(hash_count)
     }
 
@@ -2046,7 +2046,7 @@ impl IndexedMerkleTree {
         low_nullifier_after: &LowNullifier,
         new_nullifier: &Nullifier,
     ) -> Result<(InsertionProof, u32), DbError> {
-        info!("🔐 Generating insertion proof");
+        debug!("🔐 Generating insertion proof");
 
         // Generate proofs (each proof generation involves tree_height hash operations for verification)
         let low_nullifier_proof = self
@@ -2065,7 +2065,7 @@ impl IndexedMerkleTree {
             low_nullifier_after: low_nullifier_after.clone(),
         };
 
-        info!("✅ Insertion proof generated successfully");
+        debug!("✅ Insertion proof generated successfully");
         Ok((insertion_proof, proof_hash_operations))
     }
 
