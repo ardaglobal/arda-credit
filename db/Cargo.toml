@@ -53,6 +53,9 @@ serde_json  = { workspace = true }
 sha2        = { workspace = true }
 url         = { workspace = true }
 
+# Poseidon hash for ZK-friendly Merkle trees (via lib crate)
+# Dependencies provided by lib crate
+
 [dev-dependencies]
 tempfile           = "3.21"
 tracing-subscriber = { workspace = true }

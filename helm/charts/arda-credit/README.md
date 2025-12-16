@@ -82,7 +82,7 @@ Key configuration options in `values.yaml`:
 | `namespaceCreate` | Auto-create namespace | `true` |
 | **Server Configuration** |
 | `server.replicaCount` | Number of server replicas | `2` |
-| `server.environment` | Server environment (local/staging/sandbox/production) | `"production"` |
+| `server.environment` | Server environment (local/dev/staging/sandbox/production) | `"production"` |
 | `server.config.rustLog` | Rust logging level | `"info"` |
 | `server.config.serverPort` | Server port | `"8080"` |
 | **Autoscaling** |

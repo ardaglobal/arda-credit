@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, Row};
 use std::env;
 use std::str::FromStr;
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 
 use crate::error::DbError;
 
@@ -39,6 +39,25 @@ pub struct ProofBatch {
     pub proof_status: String, // pending, proven, failed
     pub created_at: DateTime<Utc>,
     pub proven_at: Option<DateTime<Utc>>,
+    // Proof data storage (self-sufficient architecture)
+    pub proof_bytes: Option<Vec<u8>>,
+    pub public_values: Option<Vec<u8>>,
+    pub verifying_key: Option<Vec<u8>>,
+    pub proof_size_bytes: Option<i32>,
+    pub public_values_size_bytes: Option<i32>,
+    pub stored_at: Option<DateTime<Utc>>,
+    pub posted_to_contract: bool, // NOT NULL DEFAULT FALSE in database
+    pub posted_to_contract_at: Option<DateTime<Utc>>,
+    pub contract_tx_hash: Option<String>,
+}
+
+/// Proof data structure for self-sufficient contract submission
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SindriProofData {
+    pub proof_id: String,
+    pub proof_bytes: Vec<u8>,
+    pub public_values: Vec<u8>,
+    pub verifying_key: Vec<u8>,
 }
 
 /// ADS/Merkle tree state commitment for smart contract
@@ -554,6 +573,84 @@ pub async fn get_deal_transaction_history(
     Ok(transactions)
 }
 
+/// Transaction with proof information for enhanced audit trail
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct TransactionWithProofInfo {
+    // Transaction fields
+    pub id: uuid::Uuid,
+    pub transaction_type: String,
+    pub amount: rust_decimal::Decimal,
+    pub created_at: DateTime<Utc>,
+    pub metadata: Option<serde_json::Value>,
+
+    // Batch and proof fields (nullable)
+    pub batch_id: Option<i32>,
+    pub proof_status: Option<String>,
+    pub sindri_proof_id: Option<String>,
+    pub proven_at: Option<DateTime<Utc>>,
+    pub posted_to_contract: Option<bool>,
+    pub posted_to_contract_at: Option<DateTime<Utc>>,
+    pub contract_tx_hash: Option<String>,
+    pub prev_merkle_root: Option<String>,
+    pub new_merkle_root: Option<String>,
+}
+
+/// Get deal transactions with proof information (single query)
+#[instrument]
+pub async fn get_deal_transactions_with_proofs(
+    pool: &PgPool,
+    deal_id: uuid::Uuid,
+) -> Result<Vec<TransactionWithProofInfo>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            dt.id,
+            dt.transaction_type,
+            dt.amount,
+            dt.created_at,
+            dt.metadata,
+            dt.included_in_batch_id as batch_id,
+            pb.proof_status,
+            pb.sindri_proof_id,
+            pb.proven_at,
+            pb.posted_to_contract,
+            pb.posted_to_contract_at,
+            pb.contract_tx_hash,
+            encode(ads.merkle_root, 'hex') as merkle_root
+        FROM deal_transactions dt
+        LEFT JOIN proof_batches pb ON dt.included_in_batch_id = pb.id
+        LEFT JOIN ads_state_commits ads ON pb.id = ads.batch_id
+        WHERE dt.deal_id = $1
+        ORDER BY dt.created_at ASC
+        "#,
+    )
+    .bind(deal_id)
+    .fetch_all(pool)
+    .await?;
+
+    let transactions = rows
+        .into_iter()
+        .map(|row| TransactionWithProofInfo {
+            id: row.get("id"),
+            transaction_type: row.get("transaction_type"),
+            amount: row.get("amount"),
+            created_at: row.get("created_at"),
+            metadata: row.get("metadata"),
+            batch_id: row.get("batch_id"),
+            proof_status: row.get("proof_status"),
+            sindri_proof_id: row.get("sindri_proof_id"),
+            proven_at: row.get("proven_at"),
+            posted_to_contract: row.get("posted_to_contract"),
+            posted_to_contract_at: row.get("posted_to_contract_at"),
+            contract_tx_hash: row.get("contract_tx_hash"),
+            prev_merkle_root: None, // TODO: Get from previous batch or contract data
+            new_merkle_root: row.get("merkle_root"),
+        })
+        .collect();
+
+    Ok(transactions)
+}
+
 /// State snapshot for auditing
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, sqlx::FromRow)]
 pub struct StateSnapshot {
@@ -816,6 +913,62 @@ pub async fn get_pending_transactions(
     Ok(transactions)
 }
 
+/// Get pending deal transactions for zkVM batch processing
+///
+/// This function queries the deal_transactions table for transactions that haven't
+/// been included in a batch yet (included_in_batch_id IS NULL).
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `limit` - Optional maximum number of transactions to retrieve (defaults to 1000)
+///
+/// # Returns
+/// Vector of DealTransactionDb structs ready for zkVM processing
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "deal_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_pending_deal_transactions(
+    pool: &PgPool,
+    limit: Option<i64>,
+) -> Result<Vec<DealTransactionDb>, sqlx::Error> {
+    let limit = limit.unwrap_or(1000);
+    debug!("Getting pending deal transactions with limit {}", limit);
+
+    let rows = sqlx::query_as!(
+        DealTransactionDb,
+        r#"
+        SELECT 
+            id,
+            transaction_id_hash,
+            user_id_hash,
+            deal_id_hash,
+            transaction_type,
+            amount,
+            user_id,
+            deal_id,
+            payment_id,
+            included_in_batch_id,
+            metadata,
+            created_at as "created_at!"
+        FROM deal_transactions
+        WHERE included_in_batch_id IS NULL
+        ORDER BY created_at ASC
+        LIMIT $1
+        "#,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!("Found {} pending deal transactions", rows.len());
+    Ok(rows)
+}
+
 // ============================================================================
 // BATCH FUNCTIONS
 // ============================================================================
@@ -850,6 +1003,151 @@ pub async fn create_batch(
     get_batch_by_id(pool, batch_id).await.map(Some)
 }
 
+/// Create a batch from deal_transactions only (new integrated approach)
+///
+/// This function creates a batch by directly querying deal_transactions and marking
+/// them as batched, bypassing the old incoming_transactions system entirely.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `batch_size` - Maximum number of transactions to include in the batch
+/// * `deal_transaction_ids` - Optional specific transaction IDs to batch (for testing)
+///
+/// # Returns
+/// Option<ProofBatch> - The created batch, or None if no transactions were available
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(
+        operation = "create_batch_deal_transactions",
+        table = "proof_batches",
+        layer = "database"
+    ),
+    level = "info"
+)]
+pub async fn create_batch_from_deal_transactions(
+    pool: &PgPool,
+    batch_size: i32,
+    deal_transaction_ids: Option<Vec<uuid::Uuid>>,
+) -> Result<Option<ProofBatch>, sqlx::Error> {
+    debug!(
+        "Creating batch from deal_transactions with size {}",
+        batch_size
+    );
+
+    // Start a transaction for atomicity
+    let mut tx = pool.begin().await?;
+
+    // Get current counter value (for ADS compatibility)
+    let previous_counter: i64 = sqlx::query_scalar!("SELECT get_current_counter_value()")
+        .fetch_one(&mut *tx)
+        .await?
+        .unwrap_or(0);
+
+    // Get unbatched deal transactions
+    let transactions = if let Some(ids) = deal_transaction_ids {
+        // Use specific transaction IDs (for testing)
+        sqlx::query_as!(
+            DealTransactionDb,
+            r#"
+            SELECT 
+                id, transaction_id_hash, user_id_hash, deal_id_hash,
+                transaction_type, amount, user_id, deal_id, payment_id,
+                included_in_batch_id, metadata, created_at as "created_at!"
+            FROM deal_transactions
+            WHERE id = ANY($1) AND included_in_batch_id IS NULL
+            ORDER BY created_at ASC
+            "#,
+            &ids
+        )
+        .fetch_all(&mut *tx)
+        .await?
+    } else {
+        // Get next unbatched transactions
+        sqlx::query_as!(
+            DealTransactionDb,
+            r#"
+            SELECT 
+                id, transaction_id_hash, user_id_hash, deal_id_hash,
+                transaction_type, amount, user_id, deal_id, payment_id,
+                included_in_batch_id, metadata, created_at as "created_at!"
+            FROM deal_transactions
+            WHERE included_in_batch_id IS NULL
+            ORDER BY created_at ASC
+            LIMIT $1
+            FOR UPDATE SKIP LOCKED
+            "#,
+            batch_size as i64
+        )
+        .fetch_all(&mut *tx)
+        .await?
+    };
+
+    if transactions.is_empty() {
+        debug!("No deal transactions to batch");
+        tx.rollback().await?;
+        return Ok(None);
+    }
+
+    debug!("Found {} deal transactions to batch", transactions.len());
+
+    // For backward compatibility with proof_batches.transaction_ids (INTEGER[]),
+    // we'll use a sequential counter per batch. This is a placeholder since
+    // the real transaction tracking is now via deal_transactions.included_in_batch_id
+    let transaction_ids: Vec<i32> = (1..=transactions.len() as i32).collect();
+
+    // Final counter remains the same as previous for deal transactions
+    // (they don't affect the arithmetic counter used by incoming_transactions)
+    let final_counter = previous_counter;
+
+    // Create the batch entry
+    let batch_id: i32 = sqlx::query_scalar!(
+        r#"
+        INSERT INTO proof_batches (
+            previous_counter_value,
+            final_counter_value,
+            transaction_ids
+        ) VALUES ($1, $2, $3)
+        RETURNING id
+        "#,
+        previous_counter,
+        final_counter,
+        &transaction_ids
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+
+    debug!(
+        "Created batch {} for {} transactions",
+        batch_id,
+        transactions.len()
+    );
+
+    // Mark all transactions as included in this batch
+    let tx_ids: Vec<uuid::Uuid> = transactions.iter().map(|t| t.id).collect();
+    sqlx::query!(
+        r#"
+        UPDATE deal_transactions
+        SET included_in_batch_id = $1
+        WHERE id = ANY($2)
+        "#,
+        batch_id,
+        &tx_ids
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    debug!("Marked {} deal transactions as batched", tx_ids.len());
+
+    // Commit the transaction
+    tx.commit().await?;
+
+    // Get and return the created batch
+    get_batch_by_id(pool, batch_id).await.map(Some)
+}
+
 /// Get batch by ID
 ///
 /// # Errors
@@ -866,7 +1164,10 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
     let row = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at
+               sindri_proof_id, proof_status, created_at, proven_at,
+               proof_bytes, public_values, verifying_key,
+               proof_size_bytes, public_values_size_bytes, stored_at,
+               posted_to_contract, posted_to_contract_at, contract_tx_hash
         FROM proof_batches
         WHERE id = $1
         ",
@@ -884,6 +1185,15 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
         proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
         created_at: row.created_at.unwrap_or_else(|| Utc::now()),
         proven_at: row.proven_at,
+        proof_bytes: row.proof_bytes,
+        public_values: row.public_values,
+        verifying_key: row.verifying_key,
+        proof_size_bytes: row.proof_size_bytes,
+        public_values_size_bytes: row.public_values_size_bytes,
+        stored_at: row.stored_at,
+        posted_to_contract: row.posted_to_contract,
+        posted_to_contract_at: row.posted_to_contract_at,
+        contract_tx_hash: row.contract_tx_hash,
     };
 
     debug!(
@@ -934,6 +1244,15 @@ pub async fn get_all_batches(
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
+            proof_bytes: None,
+            public_values: None,
+            verifying_key: None,
+            proof_size_bytes: None,
+            public_values_size_bytes: None,
+            stored_at: None,
+            posted_to_contract: false, // NOT NULL DEFAULT FALSE
+            posted_to_contract_at: None,
+            contract_tx_hash: None,
         })
         .collect();
 
@@ -981,6 +1300,162 @@ pub async fn update_batch_proof(
 
     debug!("Batch updated successfully");
     Ok(())
+}
+
+/// Store complete proof data for a batch (self-sufficient architecture)
+///
+/// This function stores the actual proof bytes, public values, and verifying key
+/// in the database, eliminating dependency on external services (Sindri) for
+/// contract submission.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `batch_id` - Batch ID to update
+/// * `proof_id` - Proof identifier (e.g., Sindri ID or "local-<timestamp>")
+/// * `proof_bytes` - Complete ZK proof bytes (1-10 MB typically)
+/// * `public_values` - Public inputs/outputs from proof
+/// * `verifying_key` - Verification key for on-chain verification
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool, proof_bytes, public_values, verifying_key),
+    fields(
+        operation = "store_proof_data",
+        table = "proof_batches",
+        layer = "database",
+        batch_id = %batch_id,
+        proof_size = %proof_bytes.len(),
+        public_values_size = %public_values.len()
+    ),
+    level = "info"
+)]
+pub async fn store_batch_proof_data(
+    pool: &PgPool,
+    batch_id: i32,
+    proof_id: &str,
+    proof_bytes: &[u8],
+    public_values: &[u8],
+    verifying_key: &[u8],
+) -> Result<(), sqlx::Error> {
+    debug!(
+        "Storing proof data for batch {}: {} bytes proof, {} bytes public values",
+        batch_id,
+        proof_bytes.len(),
+        public_values.len()
+    );
+
+    sqlx::query!(
+        r#"
+        UPDATE proof_batches
+        SET 
+            sindri_proof_id = $1,
+            proof_bytes = $2,
+            public_values = $3,
+            verifying_key = $4,
+            proof_size_bytes = $5,
+            public_values_size_bytes = $6,
+            proof_status = 'proven',
+            proven_at = NOW(),
+            stored_at = NOW()
+        WHERE id = $7
+        "#,
+        proof_id,
+        proof_bytes,
+        public_values,
+        verifying_key,
+        proof_bytes.len() as i32,
+        public_values.len() as i32,
+        batch_id
+    )
+    .execute(pool)
+    .await?;
+
+    info!(
+        "Stored complete proof data for batch {}: {} KB proof, {} KB public values",
+        batch_id,
+        proof_bytes.len() / 1024,
+        public_values.len() / 1024
+    );
+
+    Ok(())
+}
+
+/// Retrieve proof data from database for contract submission
+///
+/// This function retrieves the stored proof bytes, enabling self-sufficient
+/// contract submission without depending on external services.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `batch_id` - Batch ID to retrieve proof data for
+///
+/// # Returns
+/// * `Ok(Some(SindriProofData))` - If proof data is stored in database
+/// * `Ok(None)` - If batch exists but no proof data stored
+/// * `Err` - If database error occurs
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(
+        operation = "get_proof_data",
+        table = "proof_batches",
+        layer = "database",
+        batch_id = %batch_id
+    ),
+    level = "info"
+)]
+pub async fn get_batch_proof_data(
+    pool: &PgPool,
+    batch_id: i32,
+) -> Result<Option<SindriProofData>, sqlx::Error> {
+    debug!("Retrieving proof data for batch {}", batch_id);
+
+    let row = sqlx::query!(
+        r#"
+        SELECT 
+            sindri_proof_id,
+            proof_bytes,
+            public_values,
+            verifying_key
+        FROM proof_batches
+        WHERE id = $1
+        "#,
+        batch_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    match row {
+        Some(r) if r.proof_bytes.is_some() => {
+            let proof_data = SindriProofData {
+                proof_id: r
+                    .sindri_proof_id
+                    .unwrap_or_else(|| format!("batch-{}", batch_id)),
+                proof_bytes: r.proof_bytes.unwrap(),
+                public_values: r.public_values.unwrap_or_default(),
+                verifying_key: r.verifying_key.unwrap_or_default(),
+            };
+
+            debug!(
+                "Retrieved proof data for batch {}: {} KB",
+                batch_id,
+                proof_data.proof_bytes.len() / 1024
+            );
+
+            Ok(Some(proof_data))
+        }
+        Some(_) => {
+            debug!("Batch {} exists but has no stored proof data", batch_id);
+            Ok(None)
+        }
+        None => {
+            debug!("Batch {} not found", batch_id);
+            Ok(None)
+        }
+    }
 }
 
 // ============================================================================
@@ -1220,6 +1695,15 @@ pub async fn get_proven_unposted_batches(
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
+            proof_bytes: None,
+            public_values: None,
+            verifying_key: None,
+            proof_size_bytes: None,
+            public_values_size_bytes: None,
+            stored_at: None,
+            posted_to_contract: false, // NOT NULL DEFAULT FALSE
+            posted_to_contract_at: None,
+            contract_tx_hash: None,
         })
         .collect();
 
@@ -1332,6 +1816,15 @@ pub async fn get_potential_stuck_batches(
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
             proven_at: row.proven_at,
+            proof_bytes: None,
+            public_values: None,
+            verifying_key: None,
+            proof_size_bytes: None,
+            public_values_size_bytes: None,
+            stored_at: None,
+            posted_to_contract: false, // NOT NULL DEFAULT FALSE
+            posted_to_contract_at: None,
+            contract_tx_hash: None,
         })
         .collect();
 

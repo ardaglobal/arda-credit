@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO deal_payments (\n            id, deal_id, payer_id, amount, payment_type, created_at\n        )\n        VALUES ($1, $2, $3, $4, $5, NOW())\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Varchar"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bbd5481857acc521f59839ce026a48a6847bc65110951d10723c322e48f50c38"
+}

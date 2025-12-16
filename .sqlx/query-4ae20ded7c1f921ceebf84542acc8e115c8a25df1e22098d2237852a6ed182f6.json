@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE deals SET collateral_id = NULL, updated_at = NOW() WHERE id = $1 AND collateral_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4ae20ded7c1f921ceebf84542acc8e115c8a25df1e22098d2237852a6ed182f6"
+}

@@ -94,7 +94,11 @@ postgresql:
 server:
   enabled: true
   
-  # Server environment (local, staging, sandbox, production)
+  # Server environment (local, dev, staging, sandbox, production)
+  # - local/dev: Core proofs, no contract posting
+  # - staging: Sindri/Groth16, posts to Anvil
+  # - sandbox: Sindri/Groth16, posts to Sepolia
+  # - production: Sindri/Groth16, posts to mainnet
   environment: "staging"
   
   # Anvil RPC URL for browser access (used by faucet frontend)

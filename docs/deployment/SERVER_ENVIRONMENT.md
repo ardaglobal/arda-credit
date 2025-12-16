@@ -9,7 +9,7 @@ The `SERVER_ENVIRONMENT` variable controls which proof generation method is used
 Set the environment variable in your `.env` file or shell:
 
 ```bash
-export SERVER_ENVIRONMENT=local  # Options: local, staging, sandbox, production
+export SERVER_ENVIRONMENT=local  # Options: local, dev, staging, sandbox, production
 ```
 
 ## Environment Options
@@ -21,34 +21,48 @@ export SERVER_ENVIRONMENT=local  # Options: local, staging, sandbox, production
 - **Requirements**: None (no Sindri API key needed)
 - **Proof Type**: SP1 Core proofs
 - **Storage**: Proofs not uploaded to Sindri
-- **Smart Contract**: Dry run mode - logs what would be sent, no actual transactions
+- **Smart Contract**: Dry run mode - no blockchain transactions
+- **Blockchain**: Anvil (local devnet)
 
-### `staging`
+### `dev`
 - **Proof Generation**: Local SP1 prover
 - **Speed**: Fast (~8 seconds for Core proofs)
-- **Use Case**: Staging environment testing
+- **Use Case**: Development environment testing
 - **Requirements**: None (no Sindri API key needed)
 - **Proof Type**: SP1 Core proofs
 - **Storage**: Proofs not uploaded to Sindri
-- **Smart Contract**: Dry run mode - logs what would be sent, no actual transactions
+- **Smart Contract**: Dry run mode - no blockchain transactions
+- **Blockchain**: Anvil (local devnet)
+
+### `staging`
+- **Proof Generation**: Sindri service
+- **Speed**: Slower (~28-60 seconds depending on batch size)
+- **Use Case**: Staging environment with full proof infrastructure
+- **Requirements**: Valid `SINDRI_API_KEY` and Ethereum configuration required
+- **Proof Type**: Groth16 (production-ready)
+- **Storage**: Proofs stored in Sindri for retrieval
+- **Smart Contract**: Real transactions - posts batches to Anvil
+- **Blockchain**: Anvil (local devnet with full workflow)
 
 ### `sandbox`
 - **Proof Generation**: Sindri service
 - **Speed**: Slower (~28-60 seconds depending on batch size)
-- **Use Case**: Pre-production testing with real proof infrastructure
+- **Use Case**: Pre-production testing with real testnet
 - **Requirements**: Valid `SINDRI_API_KEY` and Ethereum configuration required
-- **Proof Type**: Groth16 (configurable)
+- **Proof Type**: Groth16 (production-ready)
 - **Storage**: Proofs stored in Sindri for retrieval
-- **Smart Contract**: Real transactions - posts batches to actual smart contract
+- **Smart Contract**: Real transactions - posts batches to Sepolia testnet
+- **Blockchain**: Sepolia testnet
 
 ### `production`
 - **Proof Generation**: Sindri service
 - **Speed**: Slower (~28-60 seconds depending on batch size)
 - **Use Case**: Production deployments
 - **Requirements**: Valid `SINDRI_API_KEY` and Ethereum configuration required
-- **Proof Type**: Groth16 (configurable)
+- **Proof Type**: Groth16 (production-ready)
 - **Storage**: Proofs stored in Sindri for retrieval
-- **Smart Contract**: Real transactions - posts batches to actual smart contract
+- **Smart Contract**: Real transactions - posts batches to Ethereum mainnet
+- **Blockchain**: Ethereum mainnet
 
 ## How It Works
 
@@ -89,8 +103,8 @@ pub async fn generate_batch_proof(
         .to_lowercase();
 
     match server_env.as_str() {
-        "local" | "staging" => generate_batch_proof_local(request).await,
-        "sandbox" | "production" => generate_batch_proof_sindri(request).await,
+        "local" | "dev" => generate_batch_proof_local(request).await,
+        "staging" | "sandbox" | "production" => generate_batch_proof_sindri(request).await,
         _ => generate_batch_proof_local(request).await, // Default to local
     }
 }
@@ -98,7 +112,7 @@ pub async fn generate_batch_proof(
 
 ## Local Proof Generation
 
-For `local` and `staging` environments:
+For `local` and `dev` environments:
 
 1. **Setup**: `ProverClient::from_env()` initializes the local prover
 2. **Input**: Transaction data is serialized via `SP1Stdin`
@@ -125,7 +139,7 @@ For `local` and `staging` environments:
 
 ## Sindri Proof Generation
 
-For `sandbox` and `production` environments:
+For `staging`, `sandbox`, and `production` environments:
 
 1. **Setup**: `SindriClient::default()` connects to Sindri API
 2. **Input**: Transaction data serialized to JSON
@@ -274,14 +288,15 @@ make deploy  # Deploys circuit to Sindri
 
 ### Environment Not Recognized
 
-**Problem**: `Unknown SERVER_ENVIRONMENT 'dev'`
+**Problem**: `Unknown SERVER_ENVIRONMENT 'test'`
 
 **Solution**: Use one of the valid options:
 ```bash
-export SERVER_ENVIRONMENT=local      # For local development
-export SERVER_ENVIRONMENT=staging    # For staging
-export SERVER_ENVIRONMENT=sandbox    # For sandbox/testing
-export SERVER_ENVIRONMENT=production # For production
+export SERVER_ENVIRONMENT=local      # For local development (core proofs, no contract posting)
+export SERVER_ENVIRONMENT=dev        # For dev environment (core proofs, no contract posting)
+export SERVER_ENVIRONMENT=staging    # For staging (Sindri/Groth16, posts to Anvil)
+export SERVER_ENVIRONMENT=sandbox    # For sandbox (Sindri/Groth16, posts to Sepolia)
+export SERVER_ENVIRONMENT=production # For production (Sindri/Groth16, posts to mainnet)
 ```
 
 ## Related Files
