@@ -17,13 +17,15 @@ pub use crate::api::router::{ApiConfig, ApiState};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ServerEnvironment {
-    /// Local development - uses local SP1 prover
+    /// Local development - uses local SP1 prover, no smart contract posting
     Local,
-    /// Staging environment - uses local SP1 prover
+    /// Development environment - uses local SP1 prover, no smart contract posting
+    Dev,
+    /// Staging environment - uses Sindri/Groth16 proofs, smart contract posting on Anvil
     Staging,
-    /// Sandbox environment - uses Sindri service
+    /// Sandbox environment - uses Sindri service, posts to Sepolia
     Sandbox,
-    /// Production environment - uses Sindri service
+    /// Production environment - uses Sindri service, posts to mainnet
     Production,
 }
 
@@ -36,14 +38,24 @@ impl ServerEnvironment {
             .unwrap_or(Self::Local)
     }
 
-    /// Check if this environment should use local SP1 prover
+    /// Check if this environment should use local SP1 prover (core proofs, no contract posting)
     pub const fn use_local_prover(&self) -> bool {
-        matches!(self, Self::Local | Self::Staging)
+        matches!(self, Self::Local | Self::Dev)
     }
 
     /// Check if this environment should use Sindri service
     pub const fn use_sindri(&self) -> bool {
-        matches!(self, Self::Sandbox | Self::Production)
+        matches!(self, Self::Staging | Self::Sandbox | Self::Production)
+    }
+
+    /// Check if this environment should post to smart contracts
+    pub const fn should_post_to_contract(&self) -> bool {
+        matches!(self, Self::Staging | Self::Sandbox | Self::Production)
+    }
+
+    /// Check if this environment uses Anvil (local blockchain)
+    pub const fn uses_anvil(&self) -> bool {
+        matches!(self, Self::Local | Self::Dev | Self::Staging)
     }
 }
 
@@ -53,11 +65,12 @@ impl std::str::FromStr for ServerEnvironment {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "local" => Ok(Self::Local),
+            "dev" => Ok(Self::Dev),
             "staging" => Ok(Self::Staging),
             "sandbox" => Ok(Self::Sandbox),
             "production" => Ok(Self::Production),
             _ => Err(format!(
-                "Invalid server environment: '{}'. Valid options: local, staging, sandbox, production",
+                "Invalid server environment: '{}'. Valid options: local, dev, staging, sandbox, production",
                 s
             )),
         }
@@ -68,6 +81,7 @@ impl std::fmt::Display for ServerEnvironment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Local => write!(f, "local"),
+            Self::Dev => write!(f, "dev"),
             Self::Staging => write!(f, "staging"),
             Self::Sandbox => write!(f, "sandbox"),
             Self::Production => write!(f, "production"),

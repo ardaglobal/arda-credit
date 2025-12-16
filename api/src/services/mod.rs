@@ -13,6 +13,7 @@
 
 pub mod auth;
 pub mod balance_service;
+pub mod batch_converter;
 pub mod batch_processor;
 pub mod collateral_intel_client;
 pub mod company_service;
@@ -24,8 +25,11 @@ pub mod metrics_cache;
 pub mod metrics_service;
 pub mod session_service;
 pub mod simple_withdrawal_executor;
+pub mod state_builder;
 pub mod team_invitation_service;
 pub mod trading_auth;
+pub mod transaction_conversion;
+pub mod transaction_recording;
 pub mod unified_batch_service;
 pub mod withdrawal_service;
 
@@ -47,6 +51,8 @@ pub use kyc_service::{KycValidationResult, KycValidationService};
 pub use magic_link_service::MagicLinkService;
 pub use session_service::SessionService;
 pub use team_invitation_service::{TeamInvitationError, TeamInvitationService};
+pub use transaction_conversion::{batch_convert_to_zkvm, deal_transaction_to_zkvm};
+pub use transaction_recording::{TransactionRecordingRequest, TransactionRecordingService};
 pub use unified_batch_service::{BatchCreationResult, UnifiedBatchService};
 pub use withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalServiceError,

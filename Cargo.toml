@@ -43,9 +43,9 @@ serde                = { version = "1.0.228", default-features = false, features
 serde_json           = { version = "1.0.145", default-features = false, features = [ "alloc" ] }
 sha2                 = "0.10"
 sindri               = "0.3.1"
-sp1-build            = "5.2.3"
-sp1-sdk              = "5.2.3"
-sp1-zkvm             = "5.2.3"
+sp1-build            = "5.2.4"
+sp1-sdk              = "5.2.4"
+sp1-zkvm             = "5.2.4"
 sqlx                 = { version = "0.8.6", features = [ "ipnetwork", "postgres", "runtime-tokio", "tls-rustls" ] }
 termion              = "4.0"
 thiserror            = "2.0.17"
@@ -69,3 +69,10 @@ aws-sdk-s3  = "1.109"
 mime        = "0.3"
 mime_guess  = "2.0"
 validator   = "0.20"
+
+# Poseidon hash dependencies (for ZK-friendly Merkle trees)
+# Using succinct versions to match SP1 zkVM dependencies
+p3-baby-bear = "0.2.3-succinct"
+p3-field     = "0.2.3-succinct"
+p3-poseidon2 = "0.2.3-succinct"
+p3-symmetric = "0.2.3-succinct"

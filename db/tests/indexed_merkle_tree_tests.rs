@@ -303,7 +303,7 @@ mod tests {
             );
 
             // Verify constraint components
-            let expected_hash_constraints = metrics.hash_operations * 8; // Poseidon constraints
+            let expected_hash_constraints = metrics.hash_operations * 8; // Poseidon2 constraints
             let expected_range_constraints = metrics.range_checks * 250; // Range check constraints
             let expected_total = expected_hash_constraints + expected_range_constraints + 10; // +10 for equality
 
@@ -562,14 +562,19 @@ mod tests {
         );
 
         // Step 2: Membership check (manual verification)
-        let exists = tree
-            .db
-            .nullifiers
-            .exists(low_nullifier.value)
-            .await
-            .expect("Should check existence");
-        assert!(exists, "Low nullifier should exist in tree");
-        info!("Step 2 ✅: Low nullifier exists in tree");
+        // Skip check for virtual low nullifier (value=0, tree_index=0)
+        if low_nullifier.value == 0 && low_nullifier.tree_index == 0 {
+            info!("Step 2 ✅: Skipping membership check for virtual low nullifier");
+        } else {
+            let exists = tree
+                .db
+                .nullifiers
+                .exists(low_nullifier.value)
+                .await
+                .expect("Should check existence");
+            assert!(exists, "Low nullifier should exist in tree");
+            info!("Step 2 ✅: Low nullifier exists in tree");
+        }
 
         // Step 3: Range validation (manual verification)
         assert!(new_value > low_nullifier.value, "Range check 1 should pass");
@@ -585,33 +590,39 @@ mod tests {
             .await
             .expect("Algorithm insertion should succeed");
 
-        // Verify the low nullifier was updated correctly
-        let updated_low = tree
-            .db
-            .nullifiers
-            .get_by_value(low_nullifier.value)
-            .await
-            .expect("Should retrieve updated low nullifier")
-            .expect("Updated low nullifier should exist");
-
-        // Note: Low nullifier update might not be immediate depending on transaction isolation
-        if updated_low.next_value != new_value {
+        // Verify the low nullifier was updated correctly (skip for virtual low nullifier)
+        if low_nullifier.value == 0 && low_nullifier.tree_index == 0 {
             info!(
-                "⚠️  Low nullifier next_value is {}, expected {}. This may be due to transaction isolation.",
-                updated_low.next_value, new_value
+                "Step 4-5 ✅: Skipping low nullifier update verification for virtual low nullifier"
             );
         } else {
-            info!("Step 4 ✅: Low nullifier correctly updated to point to new value");
-        }
+            let updated_low = tree
+                .db
+                .nullifiers
+                .get_by_value(low_nullifier.value)
+                .await
+                .expect("Should retrieve updated low nullifier")
+                .expect("Updated low nullifier should exist");
 
-        // Note: next_index update may also be delayed
-        if updated_low.next_index != Some(result.nullifier.tree_index) {
-            info!(
-                "⚠️  Low nullifier next_index is {:?}, expected Some({}). This may be due to transaction isolation.",
-                updated_low.next_index, result.nullifier.tree_index
-            );
-        } else {
-            info!("Step 5 ✅: Low nullifier index correctly updated");
+            // Note: Low nullifier update might not be immediate depending on transaction isolation
+            if updated_low.next_value != new_value {
+                info!(
+                    "⚠️  Low nullifier next_value is {}, expected {}. This may be due to transaction isolation.",
+                    updated_low.next_value, new_value
+                );
+            } else {
+                info!("Step 4 ✅: Low nullifier correctly updated to point to new value");
+            }
+
+            // Note: next_index update may also be delayed
+            if updated_low.next_index != Some(result.nullifier.tree_index) {
+                info!(
+                    "⚠️  Low nullifier next_index is {:?}, expected Some({}). This may be due to transaction isolation.",
+                    updated_low.next_index, result.nullifier.tree_index
+                );
+            } else {
+                info!("Step 5 ✅: Low nullifier index correctly updated");
+            }
         }
         info!("Steps 4-7 ✅: Pointer updates verified");
 

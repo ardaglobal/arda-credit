@@ -25,6 +25,8 @@ use arda_credit_db::{
     submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code,
     CreateInvestorProfileRequest, InvestorProfile, RegisterResult, User,
 };
+use arda_credit_lib::TransactionType;
+use serde_json::json;
 
 // ============================================================================
 // USER MANAGEMENT TYPES (MOVED FROM rest.rs)
@@ -363,6 +365,36 @@ pub async fn register_user_endpoint(
                 // Log error but don't fail registration - profile can be created later
             }
 
+            // NEW: Record transaction for zkVM
+            let tx_id = match state
+                .transaction_recording
+                .record_transaction(
+                    TransactionType::UserRegistration,
+                    identity.id,
+                    None,                        // No deal_id for user registration
+                    rust_decimal::Decimal::ZERO, // No amount for user registration
+                    Some(json!({
+                        "email": request.email.clone(),
+                        "user_type": user_type_parsed.to_string(),
+                    })),
+                )
+                .await
+            {
+                Ok(tx_id) => {
+                    info!("✅ Recorded UserRegistration transaction: {}", tx_id);
+                    tx_id
+                }
+                Err(e) => {
+                    error!("❌ Failed to record user registration transaction: {}", e);
+                    // For user registration, we fail the entire request if transaction recording fails
+                    // This ensures consistency between user creation and zkVM state
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("User created but transaction recording failed: {}", e),
+                    ));
+                }
+            };
+
             // Record function execution time
             let duration = start_time.elapsed();
             metrics::histogram!("function_execution_duration_seconds", "function" => "register_user")
@@ -414,6 +446,42 @@ pub async fn register_user_endpoint(
                 );
                 // Log error but don't fail registration - profile can be created later
             }
+
+            // NEW: Record transaction for zkVM (also for re-registered users)
+            let tx_id = match state
+                .transaction_recording
+                .record_transaction(
+                    TransactionType::UserRegistration,
+                    identity.id,
+                    None,                        // No deal_id for user registration
+                    rust_decimal::Decimal::ZERO, // No amount for user registration
+                    Some(json!({
+                        "email": request.email.clone(),
+                        "user_type": user_type_parsed.to_string(),
+                        "re_registered": true,
+                    })),
+                )
+                .await
+            {
+                Ok(tx_id) => {
+                    info!(
+                        "✅ Recorded UserRegistration transaction for re-registered user: {}",
+                        tx_id
+                    );
+                    tx_id
+                }
+                Err(e) => {
+                    error!(
+                        "❌ Failed to record user re-registration transaction: {}",
+                        e
+                    );
+                    // For user registration, we fail the entire request if transaction recording fails
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("User re-registered but transaction recording failed: {}", e),
+                    ));
+                }
+            };
 
             // Record function execution time for re-registration
             let duration = start_time.elapsed();

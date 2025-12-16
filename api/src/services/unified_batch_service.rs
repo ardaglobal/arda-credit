@@ -14,8 +14,9 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
 use arda_credit_db::{
-    get_pending_transactions, store_ads_state_commit, AuthenticatedDataStructure,
-    IncomingTransaction, IndexedMerkleTreeADS, LoanOperation, ProofBatch, StateTransition,
+    create_batch_from_deal_transactions, get_pending_deal_transactions, store_ads_state_commit,
+    AuthenticatedDataStructure, DealTransactionDb, IncomingTransaction, IndexedMerkleTreeADS,
+    LoanOperation, ProofBatch, StateTransition,
 };
 use chrono;
 use std::time::{Duration, Instant};
@@ -262,23 +263,35 @@ impl UnifiedBatchService {
 
         info!("🔄 UNIFIED: Creating batch via {} trigger", trigger_source);
 
-        // Step 1: Get pending transactions
-        let pending_transactions = match get_pending_transactions(&self.pool).await {
+        // Step 1: Get pending deal transactions (NEW: using deal_transactions table)
+        let pending_transactions = match get_pending_deal_transactions(&self.pool, Some(1000)).await
+        {
             Ok(transactions) => transactions,
-            Err(e) => return Err(format!("Failed to get pending transactions: {}", e)),
+            Err(e) => return Err(format!("Failed to get pending deal transactions: {}", e)),
         };
 
         if pending_transactions.is_empty() {
-            debug!("No pending transactions to batch");
+            debug!("No pending deal transactions to batch");
             return Ok(None);
         }
 
         // Step 2: Determine batch size
-        let batch_size = requested_batch_size
-            .map(|s| s as usize)
-            .unwrap_or(pending_transactions.len())
-            .min(self.max_batch_size as usize)
-            .min(pending_transactions.len());
+        // SPECIAL CASE: If StateRegenesis is present, include ALL pending transactions in a single batch
+        // This ensures complete historical reprocessing from genesis without splitting across batches
+        let has_state_regenesis = pending_transactions
+            .iter()
+            .any(|tx| tx.transaction_type == "state_regenesis");
+
+        let batch_size = if has_state_regenesis {
+            info!("🔄 UNIFIED: StateRegenesis detected - including ALL {} pending transactions in batch", pending_transactions.len());
+            pending_transactions.len()
+        } else {
+            requested_batch_size
+                .map(|s| s as usize)
+                .unwrap_or(pending_transactions.len())
+                .min(self.max_batch_size as usize)
+                .min(pending_transactions.len())
+        };
 
         let batch_transactions = &pending_transactions[..batch_size];
 
@@ -421,34 +434,54 @@ impl UnifiedBatchService {
     /// TODO: This should be replaced with pure database operations once SQL function is deprecated
     async fn create_batch_entry(
         &self,
-        transactions: &[IncomingTransaction],
+        transactions: &[DealTransactionDb],
     ) -> Result<Option<ProofBatch>, String> {
-        // For now, use the existing create_batch logic but limit to exact transactions
-        match arda_credit_db::create_batch(&self.pool, Some(transactions.len() as i32)).await {
+        // Use new deal transactions batch creation (marks deal_transactions as batched)
+        let tx_ids: Vec<uuid::Uuid> = transactions.iter().map(|t| t.id).collect();
+        match create_batch_from_deal_transactions(
+            &self.pool,
+            transactions.len() as i32,
+            Some(tx_ids),
+        )
+        .await
+        {
             Ok(batch) => Ok(batch),
             Err(e) => Err(format!("Database error: {}", e)),
         }
     }
 
-    /// Convert a transaction to a nullifier value with operation-type prefixes
-    fn transaction_to_nullifier(&self, transaction: &IncomingTransaction) -> i64 {
-        self.transaction_to_nullifier_with_prefix(transaction, transaction_prefixes::LEGACY_DEFAULT)
+    /// Convert a deal transaction to a nullifier value with operation-type prefixes
+    fn transaction_to_nullifier(&self, transaction: &DealTransactionDb) -> i64 {
+        self.transaction_to_nullifier_deal_with_prefix(
+            transaction,
+            transaction_prefixes::LEGACY_DEFAULT,
+        )
     }
 
-    /// Convert a transaction to a nullifier value with specific prefix for namespace isolation
-    fn transaction_to_nullifier_with_prefix(
+    /// Convert an incoming transaction to a nullifier value (legacy support)
+    fn incoming_transaction_to_nullifier(&self, transaction: &IncomingTransaction) -> i64 {
+        self.incoming_transaction_to_nullifier_with_prefix(
+            transaction,
+            transaction_prefixes::LEGACY_DEFAULT,
+        )
+    }
+
+    /// Convert a deal transaction to a nullifier value with specific prefix for namespace isolation
+    fn transaction_to_nullifier_deal_with_prefix(
         &self,
-        transaction: &IncomingTransaction,
+        transaction: &DealTransactionDb,
         prefix: i64,
     ) -> i64 {
         // Create a deterministic nullifier from the transaction data using blake3
         // This ensures the same transaction always produces the same nullifier across deployments
         let mut hasher = blake3::Hasher::new();
 
-        // Hash each field as its little-endian byte representation for deterministic results
-        hasher.update(&transaction.id.to_le_bytes());
-        hasher.update(&transaction.amount.to_le_bytes());
+        // Hash the transaction ID (UUID) and other fields
+        hasher.update(transaction.id.as_bytes());
         hasher.update(&transaction.created_at.timestamp().to_le_bytes());
+
+        // Include transaction type for additional uniqueness
+        hasher.update(transaction.transaction_type.as_bytes());
 
         // Get the first 8 bytes of the digest as a u64 (little-endian)
         let digest = hasher.finalize();
@@ -478,6 +511,42 @@ impl UnifiedBatchService {
         );
 
         final_nullifier
+    }
+
+    /// Convert an incoming transaction to a nullifier value with specific prefix (legacy support)
+    fn incoming_transaction_to_nullifier_with_prefix(
+        &self,
+        transaction: &IncomingTransaction,
+        prefix: i64,
+    ) -> i64 {
+        // Create a deterministic nullifier from the transaction data using blake3
+        let mut hasher = blake3::Hasher::new();
+
+        // Hash each field as its little-endian byte representation
+        hasher.update(&transaction.id.to_le_bytes());
+        hasher.update(&transaction.amount.to_le_bytes());
+        hasher.update(&transaction.created_at.timestamp().to_le_bytes());
+
+        // Get the first 8 bytes of the digest as a u64
+        let digest = hasher.finalize();
+        let hash_bytes = digest.as_bytes();
+        let hash_u64 = u64::from_le_bytes([
+            hash_bytes[0],
+            hash_bytes[1],
+            hash_bytes[2],
+            hash_bytes[3],
+            hash_bytes[4],
+            hash_bytes[5],
+            hash_bytes[6],
+            hash_bytes[7],
+        ]);
+
+        // Convert to positive value within prefix range
+        let base_nullifier =
+            ((hash_u64 % (transaction_prefixes::PREFIX_RANGE_SIZE as u64)) as i64) + 1;
+
+        // Apply prefix
+        prefix + base_nullifier
     }
 
     // ============================================================================
@@ -755,11 +824,11 @@ impl UnifiedBatchService {
         let mut ads_guard = self.ads_service.write().await;
         let mut all_transitions = Vec::new();
 
-        // Step 2: Process regular transactions
+        // Step 2: Process regular transactions (legacy IncomingTransaction)
         if !transactions.is_empty() {
             let mut nullifiers = Vec::new();
             for transaction in transactions {
-                let nullifier = self.transaction_to_nullifier(transaction);
+                let nullifier = self.incoming_transaction_to_nullifier(transaction);
                 nullifiers.push(nullifier);
             }
 
@@ -1452,11 +1521,11 @@ impl UnifiedBatchService {
         let mut ads_guard = self.ads_service.write().await;
         let mut all_transitions = Vec::new();
 
-        // Process regular transactions first for consistent ordering
+        // Process regular transactions first for consistent ordering (legacy IncomingTransaction)
         if !transactions.is_empty() {
             let mut nullifiers = Vec::new();
             for transaction in transactions {
-                let nullifier = self.transaction_to_nullifier(transaction);
+                let nullifier = self.incoming_transaction_to_nullifier(transaction);
                 nullifiers.push(nullifier);
             }
 

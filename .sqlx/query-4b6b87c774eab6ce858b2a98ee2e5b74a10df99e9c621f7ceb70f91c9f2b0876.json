@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            sindri_proof_id,\n            proof_bytes,\n            public_values,\n            verifying_key\n        FROM proof_batches\n        WHERE id = $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "sindri_proof_id",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 1,
+        "name": "proof_bytes",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 2,
+        "name": "public_values",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 3,
+        "name": "verifying_key",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4b6b87c774eab6ce858b2a98ee2e5b74a10df99e9c621f7ceb70f91c9f2b0876"
+}

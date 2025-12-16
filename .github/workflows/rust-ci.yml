@@ -43,7 +43,7 @@ jobs:
 
       - name: Cache dependencies
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -75,7 +75,7 @@ jobs:
           ~/.sp1/bin/cargo-prove prove build
 
       - name: Upload SP1 program artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: sp1-program-${{ github.run_id }}
           path: |
@@ -101,7 +101,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Restore cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -174,7 +174,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Restore cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -236,7 +236,7 @@ jobs:
           components: llvm-tools, rustc-dev
 
       - name: Cache dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/

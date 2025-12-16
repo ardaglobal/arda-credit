@@ -11,8 +11,9 @@ import {SP1MockVerifier} from "@sp1-contracts/SP1MockVerifier.sol";
 /// @title ARDA Deployment Script
 /// @notice Environment-aware deployment script for ARDA contracts
 /// @dev Deploys different contract sets based on SERVER_ENVIRONMENT:
-///      - local/staging: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier
-///      - sandbox/production: ARDA only (assumes real USDC and verifier exist)
+///      - local/dev/staging: MockUSDC + ARDAFaucet + ARDA + SP1MockVerifier (Anvil)
+///      - sandbox: ARDA only on Sepolia (assumes real USDC and verifier exist)
+///      - production: ARDA only on mainnet (assumes real USDC and verifier exist)
 contract Deploy is Script {
     /*//////////////////////////////////////////////////////////////
                               ENVIRONMENT
@@ -27,10 +28,11 @@ contract Deploy is Script {
         }
     }
 
-    /// @dev Check if environment is local or staging
-    function isLocalEnvironment(string memory env) internal pure returns (bool) {
+    /// @dev Check if environment uses Anvil (local, dev, staging)
+    function isAnvilEnvironment(string memory env) internal pure returns (bool) {
         return
             keccak256(bytes(env)) == keccak256(bytes("local")) ||
+            keccak256(bytes(env)) == keccak256(bytes("dev")) ||
             keccak256(bytes(env)) == keccak256(bytes("staging"));
     }
 
@@ -46,20 +48,21 @@ contract Deploy is Script {
         console2.log("Environment:", environment);
         console2.log("");
 
-        if (isLocalEnvironment(environment)) {
-            deployLocal();
+        if (isAnvilEnvironment(environment)) {
+            deployAnvil();
         } else {
             deployProduction();
         }
     }
 
     /*//////////////////////////////////////////////////////////////
-                         LOCAL/STAGING DEPLOYMENT
+                         ANVIL DEPLOYMENT (LOCAL/DEV/STAGING)
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Deploy complete local environment with mocks
-    function deployLocal() internal {
-        console2.log("Deploying LOCAL environment (with mocks)...");
+    /// @notice Deploy complete Anvil environment with mocks
+    /// @dev Used for local, dev, and staging environments
+    function deployAnvil() internal {
+        console2.log("Deploying ANVIL environment (with mocks)...");
         console2.log("");
 
         // Get private key - handle both with and without 0x prefix
@@ -133,7 +136,7 @@ contract Deploy is Script {
         // Print deployment summary
         console2.log("");
         console2.log("==================================");
-        console2.log("LOCAL DEPLOYMENT COMPLETE");
+        console2.log("ANVIL DEPLOYMENT COMPLETE");
         console2.log("==================================");
         console2.log("");
         console2.log("Contract Addresses:");
