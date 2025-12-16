@@ -351,7 +351,7 @@ impl NullifierDb {
         new_tree_index: i64,
         low_nullifier: &LowNullifier,
     ) -> Result<Nullifier, DbError> {
-        info!(
+        debug!(
             "Inserting nullifier: value={}, tree_index={}, low_nullifier_value={}",
             new_value, new_tree_index, low_nullifier.value
         );
@@ -413,7 +413,7 @@ impl NullifierDb {
 
         tx.commit().await.map_err(DbError::Database)?;
 
-        info!(
+        debug!(
             "Successfully inserted nullifier with id: {}",
             new_nullifier.id
         );
@@ -422,7 +422,7 @@ impl NullifierDb {
 
     #[instrument(skip(self), level = "debug")]
     pub async fn atomic_insert(&self, new_value: i64) -> Result<InsertionResult, DbError> {
-        info!("Starting atomic insertion for value: {}", new_value);
+        debug!("Starting atomic insertion for value: {}", new_value);
 
         // Check if nullifier already exists
         if self.exists(new_value).await? {
@@ -1875,7 +1875,7 @@ impl IndexedMerkleTree {
         low_nullifier_after: &LowNullifier,
         new_nullifier: &Nullifier,
     ) -> Result<u32, DbError> {
-        info!("🌳 Updating Merkle tree for insertion");
+        debug!("🌳 Updating Merkle tree for insertion");
         let mut hash_count = 0u32;
 
         // Hash operations for leaf updates

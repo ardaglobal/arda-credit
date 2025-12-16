@@ -840,9 +840,9 @@ impl AuthenticatedDataStructure for IndexedMerkleTreeADS {
     type Proof = MerkleProof;
     type StateCommitment = StateCommitment;
 
-    #[instrument(skip(self), level = "info")]
+    #[instrument(skip(self), level = "debug")]
     async fn insert(&mut self, value: i64) -> Result<StateTransition, AdsError> {
-        info!("🔄 Inserting nullifier: {}", value);
+        debug!("🔄 Inserting nullifier: {}", value);
         let start_time = std::time::Instant::now();
 
         // Get exclusive access to tree for modification

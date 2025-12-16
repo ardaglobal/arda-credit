@@ -159,12 +159,12 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
         let type_priority = match tx.transaction_type {
             TransactionType::StateRegenesis => 0,
             TransactionType::UserRegistration => 1,
-            TransactionType::CompanyRegistration => 2,  // Before deals
+            TransactionType::CompanyRegistration => 2, // Before deals
             TransactionType::KycSubmission => 3,
             TransactionType::KycVerification => 4,
             TransactionType::UserDeposit => 5,
             TransactionType::CollateralCreation => 6,
-            TransactionType::DealOrigination => 7,      // After companies
+            TransactionType::DealOrigination => 7, // After companies
             TransactionType::CollateralDealAssociation => 8,
             TransactionType::DealPayment => 9,
             TransactionType::DealCloseout => 10,
@@ -336,7 +336,7 @@ fn convert_db_transaction_to_zkvm(
     };
 
     // Debug logging for transaction conversion
-    tracing::info!(
+    tracing::debug!(
         "🔬 TX: {:?} - user_id[0..4]={:?}, originator[0..4]={:?}, investor[0..4]={:?}",
         transaction_type,
         &user_id[..4],
