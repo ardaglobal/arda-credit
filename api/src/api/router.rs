@@ -34,6 +34,7 @@ use crate::handlers::{
 };
 use crate::services::batch_processor::BatchProcessorHandle;
 use crate::services::session_service::SessionService;
+use crate::services::TransactionRecordingService;
 use crate::services::{BalanceVerificationService, MetricsCache, WithdrawalTransactionService};
 use arda_credit_db::{IndexedMerkleTreeADS, User};
 use std::sync::Arc;
@@ -103,6 +104,8 @@ pub struct ApiState {
     pub email_rate_limiter: Option<Arc<crate::middleware::middleware::EmailRateLimiter>>,
     pub metrics_cache: Arc<MetricsCache>,
     pub event_publisher: Option<Arc<crate::events::CollateralEventPublisher>>,
+    // NEW: Add transaction recording service
+    pub transaction_recording: Arc<TransactionRecordingService>,
 }
 
 /// Configuration for API server
@@ -466,6 +469,16 @@ pub fn create_router(state: ApiState) -> Router {
             paths::STATE_PAYMENTS,
             post(crate::handlers::deals::deals::record_deal_payment_endpoint),
         )
+        // NEW: Deal Payment Endpoint
+        .route(
+            "/api/v1/deal/{deal_id}/payment",
+            post(crate::handlers::deals::deals::make_payment_endpoint),
+        )
+        // NEW: Deal Closeout Endpoint
+        .route(
+            "/api/v1/deal/{deal_id}/closeout",
+            post(crate::handlers::deals::deals::closeout_deal_endpoint),
+        )
         .route(
             paths::STATE_PAYMENT_BY_ID,
             get(crate::handlers::deals::deals::get_payment_details_endpoint),
@@ -477,6 +490,10 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::DEAL_AUDIT_TRAIL,
             get(crate::handlers::deals::deals::get_deal_audit_trail_endpoint),
+        )
+        .route(
+            paths::DEAL_AUDIT_TRAIL_WITH_PROOFS,
+            get(crate::handlers::deals::deals::get_deal_audit_trail_with_proofs_endpoint),
         )
         // ========================================================================
         // LOAN TAPE ENDPOINTS
@@ -596,8 +613,12 @@ pub fn create_router(state: ApiState) -> Router {
             post(crate::handlers::faucet::request_faucet_funds),
         )
         // ========================================================================
-        // TAXONOMY ENDPOINTS - Arda Document Management
+        // TEST ENDPOINTS (only in debug mode)
         // ========================================================================
+        .route(
+            "/api/v1/test/record-transaction",
+            get(crate::handlers::test_handlers::test_transaction_recording_endpoint),
+        )
         // Credit Agreements
         .route(
             paths::TAXONOMY_CREDIT_AGREEMENTS,
@@ -909,6 +930,15 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             "/api/v1/collateral/{id}/audit-trail",
             get(crate::handlers::taxonomy::collateral::get_collateral_audit_trail_handler),
+        )
+        // NEW: Association endpoints
+        .route(
+            "/api/v1/collateral/{collateral_id}/associate",
+            post(crate::handlers::taxonomy::collateral::associate_collateral_handler),
+        )
+        .route(
+            "/api/v1/collateral/{collateral_id}/associate",
+            delete(crate::handlers::taxonomy::collateral::disassociate_collateral_handler),
         )
         // Internal API: Collateral fetch for arda-collateral-intel
         .route(

@@ -18,6 +18,13 @@ rust_decimal = { workspace = true }
 sha2         = { workspace = true }
 uuid         = { workspace = true }
 
+# Poseidon hash (zkVM compatible)
+p3-baby-bear = { workspace = true }
+p3-field     = { workspace = true }
+p3-poseidon2 = { workspace = true }
+p3-symmetric = { workspace = true }
+rand         = "0.8"
+
 # SP1 dependencies (for host-side proof operations)
 chrono  = { workspace = true, optional = true }
 metrics = { workspace = true, optional = true }

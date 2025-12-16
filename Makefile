@@ -26,10 +26,26 @@ help: Makefile
 install:
 	./install-dependencies.sh
 
+## clean-cache: Clean lib and api build caches to force zkVM binary re-embedding
+.PHONY: clean-cache
+clean-cache:
+	@echo "🧹 Cleaning lib and api caches..."
+	@cargo clean -p lib -p api -p arda-credit
+	@echo "✅ Caches cleaned"
+
 ## build-program: Build SP1 program
 .PHONY: build-program
 build-program:
 	cd program && cargo prove build --output-directory ../build
+
+## run: SP1 deal processing test (proof method determined by SERVER_ENVIRONMENT)
+## Default: local (uses local SP1 prover, fast ~8s Core proofs)
+## Sindri: Set SERVER_ENVIRONMENT=sandbox or production (uses Sindri service)
+.PHONY: run
+run: build-program
+	@echo "🌍 Server Environment: $${SERVER_ENVIRONMENT:-local} (determines proof method)"
+	@echo ""
+	cargo run --release
 
 ## fmt: Format code
 .PHONY: fmt
@@ -272,15 +288,6 @@ cover:
 	@echo ""
 	@echo "💡 Open target/llvm-cov/html/index.html in your browser to view the detailed HTML report"
 
-## run: SP1 deal processing test (proof method determined by SERVER_ENVIRONMENT)
-## Default: local (uses local SP1 prover, fast ~8s Core proofs)
-## Sindri: Set SERVER_ENVIRONMENT=sandbox or production (uses Sindri service)
-.PHONY: run
-run:
-	@echo "🌍 Server Environment: $${SERVER_ENVIRONMENT:-local} (determines proof method)"
-	@echo ""
-	cargo run --release
-
 # =============================================================================
 # ZK Proof Benchmarking Commands (requires SINDRI_API_KEY)
 # =============================================================================
@@ -308,7 +315,7 @@ bench-zk:
 
 ## server: Start API server locally (in debug mode with verbose logging) with deposit monitor and withdrawal executor
 .PHONY: server
-server: up
+server: clean-cache up build-program
 	@sleep 2
 	@# Deploy contracts if in local/staging environment
 	@SERVER_ENV=$${SERVER_ENVIRONMENT:-local}; \
@@ -357,65 +364,7 @@ server: up
 		> withdrawal_executor.log 2>&1 &
 	@echo "Withdrawal executor started (logs: withdrawal_executor.log)"
 	@echo "Starting API server..."
-	RUST_LOG=info cargo run --bin server -- --cors
-
-## server-stop: Stop background services (deposit monitor and withdrawal executor)
-.PHONY: server-stop
-server-stop:
-	@echo "🛑 Stopping background services..."
-	@pkill -f "deposit_monitor" || echo "  No deposit monitor process found"
-	@pkill -f "withdrawal_executor" || echo "  No withdrawal executor process found"
-	@echo "✅ Background services stopped"
-
-## server-help: Show required environment variables for server
-.PHONY: server-help
-server-help:
-	@echo "Server Environment Variables"
-	@echo "==========================="
-	@echo ""
-	@echo "Required for Deposit Monitor and Withdrawal Executor:"
-	@echo "  ETHEREUM_RPC_URL          - Ethereum RPC endpoint URL"
-	@echo "  ETHEREUM_CONTRACT_ADDRESS - Arda Credit contract address"
-	@echo "  ETHEREUM_PRIVATE_KEY      - Private key for withdrawal transactions (hex format)"
-	@echo ""
-	@echo "Optional Database (uses default if not set):"
-	@echo "  DATABASE_URL              - PostgreSQL connection string"
-	@echo "                               (default: postgresql://postgres:password@127.0.0.1:5432/arda_credit_db)"
-	@echo ""
-	@echo "Example Usage:"
-	@echo "  export ETHEREUM_RPC_URL='https://eth-sepolia.g.alchemy.com/v2/your-api-key'"
-	@echo "  export ETHEREUM_CONTRACT_ADDRESS='0x45F9Dff1f6c75C9Ab28e8c5167F2461A2B295c1A'"
-	@echo "  export ETHEREUM_PRIVATE_KEY='your-private-key-without-0x-prefix'"
-	@echo "  make server"
-	@echo ""
-	@echo "Or set them in your .env file and run:"
-	@echo "  export \$$(cat .env | grep -v '^#' | xargs) && make server"
-	@echo ""
-	@echo "Log Files:"
-	@echo "  deposit_monitor.log       - Deposit monitor service logs"
-	@echo "  withdrawal_executor.log   - Withdrawal executor service logs"
-	@echo ""
-	@echo "Stop Services:"
-	@echo "  make server-stop          - Stop background services"
-
-## server-logs: Show logs from background services
-.PHONY: server-logs
-server-logs:
-	@echo "=== Deposit Monitor Logs ==="
-	@if [ -f "deposit_monitor.log" ]; then \
-		tail -20 deposit_monitor.log; \
-	else \
-		echo "❌ deposit_monitor.log not found"; \
-	fi
-	@echo ""
-	@echo "=== Withdrawal Executor Logs ==="
-	@if [ -f "withdrawal_executor.log" ]; then \
-		tail -20 withdrawal_executor.log; \
-	else \
-		echo "❌ withdrawal_executor.log not found"; \
-	fi
-	@echo ""
-	@echo "💡 Use 'tail -f deposit_monitor.log' or 'tail -f withdrawal_executor.log' for live monitoring"
+	cargo run --release --bin server -- --cors
 
 ## forge-build: Build smart contracts
 .PHONY: forge-build

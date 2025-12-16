@@ -1,18 +1,44 @@
 #!/usr/bin/env cargo run --bin populate_deal_data --
 //! Deal data population script for the Arda Credit database
 //!
-//! This script creates realistic deal data for testing the deals API endpoint
-//! and automatically refreshes the metrics cache for dashboard visualization.
-//! It supports two modes:
+//! This script creates realistic deal data for testing the deals API endpoint,
+//! zkVM batch processing, and automatically refreshes the metrics cache.
+//!
+//! ## Transaction Coverage
+//!
+//! The script creates the following transaction types for zkVM testing:
+//! - UserRegistration (for new users)
+//! - DealOrigination (for all deals)
+//! - DealPayment (1-5 per deal based on status)
+//! - DealCloseout (for 'closed' status deals)
+//! - CollateralCreation (~70% of deals)
+//! - CollateralDealAssociation (~70% of deals)
+//!
+//! This provides 60% coverage of zkVM transaction types.
+//!
+//! ## Modes
+//!
 //! - Random mode: Generate random deals with random companies (no --email)
 //! - User mode: Generate deals for a specific user's companies (with --email)
+//! - CSV mode: Export to CSV instead of database (with --csv)
 //!
-//! After generating deals, the script automatically calculates and caches:
-//! - Market value time series (both market growth and Arda growth)
-//! - Pie chart distributions (industry, region, asset class breakdowns)
+//! ## Usage
 //!
-//! Run with: cargo run --bin populate_deal_data
+//! ```bash
+//! # Basic usage (random deals)
+//! cargo run --bin populate_deal_data -- --count 25
+//!
+//! # User-specific deals
+//! cargo run --bin populate_deal_data -- --email user@example.com --count 10
+//!
+//! # With all zkVM transaction types
+//! cargo run --bin populate_deal_data -- --count 50
+//!
+//! # Clear and regenerate
+//! cargo run --bin populate_deal_data -- --clear --count 100
+//! ```
 
+use base64::Engine;
 use chrono::NaiveDate;
 use chrono::{Duration, Utc};
 use clap::{Arg, Command};
@@ -26,6 +52,7 @@ use db::{
     },
     create_identity, get_identity_by_email, init_db_with_url, list_deals, Collateral, Deal, User,
 };
+// No direct lib import - use db crate's hash function instead
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use reqwest::Client;
 use rust_decimal::Decimal;
@@ -573,6 +600,60 @@ fn hash_uuid(uuid: &Uuid) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
+/// Create a company_registration transaction for zkVM state
+async fn create_company_registration_transaction(
+    pool: &sqlx::PgPool,
+    company: &Company,
+    creator_user_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    let transaction_id = Uuid::new_v4();
+    let transaction_id_hash = hash_uuid(&transaction_id);
+    let user_id_hash = hash_uuid(&creator_user_id);
+    let company_id_hash = hash_uuid(&company.id);
+
+    // Metadata contains company status (0=Active, 1=Suspended, 2=Inactive)
+    let company_status: u8 = match company.status {
+        db::business::company::CompanyStatus::Active => 0,
+        db::business::company::CompanyStatus::Suspended => 1,
+        db::business::company::CompanyStatus::Inactive => 2,
+    };
+
+    let mut metadata_bytes = vec![0u8; 64];
+    metadata_bytes[0] = company_status;
+
+    let metadata_json = json!({
+        "data_base64": base64::engine::general_purpose::STANDARD.encode(&metadata_bytes),
+        "company_name": company.name,
+        "created_by_user": creator_user_id.to_string(),
+    });
+
+    sqlx::query(
+        r#"
+        INSERT INTO deal_transactions (
+            id, transaction_id_hash, user_id_hash, deal_id_hash,
+            transaction_type, amount, user_id, deal_id, payment_id,
+            metadata, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        "#,
+    )
+    .bind(transaction_id)
+    .bind(transaction_id_hash)
+    .bind(user_id_hash)
+    .bind(Some(company_id_hash)) // Store company hash in deal_id_hash for company operations
+    .bind("company_registration")
+    .bind(rust_decimal::Decimal::ZERO)
+    .bind(creator_user_id)
+    .bind(None::<Uuid>) // No deal_id for company registration
+    .bind(None::<Uuid>) // No payment_id
+    .bind(metadata_json)
+    .bind(company.created_at)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 /// Create a deal_transactions record to track state progression events
 async fn create_deal_transaction_record(
     pool: &sqlx::PgPool,
@@ -582,6 +663,8 @@ async fn create_deal_transaction_record(
     amount: Decimal,
     created_at: chrono::DateTime<Utc>,
     payment_id: Option<Uuid>,
+    originator_id: Option<Uuid>, // For deal_origination: the originator company user
+    investor_id: Option<Uuid>,   // For deal_origination: the investor company user
 ) -> Result<(), sqlx::Error> {
     let transaction_id = Uuid::new_v4();
     let transaction_id_hash = hash_uuid(&transaction_id);
@@ -589,6 +672,27 @@ async fn create_deal_transaction_record(
     let dummy_uuid = Uuid::nil();
     let user_id_hash = hash_uuid(&user_id.unwrap_or(dummy_uuid));
     let deal_id_hash = hash_uuid(&deal_id);
+
+    // Build metadata based on transaction type
+    // For deal_origination: metadata contains 64 bytes as base64: originator_hash (32) + investor_hash (32)
+    // For other types: empty 64 bytes
+    let metadata_json = if transaction_type == "deal_origination" {
+        let originator_hash = hash_uuid(&originator_id.unwrap_or(dummy_uuid));
+        let investor_hash = hash_uuid(&investor_id.unwrap_or(dummy_uuid));
+
+        let mut bytes = vec![0u8; 64];
+        bytes[0..32].copy_from_slice(&originator_hash);
+        bytes[32..64].copy_from_slice(&investor_hash);
+
+        json!({
+            "data_base64": base64::engine::general_purpose::STANDARD.encode(&bytes)
+        })
+    } else {
+        // Empty 64-byte array for other transaction types
+        json!({
+            "data_base64": base64::engine::general_purpose::STANDARD.encode(vec![0u8; 64])
+        })
+    };
 
     sqlx::query(
         r#"
@@ -609,10 +713,7 @@ async fn create_deal_transaction_record(
     .bind(user_id)
     .bind(deal_id)
     .bind(payment_id)
-    .bind(json!({
-        "created_by_script": true,
-        "transaction_type": transaction_type
-    }))
+    .bind(metadata_json)
     .bind(created_at)
     .execute(pool)
     .await?;
@@ -626,6 +727,7 @@ async fn create_deal_state_progression(
     deal: &Deal,
     target_status: &str,
     rng: &mut impl Rng,
+    system_user_id: Uuid, // System user for script-generated transactions
 ) -> Result<(), Box<dyn std::error::Error>> {
     let originated_at = deal.originated_at;
     let maturity_date = deal
@@ -633,15 +735,17 @@ async fn create_deal_state_progression(
         .unwrap_or(originated_at + Duration::days(365));
 
     // Always create deal_origination transaction
-    // Note: user_id is None for script-generated deals without specific users
+    // Use system user (engineering@arda.xyz) for script-generated deals
     create_deal_transaction_record(
         pool,
         "deal_origination",
         deal.id,
-        None, // No specific user for script-generated deals
+        Some(system_user_id), // Use system user instead of None
         deal.principal_amount,
         originated_at,
         None,
+        Some(deal.originator_id), // borrower_id (originator)
+        deal.investor_id,         // lender_id (investor)
     )
     .await?;
 
@@ -668,10 +772,12 @@ async fn create_deal_state_progression(
                     pool,
                     "deal_payment",
                     deal.id,
-                    None, // No specific user for script-generated deals
+                    Some(system_user_id), // Use system user
                     payment_amount,
                     payment_date,
                     None, // No actual payment record created
+                    None, // No originator_id needed for payments
+                    None, // No investor_id needed for payments
                 )
                 .await?;
             }
@@ -704,10 +810,12 @@ async fn create_deal_state_progression(
                     pool,
                     "deal_payment",
                     deal.id,
-                    None, // No specific user for script-generated deals
+                    Some(system_user_id), // Use system user
                     *amount,
                     payment_date,
                     None, // No actual payment record created
+                    None, // No originator_id needed for payments
+                    None, // No investor_id needed for payments
                 )
                 .await?;
             }
@@ -740,10 +848,12 @@ async fn create_deal_state_progression(
                     pool,
                     "deal_payment",
                     deal.id,
-                    None, // No specific user for script-generated deals
+                    Some(system_user_id), // Use system user
                     *amount,
                     payment_date,
                     None, // No actual payment record created
+                    None, // No originator_id needed for payments
+                    None, // No investor_id needed for payments
                 )
                 .await?;
             }
@@ -754,10 +864,12 @@ async fn create_deal_state_progression(
                 pool,
                 "deal_closeout",
                 deal.id,
-                None, // No specific user for script-generated deals
+                Some(system_user_id), // Use system user
                 Decimal::ZERO,
                 closeout_date,
                 None,
+                None, // No originator_id needed for closeout
+                None, // No investor_id needed for closeout
             )
             .await?;
         }
@@ -1043,6 +1155,126 @@ fn generate_csv_deal_row(
     })
 }
 
+// ============================================================================
+// RE-GENESIS SUPPORT
+// ============================================================================
+
+/// Trigger re-genesis to reset proof state
+///
+/// This function:
+/// 1. Creates a StateRegenesis transaction
+/// 2. Marks all existing proofs as superseded
+/// 3. Resets all transactions to pending
+async fn trigger_regenesis_reset(pool: &sqlx::PgPool) -> Result<(), Box<dyn std::error::Error>> {
+    println!("🔄 Triggering re-genesis...");
+    println!(
+        "   ℹ️  This will mark old proofs as superseded and reset all transactions to pending"
+    );
+
+    // Get system user for re-genesis transaction
+    let system_user = get_identity_by_email(pool, "engineering@arda.xyz")
+        .await?
+        .ok_or("System user engineering@arda.xyz not found")?;
+
+    // 1. Create re-genesis transaction
+    let regenesis_tx_id = Uuid::new_v4();
+    let metadata = serde_json::json!({
+        "reason": "populate_script_execution",
+        "initiated_by": system_user.id.to_string(),
+        "notes": "Populate script creates historical deals, requiring re-genesis",
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+
+    // Hash UUIDs using sha256 (matching lib::hash_uuid implementation)
+    let mut tx_hasher = Sha256::new();
+    tx_hasher.update(regenesis_tx_id.as_bytes());
+    let tx_id_hash = tx_hasher.finalize();
+
+    let mut user_hasher = Sha256::new();
+    user_hasher.update(system_user.id.as_bytes());
+    let user_id_hash = user_hasher.finalize();
+
+    // IMPORTANT: Use minimum valid timestamp (2000-01-01) to ensure StateRegenesis is processed FIRST
+    // when transactions are sorted chronologically. Historical deal transactions
+    // have timestamps from their originated_at dates, so StateRegenesis must be
+    // older to appear first in the sorted batch.
+    // zkVM validation requires timestamps >= 946684800 (Jan 1, 2000)
+    let min_valid_timestamp = chrono::NaiveDateTime::from_timestamp_opt(946_684_800, 0)
+        .expect("Valid minimum timestamp")
+        .and_utc();
+
+    // Use explicit parameter binding with query() instead of query!() to ensure correct order
+    sqlx::query(
+        r#"
+        INSERT INTO deal_transactions (
+            id, transaction_id_hash, user_id_hash, deal_id_hash,
+            transaction_type, amount, user_id, deal_id, payment_id,
+            included_in_batch_id, metadata, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        "#,
+    )
+    .bind(regenesis_tx_id) // $1 = id
+    .bind(tx_id_hash.as_slice()) // $2 = transaction_id_hash
+    .bind(user_id_hash.as_slice()) // $3 = user_id_hash
+    .bind(None::<Vec<u8>>) // $4 = deal_id_hash (NULL)
+    .bind("state_regenesis") // $5 = transaction_type
+    .bind(rust_decimal::Decimal::ZERO) // $6 = amount
+    .bind(system_user.id) // $7 = user_id
+    .bind(None::<Uuid>) // $8 = deal_id (NULL)
+    .bind(None::<Uuid>) // $9 = payment_id (NULL)
+    .bind(None::<i32>) // $10 = included_in_batch_id (NULL)
+    .bind(metadata) // $11 = metadata
+    .bind(min_valid_timestamp) // $12 = created_at
+    .execute(pool)
+    .await?;
+
+    println!("  ✅ Created re-genesis transaction: {}", regenesis_tx_id);
+
+    // 2. Mark all existing proofs as superseded
+    let proofs_result = sqlx::query!(
+        r#"
+        UPDATE proof_batches 
+        SET proof_status = 'superseded',
+            superseded_at = NOW(),
+            superseded_by_tx = $1
+        WHERE proof_status IN ('proven', 'ready')
+          AND superseded_at IS NULL
+        "#,
+        regenesis_tx_id
+    )
+    .execute(pool)
+    .await?;
+
+    println!(
+        "  ✅ Superseded {} existing proofs",
+        proofs_result.rows_affected()
+    );
+
+    // 3. Reset all transactions to pending
+    let tx_result = sqlx::query!(
+        r#"
+        UPDATE deal_transactions 
+        SET included_in_batch_id = NULL
+        WHERE included_in_batch_id IS NOT NULL
+        "#
+    )
+    .execute(pool)
+    .await?;
+
+    println!(
+        "  ✅ Reset {} transactions to pending",
+        tx_result.rows_affected()
+    );
+    println!("🎉 Re-genesis complete - all transactions will be reprocessed from state 0");
+
+    Ok(())
+}
+
+// ============================================================================
+// MAIN ENTRY POINT
+// ============================================================================
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
@@ -1087,6 +1319,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 )
                 .value_parser(clap::value_parser!(u32)),
         )
+        .arg(
+            Arg::new("no-regenesis")
+                .long("no-regenesis")
+                .help("Skip re-genesis (only use for future-dated deals, not historical data)")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     let email = matches.get_one::<String>("email");
@@ -1094,6 +1332,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clear_data = matches.get_flag("clear");
     let csv_mode = matches.get_flag("csv");
     let double_pledged_count = matches.get_one::<u32>("dp").copied();
+    // Default to triggering re-genesis (since populate creates historical deals)
+    // Only skip if explicitly requested via --no-regenesis
+    let should_trigger_regenesis = !matches.get_flag("no-regenesis");
 
     println!("🚀 Starting deal data population...");
 
@@ -1132,6 +1373,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize database connection
     let pool = init_db_with_url(&database_url).await?;
     println!("✅ Connected to database");
+
+    // Trigger re-genesis if requested (before clearing/generating data)
+    if should_trigger_regenesis {
+        println!("🔄 Triggering re-genesis to reset state...");
+        trigger_regenesis_reset(&pool).await?;
+    }
 
     // Clear existing data if requested
     if clear_data {
@@ -1347,6 +1594,17 @@ async fn generate_user_deals(
     count: u32,
     double_pledged_count: Option<u32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Get system user (engineering@arda.xyz) for script-generated transactions
+    let system_user = get_identity_by_email(pool, "engineering@arda.xyz")
+        .await?
+        .ok_or_else(|| {
+            "System user engineering@arda.xyz not found. Please ensure database is initialized with seed data."
+        })?;
+    println!(
+        "🔧 Using system user {} for script-generated transactions",
+        system_user.email
+    );
+
     // Look up user by email, create if doesn't exist
     let user = match get_identity_by_email(pool, email).await? {
         Some(user) => {
@@ -1357,6 +1615,22 @@ async fn generate_user_deals(
             println!("👤 User {} not found, creating new user...", email);
             let user = create_identity(pool, "investor", email).await?;
             println!("✅ Created new user: {} ({})", user.email, user.id);
+
+            // NEW: Record user registration transaction
+            println!("  📝 Recording UserRegistration transaction");
+            create_deal_transaction_record(
+                pool,
+                "user_registration",
+                Uuid::nil(),
+                Some(user.id),
+                Decimal::ZERO,
+                user.created_at,
+                None,
+                None, // No originator_id for user registration
+                None, // No investor_id for user registration
+            )
+            .await?;
+
             user
         }
     };
@@ -1391,9 +1665,14 @@ async fn generate_user_deals(
             // Create intentional duplicate
             if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                let coll =
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?;
+                let coll = create_random_collateral(
+                    pool,
+                    &mut rng,
+                    true,
+                    Some(dp_collateral_index),
+                    system_user.id,
+                )
+                .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
                     coll.id,
@@ -1407,8 +1686,14 @@ async fn generate_user_deals(
                 if dp_remaining > 0 {
                     // Create another collateral with same attributes (should be detected as duplicate)
                     Some(
-                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                            .await?,
+                        create_random_collateral(
+                            pool,
+                            &mut rng,
+                            true,
+                            Some(dp_collateral_index),
+                            system_user.id,
+                        )
+                        .await?,
                     )
                 } else {
                     // Last double-pledged deal uses the original
@@ -1418,7 +1703,7 @@ async fn generate_user_deals(
         } else {
             // Random collateral (70% of deals have collateral)
             if rng.gen_bool(0.7) {
-                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+                Some(create_random_collateral(pool, &mut rng, false, None, system_user.id).await?)
             } else {
                 None
             }
@@ -1430,6 +1715,7 @@ async fn generate_user_deals(
             Some(investor_company.id),
             &format!("User Investment Deal #{}", i + 1),
             collateral.clone(),
+            system_user.id,
         )
         .await?;
 
@@ -1450,9 +1736,14 @@ async fn generate_user_deals(
             // Create intentional duplicate
             if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                let coll =
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?;
+                let coll = create_random_collateral(
+                    pool,
+                    &mut rng,
+                    true,
+                    Some(dp_collateral_index),
+                    system_user.id,
+                )
+                .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
                     coll.id,
@@ -1466,8 +1757,14 @@ async fn generate_user_deals(
                 if dp_remaining > 0 {
                     // Create another collateral with same attributes (should be detected as duplicate)
                     Some(
-                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                            .await?,
+                        create_random_collateral(
+                            pool,
+                            &mut rng,
+                            true,
+                            Some(dp_collateral_index),
+                            system_user.id,
+                        )
+                        .await?,
                     )
                 } else {
                     // Last double-pledged deal uses the original
@@ -1477,7 +1774,7 @@ async fn generate_user_deals(
         } else {
             // Random collateral (70% of deals have collateral)
             if rng.gen_bool(0.7) {
-                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+                Some(create_random_collateral(pool, &mut rng, false, None, system_user.id).await?)
             } else {
                 None
             }
@@ -1489,6 +1786,7 @@ async fn generate_user_deals(
             Some(investor.id),
             &format!("User Origination Deal #{}", i + 1),
             collateral.clone(),
+            system_user.id,
         )
         .await?;
 
@@ -1561,6 +1859,37 @@ async fn generate_random_deals(
     count: u32,
     double_pledged_count: Option<u32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Get system user (engineering@arda.xyz) for script-generated transactions
+    let system_user = get_identity_by_email(pool, "engineering@arda.xyz")
+        .await?
+        .ok_or_else(|| {
+            "System user engineering@arda.xyz not found. Please ensure database is initialized with seed data."
+        })?;
+
+    // #region agent log
+    // DEBUG: Log system user details (Hypothesis A - Pre-loaded user missing from ADS)
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
+    {
+        use std::io::Write;
+        let user_id_hash = {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(system_user.id.as_bytes());
+            hasher.finalize().to_vec()
+        };
+        let log = serde_json::json!({"sessionId":"debug-session","runId":"populate-script","hypothesisId":"A","location":"populate_deal_data.rs:1870","message":"System user loaded","data":{"email":system_user.email.clone(),"user_id":system_user.id.to_string(),"user_id_hash_first_8":format!("{:?}", &user_id_hash[..8]),"created_at":system_user.created_at.to_string()},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
+        let _ = writeln!(file, "{}", log);
+    }
+    // #endregion
+
+    println!(
+        "🔧 Using system user {} for script-generated transactions",
+        system_user.email
+    );
+
     let mut rng = thread_rng();
 
     // Create random companies for originators and investors
@@ -1591,9 +1920,14 @@ async fn generate_random_deals(
             // Create intentional duplicate
             if shared_collateral.is_none() {
                 // First double-pledged deal - create the shared collateral
-                let coll =
-                    create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                        .await?;
+                let coll = create_random_collateral(
+                    pool,
+                    &mut rng,
+                    true,
+                    Some(dp_collateral_index),
+                    system_user.id,
+                )
+                .await?;
                 println!(
                     "  🔗 Created shared collateral {} for {} double-pledged deals",
                     coll.id,
@@ -1607,8 +1941,14 @@ async fn generate_random_deals(
                 if dp_remaining > 0 {
                     // Create another collateral with same attributes (should be detected as duplicate)
                     Some(
-                        create_random_collateral(pool, &mut rng, true, Some(dp_collateral_index))
-                            .await?,
+                        create_random_collateral(
+                            pool,
+                            &mut rng,
+                            true,
+                            Some(dp_collateral_index),
+                            system_user.id,
+                        )
+                        .await?,
                     )
                 } else {
                     // Last double-pledged deal uses the original
@@ -1618,7 +1958,7 @@ async fn generate_random_deals(
         } else {
             // Random collateral (70% of deals have collateral)
             if rng.gen_bool(0.7) {
-                Some(create_random_collateral(pool, &mut rng, false, None).await?)
+                Some(create_random_collateral(pool, &mut rng, false, None, system_user.id).await?)
             } else {
                 None
             }
@@ -1630,6 +1970,7 @@ async fn generate_random_deals(
             Some(investor.id),
             &format!("Random Deal #{}", i + 1),
             collateral.clone(),
+            system_user.id,
         )
         .await?;
 
@@ -1713,6 +2054,13 @@ async fn ensure_user_companies(
 
     let investor_company = create_company(pool, &investor_request).await?;
 
+    // NEW: Record company registration transaction for zkVM
+    println!(
+        "  📝 Recording CompanyRegistration transaction for {}",
+        investor_company.name
+    );
+    create_company_registration_transaction(pool, &investor_company, user.id).await?;
+
     // Create company membership for investor
     create_membership(
         pool,
@@ -1725,6 +2073,28 @@ async fn ensure_user_companies(
     )
     .await?;
 
+    // NEW: Record user registration transaction for zkVM
+    // Check if user was recently created (within last minute) to avoid duplicates
+    let user_age = (Utc::now() - user.created_at).num_seconds();
+    if user_age < 60 {
+        println!(
+            "  📝 Recording UserRegistration transaction for {}",
+            user.email
+        );
+        create_deal_transaction_record(
+            pool,
+            "user_registration",
+            Uuid::nil(), // No deal_id for user registration
+            Some(user.id),
+            Decimal::ZERO,
+            user.created_at, // Use user's actual creation time
+            None,
+            None, // No originator_id for user registration
+            None, // No investor_id for user registration
+        )
+        .await?;
+    }
+
     // Create originator company
     let originator_company_name = format!("{} Originator Corp", user_name);
     let originator_request = CreateCompanyRequest {
@@ -1734,6 +2104,13 @@ async fn ensure_user_companies(
     };
 
     let originator_company = create_company(pool, &originator_request).await?;
+
+    // NEW: Record company registration transaction for zkVM
+    println!(
+        "  📝 Recording CompanyRegistration transaction for {}",
+        originator_company.name
+    );
+    create_company_registration_transaction(pool, &originator_company, user.id).await?;
 
     // Create company membership for originator
     create_membership(
@@ -1776,6 +2153,14 @@ async fn ensure_random_companies(
         };
 
         let company = create_company(pool, &request).await?;
+
+        // NEW: Record company registration transaction for zkVM
+        // Use first user in system as creator (system user engineering@arda.xyz)
+        let system_user = get_identity_by_email(pool, "engineering@arda.xyz")
+            .await?
+            .ok_or("System user not found")?;
+        create_company_registration_transaction(pool, &company, system_user.id).await?;
+
         companies.push(company);
     }
 
@@ -1789,6 +2174,7 @@ async fn create_random_collateral(
     rng: &mut impl Rng,
     force_duplicate: bool,
     duplicate_index: Option<usize>,
+    system_user_id: Uuid, // System user for script-generated transactions
 ) -> Result<Collateral, Box<dyn std::error::Error>> {
     use db::{create_collateral, CreateCollateralRequest};
 
@@ -1840,6 +2226,22 @@ async fn create_random_collateral(
     };
 
     let collateral = create_collateral(pool, request).await?;
+
+    // NEW: Record collateral creation transaction for zkVM
+    println!(
+        "  📝 Recording CollateralCreation transaction for {}",
+        collateral.id
+    );
+    db::record_collateral_transaction(
+        pool,
+        collateral.id,
+        "collateral_creation",
+        Some(system_user_id), // Use system user instead of None
+        None,                 // No deal association yet
+        Some(serde_json::json!({"created_by_script": true})),
+    )
+    .await?;
+
     Ok(collateral)
 }
 
@@ -1851,6 +2253,7 @@ async fn create_realistic_deal(
     investor_id: Option<Uuid>,
     title_prefix: &str,
     collateral: Option<Collateral>,
+    system_user_id: Uuid, // System user for script-generated transactions
 ) -> Result<(Deal, Option<Collateral>), Box<dyn std::error::Error>> {
     let mut rng = thread_rng();
 
@@ -1948,6 +2351,23 @@ async fn create_realistic_deal(
     )
     .await?;
 
+    // NEW: If collateral was associated, record transaction
+    if let Some(coll) = &collateral {
+        println!("  📝 Recording CollateralDealAssociation transaction");
+        db::record_collateral_transaction(
+            pool,
+            coll.id,
+            "collateral_deal_association",
+            Some(system_user_id), // Use system user instead of None
+            Some(deal.id),        // Associated with this deal
+            Some(serde_json::json!({
+                "created_by_script": true,
+                "deal_id": deal.id,
+            })),
+        )
+        .await?;
+    }
+
     // Update outstanding balance if different from principal
     if outstanding_balance != principal_amount {
         sqlx::query!(
@@ -1960,7 +2380,7 @@ async fn create_realistic_deal(
     }
 
     // Create state progression history (transaction records showing how deal reached current state)
-    create_deal_state_progression(pool, &deal, selected_status, &mut rng).await?;
+    create_deal_state_progression(pool, &deal, selected_status, &mut rng, system_user_id).await?;
 
     let collateral_msg = if collateral.is_some() {
         " with collateral"

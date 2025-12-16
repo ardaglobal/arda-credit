@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT merkle_root\n        FROM ads_state_commits\n        WHERE batch_id = (\n            SELECT MAX(id) FROM proof_batches WHERE id < $1 AND proof_status = 'proven'\n        )\n        ORDER BY created_at DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "merkle_root",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5b73d11025b79dcc06db2ec8a3fc08ae3d3bd709c9bc29d63de6343c5b8ff94d"
+}

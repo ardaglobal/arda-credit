@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE proof_batches \n        SET proof_status = 'superseded',\n            superseded_at = NOW(),\n            superseded_by_tx = $1\n        WHERE proof_status IN ('proven', 'ready')\n          AND superseded_at IS NULL\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e7c0b5621c303f928b765a6f583e4be5d324de38a844a331c15e619f3f6a17b8"
+}

@@ -20,6 +20,8 @@ mod consistency_tests {
         let transaction = LoanTransaction {
             transaction_id,
             user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [2u8; 32], // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount: 15,
@@ -280,6 +282,8 @@ mod consistency_tests {
         LoanTransaction {
             transaction_id,
             user_id: [1u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [2u8; 32], // was loan_id, now deal_id field
             transaction_type: TransactionType::DealPayment, // was LoanPayment
             amount,

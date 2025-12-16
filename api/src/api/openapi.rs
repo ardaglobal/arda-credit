@@ -347,6 +347,12 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::get_payment_details_endpoint,
         crate::handlers::deals::deals::get_deal_payment_history_endpoint,
         crate::handlers::deals::deals::get_deal_audit_trail_endpoint,
+        // NEW: Enhanced audit trail with proofs
+        crate::handlers::deals::deals::get_deal_audit_trail_with_proofs_endpoint,
+        // NEW: Make Payment endpoint
+        crate::handlers::deals::deals::make_payment_endpoint,
+        // NEW: Closeout endpoint
+        crate::handlers::deals::deals::closeout_deal_endpoint,
 
         // Loan Tape endpoints
         crate::handlers::loan_tape_handlers::create_bulk_loan_tape_handler,
@@ -649,12 +655,25 @@ fn default_limit() -> u32 {
         ListDealsResponse,
         DealDetailsResponse,
         DealPaymentHistoryResponse,
-        DealAuditTrailResponse,
-        DealTransactionEvent,
+    DealAuditTrailResponse,
+    DealTransactionEvent,
+    // NEW: Enhanced audit trail with proofs types
+    crate::handlers::deals::deals::EnhancedDealAuditTrailResponse,
+    crate::handlers::deals::deals::BatchWithTransactions,
+    crate::handlers::deals::deals::ProofMetadata,
+    crate::handlers::deals::deals::MerkleRootInfo,
+    crate::handlers::deals::deals::ProofDataInfo,
+    crate::handlers::deals::deals::UnbatchedTransaction,
         DealStatsResponse,
         PaymentDetailsResponse,
         PaymentResponse,
         RecordDealPaymentRequest,
+        // NEW: Make Payment types
+        crate::handlers::deals::deals::MakePaymentRequest,
+        crate::handlers::deals::deals::MakePaymentResponse,
+        // NEW: Closeout types
+        crate::handlers::deals::deals::CloseoutDealRequest,
+        crate::handlers::deals::deals::CloseoutResponse,
         UpdateDealRequest,
         UpdateDealResponse,
 
