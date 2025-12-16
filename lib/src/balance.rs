@@ -118,6 +118,7 @@ impl BalanceUpdate {
     ///
     /// # Errors
     /// Returns `BalanceError::InvalidAmount` if amount is zero
+    /// Returns `BalanceError::InsufficientBalance` if debit exceeds balance (for recent transactions only)
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         update_id: [u8; 32],
@@ -130,6 +131,38 @@ impl BalanceUpdate {
         created_at: u64,
         metadata: Option<String>,
     ) -> Result<Self, BalanceError> {
+        Self::new_with_validation(
+            update_id,
+            company_id,
+            loan_id,
+            triggering_transaction_id,
+            update_type,
+            amount,
+            previous_balance,
+            created_at,
+            metadata,
+            true, // Enable balance validation by default
+        )
+    }
+
+    /// Create a new balance update with optional balance validation
+    ///
+    /// # Errors
+    /// Returns `BalanceError::InvalidAmount` if amount is zero
+    /// Returns `BalanceError::InsufficientBalance` if debit exceeds balance and validation enabled
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_validation(
+        update_id: [u8; 32],
+        company_id: [u8; 32],
+        loan_id: Option<[u8; 32]>,
+        triggering_transaction_id: Option<[u8; 32]>,
+        update_type: BalanceUpdateType,
+        amount: u128,
+        previous_balance: u128,
+        created_at: u64,
+        metadata: Option<String>,
+        enforce_balance_check: bool,
+    ) -> Result<Self, BalanceError> {
         if amount == 0 {
             return Err(BalanceError::InvalidAmount { amount });
         }
@@ -137,13 +170,15 @@ impl BalanceUpdate {
         let new_balance = if update_type.is_credit() {
             previous_balance.saturating_add(amount)
         } else if update_type.is_debit() {
-            if previous_balance < amount {
+            // Only enforce balance check if requested (skipped for historical imports)
+            if enforce_balance_check && previous_balance < amount {
                 return Err(BalanceError::InsufficientBalance {
                     requested: amount,
                     available: previous_balance,
                 });
             }
-            previous_balance - amount
+            // Use saturating_sub to handle historical imports with zero starting balance
+            previous_balance.saturating_sub(amount)
         } else {
             // Manual adjustment - amount could be positive or negative
             previous_balance.saturating_add(amount)
@@ -280,6 +315,8 @@ pub struct BalanceState {
     pub updates: Vec<BalanceUpdate>,
     /// Last update timestamp
     pub last_updated: u64,
+    /// Current batch timestamp (for determining if transactions are historical)
+    pub current_batch_timestamp: u64,
 }
 
 impl BalanceState {
@@ -287,6 +324,23 @@ impl BalanceState {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Check if a transaction is historical (> 24 hours before current batch)
+    /// Historical transactions skip balance validation for data imports
+    #[must_use]
+    fn is_historical_transaction(&self, transaction_timestamp: u64) -> bool {
+        const ONE_DAY_SECONDS: u64 = 86400; // 24 hours
+
+        // If no batch timestamp set (= 0), assume we're processing historical data
+        if self.current_batch_timestamp == 0 {
+            return true;
+        }
+
+        // Check if transaction is more than 24 hours before current batch
+        self.current_batch_timestamp
+            .saturating_sub(transaction_timestamp)
+            > ONE_DAY_SECONDS
     }
 
     /// Get company's current balance
@@ -404,8 +458,11 @@ impl BalanceState {
     ) -> Result<Vec<BalanceUpdate>, BalanceError> {
         let mut updates = Vec::new();
 
+        // Determine if this is a historical transaction
+        let skip_validation = self.is_historical_transaction(timestamp);
+
         // Credit for originator company (receives deal funds)
-        let originator_credit = BalanceUpdate::new(
+        let originator_credit = BalanceUpdate::new_with_validation(
             self.generate_update_id(origination_transaction_id, 1),
             originator_company_id,
             Some(loan_id),
@@ -418,10 +475,11 @@ impl BalanceState {
                 "Deal origination funds received {:02x}{:02x}{:02x}{:02x}",
                 loan_id[0], loan_id[1], loan_id[2], loan_id[3]
             )),
+            !skip_validation, // Skip balance check for historical transactions
         )?;
 
         // Debit for investor company (funds invested)
-        let investor_debit = BalanceUpdate::new(
+        let investor_debit = BalanceUpdate::new_with_validation(
             self.generate_update_id(origination_transaction_id, 2),
             investor_company_id,
             Some(loan_id),
@@ -434,6 +492,7 @@ impl BalanceState {
                 "Deal origination funds invested {:02x}{:02x}{:02x}{:02x}",
                 loan_id[0], loan_id[1], loan_id[2], loan_id[3]
             )),
+            !skip_validation, // Skip balance check for historical transactions
         )?;
 
         updates.push(originator_credit);
