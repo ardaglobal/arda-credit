@@ -16,7 +16,30 @@ use arda_credit_lib::{hash_uuid, DealBatch, DealTransaction, MetadataArray, Tran
 use chrono::Utc;
 use rust_decimal::prelude::ToPrimitive;
 use sqlx::PgPool;
+use std::collections::HashMap;
 use tracing::{info, instrument};
+
+/// Query deals to build a lookup map of deal_id → (originator_company_id, investor_company_id)
+async fn build_deal_company_lookup(
+    pool: &PgPool,
+) -> Result<HashMap<uuid::Uuid, (uuid::Uuid, Option<uuid::Uuid>)>, String> {
+    let deals = sqlx::query!(
+        r#"
+        SELECT id, originator_id, investor_id
+        FROM deals
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to query deals: {}", e))?;
+
+    let mut lookup = HashMap::new();
+    for deal in deals {
+        lookup.insert(deal.id, (deal.originator_id, deal.investor_id));
+    }
+
+    Ok(lookup)
+}
 
 /// Convert database batch to zkVM `DealBatch` format
 ///
@@ -102,10 +125,13 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
         batch_id
     );
 
+    // Build deal → company lookup map
+    let deal_company_lookup = build_deal_company_lookup(pool).await?;
+
     // Convert database transactions to zkVM transactions
     let mut zkvm_transactions = Vec::new();
     for db_tx in &db_transactions {
-        let zkvm_tx = convert_db_transaction_to_zkvm(db_tx)?;
+        let zkvm_tx = convert_db_transaction_to_zkvm(db_tx, &deal_company_lookup)?;
         zkvm_transactions.push(zkvm_tx);
     }
 
@@ -157,7 +183,10 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
 }
 
 /// Convert database transaction to zkVM transaction
-fn convert_db_transaction_to_zkvm(db_tx: &DealTransactionDb) -> Result<DealTransaction, String> {
+fn convert_db_transaction_to_zkvm(
+    db_tx: &DealTransactionDb,
+    deal_company_lookup: &HashMap<uuid::Uuid, (uuid::Uuid, Option<uuid::Uuid>)>,
+) -> Result<DealTransaction, String> {
     // Use pre-computed hashes if available, otherwise hash the UUIDs
     let transaction_id =
         if !db_tx.transaction_id_hash.is_empty() && db_tx.transaction_id_hash.len() == 32 {
@@ -235,21 +264,69 @@ fn convert_db_transaction_to_zkvm(db_tx: &DealTransactionDb) -> Result<DealTrans
         MetadataArray::empty()
     };
 
+    // Extract company IDs based on transaction type and deal context
+    let (originator_company_id, investor_company_id) = if matches!(
+        transaction_type,
+        TransactionType::DealOrigination | TransactionType::DealPayment
+    ) {
+        // For deal transactions, look up company IDs from the deal
+        if let Some(deal_uuid) = db_tx.deal_id {
+            if let Some((originator_uuid, investor_uuid_opt)) = deal_company_lookup.get(&deal_uuid)
+            {
+                let originator_hash = hash_uuid(originator_uuid);
+                let investor_hash = investor_uuid_opt
+                    .as_ref()
+                    .map(hash_uuid)
+                    .unwrap_or([0u8; 32]);
+                (originator_hash, investor_hash)
+            } else {
+                // Deal not found in lookup - might be a new deal being created
+                // Try to extract from metadata (legacy format)
+                let metadata_bytes = metadata.as_bytes();
+                let mut originator_id = [0u8; 32];
+                let mut investor_id = [0u8; 32];
+                originator_id.copy_from_slice(&metadata_bytes[0..32]);
+                investor_id.copy_from_slice(&metadata_bytes[32..64]);
+                (originator_id, investor_id)
+            }
+        } else {
+            ([0u8; 32], [0u8; 32])
+        }
+    } else if transaction_type == TransactionType::CompanyRegistration {
+        // For company registration, extract company ID from metadata
+        // The company ID is stored in deal_id_hash in the database
+        if let Some(company_hash) = &db_tx.deal_id_hash {
+            if company_hash.len() == 32 {
+                let company_id: [u8; 32] = company_hash
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| "Invalid company hash length".to_string())?;
+                (company_id, [0u8; 32])
+            } else {
+                ([0u8; 32], [0u8; 32])
+            }
+        } else {
+            ([0u8; 32], [0u8; 32])
+        }
+    } else {
+        // For other transactions (deposits, withdrawals, etc.)
+        ([0u8; 32], [0u8; 32])
+    };
+
     // CRITICAL DEBUG: Log EVERY transaction
     tracing::error!(
-        "🔬 TX: {:?} - user_id[0..4]={:?}, metadata[0..4]={:?}, metadata_preview={:?}",
+        "🔬 TX: {:?} - user_id[0..4]={:?}, originator[0..4]={:?}, investor[0..4]={:?}",
         transaction_type,
         &user_id[..4],
-        &metadata.as_bytes()[..4],
-        db_tx
-            .metadata
-            .as_ref()
-            .map(|m| m.to_string().chars().take(40).collect::<String>())
+        &originator_company_id[..4],
+        &investor_company_id[..4]
     );
 
     Ok(DealTransaction {
         transaction_id,
         user_id,
+        originator_company_id,
+        investor_company_id,
         deal_id,
         transaction_type,
         amount: amount_cents,
@@ -279,6 +356,8 @@ fn parse_transaction_type(type_str: &str) -> Result<TransactionType, String> {
         "collateral_detection_request" => Ok(TransactionType::CollateralDetectionRequest),
         "collateral_detection_update" => Ok(TransactionType::CollateralDetectionUpdate),
         "state_regenesis" => Ok(TransactionType::StateRegenesis),
+        "company_registration" => Ok(TransactionType::CompanyRegistration),
+        "company_update" => Ok(TransactionType::CompanyUpdate),
         other => Err(format!("Unknown transaction type: {}", other)),
     }
 }

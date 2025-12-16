@@ -28,13 +28,14 @@ use alloy_sol_types::sol;
 // Separated modules for better maintainability
 pub mod balance;
 pub mod collateral;
+pub mod company; // NEW: Company state management
 pub mod deal;
 pub mod deal_processor;
 pub mod hash; // ZK-friendly hash functions (Poseidon2)
 pub mod transactions;
 pub mod user;
 pub mod utils;
-pub mod zkvm_ads; // zkVM-compatible ADS operations // NEW: Collateral state management
+pub mod zkvm_ads; // zkVM-compatible ADS operations
 
 #[cfg(test)]
 mod zkvm_ads_consistency_tests; // Consistency tests for zkVM ADS
@@ -69,10 +70,16 @@ pub use deal_processor::{
 
 // Re-export from new modules
 pub use balance::{
-    BalanceError, BalanceInclusionProof, BalanceState, BalanceUpdate, BalanceUpdateType,
-    UserBalance,
+    BalanceError,
+    BalanceInclusionProof,
+    BalanceState,
+    BalanceUpdate,
+    BalanceUpdateType,
+    CompanyBalance,
+    UserBalance, // UserBalance is alias for CompanyBalance
 };
 pub use collateral::{Collateral, CollateralAssociation, CollateralError, CollateralState};
+pub use company::{Company, CompanyError, CompanyState, CompanyStatus};
 pub use deal::{Deal, DealError, LoanStatus, LoanTerms};
 pub use hash::{hash_internal_poseidon, hash_leaf_poseidon};
 pub use transactions::*;

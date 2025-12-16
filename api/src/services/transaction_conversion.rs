@@ -103,6 +103,8 @@ pub fn deal_transaction_to_zkvm(tx: &DealTransactionDb) -> Result<DealTransactio
     Ok(DealTransaction {
         transaction_id,
         user_id,
+        originator_company_id: [0u8; 32], // Not used in this conversion path
+        investor_company_id: [0u8; 32],   // Not used in this conversion path
         deal_id,
         transaction_type,
         amount,

@@ -174,45 +174,42 @@ impl DealState {
             return Err(DealError::InvalidTransactionType);
         }
 
-        let deal_id = transaction.deal_id; // was loan_id, now deal_id
-                                           // Note: initiator_id not currently used in deal origination logic
+        let deal_id = transaction.deal_id;
 
         // Check for duplicate deal
         if self.deals.contains_key(&deal_id) {
             return Err(DealError::DuplicateDeal { deal_id });
         }
 
-        // Decode deal participants from metadata (originator_id and investor_id)
-        let metadata = transaction.metadata.as_bytes();
-        let mut originator_id = [0u8; 32];
-        let mut investor_id = [0u8; 32];
-        originator_id.copy_from_slice(&metadata[0..32]);
-        investor_id.copy_from_slice(&metadata[32..64]);
+        // Extract company IDs from explicit fields (NOT metadata)
+        let originator_company_id = transaction.originator_company_id;
+        let investor_company_id = transaction.investor_company_id;
 
-        // Verify both parties are KYC'd
-        let originator = users.get(&originator_id).ok_or(UserError::UserNotFound {
-            user_id: originator_id,
-        })?;
-        let investor = users.get(&investor_id).ok_or(UserError::UserNotFound {
-            user_id: investor_id,
-        })?;
+        // Verify initiating user is KYC'd (user who created the deal on behalf of company)
+        let initiating_user_id = transaction.user_id;
+        if initiating_user_id != [0u8; 32] {
+            // Skip if system transaction
+            let initiator = users
+                .get(&initiating_user_id)
+                .ok_or(UserError::UserNotFound {
+                    user_id: initiating_user_id,
+                })?;
 
-        if !originator.is_kyc_approved() {
-            return Err(DealError::UserError(UserError::KycNotApproved {
-                user_id: originator_id,
-            }));
-        }
-        if !investor.is_kyc_approved() {
-            return Err(DealError::UserError(UserError::KycNotApproved {
-                user_id: investor_id,
-            }));
+            if !initiator.is_kyc_approved() {
+                return Err(DealError::UserError(UserError::KycNotApproved {
+                    user_id: initiating_user_id,
+                }));
+            }
         }
 
-        // Create new deal
+        // NOTE: Company validation (companies exist) is done in deal_processor.rs
+        // before calling this function. We just use the company IDs here.
+
+        // Create new deal between companies
         let deal = Deal {
             deal_id,
-            originator_id,
-            investor_id,
+            originator_id: originator_company_id, // Now company ID, not user ID
+            investor_id: investor_company_id,     // Now company ID, not user ID
             principal_amount: transaction.amount,
             outstanding_balance: transaction.amount,
             interest_rate: loan_terms.interest_rate,

@@ -699,7 +699,9 @@ mod tests {
 
         LoanTransaction {
             transaction_id: [99u8; 32],
-            user_id: [0u8; 32],     // No user for collateral creation
+            user_id: [0u8; 32], // No user for collateral creation
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: collateral_id, // Use deal_id field for collateral_id
             transaction_type: TransactionType::CollateralCreation,
             amount: 0,
@@ -733,6 +735,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [97u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32], // Zero for association transactions
             transaction_type: TransactionType::CollateralDealAssociation,
             amount: 0,
@@ -749,6 +753,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [96u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: [0u8; 32],
             transaction_type: TransactionType::CollateralDealDisassociation,
             amount: 0,
@@ -773,6 +779,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [95u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: collateral_id, // Collateral ID in deal_id field
             transaction_type: TransactionType::CollateralDetectionRequest,
             amount: 0,
@@ -785,6 +793,8 @@ mod tests {
         LoanTransaction {
             transaction_id: [94u8; 32],
             user_id: [0u8; 32],
+            originator_company_id: [0u8; 32],
+            investor_company_id: [0u8; 32],
             deal_id: collateral_id,
             transaction_type: TransactionType::CollateralDetectionUpdate,
             amount: 0,

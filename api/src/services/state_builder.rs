@@ -15,11 +15,13 @@
 //! - **Incremental:** Load state from latest proven batch and process only new transactions
 
 use arda_credit_db::{
-    Collateral as DbCollateral, Deal as DbDeal, DealTransactionDb, User as DbUser,
+    business::company::Company as DbCompany, Collateral as DbCollateral, Deal as DbDeal,
+    DealTransactionDb, User as DbUser,
 };
 use arda_credit_lib::{
-    hash_uuid, BalanceState, Collateral, CollateralAssociation, Deal, GlobalLoanState, KycStatus,
-    LoanStatus, LoanTerms, User, UserBalance, UserType,
+    hash_uuid, BalanceState, Collateral, CollateralAssociation, Company, CompanyBalance,
+    CompanyStatus, Deal, GlobalLoanState, KycStatus, LoanStatus, LoanTerms, User, UserBalance,
+    UserType,
 };
 use chrono::Utc;
 use rust_decimal::prelude::ToPrimitive;
@@ -66,13 +68,13 @@ pub async fn build_global_loan_state_with_mode(
     }
 }
 
-/// Build empty state from genesis (users only) - for MVP and re-genesis
+/// Build empty state from genesis (users and companies) - for MVP and re-genesis
 ///
 /// This is the current MVP implementation that was previously the main function.
 /// Now called explicitly when processing from genesis.
 #[instrument(skip(pool), level = "info")]
 async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, String> {
-    info!("🔨 Building empty GlobalLoanState with users only");
+    info!("🔨 Building empty GlobalLoanState with users and companies");
 
     // Query all users
     let db_users = sqlx::query_as!(
@@ -102,8 +104,35 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
         users.insert(user.user_id, user);
     }
 
-    // Build BalanceState from user cash balances
-    let balance_state = build_balance_state(pool, &db_users).await?;
+    // Query all companies
+    let db_companies = sqlx::query_as!(
+        DbCompany,
+        r#"
+        SELECT 
+            id, name, description, 
+            status as "status: arda_credit_db::business::company::CompanyStatus",
+            metadata as "metadata!", 
+            created_at as "created_at!", 
+            updated_at as "updated_at!"
+        FROM companies
+        ORDER BY created_at
+        "#
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| format!("Failed to query companies: {}", e))?;
+
+    info!("✅ Loaded {} companies from database", db_companies.len());
+
+    // Convert DB companies to zkVM companies
+    let mut companies = HashMap::new();
+    for db_company in &db_companies {
+        let company = convert_db_company_to_zkvm(db_company)?;
+        companies.insert(company.company_id, company);
+    }
+
+    // Build BalanceState from company balances
+    let balance_state = build_balance_state_from_companies(pool, &db_companies).await?;
 
     // ============================================================================
     // MVP: RETURN EMPTY STATE (USERS ONLY)
@@ -124,6 +153,7 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
 
     let state = GlobalLoanState {
         users,
+        companies,
         loans: HashMap::new(),               // Empty - built from transactions
         collateral: HashMap::new(),          // Empty - built from transactions
         active_associations: HashMap::new(), // Empty - built from transactions
@@ -135,8 +165,9 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
     };
 
     info!(
-        "✅ GlobalLoanState built (MVP mode): {} users, 0 deals, 0 collateral",
-        state.users.len()
+        "✅ GlobalLoanState built (MVP mode): {} users, {} companies, 0 deals, 0 collateral",
+        state.users.len(),
+        state.companies.len()
     );
 
     return Ok(state);
@@ -252,6 +283,7 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
 
     let state = GlobalLoanState {
         users,
+        companies: HashMap::new(), // Will be built from company registration transactions
         loans: deals,
         collateral,
         active_associations,
@@ -263,8 +295,9 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
     };
 
     info!(
-        "✅ GlobalLoanState built: {} users, {} deals, {} collateral",
+        "✅ GlobalLoanState built: {} users, {} companies, {} deals, {} collateral",
         state.users.len(),
+        state.companies.len(),
         state.loans.len(),
         state.collateral.len()
     );
@@ -402,6 +435,23 @@ fn convert_db_user_to_zkvm(db_user: &DbUser) -> Result<User, String> {
     })
 }
 
+/// Convert database Company to zkVM Company
+fn convert_db_company_to_zkvm(db_company: &DbCompany) -> Result<Company, String> {
+    let company_id_hash = hash_uuid(&db_company.id);
+
+    let status = match db_company.status {
+        arda_credit_db::business::company::CompanyStatus::Active => CompanyStatus::Active,
+        arda_credit_db::business::company::CompanyStatus::Suspended => CompanyStatus::Suspended,
+        arda_credit_db::business::company::CompanyStatus::Inactive => CompanyStatus::Inactive,
+    };
+
+    Ok(Company {
+        company_id: company_id_hash,
+        created_at: db_company.created_at.timestamp() as u64,
+        status,
+    })
+}
+
 /// Convert database Deal to zkVM Deal
 fn convert_db_deal_to_zkvm(db_deal: &DbDeal) -> Result<Deal, String> {
     let deal_id_hash = hash_uuid(&db_deal.id);
@@ -462,55 +512,81 @@ fn convert_db_collateral_to_zkvm(db_coll: &DbCollateral) -> Result<Collateral, S
     })
 }
 
-/// Build BalanceState from database user cash balances
-async fn build_balance_state(pool: &PgPool, db_users: &[DbUser]) -> Result<BalanceState, String> {
+/// Build BalanceState from database company balances
+async fn build_balance_state_from_companies(
+    pool: &PgPool,
+    db_companies: &[DbCompany],
+) -> Result<BalanceState, String> {
     let mut balance_state = BalanceState::new();
 
-    // For each user, query their balance transactions and compute current balance
-    for db_user in db_users {
-        let user_id_hash = hash_uuid(&db_user.id);
+    // For each company, query their balance from account_financial_transactions
+    // Note: Companies get balances via deposits made by users with access to company wallets
+    for db_company in db_companies {
+        let company_id_hash = hash_uuid(&db_company.id);
 
-        // Query user's net balance from account_financial_transactions
+        // Query company's net balance from account_financial_transactions
+        // We join through company_memberships to link users to companies
         let balance_row = sqlx::query!(
             r#"
             SELECT COALESCE(SUM(
                 CASE 
-                    WHEN transaction_type IN ('deposit', 'credit_line_repayment') THEN amount
-                    WHEN transaction_type IN ('withdrawal', 'credit_line_drawdown') THEN -amount
+                    WHEN aft.transaction_type IN ('DEPOSIT', 'deposit', 'credit_line_repayment') THEN aft.amount
+                    WHEN aft.transaction_type IN ('WITHDRAWAL', 'withdrawal', 'credit_line_drawdown') THEN -aft.amount
                     ELSE 0
                 END
             ), 0) as "net_balance!"
-            FROM account_financial_transactions
-            WHERE user_id = $1
+            FROM account_financial_transactions aft
+            INNER JOIN company_memberships cm ON aft.user_id = cm.user_id
+            WHERE cm.company_id = $1 AND cm.status = 'active'
             "#,
-            db_user.id
+            db_company.id
         )
         .fetch_one(pool)
         .await
-        .map_err(|e| format!("Failed to query balance for user {}: {}", db_user.id, e))?;
+        .map_err(|e| {
+            format!(
+                "Failed to query balance for company {}: {}",
+                db_company.id, e
+            )
+        })?;
 
-        // Convert Decimal to cents (u128 for UserBalance)
+        // Convert Decimal to cents (u128 for CompanyBalance)
         let balance_cents = (balance_row.net_balance * rust_decimal::Decimal::from(100))
             .to_u128()
-            .ok_or_else(|| format!("Failed to convert balance to cents for user {}", db_user.id))?;
+            .ok_or_else(|| {
+                format!(
+                    "Failed to convert balance to cents for company {}",
+                    db_company.id
+                )
+            })?;
 
-        // Create UserBalance for this user
-        let user_balance = UserBalance {
-            user_id: user_id_hash,
+        // Create CompanyBalance for this company
+        let company_balance = CompanyBalance {
+            company_id: company_id_hash,
             balance: balance_cents,
             last_updated: Utc::now().timestamp() as u64,
             update_count: 0, // Could track this if needed
         };
 
-        balance_state.balances.insert(user_id_hash, user_balance);
+        balance_state
+            .balances
+            .insert(company_id_hash, company_balance);
     }
 
     debug!(
-        "Built BalanceState with {} user balances",
+        "Built BalanceState with {} company balances",
         balance_state.balances.len()
     );
 
     Ok(balance_state)
+}
+
+/// Legacy function for backwards compatibility
+async fn build_balance_state(pool: &PgPool, db_users: &[DbUser]) -> Result<BalanceState, String> {
+    // For legacy code that still calls this, return empty balance state
+    // All balances should be tracked at company level now
+    warn!("⚠️  build_balance_state(db_users) is deprecated - use build_balance_state_from_companies instead");
+    Ok(BalanceState::new())
 }
 
 /// Estimate the memory size of GlobalLoanState in KB

@@ -410,7 +410,7 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let collateral2_uuid = uuid::Uuid::new_v4();
     let collateral2_id = hash_uuid(&collateral2_uuid);
 
-    // Start with empty state and fund Alice so she can make deals
+    // Start with empty state
     let mut initial_state = LoanState::new();
 
     // Pre-create users with KYC approved status for testing (bypassing KYC transactions)
@@ -437,10 +437,28 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     };
     initial_state.users.insert(bob_id, bob_user);
 
-    // Fund Alice with $100,000 so she can originate $50,000 deal with Bob
+    // Create companies for Alice and Bob
+    // In the new architecture, deals are between companies, not users
+    let alice_company_uuid = uuid::Uuid::new_v4();
+    let bob_company_uuid = uuid::Uuid::new_v4();
+    let alice_company_id = hash_uuid(&alice_company_uuid);
+    let bob_company_id = hash_uuid(&bob_company_uuid);
+
+    use arda_credit_lib::{Company, CompanyStatus};
+
+    let alice_company = Company::new(alice_company_id, batch_timestamp, CompanyStatus::Active);
+    let bob_company = Company::new(bob_company_id, batch_timestamp, CompanyStatus::Active);
+
+    initial_state
+        .companies
+        .insert(alice_company_id, alice_company);
+    initial_state.companies.insert(bob_company_id, bob_company);
+
+    // Fund Bob's company with $100,000,000 so it can invest in $50,000 deal
+    // (Bob is the investor company, Alice is the originator company)
     initial_state.balance_state.balances.insert(
-        alice_id,
-        arda_credit_lib::UserBalance::new(alice_id, 100_000_00, batch_timestamp), // $100,000.00 in cents
+        bob_company_id,
+        arda_credit_lib::CompanyBalance::new(bob_company_id, 100_000_000_00, batch_timestamp), // $100,000,000.00 in cents
     );
 
     // Create a batch demonstrating the complete workflow (all 10 core types)
@@ -458,64 +476,61 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     let coll1_type = b"real_estate";
     coll1_metadata.as_mut_bytes()[0..coll1_type.len()].copy_from_slice(coll1_type);
 
-    transactions.push(LoanTransaction {
-        transaction_id: [1u8; 32],
-        user_id: [0u8; 32],      // No user for collateral creation
-        deal_id: collateral1_id, // Use deal_id field for collateral_id
-        transaction_type: TransactionType::CollateralCreation,
-        amount: 0,
-        created_at: batch_timestamp + 100,
-        metadata: coll1_metadata,
-    });
+    transactions.push(LoanTransaction::new_simple(
+        [1u8; 32],
+        [0u8; 32],      // No user for collateral creation
+        collateral1_id, // Use deal_id field for collateral_id
+        TransactionType::CollateralCreation,
+        0,
+        batch_timestamp + 100,
+        coll1_metadata,
+    ));
 
     // 2. Create second collateral (equipment)
     let mut coll2_metadata = MetadataArray::empty();
     let coll2_type = b"equipment";
     coll2_metadata.as_mut_bytes()[0..coll2_type.len()].copy_from_slice(coll2_type);
 
-    transactions.push(LoanTransaction {
-        transaction_id: [2u8; 32],
-        user_id: [0u8; 32],
-        deal_id: collateral2_id,
-        transaction_type: TransactionType::CollateralCreation,
-        amount: 0,
-        created_at: batch_timestamp + 200,
-        metadata: coll2_metadata,
-    });
+    transactions.push(LoanTransaction::new_simple(
+        [2u8; 32],
+        [0u8; 32],
+        collateral2_id,
+        TransactionType::CollateralCreation,
+        0,
+        batch_timestamp + 200,
+        coll2_metadata,
+    ));
 
     // 3. Update first collateral (type change)
     let mut coll1_update_metadata = MetadataArray::empty();
     let updated_type = b"commercial_property";
     coll1_update_metadata.as_mut_bytes()[0..updated_type.len()].copy_from_slice(updated_type);
 
-    transactions.push(LoanTransaction {
-        transaction_id: [3u8; 32],
-        user_id: [0u8; 32],
-        deal_id: collateral1_id, // Collateral being updated
-        transaction_type: TransactionType::CollateralUpdate,
-        amount: 0,
-        created_at: batch_timestamp + 300,
-        metadata: coll1_update_metadata,
-    });
+    transactions.push(LoanTransaction::new_simple(
+        [3u8; 32],
+        [0u8; 32],
+        collateral1_id, // Collateral being updated
+        TransactionType::CollateralUpdate,
+        0,
+        batch_timestamp + 300,
+        coll1_update_metadata,
+    ));
 
     // ============================================================================
     // DEAL OPERATIONS (4 transactions)
     // ============================================================================
 
-    // 4. Deal origination: Bob invests $50,000 with Alice
-    let mut deal_metadata = MetadataArray::empty();
-    // Pack originator_id and investor_id into metadata
-    deal_metadata.as_mut_bytes()[0..32].copy_from_slice(&bob_id); // originator
-    deal_metadata.as_mut_bytes()[32..64].copy_from_slice(&alice_id); // investor
-
+    // 4. Deal origination: Bob's company invests in Alice's company's deal
     transactions.push(LoanTransaction {
         transaction_id: [4u8; 32],
-        user_id: alice_id, // Alice initiates the deal
+        user_id: alice_id,                       // Alice (user) initiates the deal
+        originator_company_id: alice_company_id, // Alice's company is the originator
+        investor_company_id: bob_company_id,     // Bob's company is the investor
         deal_id,
         transaction_type: TransactionType::DealOrigination,
         amount: 5_000_000, // $50,000 in cents
         created_at: batch_timestamp + 400,
-        metadata: deal_metadata,
+        metadata: MetadataArray::empty(),
     });
 
     // 5. Associate collateral with deal
@@ -523,20 +538,22 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     assoc_metadata.as_mut_bytes()[0..32].copy_from_slice(&collateral1_id);
     assoc_metadata.as_mut_bytes()[32..64].copy_from_slice(&deal_id);
 
-    transactions.push(LoanTransaction {
-        transaction_id: [5u8; 32],
-        user_id: [0u8; 32],
-        deal_id: [0u8; 32], // Zero for association transactions
-        transaction_type: TransactionType::CollateralDealAssociation,
-        amount: 0,
-        created_at: batch_timestamp + 500,
-        metadata: assoc_metadata,
-    });
+    transactions.push(LoanTransaction::new_simple(
+        [5u8; 32],
+        [0u8; 32],
+        [0u8; 32], // Zero for association transactions
+        TransactionType::CollateralDealAssociation,
+        0,
+        batch_timestamp + 500,
+        assoc_metadata,
+    ));
 
-    // 6. First deal payment: $25,000
+    // 6. First deal payment: $25,000 from Alice's company
     transactions.push(LoanTransaction {
         transaction_id: [6u8; 32],
-        user_id: bob_id,
+        user_id: alice_id, // Alice initiates payment on behalf of her company
+        originator_company_id: alice_company_id, // Alice's company pays
+        investor_company_id: bob_company_id, // To Bob's company
         deal_id,
         transaction_type: TransactionType::DealPayment,
         amount: 2_500_000, // $25,000 in cents
@@ -547,7 +564,9 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     // 7. Second deal payment: $25,000 (pays off the deal)
     transactions.push(LoanTransaction {
         transaction_id: [7u8; 32],
-        user_id: bob_id,
+        user_id: alice_id,                       // Alice initiates payment
+        originator_company_id: alice_company_id, // Alice's company pays
+        investor_company_id: bob_company_id,     // To Bob's company
         deal_id,
         transaction_type: TransactionType::DealPayment,
         amount: 2_500_000, // $25,000 in cents
@@ -556,52 +575,52 @@ fn create_test_deal_scenario() -> (LoanState, LoanBatch, [u8; 32], [u8; 32]) {
     });
 
     // 8. Deal closeout (deal is now paid off)
-    transactions.push(LoanTransaction {
-        transaction_id: [8u8; 32],
-        user_id: alice_id, // Investor closes the deal
+    transactions.push(LoanTransaction::new_simple(
+        [8u8; 32],
+        alice_id, // Investor closes the deal
         deal_id,
-        transaction_type: TransactionType::DealCloseout,
-        amount: 0,
-        created_at: batch_timestamp + 800,
-        metadata: MetadataArray::empty(),
-    });
+        TransactionType::DealCloseout,
+        0,
+        batch_timestamp + 800,
+        MetadataArray::empty(),
+    ));
 
     // 9. Disassociate collateral from closed deal
     let mut disassoc_metadata = MetadataArray::empty();
     disassoc_metadata.as_mut_bytes()[0..32].copy_from_slice(&collateral1_id);
     disassoc_metadata.as_mut_bytes()[32..64].copy_from_slice(&deal_id);
 
-    transactions.push(LoanTransaction {
-        transaction_id: [9u8; 32],
-        user_id: [0u8; 32],
-        deal_id: [0u8; 32],
-        transaction_type: TransactionType::CollateralDealDisassociation,
-        amount: 0,
-        created_at: batch_timestamp + 900,
-        metadata: disassoc_metadata,
-    });
+    transactions.push(LoanTransaction::new_simple(
+        [9u8; 32],
+        [0u8; 32],
+        [0u8; 32],
+        TransactionType::CollateralDealDisassociation,
+        0,
+        batch_timestamp + 900,
+        disassoc_metadata,
+    ));
 
     // 10. Request detection for second collateral
-    transactions.push(LoanTransaction {
-        transaction_id: [10u8; 32],
-        user_id: [0u8; 32],
-        deal_id: collateral2_id, // Collateral ID in deal_id field
-        transaction_type: TransactionType::CollateralDetectionRequest,
-        amount: 0,
-        created_at: batch_timestamp + 1000,
-        metadata: MetadataArray::empty(),
-    });
+    transactions.push(LoanTransaction::new_simple(
+        [10u8; 32],
+        [0u8; 32],
+        collateral2_id, // Collateral ID in deal_id field
+        TransactionType::CollateralDetectionRequest,
+        0,
+        batch_timestamp + 1000,
+        MetadataArray::empty(),
+    ));
 
     // 11. Detection update with results
-    transactions.push(LoanTransaction {
-        transaction_id: [11u8; 32],
-        user_id: [0u8; 32],
-        deal_id: collateral2_id,
-        transaction_type: TransactionType::CollateralDetectionUpdate,
-        amount: 0,
-        created_at: batch_timestamp + 1100,
-        metadata: MetadataArray::empty(),
-    });
+    transactions.push(LoanTransaction::new_simple(
+        [11u8; 32],
+        [0u8; 32],
+        collateral2_id,
+        TransactionType::CollateralDetectionUpdate,
+        0,
+        batch_timestamp + 1100,
+        MetadataArray::empty(),
+    ));
 
     let batch = LoanBatch {
         batch_id,
@@ -784,20 +803,48 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
     let batch_timestamp = 1_700_000_000u64;
     let batch_id = [1u8; 32];
 
-    // Pre-fund the initial state like the working test (no UserDeposit transaction needed)
+    // Pre-fund the initial state with companies (company-centric architecture)
     let mut initial_state = LoanState::new();
-    let originator_id = [1u8; 32]; // Different user IDs
-    let investor_id = [2u8; 32]; // Different user IDs
+    let originator_id = [1u8; 32]; // User IDs
+    let investor_id = [2u8; 32];
+    let originator_company_id = [10u8; 32]; // Company IDs
+    let investor_company_id = [20u8; 32];
     let deal_id = [1u8; 32];
 
-    // Fund both users with massive balances to handle millions of transactions
+    use arda_credit_lib::{Company, CompanyStatus};
+
+    // Create companies
+    let originator_company = Company::new(
+        originator_company_id,
+        batch_timestamp,
+        CompanyStatus::Active,
+    );
+    let investor_company =
+        Company::new(investor_company_id, batch_timestamp, CompanyStatus::Active);
+
+    initial_state
+        .companies
+        .insert(originator_company_id, originator_company);
+    initial_state
+        .companies
+        .insert(investor_company_id, investor_company);
+
+    // Fund both companies with massive balances to handle millions of transactions
     initial_state.balance_state.balances.insert(
-        originator_id,
-        arda_credit_lib::UserBalance::new(originator_id, 1_000_000_000_000, batch_timestamp), // $10 trillion in cents
+        originator_company_id,
+        arda_credit_lib::CompanyBalance::new(
+            originator_company_id,
+            1_000_000_000_000,
+            batch_timestamp,
+        ), // $10 trillion in cents
     );
     initial_state.balance_state.balances.insert(
-        investor_id,
-        arda_credit_lib::UserBalance::new(investor_id, 1_000_000_000_000, batch_timestamp), // $10 trillion in cents
+        investor_company_id,
+        arda_credit_lib::CompanyBalance::new(
+            investor_company_id,
+            1_000_000_000_000,
+            batch_timestamp,
+        ), // $10 trillion in cents
     );
 
     let mut transactions = vec![
@@ -805,93 +852,89 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
         {
             let mut originator_metadata = MetadataArray::empty();
             originator_metadata.as_mut_bytes()[0] = 1; // UserType::Originator
-            LoanTransaction {
-                transaction_id: [1u8; 32],
-                user_id: originator_id,
-                deal_id: [0u8; 32],
-                transaction_type: TransactionType::UserRegistration,
-                amount: 0,
-                created_at: batch_timestamp + 100,
-                metadata: originator_metadata,
-            }
+            LoanTransaction::new_simple(
+                [1u8; 32],
+                originator_id,
+                [0u8; 32],
+                TransactionType::UserRegistration,
+                0,
+                batch_timestamp + 100,
+                originator_metadata,
+            )
         },
         // 2. Investor registration
         {
             let mut investor_metadata = MetadataArray::empty();
             investor_metadata.as_mut_bytes()[0] = 2; // UserType::Investor
-            LoanTransaction {
-                transaction_id: [2u8; 32],
-                user_id: investor_id,
-                deal_id: [0u8; 32],
-                transaction_type: TransactionType::UserRegistration,
-                amount: 0,
-                created_at: batch_timestamp + 110,
-                metadata: investor_metadata,
-            }
+            LoanTransaction::new_simple(
+                [2u8; 32],
+                investor_id,
+                [0u8; 32],
+                TransactionType::UserRegistration,
+                0,
+                batch_timestamp + 110,
+                investor_metadata,
+            )
         },
         // 3. Originator KYC submission
-        LoanTransaction {
-            transaction_id: [3u8; 32],
-            user_id: originator_id,
-            deal_id: [0u8; 32],
-            transaction_type: TransactionType::KycSubmission,
-            amount: 0,
-            created_at: batch_timestamp + 120,
-            metadata: MetadataArray::empty(),
-        },
+        LoanTransaction::new_simple(
+            [3u8; 32],
+            originator_id,
+            [0u8; 32],
+            TransactionType::KycSubmission,
+            0,
+            batch_timestamp + 120,
+            MetadataArray::empty(),
+        ),
         // 4. Investor KYC submission
-        LoanTransaction {
-            transaction_id: [4u8; 32],
-            user_id: investor_id,
-            deal_id: [0u8; 32],
-            transaction_type: TransactionType::KycSubmission,
-            amount: 0,
-            created_at: batch_timestamp + 130,
-            metadata: MetadataArray::empty(),
-        },
+        LoanTransaction::new_simple(
+            [4u8; 32],
+            investor_id,
+            [0u8; 32],
+            TransactionType::KycSubmission,
+            0,
+            batch_timestamp + 130,
+            MetadataArray::empty(),
+        ),
         // 5. Originator KYC verification (approved)
         {
             let mut kyc_metadata = MetadataArray::empty();
             kyc_metadata.as_mut_bytes()[0] = 1; // Approved
-            LoanTransaction {
-                transaction_id: [5u8; 32],
-                user_id: originator_id,
-                deal_id: [0u8; 32],
-                transaction_type: TransactionType::KycVerification,
-                amount: 0,
-                created_at: batch_timestamp + 140,
-                metadata: kyc_metadata,
-            }
+            LoanTransaction::new_simple(
+                [5u8; 32],
+                originator_id,
+                [0u8; 32],
+                TransactionType::KycVerification,
+                0,
+                batch_timestamp + 140,
+                kyc_metadata,
+            )
         },
         // 6. Investor KYC verification (approved)
         {
             let mut kyc_metadata = MetadataArray::empty();
             kyc_metadata.as_mut_bytes()[0] = 1; // Approved
-            LoanTransaction {
-                transaction_id: [6u8; 32],
-                user_id: investor_id,
-                deal_id: [0u8; 32],
-                transaction_type: TransactionType::KycVerification,
-                amount: 0,
-                created_at: batch_timestamp + 150,
-                metadata: kyc_metadata,
-            }
+            LoanTransaction::new_simple(
+                [6u8; 32],
+                investor_id,
+                [0u8; 32],
+                TransactionType::KycVerification,
+                0,
+                batch_timestamp + 150,
+                kyc_metadata,
+            )
         },
-        // 7. Deal origination (with proper metadata)
-        {
-            let mut deal_metadata = MetadataArray::empty();
-            // Pack originator_id and investor_id into metadata
-            deal_metadata.as_mut_bytes()[0..32].copy_from_slice(&originator_id); // originator
-            deal_metadata.as_mut_bytes()[32..64].copy_from_slice(&investor_id); // investor
-            LoanTransaction {
-                transaction_id: [7u8; 32],
-                user_id: investor_id, // Investor initiates the deal
-                deal_id,
-                transaction_type: TransactionType::DealOrigination,
-                amount: 100_000_000, // $1,000,000 in cents
-                created_at: batch_timestamp + 160,
-                metadata: deal_metadata,
-            }
+        // 7. Deal origination (company-centric)
+        LoanTransaction {
+            transaction_id: [7u8; 32],
+            user_id: investor_id,  // User initiates the deal
+            originator_company_id, // Originator company
+            investor_company_id,   // Investor company
+            deal_id,
+            transaction_type: TransactionType::DealOrigination,
+            amount: 100_000_000, // $1,000,000 in cents
+            created_at: batch_timestamp + 160,
+            metadata: MetadataArray::empty(),
         },
     ];
 
@@ -933,7 +976,9 @@ fn create_benchmark_scenario(num_transactions: u32) -> (LoanState, LoanBatch) {
 
         transactions.push(LoanTransaction {
             transaction_id,
-            user_id: originator_id, // Originator makes payments
+            user_id: originator_id, // User initiates payment
+            originator_company_id,  // Originator company pays
+            investor_company_id,    // To investor company
             deal_id,
             transaction_type: TransactionType::DealPayment,
             amount: ((i as u64 % 100) + 1) * 100, // Payments: $1.00 to $100.00 in cents

@@ -22,13 +22,15 @@ pub enum ProcessingError {
     #[error("User error: {0}")]
     UserError(#[from] UserError),
 
+    #[error("Company error: {0}")]
+    CompanyError(#[from] crate::company::CompanyError),
+
     #[error("Loan error: {0}")]
     LoanError(#[from] DealError), // was LoanError
 
     #[error("Balance error: {0}")]
     BalanceError(#[from] BalanceError),
 
-    // NEW: Collateral errors
     #[error("Collateral error: {0}")]
     CollateralError(#[from] crate::collateral::CollateralError),
 
@@ -55,25 +57,28 @@ pub enum ProcessingError {
     InvalidTransactionData,
 }
 
-/// Global state for loan processing (maintains user, loan, and collateral state)
+/// Global state for loan processing (maintains user, company, deal, and collateral state)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalLoanState {
-    /// All users in the system
+    /// All users in the system (individuals who act on behalf of companies)
     pub users: HashMap<[u8; 32], User>,
 
-    /// All loans in the system
+    /// All companies in the system (entities that participate in deals)
+    pub companies: HashMap<[u8; 32], crate::company::Company>,
+
+    /// All loans in the system (deals between companies)
     pub loans: HashMap<[u8; 32], Deal>, // Keep loans field name for compatibility, but use Deal type
 
-    /// NEW: All collateral in the system
+    /// All collateral in the system
     pub collateral: HashMap<Vec<u8>, crate::collateral::Collateral>,
 
-    /// NEW: Active collateral-deal associations
+    /// Active collateral-deal associations
     pub active_associations: HashMap<Vec<u8>, Vec<Vec<u8>>>,
 
-    /// NEW: Complete association history
+    /// Complete association history
     pub association_history: HashMap<Vec<u8>, crate::collateral::CollateralAssociation>,
 
-    /// User balance tracking state
+    /// Company balance tracking state (companies have balances, not users)
     pub balance_state: BalanceState,
 
     /// Configurable loan terms
@@ -90,10 +95,11 @@ impl Default for GlobalLoanState {
     fn default() -> Self {
         Self {
             users: HashMap::new(),
+            companies: HashMap::new(),
             loans: HashMap::new(),
-            collateral: HashMap::new(),          // NEW
-            active_associations: HashMap::new(), // NEW
-            association_history: HashMap::new(), // NEW
+            collateral: HashMap::new(),
+            active_associations: HashMap::new(),
+            association_history: HashMap::new(),
             balance_state: BalanceState::new(),
             loan_terms: LoanTerms::default(),
             transaction_count: 0,
@@ -114,10 +120,11 @@ impl GlobalLoanState {
     pub fn with_loan_terms(loan_terms: LoanTerms) -> Self {
         Self {
             users: HashMap::new(),
+            companies: HashMap::new(),
             loans: HashMap::new(),
-            collateral: HashMap::new(),          // NEW
-            active_associations: HashMap::new(), // NEW
-            association_history: HashMap::new(), // NEW
+            collateral: HashMap::new(),
+            active_associations: HashMap::new(),
+            association_history: HashMap::new(),
             balance_state: BalanceState::new(),
             loan_terms,
             transaction_count: 0,
@@ -164,26 +171,44 @@ impl GlobalLoanState {
                 self.users = user_state.users;
             }
             TransactionType::DealOrigination => {
-                // was LoanOrigination
+                // Validate companies exist in state
+                if !self
+                    .companies
+                    .contains_key(&transaction.originator_company_id)
+                {
+                    return Err(ProcessingError::LoanError(DealError::UserError(
+                        crate::user::UserError::UserNotFound {
+                            user_id: transaction.originator_company_id,
+                        },
+                    )));
+                }
+                if !self
+                    .companies
+                    .contains_key(&transaction.investor_company_id)
+                {
+                    return Err(ProcessingError::LoanError(DealError::UserError(
+                        crate::user::UserError::UserNotFound {
+                            user_id: transaction.investor_company_id,
+                        },
+                    )));
+                }
+
                 let mut deal_state = crate::deal::DealState {
                     deals: self.loans.clone(), // Keep loans field for compatibility
                 };
-                deal_state.process_deal_origination(transaction, &self.users, &self.loan_terms)?; // was process_loan_origination
-                self.loans = deal_state.deals; // Keep loans field for compatibility
+                deal_state.process_deal_origination(transaction, &self.users, &self.loan_terms)?;
+                self.loans = deal_state.deals;
 
                 // Create balance updates for deal origination
-                // Metadata format: [originator_id (32 bytes)][investor_id (32 bytes)]
-                let metadata = transaction.metadata.as_bytes();
-                let mut originator_id = [0u8; 32];
-                let mut investor_id = [0u8; 32];
-                originator_id.copy_from_slice(&metadata[0..32]);
-                investor_id.copy_from_slice(&metadata[32..64]);
+                // Use explicit company ID fields (not metadata parsing)
+                let originator_company_id = transaction.originator_company_id;
+                let investor_company_id = transaction.investor_company_id;
 
                 let balance_updates = self.balance_state.create_origination_updates(
                     transaction.transaction_id,
-                    transaction.deal_id, // was loan_id, now deal_id
-                    originator_id,       // was borrower_id
-                    investor_id,         // was lender_id
+                    transaction.deal_id,
+                    originator_company_id,
+                    investor_company_id,
                     u128::from(transaction.amount),
                     transaction.created_at,
                 )?;
@@ -194,30 +219,30 @@ impl GlobalLoanState {
                 }
             }
             TransactionType::DealPayment => {
-                // was LoanPayment
                 // Get deal info before processing payment for balance updates
                 let deal =
                     self.loans
                         .get(&transaction.deal_id)
                         .ok_or(ProcessingError::LoanError(DealError::DealNotFound {
-                            // was LoanError::LoanNotFound  // Keep LoanError for compatibility
-                            deal_id: transaction.deal_id, // was loan_id, now deal_id
+                            deal_id: transaction.deal_id,
                         }))?;
-                let investor_id = deal.investor_id; // was lender_id field
-                let payer_id = transaction.user_id;
+
+                // For payments: originator_company_id is the payer, investor is from the deal
+                let payer_company_id = transaction.originator_company_id;
+                let investor_company_id = deal.investor_id;
 
                 let mut deal_state = crate::deal::DealState {
                     deals: self.loans.clone(), // Keep loans field for compatibility
                 };
-                deal_state.process_deal_payment(transaction, &self.users)?; // was process_loan_payment
-                self.loans = deal_state.deals; // Keep loans field for compatibility
+                deal_state.process_deal_payment(transaction, &self.users)?;
+                self.loans = deal_state.deals;
 
-                // Create balance updates for deal payment
+                // Create balance updates for deal payment (company balances)
                 let balance_updates = self.balance_state.create_payment_updates(
                     transaction.transaction_id,
-                    transaction.deal_id, // was loan_id, now deal_id
-                    payer_id,
-                    investor_id, // was lender_id
+                    transaction.deal_id,
+                    payer_company_id,
+                    investor_company_id,
                     u128::from(transaction.amount),
                     transaction.created_at,
                 )?;
@@ -236,15 +261,18 @@ impl GlobalLoanState {
                 self.loans = deal_state.deals; // Keep loans field for compatibility
             }
             TransactionType::UserDeposit => {
-                // Process user deposit by creating a balance update
-                // For deposits, metadata contains: [wallet_address(32)] + [remaining_32_bytes_unused]
+                // Process company deposit by creating a balance update
+                // For deposits, originator_company_id is the company receiving the deposit
+                // Metadata contains: [wallet_address(32)] + [remaining_32_bytes_unused]
                 let metadata = transaction.metadata.as_bytes();
                 let mut wallet_address = [0u8; 32];
                 wallet_address.copy_from_slice(&metadata[0..32]);
 
+                let company_id = transaction.originator_company_id;
+
                 let balance_update = self.balance_state.create_deposit_update(
                     transaction.transaction_id,
-                    transaction.user_id,
+                    company_id,
                     wallet_address,
                     u128::from(transaction.amount),
                     transaction.created_at,
@@ -254,15 +282,18 @@ impl GlobalLoanState {
                 self.balance_state.apply_update(balance_update)?;
             }
             TransactionType::UserWithdrawal => {
-                // Process user withdrawal by creating a balance update
-                // For withdrawals, metadata contains: [recipient_address(32)] + [remaining_32_bytes_unused]
+                // Process company withdrawal by creating a balance update
+                // For withdrawals, originator_company_id is the company making the withdrawal
+                // Metadata contains: [recipient_address(32)] + [remaining_32_bytes_unused]
                 let metadata = transaction.metadata.as_bytes();
                 let mut recipient_address = [0u8; 32];
                 recipient_address.copy_from_slice(&metadata[0..32]);
 
+                let company_id = transaction.originator_company_id;
+
                 let balance_update = self.balance_state.create_withdrawal_update(
                     transaction.transaction_id,
-                    transaction.user_id,
+                    company_id,
                     recipient_address,
                     u128::from(transaction.amount),
                     transaction.created_at,
@@ -384,6 +415,20 @@ impl GlobalLoanState {
                 // Re-genesis transaction marks state reset point
                 // This transaction itself doesn't modify state - it's a marker in the audit trail
                 // The actual state reset happens in the batch processor
+            }
+            TransactionType::CompanyRegistration => {
+                let mut company_state = crate::company::CompanyState {
+                    companies: self.companies.clone(),
+                };
+                company_state.process_company_registration(transaction)?;
+                self.companies = company_state.companies;
+            }
+            TransactionType::CompanyUpdate => {
+                let mut company_state = crate::company::CompanyState {
+                    companies: self.companies.clone(),
+                };
+                company_state.process_company_update(transaction)?;
+                self.companies = company_state.companies;
             }
         }
 
@@ -620,8 +665,11 @@ pub fn validate_transaction_with_state(
     // all valid transactions (2000+) are naturally newer than initial state.
     // Batch sorting ensures chronological order is maintained.
 
+    // Skip user validation if user_id is all zeros (system/automated transactions)
+    let is_system_transaction = transaction.user_id == [0u8; 32];
+
     // Validate KYC requirements for transactions that require it
-    if transaction.transaction_type.requires_kyc() {
+    if transaction.transaction_type.requires_kyc() && !is_system_transaction {
         let user =
             current_state
                 .users
@@ -640,11 +688,10 @@ pub fn validate_transaction_with_state(
             ));
         }
 
-        // For withdrawals, also validate sufficient balance
+        // For withdrawals, also validate sufficient company balance
         if transaction.transaction_type == TransactionType::UserWithdrawal {
-            let current_balance = current_state
-                .balance_state
-                .get_balance(&transaction.user_id);
+            let company_id = transaction.originator_company_id;
+            let current_balance = current_state.balance_state.get_balance(&company_id);
             let withdrawal_amount = u128::from(transaction.amount);
 
             if current_balance < withdrawal_amount {

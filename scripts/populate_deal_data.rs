@@ -600,6 +600,60 @@ fn hash_uuid(uuid: &Uuid) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
+/// Create a company_registration transaction for zkVM state
+async fn create_company_registration_transaction(
+    pool: &sqlx::PgPool,
+    company: &Company,
+    creator_user_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    let transaction_id = Uuid::new_v4();
+    let transaction_id_hash = hash_uuid(&transaction_id);
+    let user_id_hash = hash_uuid(&creator_user_id);
+    let company_id_hash = hash_uuid(&company.id);
+
+    // Metadata contains company status (0=Active, 1=Suspended, 2=Inactive)
+    let company_status: u8 = match company.status {
+        db::business::company::CompanyStatus::Active => 0,
+        db::business::company::CompanyStatus::Suspended => 1,
+        db::business::company::CompanyStatus::Inactive => 2,
+    };
+
+    let mut metadata_bytes = vec![0u8; 64];
+    metadata_bytes[0] = company_status;
+
+    let metadata_json = json!({
+        "data_base64": base64::engine::general_purpose::STANDARD.encode(&metadata_bytes),
+        "company_name": company.name,
+        "created_by_user": creator_user_id.to_string(),
+    });
+
+    sqlx::query(
+        r#"
+        INSERT INTO deal_transactions (
+            id, transaction_id_hash, user_id_hash, deal_id_hash,
+            transaction_type, amount, user_id, deal_id, payment_id,
+            metadata, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        "#,
+    )
+    .bind(transaction_id)
+    .bind(transaction_id_hash)
+    .bind(user_id_hash)
+    .bind(Some(company_id_hash)) // Store company hash in deal_id_hash for company operations
+    .bind("company_registration")
+    .bind(rust_decimal::Decimal::ZERO)
+    .bind(creator_user_id)
+    .bind(None::<Uuid>) // No deal_id for company registration
+    .bind(None::<Uuid>) // No payment_id
+    .bind(metadata_json)
+    .bind(company.created_at)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 /// Create a deal_transactions record to track state progression events
 async fn create_deal_transaction_record(
     pool: &sqlx::PgPool,
@@ -1980,6 +2034,13 @@ async fn ensure_user_companies(
 
     let investor_company = create_company(pool, &investor_request).await?;
 
+    // NEW: Record company registration transaction for zkVM
+    println!(
+        "  📝 Recording CompanyRegistration transaction for {}",
+        investor_company.name
+    );
+    create_company_registration_transaction(pool, &investor_company, user.id).await?;
+
     // Create company membership for investor
     create_membership(
         pool,
@@ -2024,6 +2085,13 @@ async fn ensure_user_companies(
 
     let originator_company = create_company(pool, &originator_request).await?;
 
+    // NEW: Record company registration transaction for zkVM
+    println!(
+        "  📝 Recording CompanyRegistration transaction for {}",
+        originator_company.name
+    );
+    create_company_registration_transaction(pool, &originator_company, user.id).await?;
+
     // Create company membership for originator
     create_membership(
         pool,
@@ -2065,6 +2133,14 @@ async fn ensure_random_companies(
         };
 
         let company = create_company(pool, &request).await?;
+
+        // NEW: Record company registration transaction for zkVM
+        // Use first user in system as creator (system user engineering@arda.xyz)
+        let system_user = get_identity_by_email(pool, "engineering@arda.xyz")
+            .await?
+            .ok_or("System user not found")?;
+        create_company_registration_transaction(pool, &company, system_user.id).await?;
+
         companies.push(company);
     }
 
