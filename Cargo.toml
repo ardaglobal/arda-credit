@@ -58,7 +58,7 @@ uuid                 = "1.19"
 # Prometheus metrics dependencies
 axum-prometheus             = "0.9"
 metrics                     = "0.24"
-metrics-exporter-prometheus = "0.17"
+metrics-exporter-prometheus = "0.18"
 metrics-util                = "0.20"
 prometheus                  = "0.14.0"
 
