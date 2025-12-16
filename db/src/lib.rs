@@ -195,8 +195,6 @@ pub use db::{
     // Financial transaction functions
     create_account_financial_transaction,
     // Batch functions
-    create_batch,
-    create_batch_from_deal_transactions,
     create_batch_from_state_transactions,
     create_deal,
     create_deal_payment,
@@ -239,13 +237,11 @@ pub use db::{
     get_invite_code_info,
     get_kyc_statistics,
     get_payments_by_deal,
-    get_pending_deal_transactions,
-    get_pending_transactions,
-    // State transaction functions (new consolidated API)
+    // State transaction functions (consolidated API)
     create_state_transaction,
     get_pending_state_transactions,
-    get_deal_state_transactions,
-    get_user_state_transactions,
+    get_batch_state_transactions,
+    get_recent_state_transactions_by_type,
     mark_state_transactions_batched,
     get_pending_withdrawal_requests,
     get_potential_stuck_batches,
@@ -286,8 +282,6 @@ pub use db::{
     store_ads_state_commit,
     store_batch_proof_data,
     submit_kyc_data,
-    // Transaction functions
-    submit_transaction,
     update_balance,
     update_batch_proof,
     update_deal,
@@ -326,9 +320,7 @@ pub use db::{
     DealNegotiationStatus,
     DealPayment,
     DealPaymentStatus,
-    DealTransactionDb,
     DealsWithCount,
-    IncomingTransaction,
     InvestorProfile,
     InviteCodeInfo,
     KycInvestorType,

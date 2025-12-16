@@ -1,45 +1,44 @@
--- Migration: Consolidate Transaction Tables
+-- Migration: Consolidate Transaction Tables (Clean Cutover)
 -- Description: Consolidates state transition function transactions into a single
---              state_transactions table and clarifies financial transaction terminology
+--              flexible state_transactions table with serialized transaction data.
+--              Removes all arithmetic and legacy code. No backward compatibility.
 --
 -- Changes:
--- 1. Create unified state_transactions table (consolidates deal_transactions + incoming_transactions)
--- 2. Migrate existing data from both old tables
--- 3. Create backward compatibility views
--- 4. Clarify financial transaction terminology (deposits, withdrawals, payments)
+-- 1. DROP old tables: deal_transactions, incoming_transactions, arithmetic_transactions
+-- 2. Create new flexible state_transactions table with serialized bytes
+-- 3. Clarify financial transaction terminology (deposits, withdrawals, payments)
+
+BEGIN;
 
 -- ============================================================================
--- STEP 1: Create unified state_transactions table
+-- STEP 1: Drop old transaction tables (clean cutover)
+-- ============================================================================
+
+-- Drop old state transaction tables
+DROP TABLE IF EXISTS deal_transactions CASCADE;
+DROP TABLE IF EXISTS incoming_transactions CASCADE;
+DROP TABLE IF EXISTS arithmetic_transactions CASCADE;
+
+-- ============================================================================
+-- STEP 2: Create new flexible state_transactions table
 -- ============================================================================
 
 CREATE TABLE state_transactions (
     -- Primary identifier
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
-    -- Transaction identification (for zkVM compatibility)
-    transaction_id_hash BYTEA NOT NULL UNIQUE, -- SHA256 hash for zkVM
+    -- Transaction type (enum value as string)
+    transaction_type VARCHAR(50) NOT NULL,
     
-    -- Core transaction data
-    transaction_type VARCHAR(50) NOT NULL, -- See TransactionType enum in lib/transactions.rs
-    amount DECIMAL(18, 6) NOT NULL DEFAULT 0, -- Amount for monetary transactions
-    
-    -- Hashed identifiers (for zkVM privacy)
-    user_id_hash BYTEA, -- SHA256 hash of user UUID (NULL for system transactions)
-    deal_id_hash BYTEA, -- SHA256 hash of deal UUID (NULL for non-deal transactions)
-    
-    -- Foreign key references to actual records (for database queries)
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    deal_id UUID REFERENCES deals(id) ON DELETE SET NULL,
-    payment_id UUID REFERENCES deal_payments(id) ON DELETE SET NULL,
+    -- Serialized transaction data (bincode-encoded DealTransaction from lib)
+    transaction_data BYTEA NOT NULL,
     
     -- Batch processing integration
     included_in_batch_id INTEGER REFERENCES proof_batches(id) ON DELETE SET NULL,
     
-    -- Flexible metadata for transaction-specific data
-    metadata JSONB DEFAULT '{}'::jsonb,
-    
     -- Timestamps
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
     
     -- Constraints
     CONSTRAINT valid_transaction_type CHECK (
@@ -70,30 +69,24 @@ CREATE TABLE state_transactions (
             'collateral_detection_request',
             'collateral_detection_update',
             -- State management
-            'state_regenesis',
-            -- Legacy arithmetic (for backward compatibility)
-            'arithmetic_operation'
+            'state_regenesis'
         )
-    ),
-    CONSTRAINT positive_amount CHECK (amount >= 0)
+    )
 );
 
--- Add table comment
-COMMENT ON TABLE state_transactions IS 'Unified audit trail for all ZK state transition function transactions';
-COMMENT ON COLUMN state_transactions.transaction_id_hash IS 'SHA256 hash of transaction ID for zkVM compatibility';
-COMMENT ON COLUMN state_transactions.transaction_type IS 'Type of state transition (see TransactionType enum)';
-COMMENT ON COLUMN state_transactions.user_id_hash IS 'Hashed user ID for privacy in ZK proofs';
-COMMENT ON COLUMN state_transactions.deal_id_hash IS 'Hashed deal ID for privacy in ZK proofs';
+-- Add table and column comments
+COMMENT ON TABLE state_transactions IS 'Unified audit trail for all ZK state transition function transactions. Stores serialized transaction data for flexibility.';
+COMMENT ON COLUMN state_transactions.transaction_type IS 'Type of state transition (see TransactionType enum in lib/transactions.rs)';
+COMMENT ON COLUMN state_transactions.transaction_data IS 'Bincode-serialized DealTransaction struct from arda-credit-lib';
 COMMENT ON COLUMN state_transactions.included_in_batch_id IS 'Reference to proof batch (NULL = not yet batched)';
-COMMENT ON COLUMN state_transactions.metadata IS 'Flexible JSON field for transaction-specific data';
 
 -- ============================================================================
--- STEP 2: Create indexes for performance
+-- STEP 3: Create indexes for performance
 -- ============================================================================
 
 -- Index for finding unbatched transactions (most common query)
 CREATE INDEX idx_state_transactions_unbatched 
-    ON state_transactions(id, created_at) 
+    ON state_transactions(created_at, id) 
     WHERE included_in_batch_id IS NULL;
 
 -- Index for batch association queries
@@ -105,232 +98,34 @@ CREATE INDEX idx_state_transactions_batch_id
 CREATE INDEX idx_state_transactions_type 
     ON state_transactions(transaction_type, created_at DESC);
 
--- Index for user-related transaction queries
-CREATE INDEX idx_state_transactions_user_id 
-    ON state_transactions(user_id, created_at DESC) 
-    WHERE user_id IS NOT NULL;
+-- Index for timestamp ordering
+CREATE INDEX idx_state_transactions_created_at 
+    ON state_transactions(created_at DESC);
 
--- Index for deal-related transaction queries
-CREATE INDEX idx_state_transactions_deal_id 
-    ON state_transactions(deal_id, created_at DESC) 
-    WHERE deal_id IS NOT NULL;
-
--- Index for hashed ID lookups (for zkVM queries)
-CREATE INDEX idx_state_transactions_user_id_hash 
-    ON state_transactions(user_id_hash);
-
-CREATE INDEX idx_state_transactions_deal_id_hash 
-    ON state_transactions(deal_id_hash) 
-    WHERE deal_id_hash IS NOT NULL;
-
--- Composite index for efficient audit trail queries
-CREATE INDEX idx_state_transactions_audit 
-    ON state_transactions(user_id, transaction_type, created_at DESC);
+-- Composite index for efficient batch queries
+CREATE INDEX idx_state_transactions_batch_created 
+    ON state_transactions(included_in_batch_id, created_at) 
+    WHERE included_in_batch_id IS NOT NULL;
 
 -- ============================================================================
--- STEP 3: Migrate existing data from deal_transactions
+-- STEP 4: Update financial transaction table comments for clarity
 -- ============================================================================
 
-INSERT INTO state_transactions (
-    id,
-    transaction_id_hash,
-    transaction_type,
-    amount,
-    user_id_hash,
-    deal_id_hash,
-    user_id,
-    deal_id,
-    payment_id,
-    included_in_batch_id,
-    metadata,
-    created_at
-)
-SELECT
-    id,
-    transaction_id_hash,
-    transaction_type,
-    amount,
-    user_id_hash,
-    deal_id_hash,
-    identity_id as user_id, -- Rename from identity_id to user_id
-    deal_id,
-    payment_id,
-    included_in_batch_id,
-    metadata,
-    created_at
-FROM deal_transactions
-ON CONFLICT (transaction_id_hash) DO NOTHING;
+-- Clarify purpose of existing financial tables
+COMMENT ON TABLE account_financial_transactions IS 
+    'Financial transactions for user deposits and withdrawals (user <-> system). '
+    'DEPOSIT = user deposits into system, WITHDRAWAL = user withdraws from system.';
+
+COMMENT ON TABLE deal_payments IS 
+    'Financial payments for deal transactions (account <-> account). '
+    'Money movement between accounts for deals.';
+
+-- Drop deprecated credit line table if it exists
+DROP TABLE IF EXISTS credit_line_financial_transactions CASCADE;
 
 -- ============================================================================
--- STEP 4: Create backward compatibility views
+-- STEP 5: Create helper functions for common queries
 -- ============================================================================
-
--- View to emulate old deal_transactions table
-CREATE VIEW deal_transactions_view AS
-SELECT
-    id,
-    transaction_id_hash,
-    user_id_hash,
-    deal_id_hash,
-    transaction_type,
-    amount,
-    user_id as identity_id, -- Map back to old column name
-    deal_id,
-    payment_id,
-    included_in_batch_id,
-    metadata,
-    created_at
-FROM state_transactions
-WHERE transaction_type IN (
-    'user_registration',
-    'kyc_submission',
-    'kyc_verification',
-    'user_deposit',
-    'user_withdrawal',
-    'investor_registration',
-    'deal_origination',
-    'deal_payment',
-    'deal_closeout'
-);
-
--- View to emulate old incoming_transactions table (for legacy arithmetic batching)
-CREATE VIEW incoming_transactions_view AS
-SELECT
-    -- Extract numeric ID from UUID for backward compatibility
-    -- This is a lossy conversion but maintains the interface
-    ('x' || substring(id::text, 1, 8))::bit(32)::int as id,
-    COALESCE((metadata->>'amount')::integer, amount::integer) as amount,
-    included_in_batch_id,
-    created_at
-FROM state_transactions
-WHERE transaction_type = 'arithmetic_operation'
-ORDER BY created_at ASC;
-
-COMMENT ON VIEW deal_transactions_view IS 'Backward compatibility view for old deal_transactions table';
-COMMENT ON VIEW incoming_transactions_view IS 'Backward compatibility view for old incoming_transactions table (arithmetic operations only)';
-
--- ============================================================================
--- STEP 5: Rename financial transaction tables for clarity
--- ============================================================================
-
--- Note: We are NOT renaming the actual tables to avoid breaking existing code.
--- Instead, we create views with clearer names and add comments for documentation.
--- Future migrations can complete the rename after code is updated.
-
--- Add comments to clarify purpose of existing financial tables
-COMMENT ON TABLE account_financial_transactions IS 'Financial transactions for user deposits and withdrawals (user <-> system). Consider this the "deposits_withdrawals" table.';
-COMMENT ON TABLE deal_payments IS 'Financial payments between accounts for deal transactions (account <-> account). This is the "payments" table.';
-COMMENT ON TABLE credit_line_financial_transactions IS 'DEPRECATED: Credit line financial transactions. Merchants have been removed from the system.';
-
--- Create aliased views with clearer names (for new code to use)
-CREATE VIEW deposits_withdrawals AS
-SELECT
-    id,
-    user_id,
-    transaction_type,
-    amount,
-    currency,
-    transaction_hash,
-    blockchain_status,
-    block_number,
-    processed_at
-FROM account_financial_transactions;
-
-CREATE VIEW payments AS
-SELECT
-    id,
-    deal_id,
-    payer_id as from_user_id, -- Clarify as "from"
-    amount,
-    payment_type,
-    transaction_hash,
-    processed_at,
-    created_at
-FROM deal_payments;
-
-COMMENT ON VIEW deposits_withdrawals IS 'User deposits and withdrawals (user <-> system). Alias for account_financial_transactions.';
-COMMENT ON VIEW payments IS 'Payments between accounts for deals (account <-> account). Alias for deal_payments.';
-
--- ============================================================================
--- STEP 6: Create helper functions for common queries
--- ============================================================================
-
--- Function to get all state transactions for a user
-CREATE OR REPLACE FUNCTION get_user_state_transactions(
-    p_user_id UUID,
-    p_limit INTEGER DEFAULT 100,
-    p_offset INTEGER DEFAULT 0
-)
-RETURNS TABLE (
-    id UUID,
-    transaction_type VARCHAR(50),
-    amount DECIMAL(18, 6),
-    deal_id UUID,
-    included_in_batch_id INTEGER,
-    batch_status VARCHAR(50),
-    metadata JSONB,
-    created_at TIMESTAMP WITH TIME ZONE
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT
-        st.id,
-        st.transaction_type,
-        st.amount,
-        st.deal_id,
-        st.included_in_batch_id,
-        pb.proof_status as batch_status,
-        st.metadata,
-        st.created_at
-    FROM state_transactions st
-    LEFT JOIN proof_batches pb ON st.included_in_batch_id = pb.id
-    WHERE st.user_id = p_user_id
-    ORDER BY st.created_at DESC
-    LIMIT p_limit
-    OFFSET p_offset;
-END;
-$$ LANGUAGE plpgsql;
-
-COMMENT ON FUNCTION get_user_state_transactions IS 'Retrieve state transaction history for a specific user';
-
--- Function to get all state transactions for a deal
-CREATE OR REPLACE FUNCTION get_deal_state_transactions(
-    p_deal_id UUID,
-    p_limit INTEGER DEFAULT 100
-)
-RETURNS TABLE (
-    id UUID,
-    transaction_type VARCHAR(50),
-    amount DECIMAL(18, 6),
-    user_id UUID,
-    user_email VARCHAR(255),
-    included_in_batch_id INTEGER,
-    batch_status VARCHAR(50),
-    metadata JSONB,
-    created_at TIMESTAMP WITH TIME ZONE
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT
-        st.id,
-        st.transaction_type,
-        st.amount,
-        st.user_id,
-        u.email as user_email,
-        st.included_in_batch_id,
-        pb.proof_status as batch_status,
-        st.metadata,
-        st.created_at
-    FROM state_transactions st
-    LEFT JOIN users u ON st.user_id = u.id
-    LEFT JOIN proof_batches pb ON st.included_in_batch_id = pb.id
-    WHERE st.deal_id = p_deal_id
-    ORDER BY st.created_at ASC
-    LIMIT p_limit;
-END;
-$$ LANGUAGE plpgsql;
-
-COMMENT ON FUNCTION get_deal_state_transactions IS 'Retrieve state transaction audit trail for a specific deal';
 
 -- Function to get pending (unbatched) state transactions
 CREATE OR REPLACE FUNCTION get_pending_state_transactions(
@@ -338,45 +133,129 @@ CREATE OR REPLACE FUNCTION get_pending_state_transactions(
 )
 RETURNS TABLE (
     id UUID,
-    transaction_id_hash BYTEA,
     transaction_type VARCHAR(50),
-    amount DECIMAL(18, 6),
-    user_id_hash BYTEA,
-    deal_id_hash BYTEA,
-    metadata JSONB,
+    transaction_data BYTEA,
     created_at TIMESTAMP WITH TIME ZONE
 ) AS $$
 BEGIN
     RETURN QUERY
     SELECT
         st.id,
-        st.transaction_id_hash,
         st.transaction_type,
-        st.amount,
-        st.user_id_hash,
-        st.deal_id_hash,
-        st.metadata,
+        st.transaction_data,
         st.created_at
     FROM state_transactions st
     WHERE st.included_in_batch_id IS NULL
-    ORDER BY st.created_at ASC
+    ORDER BY st.created_at ASC, st.id ASC
     LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION get_pending_state_transactions IS 'Get pending state transactions awaiting batch processing';
+COMMENT ON FUNCTION get_pending_state_transactions IS 
+    'Get pending state transactions awaiting batch processing, ordered chronologically';
+
+-- Function to get state transactions for a batch
+CREATE OR REPLACE FUNCTION get_batch_state_transactions(
+    p_batch_id INTEGER,
+    p_limit INTEGER DEFAULT 1000
+)
+RETURNS TABLE (
+    id UUID,
+    transaction_type VARCHAR(50),
+    transaction_data BYTEA,
+    created_at TIMESTAMP WITH TIME ZONE
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        st.id,
+        st.transaction_type,
+        st.transaction_data,
+        st.created_at
+    FROM state_transactions st
+    WHERE st.included_in_batch_id = p_batch_id
+    ORDER BY st.created_at ASC, st.id ASC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_batch_state_transactions IS 
+    'Get all state transactions included in a specific batch';
+
+-- Function to get recent state transactions by type
+CREATE OR REPLACE FUNCTION get_recent_state_transactions_by_type(
+    p_transaction_type VARCHAR(50),
+    p_limit INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+    id UUID,
+    transaction_type VARCHAR(50),
+    transaction_data BYTEA,
+    included_in_batch_id INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        st.id,
+        st.transaction_type,
+        st.transaction_data,
+        st.included_in_batch_id,
+        st.created_at
+    FROM state_transactions st
+    WHERE st.transaction_type = p_transaction_type
+    ORDER BY st.created_at DESC
+    LIMIT p_limit;
+END;
+$$ LANGUAGE plpgsql;
+
+COMMENT ON FUNCTION get_recent_state_transactions_by_type IS 
+    'Get recent state transactions of a specific type';
 
 -- ============================================================================
--- STEP 7: Notes on deprecation and future cleanup
+-- STEP 6: Update trigger for updated_at
 -- ============================================================================
 
--- Note: Old tables (deal_transactions, incoming_transactions) are kept for now
--- to ensure zero downtime. They can be dropped in a future migration after
--- all code is updated to use state_transactions.
+-- Create or replace function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_state_transaction_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for updated_at
+CREATE TRIGGER trigger_state_transactions_updated_at
+    BEFORE UPDATE ON state_transactions
+    FOR EACH ROW
+    EXECUTE FUNCTION update_state_transaction_updated_at();
+
+-- ============================================================================
+-- STEP 7: Remove old database functions that referenced old tables
+-- ============================================================================
+
+-- Drop functions that referenced deal_transactions or incoming_transactions
+DROP FUNCTION IF EXISTS get_unbatched_transactions(INTEGER);
+DROP FUNCTION IF EXISTS create_batch(INTEGER);
+
+-- ============================================================================
+-- STEP 8: Notes on financial transaction terminology
+-- ============================================================================
+
+-- Financial transactions are separate from state transactions:
 --
--- Future cleanup migration should:
--- 1. DROP VIEW deal_transactions_view;
--- 2. DROP VIEW incoming_transactions_view;
--- 3. DROP TABLE deal_transactions;
--- 4. DROP TABLE incoming_transactions;
--- 5. Optionally rename views (deposits_withdrawals, payments) to replace actual tables
+-- State Transactions (this table):
+--   - Zero-knowledge state transition functions
+--   - Batched and proven via zkVM
+--   - Posted to blockchain for verification
+--
+-- Financial Transactions (separate tables):
+--   - account_financial_transactions:
+--     * DEPOSIT: User deposits USDC into the system
+--     * WITHDRAWAL: User withdraws USDC from the system
+--   - deal_payments:
+--     * Money movement between accounts for deals
+--     * Types: regular, principal, interest, penalty
+
+COMMIT;
