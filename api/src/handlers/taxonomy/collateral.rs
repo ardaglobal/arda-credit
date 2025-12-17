@@ -788,12 +788,15 @@ pub async fn create_collateral_batch_handler(
 
             let tx_result = state
                 .transaction_recording
-                .record_transaction(
+                .record_transaction_with_metadata(
                     arda_credit_lib::TransactionType::CollateralCreation,
                     user.id,
                     None, // No deal_id yet (not associated)
                     rust_decimal::Decimal::ZERO,
                     metadata,
+                    None,                // originator_company_id
+                    None,                // investor_company_id
+                    Some(collateral.id), // collateral_id
                 )
                 .await;
 
