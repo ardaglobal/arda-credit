@@ -341,15 +341,26 @@ async fn load_latest_state_snapshot(pool: &PgPool) -> Result<GlobalLoanState, St
 /// at the end of the specified batch.
 #[instrument(skip(pool), level = "info")]
 async fn load_state_up_to_batch(pool: &PgPool, batch_id: i32) -> Result<GlobalLoanState, String> {
-    // Get all transactions up to and including this batch
-    let transactions = sqlx::query_as!(
-        DealTransactionDb,
+    use arda_credit_lib::DealTransaction;
+    use bincode;
+
+    // Get all transactions up to and including this batch using StateTransaction
+    let state_transactions = sqlx::query_as!(
+        arda_credit_db::StateTransaction,
         r#"
         SELECT 
-            id, transaction_id_hash, user_id_hash, deal_id_hash,
-            transaction_type, amount, user_id, deal_id, payment_id,
-            included_in_batch_id, metadata, created_at as "created_at!"
-        FROM deal_transactions 
+            id,
+            transaction_type,
+            transaction_data,
+            user_id,
+            deal_id,
+            originator_company_id,
+            investor_company_id,
+            collateral_id,
+            included_in_batch_id,
+            created_at as "created_at!",
+            updated_at as "updated_at!"
+        FROM state_transactions 
         WHERE included_in_batch_id IS NOT NULL 
           AND included_in_batch_id <= $1 
         ORDER BY included_in_batch_id ASC, created_at ASC
@@ -362,9 +373,24 @@ async fn load_state_up_to_batch(pool: &PgPool, batch_id: i32) -> Result<GlobalLo
 
     info!(
         "🔄 Replaying {} transactions to reconstruct state at batch {}",
-        transactions.len(),
+        state_transactions.len(),
         batch_id
     );
+
+    // Deserialize transaction_data to get DealTransaction for each
+    let mut deal_transactions = Vec::new();
+    for state_tx in &state_transactions {
+        match bincode::serde::decode_from_slice::<DealTransaction, _>(
+            &state_tx.transaction_data,
+            bincode::config::standard(),
+        ) {
+            Ok((deal_tx, _)) => deal_transactions.push(deal_tx),
+            Err(e) => {
+                warn!("Failed to deserialize transaction {}: {}", state_tx.id, e);
+                // Continue with other transactions
+            }
+        }
+    }
 
     // Start with empty state
     let mut state = build_empty_state_with_users(pool).await?;
@@ -374,7 +400,7 @@ async fn load_state_up_to_batch(pool: &PgPool, batch_id: i32) -> Result<GlobalLo
     // For now, we'll just warn and return empty state
     warn!(
         "⚠️  State replay not yet fully implemented - {} transactions would be replayed",
-        transactions.len()
+        deal_transactions.len()
     );
     warn!("⚠️  For MVP, falling back to empty state. TODO: Implement full replay logic");
 

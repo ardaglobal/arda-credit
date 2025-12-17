@@ -271,12 +271,15 @@ pub async fn create_collateral_handler(
 
     let tx_result = state
         .transaction_recording
-        .record_transaction(
+        .record_transaction_with_metadata(
             arda_credit_lib::TransactionType::CollateralCreation,
             user.id,
             None, // No deal_id yet (not associated)
             rust_decimal::Decimal::ZERO,
             metadata,
+            None,                // originator_company_id
+            None,                // investor_company_id
+            Some(collateral.id), // collateral_id
         )
         .await;
 
@@ -631,12 +634,15 @@ pub async fn update_collateral_handler(
 
         if let Err(e) = state
             .transaction_recording
-            .record_transaction(
+            .record_transaction_with_metadata(
                 TransactionType::CollateralUpdate,
                 user_id,
                 None, // No deal_id for update
                 Decimal::ZERO,
                 metadata,
+                None,       // originator_company_id
+                None,       // investor_company_id
+                Some(uuid), // collateral_id
             )
             .await
         {
@@ -881,8 +887,8 @@ pub async fn associate_collateral_handler(
         .await
         .map_err(|_| not_found_error("Collateral", &collateral_id_str))?;
 
-    // Validate deal exists
-    let _deal = arda_credit_db::get_deal_by_id(&state.pool, deal_id)
+    // Validate deal exists and get company IDs
+    let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_id)
         .await
         .map_err(|_| not_found_error("Deal", &req.deal_id))?;
 
@@ -931,12 +937,15 @@ pub async fn associate_collateral_handler(
 
     let tx_id = state
         .transaction_recording
-        .record_transaction(
+        .record_transaction_with_metadata(
             TransactionType::CollateralDealAssociation,
             user.id,
             Some(deal_id),
             Decimal::ZERO,
             assoc_metadata,
+            deal.as_ref().map(|d| d.originator_id), // originator_company_id
+            deal.as_ref().and_then(|d| d.investor_id), // investor_company_id
+            Some(collateral_id),                    // collateral_id
         )
         .await
         .map_err(|e| internal_error("record_association_transaction", e))?;
@@ -989,6 +998,11 @@ pub async fn disassociate_collateral_handler(
         .as_ref()
         .ok_or_else(|| internal_error("extract_current_user", "User not authenticated"))?;
 
+    // Get deal to extract company IDs before removing collateral
+    let deal = arda_credit_db::get_deal_by_id(&state.pool, deal_id)
+        .await
+        .map_err(|_| not_found_error("Deal", &req.deal_id))?;
+
     // Remove collateral_id from deal
     sqlx::query!(
         "UPDATE deals SET collateral_id = NULL, updated_at = NOW() WHERE id = $1 AND collateral_id = $2",
@@ -1009,12 +1023,15 @@ pub async fn disassociate_collateral_handler(
 
     let tx_id = state
         .transaction_recording
-        .record_transaction(
+        .record_transaction_with_metadata(
             TransactionType::CollateralDealDisassociation,
             user.id,
             Some(deal_id),
             Decimal::ZERO,
             disassoc_metadata,
+            deal.as_ref().map(|d| d.originator_id), // originator_company_id
+            deal.as_ref().and_then(|d| d.investor_id), // investor_company_id
+            Some(collateral_id),                    // collateral_id
         )
         .await
         .map_err(|e| internal_error("record_disassociation_transaction", e))?;

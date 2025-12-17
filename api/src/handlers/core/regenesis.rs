@@ -122,22 +122,44 @@ async fn create_regenesis_transaction(
     let tx_id_hash = arda_credit_lib::hash_uuid(&tx_id);
     let user_id_hash = arda_credit_lib::hash_uuid(&initiated_by_user_id);
 
-    sqlx::query!(
-        r#"
-        INSERT INTO deal_transactions (
-            id, transaction_id_hash, user_id_hash, deal_id_hash,
-            transaction_type, amount, user_id, deal_id, payment_id,
-            included_in_batch_id, metadata, created_at
-        )
-        VALUES ($1, $2, $3, NULL, 'state_regenesis', 0, $4, NULL, NULL, NULL, $5, NOW())
-        "#,
-        tx_id,
-        tx_id_hash.as_slice(),
-        user_id_hash.as_slice(),
-        initiated_by_user_id,
-        metadata
+    // Create DealTransaction for state_regenesis
+    use arda_credit_lib::{DealTransaction, MetadataArray, TransactionType};
+
+    let deal_transaction = DealTransaction {
+        transaction_id: tx_id_hash,
+        user_id: user_id_hash,
+        originator_company_id: [0u8; 32],
+        investor_company_id: [0u8; 32],
+        deal_id: [0u8; 32], // NULL for state_regenesis
+        transaction_type: TransactionType::StateRegenesis,
+        amount: 0,
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+        metadata: MetadataArray::from_bytes(
+            &serde_json::to_string(&metadata)
+                .unwrap_or_default()
+                .into_bytes(),
+        ),
+    };
+
+    // Serialize transaction data
+    let transaction_data =
+        bincode::serde::encode_to_vec(&deal_transaction, bincode::config::standard())
+            .map_err(|e| format!("Failed to serialize transaction: {}", e))?;
+
+    // Insert into state_transactions
+    arda_credit_db::create_state_transaction(
+        pool,
+        "state_regenesis",
+        &transaction_data,
+        Some(initiated_by_user_id),
+        None, // No deal_id for state_regenesis
+        None,
+        None,
+        None, // No collateral_id
     )
-    .execute(pool)
     .await
     .map_err(|e| format!("Failed to insert re-genesis transaction: {}", e))?;
 
@@ -170,7 +192,7 @@ async fn supersede_all_proofs(pool: &PgPool, regenesis_tx_id: Uuid) -> Result<i6
 async fn reset_transactions_to_pending(pool: &PgPool) -> Result<i64, String> {
     let result = sqlx::query!(
         r#"
-        UPDATE deal_transactions 
+        UPDATE state_transactions 
         SET included_in_batch_id = NULL
         WHERE included_in_batch_id IS NOT NULL
         "#
@@ -233,7 +255,7 @@ pub async fn determine_state_mode(pool: &PgPool) -> Result<StateModeResponse, St
 
     // Count pending transactions
     let pending_count = sqlx::query_scalar!(
-        "SELECT COUNT(*) FROM deal_transactions WHERE included_in_batch_id IS NULL"
+        "SELECT COUNT(*) FROM state_transactions WHERE included_in_batch_id IS NULL"
     )
     .fetch_one(pool)
     .await

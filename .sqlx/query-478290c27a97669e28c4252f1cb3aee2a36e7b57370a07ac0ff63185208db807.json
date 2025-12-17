@@ -1,0 +1,60 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT st.deal_id, st.transaction_type, st.user_id, st.created_at,\n                   d.originator_id, d.investor_id, d.deal_status\n            FROM state_transactions st\n            JOIN deals d ON st.deal_id = d.id\n            WHERE (\n                ($1::UUID IS NOT NULL AND st.deal_id = $1)\n            )\n            AND (d.originator_id = $2 OR d.investor_id = $2)\n            AND st.transaction_type = $3\n            ORDER BY st.created_at DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "deal_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "transaction_type",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "originator_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "investor_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "deal_status",
+        "type_info": "Varchar"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "478290c27a97669e28c4252f1cb3aee2a36e7b57370a07ac0ff63185208db807"
+}

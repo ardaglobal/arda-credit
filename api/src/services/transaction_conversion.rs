@@ -6,7 +6,7 @@
 use anyhow::{anyhow, Context, Result};
 use arda_credit_db::DealTransactionDb;
 use arda_credit_lib::transactions::{DealTransaction, MetadataArray, TransactionType};
-use rust_decimal::prelude::*;
+use rust_decimal::prelude::{ToPrimitive, *};
 use std::str::FromStr;
 use tracing::{debug, warn};
 

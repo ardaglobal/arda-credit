@@ -368,7 +368,7 @@ pub async fn register_user_endpoint(
             // NEW: Record transaction for zkVM
             let tx_id = match state
                 .transaction_recording
-                .record_transaction(
+                .record_transaction_with_metadata(
                     TransactionType::UserRegistration,
                     identity.id,
                     None,                        // No deal_id for user registration
@@ -377,6 +377,9 @@ pub async fn register_user_endpoint(
                         "email": request.email.clone(),
                         "user_type": user_type_parsed.to_string(),
                     })),
+                    None, // originator_company_id
+                    None, // investor_company_id
+                    None, // collateral_id
                 )
                 .await
             {
@@ -450,7 +453,7 @@ pub async fn register_user_endpoint(
             // NEW: Record transaction for zkVM (also for re-registered users)
             let tx_id = match state
                 .transaction_recording
-                .record_transaction(
+                .record_transaction_with_metadata(
                     TransactionType::UserRegistration,
                     identity.id,
                     None,                        // No deal_id for user registration
@@ -460,6 +463,9 @@ pub async fn register_user_endpoint(
                         "user_type": user_type_parsed.to_string(),
                         "re_registered": true,
                     })),
+                    None, // originator_company_id
+                    None, // investor_company_id
+                    None, // collateral_id
                 )
                 .await
             {

@@ -1127,7 +1127,7 @@ pub async fn create_deal_endpoint(
 
     let tx_id = state
         .transaction_recording
-        .record_transaction(
+        .record_transaction_with_metadata(
             arda_credit_lib::TransactionType::DealOrigination,
             final_originator_id,
             Some(deal.id),
@@ -1140,6 +1140,9 @@ pub async fn create_deal_endpoint(
                 "interest_rate_bps": deal.interest_rate_bps,
                 "term_days": request.term_days,
             })),
+            Some(final_originator_id), // originator_company_id
+            final_investor_id,         // investor_company_id
+            deal.collateral_id,        // collateral_id
         )
         .await
         .map_err(|e| {
@@ -2477,7 +2480,7 @@ pub async fn make_payment_endpoint(
     // 8. Record transaction for zkVM
     let tx_id = state
         .transaction_recording
-        .record_transaction(
+        .record_transaction_with_metadata(
             TransactionType::DealPayment,
             payer_id,
             Some(deal_id),
@@ -2490,6 +2493,9 @@ pub async fn make_payment_endpoint(
                 "new_balance": new_balance.to_string(),
                 "status_transition": format!("{} → {}", deal.deal_status, new_status),
             })),
+            Some(deal.originator_id), // originator_company_id
+            deal.investor_id,         // investor_company_id
+            deal.collateral_id,       // collateral_id
         )
         .await
         .map_err(|e| {
@@ -2635,7 +2641,7 @@ pub async fn closeout_deal_endpoint(
     // 6. Record transaction for zkVM
     let tx_id = state
         .transaction_recording
-        .record_transaction(
+        .record_transaction_with_metadata(
             TransactionType::DealCloseout,
             investor_id,
             Some(deal_id),
@@ -2646,6 +2652,9 @@ pub async fn closeout_deal_endpoint(
                 "original_principal": deal.principal_amount.to_string(),
                 "final_status": "closed",
             })),
+            Some(deal.originator_id), // originator_company_id
+            deal.investor_id,         // investor_company_id
+            deal.collateral_id,       // collateral_id
         )
         .await
         .map_err(|e| {
