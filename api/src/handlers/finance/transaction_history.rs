@@ -22,11 +22,11 @@ pub struct TransactionHistoryQuery {
     pub limit: Option<i32>,
     /// Number of transactions to skip
     pub offset: Option<i32>,
-    /// Filter by transaction type (loan, deposit, withdrawal, pool)
+    /// Filter by transaction type (deal, deposit, withdrawal, pool)
     pub transaction_type: Option<String>,
     /// Filter by user address (for USDC operations)
     pub user_address: Option<String>,
-    /// Filter by user ID (for loan operations)
+    /// Filter by user ID (for deal operations)
     pub user_id: Option<Uuid>,
     /// Filter by pool ID (for pool operations)
     pub pool_id: Option<Uuid>,
@@ -59,7 +59,7 @@ pub struct TransactionHistoryItem {
     pub user_address: Option<String>,
     pub user_id: Option<Uuid>,
     pub pool_id: Option<Uuid>,
-    pub loan_id: Option<Uuid>,
+    pub deal_id: Option<Uuid>,
     pub credit_line_id: Option<Uuid>,
     pub block_number: Option<i64>,
     pub transaction_hash: Option<String>,
@@ -99,11 +99,11 @@ pub struct DateRange {
     get,
     path = "/api/v1/transactions/history",
     summary = "Get comprehensive transaction history",
-    description = "Retrieve transaction history across all operations including loans, deposits, withdrawals, and pool operations",
+    description = "Retrieve transaction history across all operations including deals, deposits, withdrawals, and pool operations",
     params(
         ("limit" = Option<i32>, Query, description = "Number of transactions to return (default: 50, max: 500)"),
         ("offset" = Option<i32>, Query, description = "Number of transactions to skip"),
-        ("transaction_type" = Option<String>, Query, description = "Filter by type: loan, deposit, withdrawal, pool"),
+        ("transaction_type" = Option<String>, Query, description = "Filter by type: deal, deposit, withdrawal, pool"),
         ("user_address" = Option<String>, Query, description = "Filter by user wallet address"),
         ("user_id" = Option<String>, Query, description = "Filter by user ID (UUID)"),
         ("pool_id" = Option<String>, Query, description = "Filter by pool ID (UUID)"),
@@ -221,10 +221,10 @@ async fn get_transaction_history_internal(
     let mut transactions = Vec::new();
     let total_count: i64;
 
-    // Get loan transactions
-    if should_include_transaction_type(&query.transaction_type, "loan") {
-        let loan_txs = get_loan_transactions(pool, &query, limit, offset).await?;
-        transactions.extend(loan_txs);
+    // Get deal state transactions
+    if should_include_transaction_type(&query.transaction_type, "deal") {
+        let deal_txs = get_deal_state_transactions(pool, &query, limit, offset).await?;
+        transactions.extend(deal_txs);
     }
 
     // Get USDC deposit transactions
@@ -270,7 +270,7 @@ async fn get_transaction_history_internal(
     Ok(response)
 }
 
-async fn get_loan_transactions(
+async fn get_deal_state_transactions(
     pool: &PgPool,
     query: &TransactionHistoryQuery,
     limit: i32,
@@ -279,50 +279,45 @@ async fn get_loan_transactions(
     let mut query_builder = sqlx::QueryBuilder::new(
         r#"
         SELECT
-            lt.id,
-            lt.transaction_type,
-            lt.amount,
-            lt.created_at,
-            lt.user_id as user_id,
-            lt.loan_id,
-            lt.pool_id,
-            lt.included_in_batch_id,
-            l.principal_amount,
-            l.loan_status,
-            i.email,
-            i.wallet_address,
-            p.amount as payment_amount,
-            p.processed_at
-        FROM loan_transactions lt
-        LEFT JOIN loans l ON lt.loan_id = l.id
-        LEFT JOIN users i ON lt.user_id = i.id
-        LEFT JOIN payments p ON lt.payment_id = p.id
-        WHERE 1=1
+            st.id,
+            st.transaction_type,
+            st.created_at,
+            st.user_id,
+            st.deal_id,
+            st.included_in_batch_id,
+            d.principal_amount,
+            d.outstanding_balance,
+            d.loan_status,
+            u.email,
+            u.wallet_address
+        FROM state_transactions st
+        LEFT JOIN deals d ON st.deal_id = d.id
+        LEFT JOIN users u ON st.user_id = u.id
+        WHERE st.transaction_type IN (
+            'deal_origination',
+            'deal_payment',
+            'deal_closeout'
+        )
         "#,
     );
 
     // Apply filters
     if let Some(user_id) = &query.user_id {
-        query_builder.push(" AND lt.user_id = ");
+        query_builder.push(" AND st.user_id = ");
         query_builder.push_bind(user_id);
     }
 
-    if let Some(pool_id) = &query.pool_id {
-        query_builder.push(" AND lt.pool_id = ");
-        query_builder.push_bind(pool_id);
-    }
-
     if let Some(start_date) = &query.start_date {
-        query_builder.push(" AND lt.created_at >= ");
+        query_builder.push(" AND st.created_at >= ");
         query_builder.push_bind(start_date);
     }
 
     if let Some(end_date) = &query.end_date {
-        query_builder.push(" AND lt.created_at <= ");
+        query_builder.push(" AND st.created_at <= ");
         query_builder.push_bind(end_date);
     }
 
-    query_builder.push(" ORDER BY lt.created_at DESC LIMIT ");
+    query_builder.push(" ORDER BY st.created_at DESC LIMIT ");
     query_builder.push_bind(limit);
     query_builder.push(" OFFSET ");
     query_builder.push_bind(offset);
@@ -332,8 +327,11 @@ async fn get_loan_transactions(
     let mut transactions = Vec::new();
     for row in rows {
         let transaction_type: String = row.get("transaction_type");
-        let amount: rust_decimal::Decimal = row.get("amount");
         let created_at: DateTime<Utc> = row.get("created_at");
+        
+        // Use principal_amount for deal transactions
+        // Note: For more accurate payment amounts, we would need to deserialize transaction_data
+        let amount = row.get::<Option<rust_decimal::Decimal>, _>("principal_amount").unwrap_or_default();
 
         transactions.push(TransactionHistoryItem {
             id: row.get::<Uuid, _>("id").to_string(),
@@ -342,9 +340,9 @@ async fn get_loan_transactions(
             amount: format!("{:.6}", amount),
             amount_wei: (amount * rust_decimal::Decimal::from(1_000_000)).to_string(),
             direction: match transaction_type.as_str() {
-                "loan_origination" => "internal",
-                "loan_payment" => "inflow",
-                "loan_closeout" => "internal",
+                "deal_origination" => "internal",
+                "deal_payment" => "inflow",
+                "deal_closeout" => "internal",
                 _ => "internal",
             }
             .to_string(),
@@ -352,17 +350,17 @@ async fn get_loan_transactions(
                 .get::<Option<i32>, _>("included_in_batch_id")
                 .map_or("pending".to_string(), |_| "processed".to_string()),
             created_at,
-            processed_at: row.get::<Option<DateTime<Utc>>, _>("processed_at"),
+            processed_at: None, // No processed_at in state_transactions
             user_address: row.get::<Option<String>, _>("wallet_address"),
             user_id: row.get::<Option<Uuid>, _>("user_id"),
-            pool_id: row.get::<Option<Uuid>, _>("pool_id"),
-            loan_id: row.get::<Option<Uuid>, _>("loan_id"),
+            pool_id: None,
+            deal_id: row.get::<Option<Uuid>, _>("deal_id"),
             credit_line_id: None,
             block_number: None,
             transaction_hash: None,
             description: format!(
-                "Loan {} - {}",
-                transaction_type.replace("loan_", ""),
+                "Deal {} - {}",
+                transaction_type.replace("deal_", "").replace("_", " "),
                 row.get::<Option<String>, _>("email")
                     .unwrap_or("Unknown".to_string())
             ),
@@ -438,7 +436,7 @@ async fn get_deposit_transactions(
             user_address: Some(row.get::<String, _>("user_address")),
             user_id: None,
             pool_id: None,
-            loan_id: None,
+            deal_id: None,
             credit_line_id: None,
             block_number: Some(row.get::<i64, _>("block_number")),
             transaction_hash: Some(row.get::<String, _>("transaction_hash")),
@@ -516,7 +514,7 @@ async fn get_withdrawal_transactions(
             user_address: Some(row.get::<String, _>("user_address")),
             user_id: None,
             pool_id: None,
-            loan_id: None,
+            deal_id: None,
             credit_line_id: None,
             block_number: Some(row.get::<i64, _>("block_number")),
             transaction_hash: Some(row.get::<String, _>("transaction_hash")),
@@ -538,12 +536,13 @@ async fn get_total_transaction_count(
 ) -> Result<i64, sqlx::Error> {
     let mut total = 0i64;
 
-    // Count loan transactions
-    if should_include_transaction_type(&query.transaction_type, "loan") {
-        let count =
-            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM loan_transactions WHERE 1=1")
-                .fetch_one(pool)
-                .await?;
+    // Count deal state transactions
+    if should_include_transaction_type(&query.transaction_type, "deal") {
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM state_transactions WHERE transaction_type IN ('deal_origination', 'deal_payment', 'deal_closeout')"
+        )
+        .fetch_one(pool)
+        .await?;
         total += count;
     }
 

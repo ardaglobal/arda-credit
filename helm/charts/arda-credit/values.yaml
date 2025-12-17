@@ -323,10 +323,10 @@ monitoring:
         arda_credit_metrics:
           query: |
             SELECT 
-              'loan_transactions_total' as metric,
+              'state_transactions_total' as metric,
               COUNT(*) as value,
               transaction_type as transaction_type
-            FROM loan_transactions 
+            FROM state_transactions 
             GROUP BY transaction_type
             UNION ALL
             SELECT 
@@ -341,8 +341,8 @@ monitoring:
               'all' as transaction_type
             FROM user_balances
           metrics:
-            - metric: "arda_credit_loan_transactions_total"
-              description: "Total number of loan transactions by type"
+            - metric: "arda_credit_state_transactions_total"
+              description: "Total number of state transactions by type"
               usage: "COUNTER"
               labels:
                 - "transaction_type"
