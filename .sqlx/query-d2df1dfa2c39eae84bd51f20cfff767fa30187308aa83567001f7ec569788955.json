@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id\n        FROM state_transactions\n        WHERE included_in_batch_id IS NULL\n        ORDER BY created_at ASC, id ASC\n        LIMIT $1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d2df1dfa2c39eae84bd51f20cfff767fa30187308aa83567001f7ec569788955"
+}

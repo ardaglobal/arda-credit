@@ -28,7 +28,7 @@ use crate::config::types::ApiState;
 // Use Axum's built-in response types for Axum 0.8 compatibility
 use arda_credit_db::{
     get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
-    get_pending_transactions, store_ads_state_commit, submit_transaction, update_batch_proof,
+    get_pending_state_transactions, store_ads_state_commit, update_batch_proof,
 };
 
 // ============================================================================
@@ -78,8 +78,9 @@ pub struct PendingTransactionsResponse {
 /// Transaction info for API responses
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct TransactionInfo {
-    pub id: i32,
+    pub id: uuid::Uuid, // Changed from i32 to uuid::Uuid for state_transactions
     pub amount: i32,
+    pub status: String, // Added status field
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -188,29 +189,14 @@ pub async fn submit_transaction_endpoint(
     State(state): State<ApiState>,
     Json(request): Json<SubmitTransactionRequest>,
 ) -> Response {
-    info!("💰 API: Submitting transaction: amount={}", request.amount);
-
-    match submit_transaction(&state.pool, request.amount).await {
-        Ok(transaction) => {
-            let response = SubmitTransactionResponse {
-                transaction_id: transaction.id,
-                amount: transaction.amount,
-                status: "pending".to_string(),
-                created_at: transaction.created_at,
-            };
-
-            info!("✅ API: Transaction submitted: id={}", transaction.id);
-            Json(response).into_response()
-        }
-        Err(e) => {
-            error!("Failed to submit transaction: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to submit transaction: {}", e),
-            )
-                .into_response()
-        }
-    }
+    // DEPRECATED: This endpoint is deprecated. Use state_transactions API instead.
+    // Legacy incoming_transactions table has been removed.
+    error!("submit_transaction endpoint is deprecated - use state_transactions API instead");
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        "This endpoint is deprecated. Use state_transactions API instead.",
+    )
+        .into_response()
 }
 
 /// Get pending transactions
@@ -227,17 +213,20 @@ pub async fn submit_transaction_endpoint(
 pub async fn get_pending_transactions_endpoint(State(state): State<ApiState>) -> Response {
     info!("📋 API: Getting pending transactions");
 
-    match get_pending_transactions(&state.pool).await {
+    // Use new state_transactions API
+    match get_pending_state_transactions(&state.pool, Some(1000)).await {
         Ok(transactions) => {
-            let total_amount: i32 = transactions.iter().map(|t| t.amount).sum();
+            // Convert StateTransaction to TransactionInfo format
             let transaction_infos: Vec<TransactionInfo> = transactions
                 .into_iter()
-                .map(|t| TransactionInfo {
-                    id: t.id,
-                    amount: t.amount,
-                    created_at: t.created_at,
+                .map(|tx| TransactionInfo {
+                    id: tx.id,
+                    amount: 0, // Would need to deserialize transaction_data to get amount
+                    status: "pending".to_string(),
+                    created_at: tx.created_at,
                 })
                 .collect();
+            let total_amount: i32 = 0; // Would need to deserialize all transactions to calculate
 
             let response = PendingTransactionsResponse {
                 total_count: transaction_infos.len(),

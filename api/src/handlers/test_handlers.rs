@@ -33,12 +33,15 @@ pub async fn test_transaction_recording_endpoint(
 
     match state
         .transaction_recording
-        .record_transaction(
+        .record_transaction_with_metadata(
             TransactionType::UserRegistration,
             user_id,
             None,
             rust_decimal::Decimal::ZERO,
             metadata,
+            None, // originator_company_id
+            None, // investor_company_id
+            None, // collateral_id
         )
         .await
     {

@@ -14,11 +14,19 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
 use arda_credit_db::{
-    create_batch_from_deal_transactions, get_pending_deal_transactions, store_ads_state_commit,
-    AuthenticatedDataStructure, DealTransactionDb, IncomingTransaction, IndexedMerkleTreeADS,
-    LoanOperation, ProofBatch, StateTransition,
+    create_batch_from_state_transactions,
+    get_pending_state_transactions,
+    processing::IncomingTransaction, // Legacy type for backward compatibility
+    store_ads_state_commit,
+    AuthenticatedDataStructure,
+    DealTransactionDb,
+    IndexedMerkleTreeADS,
+    LoanOperation,
+    ProofBatch,
+    StateTransition,
 };
 use chrono;
+use rust_decimal::prelude::ToPrimitive;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
@@ -263,15 +271,15 @@ impl UnifiedBatchService {
 
         info!("🔄 UNIFIED: Creating batch via {} trigger", trigger_source);
 
-        // Step 1: Get pending deal transactions (NEW: using deal_transactions table)
-        let pending_transactions = match get_pending_deal_transactions(&self.pool, Some(1000)).await
-        {
-            Ok(transactions) => transactions,
-            Err(e) => return Err(format!("Failed to get pending deal transactions: {}", e)),
-        };
+        // Step 1: Get pending state transactions (using state_transactions table)
+        let pending_transactions =
+            match arda_credit_db::get_pending_state_transactions(&self.pool, Some(1000)).await {
+                Ok(transactions) => transactions,
+                Err(e) => return Err(format!("Failed to get pending state transactions: {}", e)),
+            };
 
         if pending_transactions.is_empty() {
-            debug!("No pending deal transactions to batch");
+            debug!("No pending state transactions to batch");
             return Ok(None);
         }
 
@@ -293,7 +301,24 @@ impl UnifiedBatchService {
                 .min(pending_transactions.len())
         };
 
-        let batch_transactions = &pending_transactions[..batch_size];
+        let batch_state_transactions = &pending_transactions[..batch_size];
+
+        // Convert StateTransaction to DealTransactionDb for backward compatibility
+        // TODO: Refactor create_batch_entry to accept StateTransaction directly
+        let batch_transactions: Vec<DealTransactionDb> =
+            match arda_credit_db::get_pending_deal_transactions(&self.pool, Some(batch_size as i64))
+                .await
+            {
+                Ok(txs) => {
+                    // Filter to only the transactions we want (by ID)
+                    let batch_ids: std::collections::HashSet<uuid::Uuid> =
+                        batch_state_transactions.iter().map(|t| t.id).collect();
+                    txs.into_iter()
+                        .filter(|tx| batch_ids.contains(&tx.id))
+                        .collect()
+                }
+                Err(e) => return Err(format!("Failed to convert state transactions: {}", e)),
+            };
 
         info!(
             "📦 UNIFIED: Processing {} transactions through unified ADS integration",
@@ -309,7 +334,7 @@ impl UnifiedBatchService {
 
         // Step 4: Create batch entry
         info!("📋 UNIFIED: Creating batch entry in database");
-        let batch = match self.create_batch_entry(batch_transactions).await {
+        let batch = match self.create_batch_entry(&batch_transactions).await {
             Ok(Some(batch)) => batch,
             Ok(None) => {
                 debug!("Failed to create batch entry");
@@ -337,7 +362,7 @@ impl UnifiedBatchService {
         );
 
         let mut nullifiers = Vec::new();
-        for transaction in batch_transactions {
+        for transaction in &batch_transactions {
             let nullifier = self.transaction_to_nullifier(transaction);
             nullifiers.push(nullifier);
         }
@@ -430,15 +455,16 @@ impl UnifiedBatchService {
         Ok(Some(result))
     }
 
-    /// Create batch entry in database (temporary - uses existing logic)
-    /// TODO: This should be replaced with pure database operations once SQL function is deprecated
+    /// Create batch entry in database
+    /// Accepts either DealTransactionDb (legacy) or StateTransaction (new)
     async fn create_batch_entry(
         &self,
         transactions: &[DealTransactionDb],
     ) -> Result<Option<ProofBatch>, String> {
-        // Use new deal transactions batch creation (marks deal_transactions as batched)
+        // Use new state transactions batch creation (marks state_transactions as batched)
+        // Note: create_batch_from_deal_transactions now delegates to create_batch_from_state_transactions
         let tx_ids: Vec<uuid::Uuid> = transactions.iter().map(|t| t.id).collect();
-        match create_batch_from_deal_transactions(
+        match arda_credit_db::create_batch_from_deal_transactions(
             &self.pool,
             transactions.len() as i32,
             Some(tx_ids),
@@ -628,23 +654,29 @@ impl UnifiedBatchService {
         self.categorize_loan_operations(&validated_operations, metrics);
 
         // Step 2: Create batch entry
-        let batch =
-            match arda_credit_db::create_batch(&self.pool, Some(validated_operations.len() as i32))
-                .await
-            {
-                Ok(Some(batch)) => batch,
-                Ok(None) => {
-                    debug!("Failed to create optimized loan batch entry");
-                    return Ok(None);
-                }
-                Err(e) => {
-                    error!("Failed to create optimized loan batch entry: {}", e);
-                    return Err(format!(
-                        "Failed to create optimized loan batch entry: {}",
-                        e
-                    ));
-                }
-            };
+        // Note: create_batch_from_state_transactions requires transaction IDs, but we have DealTransactionDb
+        // We need to convert to state transactions first or use a different approach
+        // For now, use the legacy create_batch_from_deal_transactions which handles the conversion
+        let batch = match arda_credit_db::create_batch_from_deal_transactions(
+            &self.pool,
+            validated_operations.len() as i32,
+            None,
+        )
+        .await
+        {
+            Ok(Some(batch)) => batch,
+            Ok(None) => {
+                debug!("Failed to create optimized loan batch entry");
+                return Ok(None);
+            }
+            Err(e) => {
+                error!("Failed to create optimized loan batch entry: {}", e);
+                return Err(format!(
+                    "Failed to create optimized loan batch entry: {}",
+                    e
+                ));
+            }
+        };
 
         info!(
             "✅ OPTIMIZED: Batch entry created: id={}, validated_ops={}",
@@ -806,18 +838,22 @@ impl UnifiedBatchService {
         }
 
         // Step 1: Create batch entry
-        let batch =
-            match arda_credit_db::create_batch(&self.pool, Some(total_operations as i32)).await {
-                Ok(Some(batch)) => batch,
-                Ok(None) => {
-                    debug!("Failed to create mixed batch entry");
-                    return Ok(None);
-                }
-                Err(e) => {
-                    error!("Failed to create mixed batch entry: {}", e);
-                    return Err(format!("Failed to create mixed batch entry: {}", e));
-                }
-            };
+        let batch = match arda_credit_db::create_batch_from_state_transactions(
+            &self.pool,
+            total_operations as i32,
+        )
+        .await
+        {
+            Ok(Some(batch)) => batch,
+            Ok(None) => {
+                debug!("Failed to create mixed batch entry");
+                return Ok(None);
+            }
+            Err(e) => {
+                error!("Failed to create mixed batch entry: {}", e);
+                return Err(format!("Failed to create mixed batch entry: {}", e));
+            }
+        };
 
         info!("✅ UNIFIED: Mixed batch entry created: id={}", batch.id);
 
@@ -1499,21 +1535,25 @@ impl UnifiedBatchService {
         self.categorize_loan_operations(&validated_loan_ops, metrics);
 
         // Step 2: Create batch entry
-        let batch =
-            match arda_credit_db::create_batch(&self.pool, Some(total_operations as i32)).await {
-                Ok(Some(batch)) => batch,
-                Ok(None) => {
-                    debug!("Failed to create optimized mixed batch entry");
-                    return Ok(None);
-                }
-                Err(e) => {
-                    error!("Failed to create optimized mixed batch entry: {}", e);
-                    return Err(format!(
-                        "Failed to create optimized mixed batch entry: {}",
-                        e
-                    ));
-                }
-            };
+        let batch = match arda_credit_db::create_batch_from_state_transactions(
+            &self.pool,
+            total_operations as i32,
+        )
+        .await
+        {
+            Ok(Some(batch)) => batch,
+            Ok(None) => {
+                debug!("Failed to create optimized mixed batch entry");
+                return Ok(None);
+            }
+            Err(e) => {
+                error!("Failed to create optimized mixed batch entry: {}", e);
+                return Err(format!(
+                    "Failed to create optimized mixed batch entry: {}",
+                    e
+                ));
+            }
+        };
 
         info!("✅ OPTIMIZED: Mixed batch entry created: id={}", batch.id);
 

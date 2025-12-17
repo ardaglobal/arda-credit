@@ -1,9 +1,19 @@
 use crate::ads::merkle_tree::IndexedMerkleTree;
-use crate::{DbError, DbResult, IncomingTransaction};
+use crate::{DbError, DbResult};
 use sqlx::{PgPool, Row};
 use std::time::Duration;
 use tokio::time::interval;
 use tracing::{debug, error, info, warn};
+
+// Legacy IncomingTransaction type (deprecated - incoming_transactions table was dropped)
+// This processor is legacy code and may need to be updated to use state_transactions
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct IncomingTransaction {
+    pub id: i32,
+    pub amount: i32,
+    pub included_in_batch_id: Option<i32>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
 
 // ============================================================================
 // TRANSACTION TYPE PREFIXES FOR NULLIFIER NAMESPACE ISOLATION

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE state_transactions \n            SET included_in_batch_id = NULL\n            WHERE included_in_batch_id IS NOT NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "f2023d3d7534b2158ae5a75228f0af212c9a327fd2eb75bd99940713caa04196"
+}

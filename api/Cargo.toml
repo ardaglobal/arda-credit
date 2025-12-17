@@ -37,6 +37,7 @@ alloy-sol-types    = { workspace = true }
 anyhow             = { workspace = true }
 arda-credit-db     = { path = "../db", package = "db" }
 arda-credit-lib    = { path = "../lib", package = "lib", features = [ "sp1" ] }
+bincode            = { workspace = true, features = [ "serde" ] }
 ethereum-client    = { path = "../ethereum-client" }
 sindri             = { workspace = true, features = [ "sp1-v5" ] }
 sp1-sdk            = { workspace = true }

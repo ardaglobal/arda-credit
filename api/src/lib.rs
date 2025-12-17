@@ -85,7 +85,7 @@ pub use handlers::*;
 // Re-export database types that the API uses
 pub use arda_credit_db::{
     // Credit line operations
-    create_batch,
+    // create_batch, // Removed - use create_batch_from_state_transactions instead
     create_deal,
     get_all_batches,
     get_batch_by_id,
@@ -96,7 +96,7 @@ pub use arda_credit_db::{
     init_db,
     list_deals,
     store_ads_state_commit,
-    submit_transaction,
+    // submit_transaction, // Removed - use state_transactions instead
     update_batch_proof,
     update_deal,
     AdsStateCommit,
@@ -109,6 +109,6 @@ pub use arda_credit_db::{
     DbError,
     DbResult,
     // New batch processing types
-    IncomingTransaction,
+    // IncomingTransaction, // Removed - use state_transactions instead
     ProofBatch,
 };

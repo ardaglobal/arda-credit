@@ -202,7 +202,7 @@ pub async fn receive_detection_result(
     // Record detection update in deal_transactions for zkVM proof generation
     if let Err(e) = state
         .transaction_recording
-        .record_transaction(
+        .record_transaction_with_metadata(
             arda_credit_lib::transactions::TransactionType::CollateralDetectionUpdate,
             Uuid::nil(), // System transaction (not triggered by specific user)
             None,        // No specific deal (collateral-level event)
@@ -214,6 +214,9 @@ pub async fn receive_detection_result(
                 "analyzed_at": result.analyzed_at,
                 "has_concerning_matches": has_concerning_matches,
             })),
+            None,                // originator_company_id
+            None,                // investor_company_id
+            Some(collateral_id), // collateral_id
         )
         .await
     {

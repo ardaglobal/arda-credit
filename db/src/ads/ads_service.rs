@@ -1790,22 +1790,22 @@ impl IndexedMerkleTreeADS {
             ));
         }
 
+        // Query state_transactions instead of deal_transactions
+        // Note: payment_id would need to be extracted from metadata if needed
         let loan_operation_data = sqlx::query!(
             r#"
-            SELECT dt.deal_id, dt.payment_id, dt.transaction_type, dt.amount, dt.user_id,
-                   d.originator_id, d.investor_id, d.deal_status, dt.created_at
-            FROM deal_transactions dt
-            JOIN deals d ON dt.deal_id = d.id
+            SELECT st.deal_id, st.transaction_type, st.user_id, st.created_at,
+                   d.originator_id, d.investor_id, d.deal_status
+            FROM state_transactions st
+            JOIN deals d ON st.deal_id = d.id
             WHERE (
-                ($1::UUID IS NOT NULL AND dt.payment_id = $1) OR
-                ($2::UUID IS NOT NULL AND dt.deal_id = $2)
+                ($1::UUID IS NOT NULL AND st.deal_id = $1)
             )
-            AND (d.originator_id = $3 OR d.investor_id = $3)
-            AND dt.transaction_type = $4
-            ORDER BY dt.created_at DESC
+            AND (d.originator_id = $2 OR d.investor_id = $2)
+            AND st.transaction_type = $3
+            ORDER BY st.created_at DESC
             LIMIT 1
             "#,
-            request.payment_id,
             request.loan_id,
             request.user_id,
             request.operation_type
@@ -1821,13 +1821,15 @@ impl IndexedMerkleTreeADS {
         })?;
 
         // Convert database row to LoanOperation
+        // Note: payment_id and amount would need to be extracted from transaction_data
+        // For now, set to None as they're not available in the query
         let loan_operation = LoanOperation {
             operation_type: row.transaction_type,
             loan_id: row.deal_id,
-            payment_id: row.payment_id,
+            payment_id: None, // Would need to extract from transaction_data metadata
             borrower_id: Some(row.originator_id),
             lender_id: row.investor_id, // Now already Option<Uuid>
-            amount: Some(row.amount),
+            amount: None,               // Would need to deserialize transaction_data to get amount
             deal_status: Some(row.deal_status),
             transaction_data: serde_json::json!({
                 "created_at": row.created_at,

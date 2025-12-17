@@ -50,15 +50,16 @@ use db::{
         batch_upsert_market_value_metrics, batch_upsert_pie_chart_metrics, clear_all_metrics,
         CreateMarketValueMetricRequest, CreatePieChartMetricRequest,
     },
-    create_identity, get_identity_by_email, init_db_with_url, list_deals, Collateral, Deal, User,
+    create_identity, create_state_transaction, get_identity_by_email, init_db_with_url, list_deals,
+    Collateral, Deal, User,
 };
-// No direct lib import - use db crate's hash function instead
+use lib::hash_uuid;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use reqwest::Client;
+use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 use std::{collections::HashMap, env, str::FromStr};
 use uuid::Uuid;
 
@@ -593,12 +594,8 @@ async fn create_deal_with_custom_dates(
 // DEAL TRANSACTION HISTORY FUNCTIONS
 // ============================================================================
 
-/// Generate SHA256 hash of a UUID for deal_transactions table
-fn hash_uuid(uuid: &Uuid) -> Vec<u8> {
-    let mut hasher = Sha256::new();
-    hasher.update(uuid.as_bytes());
-    hasher.finalize().to_vec()
-}
+// Note: Use lib::hash_uuid instead of local hash_uuid function
+// This function is kept for backward compatibility but should use lib::hash_uuid
 
 /// Create a company_registration transaction for zkVM state
 async fn create_company_registration_transaction(
@@ -606,8 +603,10 @@ async fn create_company_registration_transaction(
     company: &Company,
     creator_user_id: Uuid,
 ) -> Result<(), sqlx::Error> {
-    let transaction_id = Uuid::new_v4();
-    let transaction_id_hash = hash_uuid(&transaction_id);
+    use lib::{hash_uuid, DealTransaction, MetadataArray, TransactionType};
+
+    let transaction_id_uuid = Uuid::new_v4();
+    let transaction_id = hash_uuid(&transaction_id_uuid);
     let user_id_hash = hash_uuid(&creator_user_id);
     let company_id_hash = hash_uuid(&company.id);
 
@@ -627,28 +626,39 @@ async fn create_company_registration_transaction(
         "created_by_user": creator_user_id.to_string(),
     });
 
-    sqlx::query(
-        r#"
-        INSERT INTO deal_transactions (
-            id, transaction_id_hash, user_id_hash, deal_id_hash,
-            transaction_type, amount, user_id, deal_id, payment_id,
-            metadata, created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        "#,
+    // Create DealTransaction
+    let deal_transaction = DealTransaction {
+        transaction_id,
+        user_id: user_id_hash,
+        originator_company_id: [0u8; 32],
+        investor_company_id: [0u8; 32],
+        deal_id: company_id_hash, // Store company hash in deal_id for company operations
+        transaction_type: TransactionType::CompanyRegistration,
+        amount: 0,
+        created_at: company.created_at.timestamp() as u64,
+        metadata: MetadataArray::from_bytes(
+            &serde_json::to_string(&metadata_json)
+                .unwrap_or_default()
+                .into_bytes(),
+        ),
+    };
+
+    // Serialize transaction data
+    let transaction_data =
+        bincode::serde::encode_to_vec(&deal_transaction, bincode::config::standard())
+            .map_err(|e| sqlx::Error::Protocol(format!("Serialization error: {}", e).into()))?;
+
+    // Insert into state_transactions
+    create_state_transaction(
+        pool,
+        "company_registration",
+        &transaction_data,
+        Some(creator_user_id),
+        None,             // No deal_id for company registration
+        Some(company.id), // Store company as originator_company_id
+        None,
+        None, // No collateral_id
     )
-    .bind(transaction_id)
-    .bind(transaction_id_hash)
-    .bind(user_id_hash)
-    .bind(Some(company_id_hash)) // Store company hash in deal_id_hash for company operations
-    .bind("company_registration")
-    .bind(rust_decimal::Decimal::ZERO)
-    .bind(creator_user_id)
-    .bind(None::<Uuid>) // No deal_id for company registration
-    .bind(None::<Uuid>) // No payment_id
-    .bind(metadata_json)
-    .bind(company.created_at)
-    .execute(pool)
     .await?;
 
     Ok(())
@@ -666,8 +676,10 @@ async fn create_deal_transaction_record(
     originator_id: Option<Uuid>, // For deal_origination: the originator company user
     investor_id: Option<Uuid>,   // For deal_origination: the investor company user
 ) -> Result<(), sqlx::Error> {
-    let transaction_id = Uuid::new_v4();
-    let transaction_id_hash = hash_uuid(&transaction_id);
+    use lib::{hash_uuid, DealTransaction, MetadataArray, TransactionType};
+
+    let transaction_id_uuid = Uuid::new_v4();
+    let transaction_id = hash_uuid(&transaction_id_uuid);
     // Use a dummy UUID for hash if user_id is None
     let dummy_uuid = Uuid::nil();
     let user_id_hash = hash_uuid(&user_id.unwrap_or(dummy_uuid));
@@ -694,28 +706,54 @@ async fn create_deal_transaction_record(
         })
     };
 
-    sqlx::query(
-        r#"
-        INSERT INTO deal_transactions (
-            id, transaction_id_hash, user_id_hash, deal_id_hash,
-            transaction_type, amount, user_id, deal_id, payment_id,
-            metadata, created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        "#,
+    // Convert transaction type string to TransactionType enum
+    let tx_type = match transaction_type {
+        "deal_origination" => TransactionType::DealOrigination,
+        "deal_payment" => TransactionType::DealPayment,
+        "deal_closeout" => TransactionType::DealCloseout,
+        _ => {
+            return Err(sqlx::Error::Protocol(
+                format!("Unknown transaction type: {}", transaction_type).into(),
+            ))
+        }
+    };
+
+    // Convert amount to u64 (6 decimal places)
+    let amount_u64 = (amount * Decimal::from(1_000_000)).to_u64().unwrap_or(0);
+
+    // Create DealTransaction
+    let deal_transaction = DealTransaction {
+        transaction_id,
+        user_id: user_id_hash,
+        originator_company_id: [0u8; 32], // Would need to get from deal if available
+        investor_company_id: [0u8; 32],   // Would need to get from deal if available
+        deal_id: deal_id_hash,
+        transaction_type: tx_type,
+        amount: amount_u64,
+        created_at: created_at.timestamp() as u64,
+        metadata: MetadataArray::from_bytes(
+            &serde_json::to_string(&metadata_json)
+                .unwrap_or_default()
+                .into_bytes(),
+        ),
+    };
+
+    // Serialize transaction data
+    let transaction_data =
+        bincode::serde::encode_to_vec(&deal_transaction, bincode::config::standard())
+            .map_err(|e| sqlx::Error::Protocol(format!("Serialization error: {}", e).into()))?;
+
+    // Insert into state_transactions
+    create_state_transaction(
+        pool,
+        transaction_type,
+        &transaction_data,
+        user_id,
+        Some(deal_id),
+        None, // originator_company_id - would need to get from deal
+        None, // investor_company_id - would need to get from deal
+        None, // collateral_id
     )
-    .bind(transaction_id)
-    .bind(transaction_id_hash)
-    .bind(user_id_hash)
-    .bind(deal_id_hash)
-    .bind(transaction_type)
-    .bind(amount)
-    .bind(user_id)
-    .bind(deal_id)
-    .bind(payment_id)
-    .bind(metadata_json)
-    .bind(created_at)
-    .execute(pool)
     .await?;
 
     Ok(())
@@ -1185,14 +1223,11 @@ async fn trigger_regenesis_reset(pool: &sqlx::PgPool) -> Result<(), Box<dyn std:
         "timestamp": chrono::Utc::now().to_rfc3339(),
     });
 
-    // Hash UUIDs using sha256 (matching lib::hash_uuid implementation)
-    let mut tx_hasher = Sha256::new();
-    tx_hasher.update(regenesis_tx_id.as_bytes());
-    let tx_id_hash = tx_hasher.finalize();
+    use lib::hash_uuid;
 
-    let mut user_hasher = Sha256::new();
-    user_hasher.update(system_user.id.as_bytes());
-    let user_id_hash = user_hasher.finalize();
+    // Hash UUIDs using lib::hash_uuid (matching zkVM implementation)
+    let tx_id_hash = hash_uuid(&regenesis_tx_id);
+    let user_id_hash = hash_uuid(&system_user.id);
 
     // IMPORTANT: Use minimum valid timestamp (2000-01-01) to ensure StateRegenesis is processed FIRST
     // when transactions are sorted chronologically. Historical deal transactions
@@ -1203,30 +1238,41 @@ async fn trigger_regenesis_reset(pool: &sqlx::PgPool) -> Result<(), Box<dyn std:
         .expect("Valid minimum timestamp")
         .and_utc();
 
-    // Use explicit parameter binding with query() instead of query!() to ensure correct order
-    sqlx::query(
-        r#"
-        INSERT INTO deal_transactions (
-            id, transaction_id_hash, user_id_hash, deal_id_hash,
-            transaction_type, amount, user_id, deal_id, payment_id,
-            included_in_batch_id, metadata, created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        "#,
+    use lib::{DealTransaction, MetadataArray, TransactionType};
+
+    // Create DealTransaction for state_regenesis
+    let deal_transaction = DealTransaction {
+        transaction_id: tx_id_hash,
+        user_id: user_id_hash,
+        originator_company_id: [0u8; 32],
+        investor_company_id: [0u8; 32],
+        deal_id: [0u8; 32], // NULL for state_regenesis
+        transaction_type: TransactionType::StateRegenesis,
+        amount: 0,
+        created_at: min_valid_timestamp.timestamp() as u64,
+        metadata: MetadataArray::from_bytes(
+            &serde_json::to_string(&metadata)
+                .unwrap_or_default()
+                .into_bytes(),
+        ),
+    };
+
+    // Serialize transaction data
+    let transaction_data =
+        bincode::serde::encode_to_vec(&deal_transaction, bincode::config::standard())
+            .map_err(|e| sqlx::Error::Protocol(format!("Serialization error: {}", e).into()))?;
+
+    // Insert into state_transactions
+    create_state_transaction(
+        pool,
+        "state_regenesis",
+        &transaction_data,
+        Some(system_user.id),
+        None, // No deal_id for state_regenesis
+        None,
+        None,
+        None, // No collateral_id
     )
-    .bind(regenesis_tx_id) // $1 = id
-    .bind(tx_id_hash.as_slice()) // $2 = transaction_id_hash
-    .bind(user_id_hash.as_slice()) // $3 = user_id_hash
-    .bind(None::<Vec<u8>>) // $4 = deal_id_hash (NULL)
-    .bind("state_regenesis") // $5 = transaction_type
-    .bind(rust_decimal::Decimal::ZERO) // $6 = amount
-    .bind(system_user.id) // $7 = user_id
-    .bind(None::<Uuid>) // $8 = deal_id (NULL)
-    .bind(None::<Uuid>) // $9 = payment_id (NULL)
-    .bind(None::<i32>) // $10 = included_in_batch_id (NULL)
-    .bind(metadata) // $11 = metadata
-    .bind(min_valid_timestamp) // $12 = created_at
-    .execute(pool)
     .await?;
 
     println!("  ✅ Created re-genesis transaction: {}", regenesis_tx_id);
@@ -1254,10 +1300,10 @@ async fn trigger_regenesis_reset(pool: &sqlx::PgPool) -> Result<(), Box<dyn std:
     // 3. Reset all transactions to pending
     let tx_result = sqlx::query!(
         r#"
-        UPDATE deal_transactions 
-        SET included_in_batch_id = NULL
-        WHERE included_in_batch_id IS NOT NULL
-        "#
+            UPDATE state_transactions 
+            SET included_in_batch_id = NULL
+            WHERE included_in_batch_id IS NOT NULL
+            "#
     )
     .execute(pool)
     .await?;
