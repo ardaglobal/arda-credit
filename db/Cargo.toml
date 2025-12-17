@@ -20,6 +20,7 @@ default    = [ "tikv-jemallocator" ]
 test-utils = [  ]
 
 [dependencies]
+bincode = { workspace = true, features = [ "serde" ] }
 chrono = { workspace = true, features = [ "serde" ] }
 lib = { path = "../lib" }
 rust_decimal = { workspace = true }

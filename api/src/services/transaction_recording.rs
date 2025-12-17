@@ -1,6 +1,6 @@
 //! Transaction Recording Service
 //!
-//! This service records transactions in the deal_transactions table for zkVM batch processing.
+//! This service records transactions in the state_transactions table for zkVM batch processing.
 //! It provides a consistent interface for all API endpoints to create transaction records
 //! that will later be batched and proven via zero-knowledge proofs.
 //!
@@ -29,8 +29,8 @@
 //! // Get service from ApiState
 //! let tx_service = state.transaction_recording.clone();
 //!
-//! // Record a transaction
-//! let tx_id = tx_service.record_transaction(
+//! // Record a transaction using the convenience method
+//! let tx_id = tx_service.record_transaction_with_metadata(
 //!     TransactionType::DealOrigination,
 //!     user_id,
 //!     Some(deal_id),
@@ -39,6 +39,9 @@
 //!         "investor_id": "...",
 //!         "interest_rate_bps": 500,
 //!     })),
+//!     None, // originator_company_id
+//!     None, // investor_company_id
+//!     None, // collateral_id
 //! ).await?;
 //! # Ok(())
 //! # }
@@ -72,6 +75,8 @@ use tracing::{error, info, instrument};
 use uuid::Uuid;
 
 use arda_credit_db::DbError;
+use arda_credit_lib::{DealTransaction, MetadataArray};
+use rust_decimal::prelude::ToPrimitive;
 
 /// Service for recording transactions for zkVM processing
 #[derive(Clone)]
@@ -137,114 +142,292 @@ impl TransactionRecordingService {
 
     /// Record a transaction for zkVM batch processing
     ///
-    /// Creates a record in the deal_transactions table that will later be
-    /// picked up by the batch processor, included in a zkVM proof, and
-    /// posted to the smart contract.
+    /// Creates a record in the state_transactions table with serialized DealTransaction data.
+    /// The transaction will later be picked up by the batch processor, included in a zkVM proof,
+    /// and posted to the smart contract.
     ///
     /// # Arguments
-    /// * `transaction_type` - Type of transaction (UserRegistration, DealOrigination, etc.)
-    /// * `user_id` - UUID of the user initiating the transaction
-    /// * `deal_id` - Optional UUID of the deal (None for non-deal transactions)
-    /// * `amount` - Transaction amount (Decimal::ZERO for non-monetary transactions)
-    /// * `metadata` - Optional JSON metadata with additional context
+    /// * `deal_transaction` - Complete DealTransaction struct from arda-credit-lib
     ///
     /// # Returns
-    /// * `Ok(Uuid)` - The transaction_id that was created
+    /// * `Ok(Uuid)` - The database ID that was created
     /// * `Err(DbError)` - Database error if insertion fails
     ///
     /// # Example
     /// ```rust,no_run
     /// use api::services::TransactionRecordingService;
-    /// use arda_credit_lib::TransactionType;
-    /// use serde_json::json;
-    /// use rust_decimal::Decimal;
+    /// use arda_credit_lib::{DealTransaction, TransactionType, MetadataArray};
     /// use uuid::Uuid;
     ///
-    /// # async fn example(pool: sqlx::PgPool, user_id: Uuid) -> Result<(), Box<dyn std::error::Error>> {
+    /// # async fn example(pool: sqlx::PgPool) -> Result<(), Box<dyn std::error::Error>> {
     /// let tx_service = TransactionRecordingService::new(pool.clone());
-    /// let tx_id = tx_service.record_transaction(
-    ///     TransactionType::UserRegistration,
+    ///
+    /// let deal_tx = DealTransaction {
+    ///     transaction_id: [0u8; 32],
+    ///     user_id: [0u8; 32],
+    ///     originator_company_id: [0u8; 32],
+    ///     investor_company_id: [0u8; 32],
+    ///     deal_id: [0u8; 32],
+    ///     transaction_type: TransactionType::UserRegistration,
+    ///     amount: 0,
+    ///     created_at: 0,
+    ///     metadata: MetadataArray::empty(),
+    /// };
+    ///
+    /// // record_transaction requires the DealTransaction plus extracted UUIDs for querying
+    /// let user_id = Some(Uuid::new_v4());
+    /// let deal_id = None;
+    /// let originator_company_id = None;
+    /// let investor_company_id = None;
+    /// let collateral_id = None;
+    ///
+    /// let db_id = tx_service.record_transaction(
+    ///     deal_tx,
     ///     user_id,
-    ///     None,
-    ///     Decimal::ZERO,
-    ///     Some(json!({
-    ///         "email": "user@example.com",
-    ///         "user_type": "investor"
-    ///     })),
+    ///     deal_id,
+    ///     originator_company_id,
+    ///     investor_company_id,
+    ///     collateral_id,
     /// ).await?;
     /// # Ok(())
     /// # }
     /// ```
-    #[instrument(skip(self, metadata), level = "info")]
+    /// Record a transaction for zkVM batch processing
+    ///
+    /// Creates a record in the state_transactions table with serialized DealTransaction data.
+    /// The transaction will later be picked up by the batch processor, included in a zkVM proof,
+    /// and posted to the smart contract.
+    ///
+    /// # Arguments
+    /// * `deal_transaction` - Complete DealTransaction struct from arda-credit-lib
+    /// * `original_user_id` - Original user UUID (before hashing) for query column
+    /// * `original_deal_id` - Original deal UUID (before hashing) for query column, if applicable
+    /// * `original_originator_company_id` - Original originator company UUID for query column, if applicable
+    /// * `original_investor_company_id` - Original investor company UUID for query column, if applicable
+    /// * `original_collateral_id` - Original collateral UUID for query column, if applicable
+    ///
+    /// # Returns
+    /// * `Ok(Uuid)` - The database ID that was created
+    /// * `Err(DbError)` - Database error if insertion fails
+    #[instrument(skip(self, deal_transaction), level = "info")]
     pub async fn record_transaction(
+        &self,
+        deal_transaction: DealTransaction,
+        original_user_id: Option<Uuid>,
+        original_deal_id: Option<Uuid>,
+        original_originator_company_id: Option<Uuid>,
+        original_investor_company_id: Option<Uuid>,
+        original_collateral_id: Option<Uuid>,
+    ) -> Result<Uuid, DbError> {
+        let transaction_type = deal_transaction.transaction_type.to_string();
+
+        // Serialize the DealTransaction using bincode
+        let transaction_data =
+            bincode::serde::encode_to_vec(&deal_transaction, bincode::config::standard()).map_err(
+                |e| {
+                    error!("Failed to serialize transaction: {}", e);
+                    DbError::ValidationError(format!("Serialization error: {}", e))
+                },
+            )?;
+
+        // Insert into state_transactions table with extracted UUIDs for querying
+        let db_id = arda_credit_db::create_state_transaction(
+            &self.pool,
+            &transaction_type,
+            &transaction_data,
+            original_user_id,
+            original_deal_id,
+            original_originator_company_id,
+            original_investor_company_id,
+            original_collateral_id,
+        )
+        .await?;
+
+        info!("Recorded {} transaction: db_id={}", transaction_type, db_id);
+
+        // Record metrics
+        metrics::counter!(
+            "zkvm_transactions_recorded_total",
+            "type" => transaction_type
+        )
+        .increment(1);
+
+        Ok(db_id)
+    }
+
+    /// Helper to create and record a transaction from simplified inputs
+    ///
+    /// This is a convenience method for API handlers that constructs a complete
+    /// DealTransaction struct and records it.
+    ///
+    /// # Arguments
+    /// * `transaction_type` - Type of transaction
+    /// * `user_id` - UUID of the user initiating the transaction
+    /// * `deal_id` - Optional UUID of the deal
+    /// * `amount` - Transaction amount (Decimal::ZERO for non-monetary)
+    /// * `originator_company_id` - Optional originator company UUID
+    /// * `investor_company_id` - Optional investor company UUID
+    ///
+    /// # Returns
+    /// * `Ok(Uuid)` - The database ID that was created
+    /// * `Err(DbError)` - Database error if insertion fails
+    #[instrument(skip(self), level = "info")]
+    pub async fn record_transaction_simple(
+        &self,
+        transaction_type: arda_credit_lib::TransactionType,
+        user_id: Uuid,
+        deal_id: Option<Uuid>,
+        amount: rust_decimal::Decimal,
+        originator_company_id: Option<Uuid>,
+        investor_company_id: Option<Uuid>,
+    ) -> Result<Uuid, DbError> {
+        use arda_credit_lib::hash_uuid;
+
+        // Generate transaction ID
+        let transaction_id_uuid = Uuid::new_v4();
+        let transaction_id = hash_uuid(&transaction_id_uuid);
+        let user_id_hash = hash_uuid(&user_id);
+
+        // Hash deal ID if present
+        let deal_id_hash = deal_id.map(|id| hash_uuid(&id)).unwrap_or([0u8; 32]);
+
+        // Hash company IDs if present
+        let originator_hash = originator_company_id
+            .map(|id| hash_uuid(&id))
+            .unwrap_or([0u8; 32]);
+        let investor_hash = investor_company_id
+            .map(|id| hash_uuid(&id))
+            .unwrap_or([0u8; 32]);
+
+        // Convert amount to u64 (6 decimal places)
+        let amount_u64 = (amount * rust_decimal::Decimal::from(1_000_000))
+            .to_u64()
+            .unwrap_or(0);
+
+        // Get current timestamp
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // Create DealTransaction
+        let deal_transaction = DealTransaction {
+            transaction_id,
+            user_id: user_id_hash,
+            originator_company_id: originator_hash,
+            investor_company_id: investor_hash,
+            deal_id: deal_id_hash,
+            transaction_type,
+            amount: amount_u64,
+            created_at,
+            metadata: MetadataArray::empty(),
+        };
+
+        // Pass original UUIDs (before hashing) for query columns
+        self.record_transaction(
+            deal_transaction,
+            Some(user_id),
+            deal_id,
+            originator_company_id,
+            investor_company_id,
+            None, // collateral_id not available in this method
+        )
+        .await
+    }
+
+    /// Record a transaction with metadata (convenience method for handlers)
+    ///
+    /// This method matches the signature used by API handlers and constructs
+    /// a complete DealTransaction with metadata encoding.
+    ///
+    /// # Arguments
+    /// * `transaction_type` - Type of transaction
+    /// * `user_id` - UUID of the user initiating the transaction
+    /// * `deal_id` - Optional UUID of the deal
+    /// * `amount` - Transaction amount (Decimal::ZERO for non-monetary)
+    /// * `metadata` - Optional JSON metadata to encode in transaction
+    /// * `originator_company_id` - Optional originator company UUID
+    /// * `investor_company_id` - Optional investor company UUID
+    /// * `collateral_id` - Optional collateral UUID
+    ///
+    /// # Returns
+    /// * `Ok(Uuid)` - The database ID that was created
+    /// * `Err(DbError)` - Database error if insertion fails
+    #[instrument(skip(self), level = "info")]
+    pub async fn record_transaction_with_metadata(
         &self,
         transaction_type: arda_credit_lib::TransactionType,
         user_id: Uuid,
         deal_id: Option<Uuid>,
         amount: rust_decimal::Decimal,
         metadata: Option<serde_json::Value>,
+        originator_company_id: Option<Uuid>,
+        investor_company_id: Option<Uuid>,
+        collateral_id: Option<Uuid>,
     ) -> Result<Uuid, DbError> {
-        // Generate new transaction ID
-        let transaction_id = Uuid::new_v4();
+        use arda_credit_lib::hash_uuid;
 
-        // Hash UUIDs for zkVM privacy
-        let transaction_id_hash = Self::hash_uuid(&transaction_id);
-        let user_id_hash = Self::hash_uuid(&user_id);
-        let deal_id_hash = Self::hash_optional_uuid(deal_id.as_ref());
+        // Generate transaction ID
+        let transaction_id_uuid = Uuid::new_v4();
+        let transaction_id = hash_uuid(&transaction_id_uuid);
+        let user_id_hash = hash_uuid(&user_id);
 
-        // Convert deal_id_hash Option<Vec<u8>> to Option<&[u8]> for query
-        let deal_id_hash_ref = deal_id_hash.as_deref();
+        // Hash deal ID if present
+        let deal_id_hash = deal_id.map(|id| hash_uuid(&id)).unwrap_or([0u8; 32]);
 
-        // Insert into deal_transactions table
-        sqlx::query!(
-            r#"
-            INSERT INTO deal_transactions (
-                id,
-                transaction_id_hash,
-                user_id_hash,
-                deal_id_hash,
-                transaction_type,
-                amount,
-                user_id,
-                deal_id,
-                metadata,
-                created_at
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-            "#,
+        // Hash company IDs if present
+        let originator_hash = originator_company_id
+            .map(|id| hash_uuid(&id))
+            .unwrap_or([0u8; 32]);
+        let investor_hash = investor_company_id
+            .map(|id| hash_uuid(&id))
+            .unwrap_or([0u8; 32]);
+
+        // Convert amount to u64 (6 decimal places)
+        let amount_u64 = (amount * rust_decimal::Decimal::from(1_000_000))
+            .to_u64()
+            .unwrap_or(0);
+
+        // Get current timestamp
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // Encode metadata
+        let metadata_array = if let Some(meta) = metadata {
+            // Serialize metadata JSON to bytes
+            let metadata_bytes = serde_json::to_string(&meta)
+                .unwrap_or_else(|_| "{}".to_string())
+                .into_bytes();
+            MetadataArray::from_bytes(&metadata_bytes)
+        } else {
+            MetadataArray::empty()
+        };
+
+        // Create DealTransaction
+        let deal_transaction = DealTransaction {
             transaction_id,
-            &transaction_id_hash[..], // Convert Vec<u8> to &[u8]
-            &user_id_hash[..],
-            deal_id_hash_ref,
-            transaction_type.to_string(),
-            amount,
-            user_id,
+            user_id: user_id_hash,
+            originator_company_id: originator_hash,
+            investor_company_id: investor_hash,
+            deal_id: deal_id_hash,
+            transaction_type,
+            amount: amount_u64,
+            created_at,
+            metadata: metadata_array,
+        };
+
+        // Pass original UUIDs (before hashing) for query columns
+        self.record_transaction(
+            deal_transaction,
+            Some(user_id),
             deal_id,
-            metadata,
+            originator_company_id,
+            investor_company_id,
+            collateral_id,
         )
-        .execute(&self.pool)
         .await
-        .map_err(|e| {
-            error!(
-                "Failed to record {} transaction for user {}: {}",
-                transaction_type, user_id, e
-            );
-            DbError::from(e)
-        })?;
-
-        info!(
-            "Recorded {} transaction: {} for user {} (deal: {:?})",
-            transaction_type, transaction_id, user_id, deal_id
-        );
-
-        // Record metrics
-        metrics::counter!(
-            "zkvm_transactions_recorded_total",
-            "type" => transaction_type.to_string()
-        )
-        .increment(1);
-
-        Ok(transaction_id)
     }
 
     /// Record multiple transactions in a single database transaction
@@ -263,39 +446,86 @@ impl TransactionRecordingService {
         &self,
         transactions: Vec<TransactionRecordingRequest>,
     ) -> Result<Vec<Uuid>, DbError> {
+        use arda_credit_lib::hash_uuid;
+
         let mut tx = self.pool.begin().await?;
         let mut transaction_ids = Vec::with_capacity(transactions.len());
 
         for request in transactions {
-            let transaction_id = Uuid::new_v4();
-            let transaction_id_hash = Self::hash_uuid(&transaction_id);
-            let user_id_hash = Self::hash_uuid(&request.user_id);
-            let deal_id_hash = Self::hash_optional_uuid(request.deal_id.as_ref());
-            let deal_id_hash_ref = deal_id_hash.as_deref();
+            // Generate transaction ID and hash
+            let transaction_id_uuid = Uuid::new_v4();
+            let transaction_id = hash_uuid(&transaction_id_uuid);
+            let user_id_hash = hash_uuid(&request.user_id);
 
-            sqlx::query!(
-                r#"
-                INSERT INTO deal_transactions (
-                    id, transaction_id_hash, user_id_hash, deal_id_hash,
-                    transaction_type, amount, user_id, deal_id,
-                    metadata, created_at
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-                "#,
+            // Hash deal ID if present
+            let deal_id_hash = request
+                .deal_id
+                .map(|id| hash_uuid(&id))
+                .unwrap_or([0u8; 32]);
+
+            // Convert amount to u64 (6 decimal places)
+            let amount_u64 = (request.amount * rust_decimal::Decimal::from(1_000_000))
+                .to_u64()
+                .unwrap_or(0);
+
+            // Get current timestamp
+            let created_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+
+            // Encode metadata
+            let metadata_array = if let Some(meta) = &request.metadata {
+                let metadata_bytes = serde_json::to_string(meta)
+                    .unwrap_or_else(|_| "{}".to_string())
+                    .into_bytes();
+                MetadataArray::from_bytes(&metadata_bytes)
+            } else {
+                MetadataArray::empty()
+            };
+
+            // Create DealTransaction
+            let deal_transaction = DealTransaction {
                 transaction_id,
-                &transaction_id_hash[..],
-                &user_id_hash[..],
-                deal_id_hash_ref,
+                user_id: user_id_hash,
+                originator_company_id: [0u8; 32], // Not available in TransactionRecordingRequest
+                investor_company_id: [0u8; 32],   // Not available in TransactionRecordingRequest
+                deal_id: deal_id_hash,
+                transaction_type: request.transaction_type,
+                amount: amount_u64,
+                created_at,
+                metadata: metadata_array,
+            };
+
+            // Serialize transaction data
+            let transaction_data =
+                bincode::serde::encode_to_vec(&deal_transaction, bincode::config::standard())
+                    .map_err(|e| {
+                        error!("Failed to serialize transaction: {}", e);
+                        DbError::ValidationError(format!("Serialization error: {}", e))
+                    })?;
+
+            // Insert using new schema
+            let db_id = sqlx::query!(
+                r#"
+                INSERT INTO state_transactions (
+                    transaction_type,
+                    transaction_data,
+                    user_id,
+                    deal_id
+                )
+                VALUES ($1, $2, $3, $4)
+                RETURNING id
+                "#,
                 request.transaction_type.to_string(),
-                request.amount,
+                &transaction_data[..],
                 request.user_id,
                 request.deal_id,
-                request.metadata,
             )
-            .execute(&mut *tx)
+            .fetch_one(&mut *tx)
             .await?;
 
-            transaction_ids.push(transaction_id);
+            transaction_ids.push(db_id.id);
         }
 
         tx.commit().await?;
@@ -340,12 +570,15 @@ mod tests {
         }));
 
         let result = service
-            .record_transaction(
+            .record_transaction_with_metadata(
                 arda_credit_lib::TransactionType::UserRegistration,
                 user_id,
-                None,
+                None, // deal_id
                 rust_decimal::Decimal::ZERO,
                 metadata,
+                None, // originator_company_id
+                None, // investor_company_id
+                None, // collateral_id
             )
             .await;
 
@@ -354,7 +587,7 @@ mod tests {
 
         // Verify record was created
         let record = sqlx::query!(
-            "SELECT * FROM deal_transactions WHERE id = $1",
+            "SELECT * FROM state_transactions WHERE id = $1",
             transaction_id
         )
         .fetch_one(&pool)
@@ -364,7 +597,7 @@ mod tests {
         assert_eq!(record.transaction_type, "user_registration");
         assert_eq!(record.user_id, Some(user_id));
         assert_eq!(record.deal_id, None);
-        assert_eq!(record.amount, rust_decimal::Decimal::ZERO);
+        // Note: amount is stored in serialized transaction_data, not as a direct column
     }
 
     #[tokio::test]
@@ -378,12 +611,15 @@ mod tests {
         let amount = rust_decimal::Decimal::from_str("100000.50").unwrap();
 
         let result = service
-            .record_transaction(
+            .record_transaction_with_metadata(
                 arda_credit_lib::TransactionType::DealOrigination,
                 user_id,
                 Some(deal_id),
                 amount,
-                None,
+                None, // metadata
+                None, // originator_company_id
+                None, // investor_company_id
+                None, // collateral_id
             )
             .await;
 
@@ -392,7 +628,7 @@ mod tests {
 
         // Verify record
         let record = sqlx::query!(
-            "SELECT * FROM deal_transactions WHERE id = $1",
+            "SELECT * FROM state_transactions WHERE id = $1",
             transaction_id
         )
         .fetch_one(&pool)
@@ -402,7 +638,7 @@ mod tests {
         assert_eq!(record.transaction_type, "deal_origination");
         assert_eq!(record.user_id, Some(user_id));
         assert_eq!(record.deal_id, Some(deal_id));
-        assert_eq!(record.amount, amount);
+        // Note: amount is stored in serialized transaction_data, not as a direct column
     }
 
     #[tokio::test]
@@ -430,12 +666,15 @@ mod tests {
 
         for tx_type in types {
             let result = service
-                .record_transaction(
+                .record_transaction_with_metadata(
                     tx_type,
                     user_id,
                     Some(deal_id),
                     rust_decimal::Decimal::ZERO,
-                    None,
+                    None, // metadata
+                    None, // originator_company_id
+                    None, // investor_company_id
+                    None, // collateral_id
                 )
                 .await;
 
@@ -444,7 +683,7 @@ mod tests {
 
         // Verify all were created
         let count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM deal_transactions WHERE user_id = $1",
+            "SELECT COUNT(*) as count FROM state_transactions WHERE user_id = $1",
             user_id
         )
         .fetch_one(&pool)
@@ -514,7 +753,7 @@ mod tests {
 
         // Verify all created
         for tx_id in transaction_ids {
-            let exists = sqlx::query!("SELECT id FROM deal_transactions WHERE id = $1", tx_id)
+            let exists = sqlx::query!("SELECT id FROM state_transactions WHERE id = $1", tx_id)
                 .fetch_optional(&pool)
                 .await
                 .unwrap();

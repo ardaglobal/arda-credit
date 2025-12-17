@@ -194,9 +194,9 @@ pub use db::{
     // Loan tape functions
     // Financial transaction functions
     create_account_financial_transaction,
+    create_batch_from_deal_transactions, // Legacy function for backward compatibility
     // Batch functions
-    create_batch,
-    create_batch_from_deal_transactions,
+    create_batch_from_state_transactions,
     create_deal,
     create_deal_payment,
     // CCR Domain functions
@@ -206,6 +206,8 @@ pub use db::{
     create_investor_profile,
     create_loan_tape_record,
     create_state_snapshot,
+    // State transaction functions (consolidated API)
+    create_state_transaction,
     // USDC Deposit functions
     create_usdc_deposit,
     // Withdrawal functions
@@ -218,11 +220,16 @@ pub use db::{
     get_balance,
     get_batch_by_id,
     get_batch_proof_data,
+    get_batch_state_transactions,
+    get_collateral_state_transactions,
+    get_company_state_transactions,
     get_contract_submission_data,
     // State functions
     get_current_counter_value,
     get_current_state,
     get_deal_by_id,
+    // New query functions for fast indexed queries
+    get_deal_state_transactions,
     get_deal_transaction_history,
     get_deal_transactions_with_proofs,
     get_deals_by_company_id,
@@ -238,11 +245,13 @@ pub use db::{
     get_invite_code_info,
     get_kyc_statistics,
     get_payments_by_deal,
-    get_pending_deal_transactions,
-    get_pending_transactions,
+    get_pending_deal_transactions, // Legacy function for backward compatibility
+    get_pending_state_transactions,
     get_pending_withdrawal_requests,
     get_potential_stuck_batches,
     get_proven_unposted_batches,
+    get_recent_state_transactions_by_type,
+    get_system_state_transactions,
     get_user_account_financial_transactions,
     get_user_available_balance,
     get_user_balance_by_address,
@@ -251,6 +260,7 @@ pub use db::{
     get_user_financial_summary,
     get_user_financial_transactions,
     get_user_id_by_wallet_address,
+    get_user_state_transactions,
     get_user_withdrawal_balance,
     get_validated_pending_withdrawals,
     get_withdrawal_by_tx_hash,
@@ -268,6 +278,7 @@ pub use db::{
     list_pending_kyc_applications,
     mark_batch_posted_to_contract,
     mark_batch_posted_to_contract_with_tx_hash,
+    mark_state_transactions_batched,
     mark_withdrawal_submitted,
     register_or_reregister_user,
     reject_withdrawal_request,
@@ -279,8 +290,6 @@ pub use db::{
     store_ads_state_commit,
     store_batch_proof_data,
     submit_kyc_data,
-    // Transaction functions
-    submit_transaction,
     update_balance,
     update_batch_proof,
     update_deal,
@@ -319,9 +328,8 @@ pub use db::{
     DealNegotiationStatus,
     DealPayment,
     DealPaymentStatus,
-    DealTransactionDb,
+    DealTransactionDb, // Legacy type for backward compatibility
     DealsWithCount,
-    IncomingTransaction,
     InvestorProfile,
     InviteCodeInfo,
     KycInvestorType,
@@ -331,6 +339,7 @@ pub use db::{
     RegisterResult,
     SindriProofData,
     StateSnapshot,
+    StateTransaction,
     TransactionWithProofInfo,
     UpdateInvestorProfileRequest,
     UsdcDeposit,
@@ -347,6 +356,9 @@ pub use db::{
 
 // Re-export essential error types
 pub use error::{DbError, DbResult};
+
+// Re-export processing types (legacy support)
+pub use processing::background_processor::IncomingTransaction;
 
 // Re-export ADS and related types
 pub use ads::ads_service::{

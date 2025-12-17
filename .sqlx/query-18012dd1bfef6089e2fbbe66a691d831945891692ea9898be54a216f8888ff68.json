@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO state_transactions (\n                    transaction_type,\n                    transaction_data,\n                    user_id,\n                    deal_id\n                )\n                VALUES ($1, $2, $3, $4)\n                RETURNING id\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Bytea",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "18012dd1bfef6089e2fbbe66a691d831945891692ea9898be54a216f8888ff68"
+}
