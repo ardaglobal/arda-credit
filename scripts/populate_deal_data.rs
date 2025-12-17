@@ -630,9 +630,9 @@ async fn create_company_registration_transaction(
     let deal_transaction = DealTransaction {
         transaction_id,
         user_id: user_id_hash,
-        originator_company_id: [0u8; 32],
+        originator_company_id: company_id_hash, // Store company hash in originator_company_id (read by ZKVM)
         investor_company_id: [0u8; 32],
-        deal_id: company_id_hash, // Store company hash in deal_id for company operations
+        deal_id: [0u8; 32], // No deal for company registration
         transaction_type: TransactionType::CompanyRegistration,
         amount: 0,
         created_at: company.created_at.timestamp() as u64,
@@ -721,12 +721,25 @@ async fn create_deal_transaction_record(
     // Convert amount to u64 (6 decimal places)
     let amount_u64 = (amount * Decimal::from(1_000_000)).to_u64().unwrap_or(0);
 
+    // Hash company IDs if provided
+    let originator_company_id_hash = if let Some(orig_id) = originator_id {
+        hash_uuid(&orig_id)
+    } else {
+        [0u8; 32]
+    };
+
+    let investor_company_id_hash = if let Some(inv_id) = investor_id {
+        hash_uuid(&inv_id)
+    } else {
+        [0u8; 32]
+    };
+
     // Create DealTransaction
     let deal_transaction = DealTransaction {
         transaction_id,
         user_id: user_id_hash,
-        originator_company_id: [0u8; 32], // Would need to get from deal if available
-        investor_company_id: [0u8; 32],   // Would need to get from deal if available
+        originator_company_id: originator_company_id_hash,
+        investor_company_id: investor_company_id_hash,
         deal_id: deal_id_hash,
         transaction_type: tx_type,
         amount: amount_u64,
@@ -750,9 +763,9 @@ async fn create_deal_transaction_record(
         &transaction_data,
         user_id,
         Some(deal_id),
-        None, // originator_company_id - would need to get from deal
-        None, // investor_company_id - would need to get from deal
-        None, // collateral_id
+        originator_id, // originator_company_id from deal
+        investor_id,   // investor_company_id from deal
+        None,          // collateral_id
     )
     .await?;
 
@@ -1911,25 +1924,6 @@ async fn generate_random_deals(
         .ok_or_else(|| {
             "System user engineering@arda.xyz not found. Please ensure database is initialized with seed data."
         })?;
-
-    // #region agent log
-    // DEBUG: Log system user details (Hypothesis A - Pre-loaded user missing from ADS)
-    if let Ok(mut file) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/Users/sevey/Code/ardaglobal/arda-credit/.cursor/debug.log")
-    {
-        use std::io::Write;
-        let user_id_hash = {
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            hasher.update(system_user.id.as_bytes());
-            hasher.finalize().to_vec()
-        };
-        let log = serde_json::json!({"sessionId":"debug-session","runId":"populate-script","hypothesisId":"A","location":"populate_deal_data.rs:1870","message":"System user loaded","data":{"email":system_user.email.clone(),"user_id":system_user.id.to_string(),"user_id_hash_first_8":format!("{:?}", &user_id_hash[..8]),"created_at":system_user.created_at.to_string()},"timestamp":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()}).to_string();
-        let _ = writeln!(file, "{}", log);
-    }
-    // #endregion
 
     println!(
         "🔧 Using system user {} for script-generated transactions",
