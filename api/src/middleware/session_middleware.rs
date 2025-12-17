@@ -32,6 +32,7 @@ impl Default for SessionConfig {
                 "/api/v1/user".to_string(), // User registration
                 "/api-docs".to_string(),    // OpenAPI docs
                 "/api-docs/openapi.json".to_string(),
+                "/api/v1/collateral/batch".to_string(), // Collateral batch creation (for document ingestion)
             ],
         }
     }
