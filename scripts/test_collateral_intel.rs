@@ -49,15 +49,27 @@ const TEST_PREFIX: &str = "TEST_INTEL";
 #[derive(Debug, Serialize, Deserialize)]
 struct CreateDealRequest {
     originator_id: String,
+    originator_name: Option<String>,
     investor_id: Option<String>,
+    investor_name: Option<String>,
     borrower_id: Option<String>,
+    borrower_name: Option<String>,
     principal_amount: String,
     interest_rate_bps: i32,
-    deal_status: String,
-    status: String,
-    collateral_id: Option<String>,
+    term_days: Option<u32>,
+    loan_status: Option<String>, // Payment status: originated, active, paid_off, closed, defaulted
+    status: Option<String>,      // Negotiation status: draft, active, etc.
+    metadata: Option<serde_json::Value>,
+    custom_deal_id: Option<String>,
+    industry: Option<String>,
+    document_ids: Option<Vec<String>>,
     title: Option<String>,
     description: Option<String>,
+    risk_level: Option<String>,
+    asset_class: Option<String>,
+    region: Option<String>,
+    minimum_investment: Option<String>,
+    collateral_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -376,15 +388,27 @@ async fn create_deal_via_api(
 ) -> Result<Uuid, Box<dyn std::error::Error>> {
     let request = CreateDealRequest {
         originator_id: originator_id.to_string(),
+        originator_name: None,
         investor_id: investor_id.map(|id| id.to_string()),
+        investor_name: None,
         borrower_id: None,
+        borrower_name: None,
         principal_amount: "1000000.00".to_string(),
         interest_rate_bps: 500,
-        deal_status: deal_status.to_string(),
-        status: "active".to_string(),
-        collateral_id: collateral_id.map(|id| id.to_string()),
+        term_days: Some(365),
+        loan_status: Some(deal_status.to_string()), // Payment status
+        status: Some("active".to_string()),         // Negotiation status
+        metadata: None,
+        custom_deal_id: None,
+        industry: None,
+        document_ids: None,
         title: Some(title.to_string()),
         description: Some(format!("Test deal: {}", title)),
+        risk_level: None,
+        asset_class: None,
+        region: None,
+        minimum_investment: None,
+        collateral_id: collateral_id.map(|id| id.to_string()),
     };
 
     let url = format!("{}/api/v1/deal", ctx.api_url);
@@ -437,13 +461,19 @@ async fn update_deal_status_via_api(
 
 #[allow(dead_code)]
 async fn get_collateral_matches_from_db(
-    _ctx: &TestContext,
-    _collateral_id: Uuid,
+    ctx: &TestContext,
+    collateral_id: Uuid,
 ) -> Result<usize, Box<dyn std::error::Error>> {
-    // Note: collateral_matches table was removed in migration 060
-    // Functionality moved to arda-collateral-intel microservice with SurrealDB
-    // This function now returns 0 for backward compatibility with test code
-    Ok(0)
+    // Note: collateral_matches table was recreated in migration 061
+    // It stores detection results received from arda-collateral-intel microservice
+    let result = sqlx::query!(
+        "SELECT COUNT(*) as count FROM collateral_matches WHERE collateral_id = $1",
+        collateral_id
+    )
+    .fetch_one(&ctx.pool)
+    .await?;
+    
+    Ok(result.count.unwrap_or(0) as usize)
 }
 
 async fn get_detection_history(
