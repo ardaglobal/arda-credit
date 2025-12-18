@@ -237,10 +237,6 @@ pub use crate::handlers::companies::{
     InvestorProfileQuery, InvestorProfileResponse, RegisterInvestorRequest,
     RegisterInvestorResponse, UpdateInvestorProfileRequest,
 };
-pub use crate::handlers::users::balance::{
-    AddressBalance, AddressBalanceResponse, UserBalanceResponse,
-};
-// AvailableBalance removed - now using consolidated AddressBalance from balance handlers
 pub use crate::services::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
 };
@@ -309,8 +305,6 @@ fn default_limit() -> u32 {
         crate::handlers::users::users::list_identities_endpoint,
         crate::handlers::users::users::update_user_endpoint,
         crate::handlers::users::users::delete_user_endpoint,
-        crate::handlers::users::balance::get_balance_by_address_endpoint,
-        crate::handlers::users::balance::get_balance_by_user_id_endpoint,
         crate::handlers::users::users::get_user_transactions_endpoint,
         crate::handlers::users::users::submit_kyc_endpoint,
         crate::handlers::users::users::update_kyc_status_endpoint,
@@ -729,17 +723,11 @@ fn default_limit() -> u32 {
         UpdateKycStatusRequest,
         UserTransactionsResponse,
 
-        // Consolidated Balance types
-        AddressBalance,
-        AddressBalanceResponse,
-        UserBalanceResponse,
-
         // Withdrawal types
         PaginationParams,
         InitiateWithdrawalRequest,
         InitiateWithdrawalResponse,
         WithdrawalStatusResponse,
-        // AvailableBalance removed - replaced with consolidated AddressBalance,
         // Admin withdrawal types
         AdminWithdrawalDashboard,
         ApproveWithdrawalRequest,
