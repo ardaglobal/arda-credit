@@ -639,17 +639,17 @@ mod tests {
         let transaction_id = result.unwrap();
 
         // Verify record was created
-        let record = sqlx::query!(
-            "SELECT * FROM state_transactions WHERE id = $1",
-            transaction_id
+        let record = sqlx::query_as::<_, (String, Option<Uuid>, Option<Uuid>)>(
+            "SELECT transaction_type, user_id, deal_id FROM state_transactions WHERE id = $1",
         )
+        .bind(transaction_id)
         .fetch_one(&pool)
         .await
         .expect("Transaction should exist");
 
-        assert_eq!(record.transaction_type, "user_registration");
-        assert_eq!(record.user_id, Some(user_id));
-        assert_eq!(record.deal_id, None);
+        assert_eq!(record.0, "user_registration");
+        assert_eq!(record.1, Some(user_id));
+        assert_eq!(record.2, None);
         // Note: amount is stored in serialized transaction_data, not as a direct column
     }
 
@@ -680,17 +680,17 @@ mod tests {
         let transaction_id = result.unwrap();
 
         // Verify record
-        let record = sqlx::query!(
-            "SELECT * FROM state_transactions WHERE id = $1",
-            transaction_id
+        let record = sqlx::query_as::<_, (String, Option<Uuid>, Option<Uuid>)>(
+            "SELECT transaction_type, user_id, deal_id FROM state_transactions WHERE id = $1",
         )
+        .bind(transaction_id)
         .fetch_one(&pool)
         .await
         .expect("Transaction should exist");
 
-        assert_eq!(record.transaction_type, "deal_origination");
-        assert_eq!(record.user_id, Some(user_id));
-        assert_eq!(record.deal_id, Some(deal_id));
+        assert_eq!(record.0, "deal_origination");
+        assert_eq!(record.1, Some(user_id));
+        assert_eq!(record.2, Some(deal_id));
         // Note: amount is stored in serialized transaction_data, not as a direct column
     }
 
@@ -735,15 +735,14 @@ mod tests {
         }
 
         // Verify all were created
-        let count = sqlx::query!(
-            "SELECT COUNT(*) as count FROM state_transactions WHERE user_id = $1",
-            user_id
-        )
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM state_transactions WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap_or(0);
 
-        assert_eq!(count.count, Some(10));
+        assert_eq!(count, 10);
     }
 
     #[tokio::test]
@@ -806,10 +805,12 @@ mod tests {
 
         // Verify all created
         for tx_id in transaction_ids {
-            let exists = sqlx::query!("SELECT id FROM state_transactions WHERE id = $1", tx_id)
-                .fetch_optional(&pool)
-                .await
-                .unwrap();
+            let exists: Option<Uuid> =
+                sqlx::query_scalar("SELECT id FROM state_transactions WHERE id = $1")
+                    .bind(tx_id)
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap();
 
             assert!(exists.is_some());
         }

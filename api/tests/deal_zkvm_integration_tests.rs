@@ -13,6 +13,7 @@
 
 use api::services::TransactionRecordingService;
 use arda_credit_db::{business::*, *};
+use axum::http::HeaderMap;
 use sqlx::PgPool;
 use std::str::FromStr;
 
@@ -68,6 +69,9 @@ async fn test_deal_creation_creates_transaction(pool: PgPool) {
     // Create companies first
     let originator = create_test_company(&pool, "Test Originator Corp").await;
     let investor = create_test_company(&pool, "Test Investor Corp").await;
+    let user = create_identity(&pool, "originator", "test-originator@example.com")
+        .await
+        .unwrap();
 
     // Create deal via API
     let request = api::handlers::deals::deals::CreateDealRequest {
@@ -97,6 +101,13 @@ async fn test_deal_creation_creates_transaction(pool: PgPool) {
 
     let response = api::handlers::deals::deals::create_deal_endpoint(
         axum::extract::State(state.clone()),
+        {
+            let mut h = HeaderMap::new();
+            h.insert("x-user-id", user.id.to_string().parse().unwrap());
+            h.insert("x-user-email", user.email.parse().unwrap());
+            h.insert("x-user-type", user.user_type.parse().unwrap());
+            h
+        },
         axum::Json(request),
     )
     .await;
@@ -457,6 +468,9 @@ async fn create_test_deal_via_api(state: &api::api::router::ApiState) -> uuid::U
     // Create companies
     let originator = create_test_company(pool, "Test Originator Corp").await;
     let investor = create_test_company(pool, "Test Investor Corp").await;
+    let user = create_identity(pool, "originator", "test-originator-2@example.com")
+        .await
+        .unwrap();
 
     // Create deal via API
     let request = api::handlers::deals::deals::CreateDealRequest {
@@ -486,6 +500,13 @@ async fn create_test_deal_via_api(state: &api::api::router::ApiState) -> uuid::U
 
     let response = api::handlers::deals::deals::create_deal_endpoint(
         axum::extract::State(state.clone()),
+        {
+            let mut h = HeaderMap::new();
+            h.insert("x-user-id", user.id.to_string().parse().unwrap());
+            h.insert("x-user-email", user.email.parse().unwrap());
+            h.insert("x-user-type", user.user_type.parse().unwrap());
+            h
+        },
         axum::Json(request),
     )
     .await
