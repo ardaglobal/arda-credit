@@ -325,10 +325,14 @@ pub fn create_router(state: ApiState) -> Router {
             get(crate::handlers::companies::companies::get_investor_profile_endpoint)
                 .put(crate::handlers::companies::companies::update_investor_profile_endpoint),
         )
-        // User Transaction endpoints
+        // User Balance & Transaction endpoints (consolidated)
         .route(
-            paths::USER_TRANSACTIONS_BY_ID,
-            get(crate::handlers::users::users::get_user_transactions_endpoint),
+            paths::USER_BALANCE_BY_ADDRESS,
+            get(crate::handlers::users::balance::get_balance_by_address_endpoint),
+        )
+        .route(
+            paths::USER_BALANCE_BY_ID,
+            get(crate::handlers::users::balance::get_balance_by_user_id_endpoint),
         )
         // ========================================================================
         // WITHDRAWAL MANAGEMENT ENDPOINTS

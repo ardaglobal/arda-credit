@@ -71,8 +71,11 @@ pub const ADMIN_KYC_BULK_APPROVE: &str = api_path!("/admin/kyc/bulk-approve");
 /// Platform metrics (admin)
 pub const ADMIN_PLATFORM_METRICS: &str = api_path!("/admin/platform-metrics");
 
-/// User transactions by user ID
-pub const USER_TRANSACTIONS_BY_ID: &str = api_path!("/user/{user_id}/transactions");
+/// Consolidated balance endpoint by wallet address
+pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/address/{address}/balance");
+
+/// Consolidated balance endpoint by user ID  
+pub const USER_BALANCE_BY_ID: &str = api_path!("/user/{user_id}/balance");
 
 /// Transaction by hash
 pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
@@ -814,9 +817,14 @@ pub fn transaction_proof_path(transaction_type: &str, transaction_id: &str) -> S
     replace_param(&path, "transaction_id", transaction_id)
 }
 
-/// Generate user transactions by ID path
-pub fn user_transactions_by_id_path(user_id: &str) -> String {
-    replace_param(USER_TRANSACTIONS_BY_ID, "user_id", user_id)
+/// Generate user balance by address path
+pub fn user_balance_by_address_path(address: &str) -> String {
+    replace_param(USER_BALANCE_BY_ADDRESS, "address", address)
+}
+
+/// Generate user balance by ID path
+pub fn user_balance_by_id_path(user_id: &str) -> String {
+    replace_param(USER_BALANCE_BY_ID, "user_id", user_id)
 }
 
 // Withdrawal Management Helper Functions
