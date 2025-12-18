@@ -187,8 +187,6 @@ pub struct UpdateKycStatusRequest {
     pub notes: Option<String>,
 }
 
-// UserBalanceResponse removed - now using consolidated balance response types from balance.rs
-
 /// Response for user transaction history
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct UserTransactionsResponse {
@@ -904,11 +902,6 @@ pub async fn delete_user_endpoint(
     info!("✅ API: User soft deleted successfully");
     Ok(Json(response))
 }
-
-// DEPRECATED: Old balance endpoints removed - now using consolidated balance endpoints from balance.rs
-// New endpoints:
-// - GET /api/v1/user/{address}/balance -> balance::get_balance_by_address_endpoint
-// - GET /api/v1/user/{user_id}/balance -> balance::get_balance_by_user_id_endpoint
 
 /// Get user transactions by user ID
 #[utoipa::path(

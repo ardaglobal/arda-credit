@@ -71,12 +71,6 @@ pub const ADMIN_KYC_BULK_APPROVE: &str = api_path!("/admin/kyc/bulk-approve");
 /// Platform metrics (admin)
 pub const ADMIN_PLATFORM_METRICS: &str = api_path!("/admin/platform-metrics");
 
-/// Consolidated balance endpoint by wallet address
-pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/address/{address}/balance");
-
-/// Consolidated balance endpoint by user ID  
-pub const USER_BALANCE_BY_ID: &str = api_path!("/user/{user_id}/balance");
-
 /// User transactions by user ID
 pub const USER_TRANSACTIONS_BY_ID: &str = api_path!("/user/{user_id}/transactions");
 
@@ -818,16 +812,6 @@ pub fn deal_payment_proof_path(
 pub fn transaction_proof_path(transaction_type: &str, transaction_id: &str) -> String {
     let path = replace_param(STATE_PROOF, "transaction_type", transaction_type);
     replace_param(&path, "transaction_id", transaction_id)
-}
-
-/// Generate user balance by address path
-pub fn user_balance_by_address_path(address: &str) -> String {
-    replace_param(USER_BALANCE_BY_ADDRESS, "address", address)
-}
-
-/// Generate user balance by ID path
-pub fn user_balance_by_id_path(user_id: &str) -> String {
-    replace_param(USER_BALANCE_BY_ID, "user_id", user_id)
 }
 
 /// Generate user transactions by ID path

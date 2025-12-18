@@ -14,7 +14,7 @@ use tower::ServiceExt;
 
 use crate::test_utils::*;
 use crate::handlers::users::users::{
-    get_user_details_endpoint, get_user_balance_endpoint, submit_kyc_endpoint,
+    get_user_details_endpoint, submit_kyc_endpoint,
     update_user_endpoint, get_user_transactions_endpoint,
 };
 use crate::config::types::ApiState;
@@ -160,42 +160,6 @@ async fn test_submit_kyc() {
 
     assert_eq!(response_json["kyc_status"], "PENDING");
     assert!(response_json.get("kyc_submitted_at").is_some());
-
-    // Cleanup
-    test_db.cleanup().await.unwrap();
-}
-
-/// Test getting user balance
-#[tokio::test]
-async fn test_get_user_balance() {
-    let test_db = TestDatabase::new().await;
-    let api_state = create_test_api_state(&test_db.pool).await;
-
-    // Create test user
-    let test_user = TestUser::new_investor();
-    let factory = TestDataFactory::new().await;
-    factory.create_user(&test_user).await.unwrap();
-
-    let app = Router::new()
-        .route("/api/v1/users/:user_id/balance", get(get_user_balance_endpoint))
-        .with_state(api_state);
-
-    let request = Request::builder()
-        .method("GET")
-        .uri(&format!("/api/v1/users/{}/balance", test_user.id))
-        .body(Body::empty())
-        .unwrap();
-
-    let response = app.oneshot(request).await.unwrap();
-
-    assert_eq!(response.status(), StatusCode::OK);
-
-    let body_bytes = hyper::body::to_bytes(response.into_body()).await.unwrap();
-    let response_json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
-
-    // Balance should be 0 for new user
-    assert!(response_json.get("available_balance").is_some());
-    assert!(response_json.get("total_balance").is_some());
 
     // Cleanup
     test_db.cleanup().await.unwrap();
