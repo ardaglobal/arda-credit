@@ -19,9 +19,8 @@ REQUIRED_TYPES=(
 MISSING=0
 for TYPE in "${REQUIRED_TYPES[@]}"; do
     COUNT=$(psql $DATABASE_URL -t -c "
-        SELECT COUNT(*) FROM deal_transactions
-        WHERE transaction_type = '$TYPE'
-          AND metadata->>'created_by_script' = 'true';
+        SELECT COUNT(*) FROM state_transactions
+        WHERE transaction_type = '$TYPE';
     " | tr -d ' ')
 
     if [ "$COUNT" -gt "0" ]; then

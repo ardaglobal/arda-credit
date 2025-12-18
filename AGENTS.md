@@ -136,6 +136,7 @@ echo "EMAIL_DEBUG_MODE=true" >> .env
   - `staging` uses Sindri service (Groth16 proofs), posts to Anvil
   - `sandbox` uses Sindri service (Groth16 proofs), posts to Sepolia
   - `production` uses Sindri service (Groth16 proofs), posts to mainnet
+- `SP1_LOCAL_PROVER_THREADS` - Thread count for local Core proving (default: 10, recommended: ≤80% of available cores)
 - `SINDRI_API_KEY` - Required for staging/sandbox/production proof generation
 - `SINDRI_CIRCUIT_TAG` - Circuit version for ZK proofs
 - `ETHEREUM_RPC_URL` - Ethereum RPC endpoint

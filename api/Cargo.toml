@@ -118,6 +118,7 @@ metrics                     = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 metrics-util                = { workspace = true }
 prometheus                  = { workspace = true }
+rayon                       = { workspace = true }
 
 [dev-dependencies]
 

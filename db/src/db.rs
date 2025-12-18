@@ -48,6 +48,23 @@ pub struct StateTransaction {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Filter parameters for listing state transactions
+#[derive(Debug, Clone, Default)]
+pub struct StateTransactionFilters {
+    pub pending: Option<bool>,
+    pub batch_id: Option<i32>,
+    pub transaction_types: Option<Vec<String>>,
+    pub user_id: Option<uuid::Uuid>,
+    pub deal_id: Option<uuid::Uuid>,
+    pub originator_company_id: Option<uuid::Uuid>,
+    pub investor_company_id: Option<uuid::Uuid>,
+    pub company_id: Option<uuid::Uuid>, // Convenience: matches originator OR investor
+    pub collateral_id: Option<uuid::Uuid>,
+    pub limit: i64,
+    pub offset: i64,
+    pub order_desc: bool,
+}
+
 /// Batch of transactions with ZK proof
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProofBatch {
@@ -55,6 +72,7 @@ pub struct ProofBatch {
     pub previous_counter_value: i64,
     pub final_counter_value: i64,
     pub transaction_ids: Vec<i32>,
+    pub state_transaction_ids: Vec<uuid::Uuid>, // NEW: UUID[] for state transaction membership
     pub sindri_proof_id: Option<String>,
     pub proof_status: String, // pending, proven, failed
     pub created_at: DateTime<Utc>,
@@ -69,6 +87,9 @@ pub struct ProofBatch {
     pub posted_to_contract: bool, // NOT NULL DEFAULT FALSE in database
     pub posted_to_contract_at: Option<DateTime<Utc>>,
     pub contract_tx_hash: Option<String>,
+    // State roots (merkle roots before/after batch application)
+    pub previous_state_root: Option<Vec<u8>>, // NEW: 32-byte merkle root before batch
+    pub final_state_root: Option<Vec<u8>>,    // NEW: 32-byte merkle root after batch
 }
 
 /// Proof data structure for self-sufficient contract submission
@@ -983,11 +1004,12 @@ async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 
 /// Get pending deal transactions for zkVM batch processing
 ///
-/// DEPRECATED: This function queries the old deal_transactions table which has been dropped.
-/// Use get_pending_state_transactions() instead.
+/// DEPRECATED: This function is a legacy wrapper that queries state_transactions
+/// and converts to DealTransactionDb format. Use get_pending_state_transactions() instead.
 ///
-/// This function queries the deal_transactions table for transactions that haven't
-/// been included in a batch yet (included_in_batch_id IS NULL).
+/// This function queries the state_transactions table for transactions that haven't
+/// been included in a batch yet (included_in_batch_id IS NULL) and converts them
+/// to the legacy DealTransactionDb format for backward compatibility.
 ///
 /// # Arguments
 /// * `pool` - Database connection pool
@@ -1000,7 +1022,7 @@ async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 /// Returns error if database operation fails
 #[instrument(
     skip(pool),
-    fields(operation = "select", table = "deal_transactions", layer = "database"),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
     level = "info"
 )]
 pub async fn get_pending_deal_transactions(
@@ -1079,6 +1101,123 @@ pub async fn get_pending_deal_transactions(
 // ============================================================================
 // STATE TRANSACTION FUNCTIONS (New Consolidated API)
 // ============================================================================
+
+/// List state transactions with flexible filtering
+///
+/// This is the primary query function for the state_transactions table, supporting
+/// all common filter combinations with optimal indexed queries.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `filters` - Filter parameters (pending, batch_id, types, UUIDs, pagination, order)
+///
+/// # Returns
+/// Vector of StateTransaction structs matching the filters
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool, filters),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn list_state_transactions(
+    pool: &PgPool,
+    filters: StateTransactionFilters,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    use sqlx::QueryBuilder;
+
+    debug!(
+        "Listing state transactions: pending={:?}, types={:?}, limit={}, offset={}",
+        filters.pending, filters.transaction_types, filters.limit, filters.offset
+    );
+
+    let mut query_builder = QueryBuilder::new(
+        "SELECT id, transaction_type, transaction_data, user_id, deal_id, \
+         originator_company_id, investor_company_id, collateral_id, \
+         included_in_batch_id, created_at, updated_at \
+         FROM state_transactions WHERE 1=1",
+    );
+
+    // Apply pending filter
+    if let Some(pending) = filters.pending {
+        if pending {
+            query_builder.push(" AND included_in_batch_id IS NULL");
+        } else {
+            query_builder.push(" AND included_in_batch_id IS NOT NULL");
+        }
+    }
+
+    // Apply batch_id filter
+    if let Some(batch_id) = filters.batch_id {
+        query_builder.push(" AND included_in_batch_id = ");
+        query_builder.push_bind(batch_id);
+    }
+
+    // Apply transaction_types filter
+    if let Some(types) = filters.transaction_types {
+        query_builder.push(" AND transaction_type = ANY(");
+        query_builder.push_bind(types);
+        query_builder.push(")");
+    }
+
+    // Apply UUID filters
+    if let Some(user_id) = filters.user_id {
+        query_builder.push(" AND user_id = ");
+        query_builder.push_bind(user_id);
+    }
+
+    if let Some(deal_id) = filters.deal_id {
+        query_builder.push(" AND deal_id = ");
+        query_builder.push_bind(deal_id);
+    }
+
+    if let Some(collateral_id) = filters.collateral_id {
+        query_builder.push(" AND collateral_id = ");
+        query_builder.push_bind(collateral_id);
+    }
+
+    // Apply company_id filter (convenience: originator OR investor)
+    if let Some(company_id) = filters.company_id {
+        query_builder.push(" AND (originator_company_id = ");
+        query_builder.push_bind(company_id);
+        query_builder.push(" OR investor_company_id = ");
+        query_builder.push_bind(company_id);
+        query_builder.push(")");
+    } else {
+        // Apply individual company filters only if company_id not specified
+        if let Some(originator_id) = filters.originator_company_id {
+            query_builder.push(" AND originator_company_id = ");
+            query_builder.push_bind(originator_id);
+        }
+
+        if let Some(investor_id) = filters.investor_company_id {
+            query_builder.push(" AND investor_company_id = ");
+            query_builder.push_bind(investor_id);
+        }
+    }
+
+    // Apply ordering
+    if filters.order_desc {
+        query_builder.push(" ORDER BY created_at DESC, id DESC");
+    } else {
+        query_builder.push(" ORDER BY created_at ASC, id ASC");
+    }
+
+    // Apply pagination
+    query_builder.push(" LIMIT ");
+    query_builder.push_bind(filters.limit);
+    query_builder.push(" OFFSET ");
+    query_builder.push_bind(filters.offset);
+
+    let rows = query_builder
+        .build_query_as::<StateTransaction>()
+        .fetch_all(pool)
+        .await?;
+
+    debug!("Found {} state transactions", rows.len());
+    Ok(rows)
+}
 
 /// Get pending state transactions for zkVM batch processing
 ///
@@ -1493,6 +1632,128 @@ pub async fn get_company_state_transactions(
     Ok(rows)
 }
 
+/// Get all state transactions for a specific originator company (FAST - uses indexed column)
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `originator_company_id` - Originator company UUID to query
+/// * `limit` - Optional limit on number of transactions (defaults to 1000)
+///
+/// # Returns
+/// Vector of StateTransaction structs where company is the originator
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_originator_state_transactions(
+    pool: &PgPool,
+    originator_company_id: uuid::Uuid,
+    limit: Option<i64>,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    let limit = limit.unwrap_or(1000);
+    debug!(
+        "Getting state transactions for originator company {} (limit: {})",
+        originator_company_id, limit
+    );
+
+    let rows = sqlx::query_as!(
+        StateTransaction,
+        r#"
+        SELECT 
+            id,
+            transaction_type,
+            transaction_data,
+            user_id,
+            deal_id,
+            originator_company_id,
+            investor_company_id,
+            collateral_id,
+            included_in_batch_id,
+            created_at as "created_at!",
+            updated_at as "updated_at!"
+        FROM state_transactions
+        WHERE originator_company_id = $1
+        ORDER BY created_at ASC, id ASC
+        LIMIT $2
+        "#,
+        originator_company_id,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!(
+        "Found {} state transactions for originator company",
+        rows.len()
+    );
+    Ok(rows)
+}
+
+/// Get all state transactions for a specific investor company (FAST - uses indexed column)
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `investor_company_id` - Investor company UUID to query
+/// * `limit` - Optional limit on number of transactions (defaults to 1000)
+///
+/// # Returns
+/// Vector of StateTransaction structs where company is the investor
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_investor_state_transactions(
+    pool: &PgPool,
+    investor_company_id: uuid::Uuid,
+    limit: Option<i64>,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    let limit = limit.unwrap_or(1000);
+    debug!(
+        "Getting state transactions for investor company {} (limit: {})",
+        investor_company_id, limit
+    );
+
+    let rows = sqlx::query_as!(
+        StateTransaction,
+        r#"
+        SELECT 
+            id,
+            transaction_type,
+            transaction_data,
+            user_id,
+            deal_id,
+            originator_company_id,
+            investor_company_id,
+            collateral_id,
+            included_in_batch_id,
+            created_at as "created_at!",
+            updated_at as "updated_at!"
+        FROM state_transactions
+        WHERE investor_company_id = $1
+        ORDER BY created_at ASC, id ASC
+        LIMIT $2
+        "#,
+        investor_company_id,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!(
+        "Found {} state transactions for investor company",
+        rows.len()
+    );
+    Ok(rows)
+}
+
 /// Get all state transactions for a specific collateral (FAST - uses indexed collateral_id column)
 ///
 /// # Arguments
@@ -1752,21 +2013,23 @@ pub async fn create_batch_from_state_transactions(
         .await?
         .unwrap_or(0);
 
-    // Step 3: Create the batch
+    // Step 3: Create the batch with state_transaction_ids
     let batch_row = sqlx::query!(
         r#"
         INSERT INTO proof_batches (
             previous_counter_value,
             final_counter_value,
             transaction_ids,
+            state_transaction_ids,
             proof_status
         )
-        VALUES ($1, $2, $3, 'pending')
+        VALUES ($1, $2, $3, $4, 'pending')
         RETURNING id, created_at
         "#,
         counter_value,
         counter_value, // State transactions don't modify counter
-        &[] as &[i32] // Empty array (state transactions tracked by state_transactions.included_in_batch_id)
+        &[] as &[i32], // Empty array (legacy field)
+        &selected_ids  // NEW: UUID[] of state transactions in this batch
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -1857,7 +2120,7 @@ pub async fn create_batch(
 #[instrument(
     skip(pool),
     fields(
-        operation = "create_batch_deal_transactions",
+        operation = "create_batch_from_state_transactions",
         table = "proof_batches",
         layer = "database"
     ),
@@ -1889,10 +2152,11 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
     let row = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at,
+               state_transaction_ids, sindri_proof_id, proof_status, created_at, proven_at,
                proof_bytes, public_values, verifying_key,
                proof_size_bytes, public_values_size_bytes, stored_at,
-               posted_to_contract, posted_to_contract_at, contract_tx_hash
+               posted_to_contract, posted_to_contract_at, contract_tx_hash,
+               previous_state_root, final_state_root
         FROM proof_batches
         WHERE id = $1
         ",
@@ -1906,6 +2170,7 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
         previous_counter_value: row.previous_counter_value,
         final_counter_value: row.final_counter_value,
         transaction_ids: row.transaction_ids,
+        state_transaction_ids: row.state_transaction_ids,
         sindri_proof_id: row.sindri_proof_id,
         proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
         created_at: row.created_at.unwrap_or_else(|| Utc::now()),
@@ -1919,6 +2184,8 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
         posted_to_contract: row.posted_to_contract,
         posted_to_contract_at: row.posted_to_contract_at,
         contract_tx_hash: row.contract_tx_hash,
+        previous_state_root: row.previous_state_root,
+        final_state_root: row.final_state_root,
     };
 
     debug!(
@@ -1948,7 +2215,9 @@ pub async fn get_all_batches(
     let rows = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at
+               state_transaction_ids, sindri_proof_id, proof_status, created_at, proven_at,
+               posted_to_contract, posted_to_contract_at, contract_tx_hash,
+               previous_state_root, final_state_root
         FROM proof_batches
         ORDER BY id DESC
         LIMIT $1
@@ -1965,6 +2234,7 @@ pub async fn get_all_batches(
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
             transaction_ids: row.transaction_ids,
+            state_transaction_ids: row.state_transaction_ids,
             sindri_proof_id: row.sindri_proof_id,
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
@@ -1975,9 +2245,11 @@ pub async fn get_all_batches(
             proof_size_bytes: None,
             public_values_size_bytes: None,
             stored_at: None,
-            posted_to_contract: false, // NOT NULL DEFAULT FALSE
-            posted_to_contract_at: None,
-            contract_tx_hash: None,
+            posted_to_contract: row.posted_to_contract,
+            posted_to_contract_at: row.posted_to_contract_at,
+            contract_tx_hash: row.contract_tx_hash,
+            previous_state_root: row.previous_state_root,
+            final_state_root: row.final_state_root,
         })
         .collect();
 
@@ -2253,7 +2525,7 @@ pub async fn get_current_state(pool: &PgPool) -> Result<CounterState, sqlx::Erro
 // ADS/MERKLE TREE FUNCTIONS
 // ============================================================================
 
-/// Store Merkle root for a batch
+/// Store Merkle root for a batch and update proof_batches state roots
 ///
 /// # Errors
 /// Returns error if database operation fails
@@ -2284,11 +2556,53 @@ pub async fn store_ads_state_commit(
     let commit = AdsStateCommit {
         id: row.id,
         batch_id: row.batch_id,
-        merkle_root: row.merkle_root,
+        merkle_root: row.merkle_root.clone(),
         created_at: row.created_at.unwrap_or_else(|| Utc::now()),
     };
 
     debug!("ADS state commit stored: id={}", commit.id);
+
+    // Update proof_batches with state roots
+    // Get previous batch's final_state_root for previous_state_root
+    let prev_root = sqlx::query!(
+        r"
+        SELECT final_state_root
+        FROM proof_batches
+        WHERE id < $1
+        ORDER BY id DESC
+        LIMIT 1
+        ",
+        batch_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    let previous_state_root = prev_root
+        .and_then(|r| r.final_state_root)
+        .unwrap_or_else(|| vec![0u8; 32]); // Genesis: all zeros
+
+    // Update the batch with both roots
+    sqlx::query!(
+        r"
+        UPDATE proof_batches
+        SET previous_state_root = $1,
+            final_state_root = $2
+        WHERE id = $3
+        ",
+        &previous_state_root,
+        merkle_root,
+        batch_id
+    )
+    .execute(pool)
+    .await?;
+
+    debug!(
+        "Updated batch {} with roots: prev=0x{}, final=0x{}",
+        batch_id,
+        hex::encode(&previous_state_root),
+        hex::encode(merkle_root)
+    );
+
     Ok(commit)
 }
 
@@ -2311,45 +2625,50 @@ pub async fn get_contract_submission_data(
     // Get batch details
     let batch = get_batch_by_id(pool, batch_id).await?;
 
-    // Get previous and new Merkle roots
-    let prev_root = if batch.previous_counter_value == 0 {
-        // Genesis state - use empty root
-        "0x0000000000000000000000000000000000000000000000000000000000000000".to_string()
+    // Use stored state roots directly (NEW)
+    // Fallback to ads_state_commits if roots aren't yet populated (legacy batches)
+    let prev_root = if let Some(root) = &batch.previous_state_root {
+        format!("0x{}", hex::encode(root))
     } else {
-        // Get previous batch's Merkle root
+        // Legacy fallback: try to derive from prior batch's final root
         let prev_row = sqlx::query!(
             r"
-            SELECT ads.merkle_root
-            FROM proof_batches pb
-            JOIN ads_state_commits ads ON pb.id = ads.batch_id
-            WHERE pb.final_counter_value = $1 AND pb.proof_status = 'proven'
-            ORDER BY pb.id DESC
+            SELECT final_state_root
+            FROM proof_batches
+            WHERE id < $1
+            ORDER BY id DESC
             LIMIT 1
             ",
-            batch.previous_counter_value
+            batch_id
         )
         .fetch_optional(pool)
         .await?;
 
-        match prev_row {
-            Some(row) => format!("0x{}", hex::encode(row.merkle_root)),
+        match prev_row.and_then(|r| r.final_state_root) {
+            Some(root) => format!("0x{}", hex::encode(root)),
             None => {
                 "0x0000000000000000000000000000000000000000000000000000000000000000".to_string()
             }
         }
     };
 
-    // Get new Merkle root
-    let new_row = sqlx::query!(
-        "SELECT merkle_root FROM ads_state_commits WHERE batch_id = $1",
-        batch_id
-    )
-    .fetch_optional(pool)
-    .await?;
+    // Use stored final_state_root directly (NEW)
+    // Fallback to ads_state_commits if not yet populated (legacy batches)
+    let new_root = if let Some(root) = &batch.final_state_root {
+        format!("0x{}", hex::encode(root))
+    } else {
+        // Legacy fallback: get from ads_state_commits
+        let new_row = sqlx::query!(
+            "SELECT merkle_root FROM ads_state_commits WHERE batch_id = $1",
+            batch_id
+        )
+        .fetch_optional(pool)
+        .await?;
 
-    let new_root = match new_row {
-        Some(row) => format!("0x{}", hex::encode(row.merkle_root)),
-        None => return Err(sqlx::Error::RowNotFound),
+        match new_row {
+            Some(row) => format!("0x{}", hex::encode(row.merkle_root)),
+            None => return Err(sqlx::Error::RowNotFound),
+        }
     };
 
     // Get transaction amounts for the batch
@@ -2392,7 +2711,9 @@ pub async fn get_proven_unposted_batches(
     let rows = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at
+               state_transaction_ids, sindri_proof_id, proof_status, created_at, proven_at,
+               posted_to_contract, posted_to_contract_at, contract_tx_hash,
+               previous_state_root, final_state_root
         FROM proof_batches
         WHERE proof_status = 'proven'
           AND posted_to_contract = FALSE
@@ -2412,6 +2733,7 @@ pub async fn get_proven_unposted_batches(
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
             transaction_ids: row.transaction_ids,
+            state_transaction_ids: row.state_transaction_ids,
             sindri_proof_id: row.sindri_proof_id,
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
@@ -2422,9 +2744,11 @@ pub async fn get_proven_unposted_batches(
             proof_size_bytes: None,
             public_values_size_bytes: None,
             stored_at: None,
-            posted_to_contract: false, // NOT NULL DEFAULT FALSE
-            posted_to_contract_at: None,
-            contract_tx_hash: None,
+            posted_to_contract: row.posted_to_contract,
+            posted_to_contract_at: row.posted_to_contract_at,
+            contract_tx_hash: row.contract_tx_hash,
+            previous_state_root: row.previous_state_root,
+            final_state_root: row.final_state_root,
         })
         .collect();
 
@@ -2478,7 +2802,7 @@ pub async fn mark_batch_posted_to_contract_with_tx_hash(
         UPDATE proof_batches
         SET posted_to_contract = TRUE,
             posted_to_contract_at = NOW(),
-            transaction_hash = $2
+            contract_tx_hash = $2
         WHERE id = $1 AND posted_to_contract = FALSE
         ",
         batch_id,
@@ -2511,7 +2835,9 @@ pub async fn get_potential_stuck_batches(
     let records = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at
+               state_transaction_ids, sindri_proof_id, proof_status, created_at, proven_at,
+               posted_to_contract, posted_to_contract_at, contract_tx_hash,
+               previous_state_root, final_state_root
         FROM proof_batches
         WHERE proof_status = 'proven'
           AND posted_to_contract = FALSE
@@ -2533,6 +2859,7 @@ pub async fn get_potential_stuck_batches(
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
             transaction_ids: row.transaction_ids,
+            state_transaction_ids: row.state_transaction_ids,
             sindri_proof_id: row.sindri_proof_id,
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
@@ -2543,9 +2870,11 @@ pub async fn get_potential_stuck_batches(
             proof_size_bytes: None,
             public_values_size_bytes: None,
             stored_at: None,
-            posted_to_contract: false, // NOT NULL DEFAULT FALSE
-            posted_to_contract_at: None,
-            contract_tx_hash: None,
+            posted_to_contract: row.posted_to_contract,
+            posted_to_contract_at: row.posted_to_contract_at,
+            contract_tx_hash: row.contract_tx_hash,
+            previous_state_root: row.previous_state_root,
+            final_state_root: row.final_state_root,
         })
         .collect();
 

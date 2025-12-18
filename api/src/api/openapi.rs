@@ -155,21 +155,15 @@ pub use crate::handlers::{
     ApproveWithdrawalRequest,
     BatchInfo,
     BatchListResponse,
-    BatchProcessorStatsResponse,
     BulkKycApprovalRequest,
     BulkKycApprovalResponse,
     BulkOperationResponse,
     // Core types
     ContractConfigQuery,
     ContractConfigResponse,
-    ContractSubmissionData,
     CreateAccountFinancialTransactionRequest,
-    CreateBatchRequest,
-    CreateBatchResponse,
     // Deal types
     CreateDealRequest,
-    CurrentStateResponse,
-    DateRange,
     DealAuditTrailResponse,
     DealDetailsResponse,
     DealListingResponse,
@@ -194,29 +188,21 @@ pub use crate::handlers::{
     ListPendingKycResponse,
     MarketplaceDealResponse,
     PaginatedFinancialTransactionsResponse,
-    PaginationInfo,
     PaymentDetailsResponse,
     PaymentResponse,
-    PendingTransactionsResponse,
     PlatformMetricsResponse,
     RecordDealPaymentRequest,
     RegisterUserRequest,
     RegisterUserResponse,
     RejectWithdrawalRequest,
+    StateTransactionItem,
+    StateTransactionsPagination,
+    StateTransactionsQuery,
+    StateTransactionsResponse,
     SubmitKycRequest,
     SubmitKycResponse,
-    SubmitTransactionRequest,
-    SubmitTransactionResponse,
-    TransactionHistoryItem,
-    TransactionHistoryResponse,
-    TransactionInfo,
-    TransactionSummary,
-    TransactionUpdateEvent,
-    TransactionUpdatesQuery,
     TransferDealOwnershipRequest,
-    TriggerBatchResponse,
     UnifiedFinancialTransactionResponse,
-    UpdateBatchProofRequest,
 
     UpdateDealRequest,
     UpdateDealResponse,
@@ -236,10 +222,6 @@ pub use crate::handlers::companies::{
     InvestorProfileQuery, InvestorProfileResponse, RegisterInvestorRequest,
     RegisterInvestorResponse, UpdateInvestorProfileRequest,
 };
-pub use crate::handlers::users::balance::{
-    AddressBalance, AddressBalanceResponse, UserBalanceResponse,
-};
-// AvailableBalance removed - now using consolidated AddressBalance from balance handlers
 pub use crate::services::withdrawal_service::{
     InitiateWithdrawalRequest, InitiateWithdrawalResponse, WithdrawalStatusResponse,
 };
@@ -308,8 +290,6 @@ fn default_limit() -> u32 {
         crate::handlers::users::users::list_identities_endpoint,
         crate::handlers::users::users::update_user_endpoint,
         crate::handlers::users::users::delete_user_endpoint,
-        crate::handlers::users::balance::get_balance_by_address_endpoint,
-        crate::handlers::users::balance::get_balance_by_user_id_endpoint,
         crate::handlers::users::users::submit_kyc_endpoint,
         crate::handlers::users::users::update_kyc_status_endpoint,
 
@@ -320,16 +300,9 @@ fn default_limit() -> u32 {
         crate::handlers::users::admin::get_platform_metrics_endpoint,
 
         // State Management endpoints
-        crate::handlers::core::state::submit_transaction_endpoint,
-        crate::handlers::core::state::get_pending_transactions_endpoint,
-        crate::handlers::core::state::create_batch_endpoint,
+        crate::handlers::core::state::list_state_transactions_endpoint,
         crate::handlers::core::state::get_batches_endpoint,
-        crate::handlers::core::state::get_current_state_endpoint,
-        crate::handlers::core::state::get_batch_endpoint,
         crate::handlers::core::state::get_batch_details_endpoint,
-        crate::handlers::core::state::get_contract_submission_data_endpoint,
-        crate::handlers::core::state::update_batch_proof_endpoint,
-        crate::handlers::core::state::trigger_batch_endpoint,
 
         // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
         crate::handlers::deals::deals::create_deal_endpoint,
@@ -409,8 +382,6 @@ fn default_limit() -> u32 {
         crate::handlers::finance::transactions::get_user_financial_transactions,
         crate::handlers::finance::transactions::get_user_financial_summary,
 
-        // Transaction History endpoints
-        crate::handlers::finance::transaction_history::get_transaction_history,
 
         // Company Management endpoints
         crate::handlers::companies::companies::register_company_endpoint,
@@ -446,7 +417,6 @@ fn default_limit() -> u32 {
 
         // Contract configuration endpoints
         crate::handlers::core::contract::get_contract_config,
-        crate::handlers::core::contract::get_transaction_updates,
 
         // Taxonomy endpoints - Credit Agreements
         crate::handlers::taxonomy::credit_agreements::list_credit_agreements_handler,
@@ -707,17 +677,10 @@ fn default_limit() -> u32 {
         // State management types
         BatchInfo,
         BatchListResponse,
-        BatchProcessorStatsResponse,
-        ContractSubmissionData,
-        CreateBatchRequest,
-        CreateBatchResponse,
-        CurrentStateResponse,
-        PendingTransactionsResponse,
-        SubmitTransactionRequest,
-        SubmitTransactionResponse,
-        TransactionInfo,
-        TriggerBatchResponse,
-        UpdateBatchProofRequest,
+        StateTransactionItem,
+        StateTransactionsPagination,
+        StateTransactionsQuery,
+        StateTransactionsResponse,
 
         // User types
         ListIdentitiesQuery,
@@ -726,17 +689,11 @@ fn default_limit() -> u32 {
         SubmitKycResponse,
         UpdateKycStatusRequest,
 
-        // Consolidated Balance types
-        AddressBalance,
-        AddressBalanceResponse,
-        UserBalanceResponse,
-
         // Withdrawal types
         PaginationParams,
         InitiateWithdrawalRequest,
         InitiateWithdrawalResponse,
         WithdrawalStatusResponse,
-        // AvailableBalance removed - replaced with consolidated AddressBalance,
         // Admin withdrawal types
         AdminWithdrawalDashboard,
         ApproveWithdrawalRequest,
@@ -753,8 +710,6 @@ fn default_limit() -> u32 {
         // Contract configuration types
         ContractConfigResponse,
         ContractConfigQuery,
-        TransactionUpdateEvent,
-        TransactionUpdatesQuery,
 
         // Magic Link Authentication schemas (NEW)
         MagicLinkRequest,

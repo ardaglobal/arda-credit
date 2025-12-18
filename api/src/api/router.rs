@@ -21,7 +21,6 @@ use crate::handlers::{
     get_account_financial_transactions,
     // Magic Link Auth
     get_current_user,
-    get_transaction_history,
     get_user_financial_summary,
     get_user_financial_transactions,
     logout_endpoint,
@@ -244,44 +243,19 @@ pub fn create_router(state: ApiState) -> Router {
             paths::INVITE_CODE_VALIDATE,
             post(crate::handlers::auth::authentication::validate_invite_code_endpoint),
         )
-        // Transaction operations
+        // State transaction operations
         .route(
             paths::STATE_TRANSACTIONS,
-            post(crate::handlers::core::state::submit_transaction_endpoint),
-        )
-        .route(
-            paths::STATE_TRANSACTIONS_PENDING,
-            get(crate::handlers::core::state::get_pending_transactions_endpoint),
+            get(crate::handlers::core::state::list_state_transactions_endpoint),
         )
         // Batch operations
-        .route(
-            paths::STATE_BATCHES,
-            post(crate::handlers::core::state::create_batch_endpoint),
-        )
         .route(
             paths::STATE_BATCHES,
             get(crate::handlers::core::state::get_batches_endpoint),
         )
         .route(
-            paths::STATE_BATCH_BY_ID,
+            "/api/v1/state/batches/{batch_id}",
             get(crate::handlers::core::state::get_batch_details_endpoint),
-        )
-        .route(
-            paths::STATE_BATCH_PROOF,
-            post(crate::handlers::core::state::update_batch_proof_endpoint),
-        )
-        .route(
-            paths::STATE_BATCHES_TRIGGER,
-            post(crate::handlers::core::state::trigger_batch_endpoint),
-        )
-        // State operations
-        .route(
-            paths::STATE_CURRENT,
-            get(crate::handlers::core::state::get_current_state_endpoint),
-        )
-        .route(
-            paths::STATE_CONTRACT,
-            get(crate::handlers::core::state::get_contract_submission_data_endpoint),
         )
         // ========================================================================
         // LOAN PROCESSING ENDPOINTS
@@ -324,15 +298,6 @@ pub fn create_router(state: ApiState) -> Router {
             paths::INVESTOR_PROFILE,
             get(crate::handlers::companies::companies::get_investor_profile_endpoint)
                 .put(crate::handlers::companies::companies::update_investor_profile_endpoint),
-        )
-        // User Balance & Transaction endpoints (consolidated)
-        .route(
-            paths::USER_BALANCE_BY_ADDRESS,
-            get(crate::handlers::users::balance::get_balance_by_address_endpoint),
-        )
-        .route(
-            paths::USER_BALANCE_BY_ID,
-            get(crate::handlers::users::balance::get_balance_by_user_id_endpoint),
         )
         // ========================================================================
         // WITHDRAWAL MANAGEMENT ENDPOINTS
@@ -382,10 +347,6 @@ pub fn create_router(state: ApiState) -> Router {
             paths::USER_FINANCIAL_SUMMARY,
             get(get_user_financial_summary),
         )
-        // ========================================================================
-        // TRANSACTION HISTORY ENDPOINTS
-        // ========================================================================
-        .route(paths::TRANSACTION_HISTORY, get(get_transaction_history))
         // ========================================================================
         // DEAL MANAGEMENT ENDPOINTS (converted from LOAN MANAGEMENT)
         // ========================================================================
@@ -504,10 +465,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::CONTRACT_CONFIG,
             get(crate::handlers::core::contract::get_contract_config),
-        )
-        .route(
-            paths::TRANSACTION_UPDATES_SSE,
-            get(crate::handlers::core::contract::get_transaction_updates),
         )
         // ========================================================================
         // ADDITIONAL ADMIN WITHDRAWAL ENDPOINTS (using path constants)

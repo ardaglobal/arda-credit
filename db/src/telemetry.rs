@@ -215,7 +215,7 @@ macro_rules! instrument_db_user_fn {
 /// # use sqlx::PgPool;
 /// # use db::instrument_db_batch_fn;
 ///
-/// #[instrument_db_batch_fn!("bulk_insert_transactions", "loan_transactions", batch_size)]
+/// #[instrument_db_batch_fn!("bulk_insert_transactions", "state_transactions", batch_size)]
 /// async fn bulk_insert_transactions(pool: &PgPool, batch_size: usize) -> Result<(), sqlx::Error> {
 ///     // function implementation would go here
 ///     # Ok(())

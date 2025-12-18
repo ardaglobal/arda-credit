@@ -5,7 +5,7 @@
 //!
 //! ## Conversion Strategy
 //!
-//! - Query `deal_transactions` table for transactions in batch
+//! - Query `state_transactions` table for transactions in batch
 //! - Convert UUIDs to hashed [u8; 32] format
 //! - Convert Decimals to cents (u64)
 //! - Build metadata from JSON fields

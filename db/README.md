@@ -16,8 +16,7 @@ PostgreSQL integration for arithmetic computation storage and ADS (Authenticated
 
 ### Core Tables
 
-- **`loan_transactions`**: Loan transaction processing (replaces old arithmetic_transactions)
-- **`incoming_transactions`**: Pending batch processing queue
+- **`state_transactions`**: Unified state transaction processing for all ZK state transitions
 - **`proof_batches`**: Batch metadata with ZK proof references
 - **`nullifiers`**: IMT nullifier values with tree structure
 - **`ads_state_commits`**: Merkle roots linked to batches
@@ -26,7 +25,7 @@ PostgreSQL integration for arithmetic computation storage and ADS (Authenticated
 
 ### ADS Integration Flow
 
-1. **Transaction submitted** → stored in `incoming_transactions`
+1. **Transaction submitted** → stored in `state_transactions`
 2. **Batch trigger** → calls `BackgroundBatchProcessor::process_batch()`
 3. **ADS processing** → converts transaction to positive nullifier value
 4. **IMT insertion** → stores in `nullifiers` table with tree structure

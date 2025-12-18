@@ -17,7 +17,7 @@ use tracing::{debug, warn};
 /// required for zero-knowledge proof generation.
 ///
 /// # Arguments
-/// * `tx` - Database transaction record from deal_transactions table
+/// * `tx` - Database transaction record from state_transactions table
 ///
 /// # Returns
 /// DealTransaction struct suitable for zkVM processing

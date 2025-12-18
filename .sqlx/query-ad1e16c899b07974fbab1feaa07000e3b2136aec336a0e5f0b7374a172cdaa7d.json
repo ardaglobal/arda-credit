@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT final_state_root\n            FROM proof_batches\n            WHERE id < $1\n            ORDER BY id DESC\n            LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "final_state_root",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int4"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "ad1e16c899b07974fbab1feaa07000e3b2136aec336a0e5f0b7374a172cdaa7d"
+}
