@@ -668,6 +668,7 @@ async fn fetch_collateral_for_deals(
 pub async fn create_deal_endpoint(
     // was create_loan_endpoint
     State(state): State<ApiState>,
+    headers: HeaderMap,
     Json(request): Json<CreateDealRequest>, // was CreateLoanRequest
 ) -> Result<Json<DealDetailsResponse>, (StatusCode, String)> {
     // was LoanDetailsResponse
@@ -675,6 +676,12 @@ pub async fn create_deal_endpoint(
 
     // Record business logic operation
     metrics::counter!("business_logic_operations_total", "operation" => "create_deal").increment(1); // was create_loan
+
+    // Extract authenticated user (session middleware sets x-user-* headers)
+    let current_user = extract_current_user(&headers).ok_or((
+        StatusCode::UNAUTHORIZED,
+        "User not authenticated".to_string(),
+    ))?;
 
     info!(
         "💰 API: Creating deal: originator={}, investor={}, amount={}", // updated log message
@@ -1039,7 +1046,7 @@ pub async fn create_deal_endpoint(
         .transaction_recording
         .record_transaction_with_metadata(
             arda_credit_lib::TransactionType::DealOrigination,
-            final_originator_id,
+            current_user.id,
             Some(deal.id),
             deal.principal_amount,
             Some(json!({

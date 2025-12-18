@@ -27,6 +27,7 @@ impl Default for SessionConfig {
                 "/health".to_string(),
                 "/".to_string(),
                 "/playground".to_string(),
+                "/metrics".to_string(),
                 "/api/v1/auth/magic-link".to_string(),
                 "/api/v1/auth/verify".to_string(),
                 "/api/v1/user".to_string(), // User registration
@@ -52,15 +53,20 @@ pub async fn session_auth_middleware(
         return Ok(next.run(request).await);
     }
 
-    let path = request.uri().path();
+    // NOTE: use owned String to avoid borrowing `request` across later mutations
+    let path = request.uri().path().to_string();
 
     // Check if endpoint allows anonymous access
-    if config
-        .allow_anonymous_endpoints
-        .iter()
-        .any(|ep| path.starts_with(ep))
-    {
+    // NOTE: `starts_with("/")` matches *every* path. Treat "/" as an exact match only.
+    if config.allow_anonymous_endpoints.iter().any(|ep| {
+        if ep == "/" {
+            path == "/"
+        } else {
+            path.as_str().starts_with(ep)
+        }
+    }) {
         debug!("Anonymous access allowed for path: {}", path);
+
         return Ok(next.run(request).await);
     }
 
@@ -70,6 +76,7 @@ pub async fn session_auth_middleware(
             Some(token) => token,
             None => {
                 warn!("No session cookie found for path: {}", path);
+
                 return Ok(create_unauthorized_response("Session required"));
             }
         };
@@ -101,6 +108,7 @@ pub async fn session_auth_middleware(
         }
         Err(SessionError::NotFound) => {
             warn!("Invalid or expired session for path: {}", path);
+
             Ok(create_unauthorized_response("Session expired or invalid"))
         }
         Err(SessionError::Database(e)) => {
