@@ -116,7 +116,7 @@ async fn test_batch_detail_endpoint_includes_roots() {
 
     println!("📋 Test template for batch detail endpoint:");
     println!("   1. Create a batch with ADS commit");
-    println!("   2. Call GET /api/v1/state/batches/{id}");
+    println!("   2. Call GET /api/v1/state/batches/{{id}}");
     println!("   3. Assert response includes previous_state_root and final_state_root");
     println!("   4. Assert contract_prev_merkle_root and contract_new_merkle_root if available");
     println!("   5. Assert transaction_count matches state_transaction_ids length");

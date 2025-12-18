@@ -1,60 +1,54 @@
 /// Tests for proof_batches state roots and transaction membership
-use arda_credit_db::test_utils::init_test_db_with_migrations;
-use arda_credit_db::{
+use db::test_utils::TestDatabase;
+use db::{
     create_batch_from_state_transactions, create_state_transaction, get_batch_by_id,
-    store_ads_state_commit, DealTransactionParams, StateTransactionParams,
+    store_ads_state_commit,
 };
-use std::env;
 
 #[tokio::test]
 async fn test_batch_records_state_transaction_ids() {
-    // Initialize test database
-    let pool = init_test_db_with_migrations()
+    // Initialize test database (creates a fresh DB and runs migrations)
+    let test_db = TestDatabase::new()
         .await
         .expect("Failed to initialize test database");
+    let pool = test_db.pool.clone();
 
     // Create 3 state transactions
-    let tx1 = create_state_transaction(
+    let tx1_id = create_state_transaction(
         &pool,
-        StateTransactionParams {
-            transaction_type: "deal_origination".to_string(),
-            transaction_data: vec![1, 2, 3],
-            user_id: Some(uuid::Uuid::new_v4()),
-            deal_id: Some(uuid::Uuid::new_v4()),
-            originator_company_id: Some(uuid::Uuid::new_v4()),
-            investor_company_id: Some(uuid::Uuid::new_v4()),
-            collateral_id: None,
-        },
+        "deal_origination",
+        &[1, 2, 3],
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .expect("Failed to create state transaction 1");
 
-    let tx2 = create_state_transaction(
+    let tx2_id = create_state_transaction(
         &pool,
-        StateTransactionParams {
-            transaction_type: "deal_payment".to_string(),
-            transaction_data: vec![4, 5, 6],
-            user_id: Some(uuid::Uuid::new_v4()),
-            deal_id: Some(uuid::Uuid::new_v4()),
-            originator_company_id: None,
-            investor_company_id: None,
-            collateral_id: None,
-        },
+        "deal_payment",
+        &[4, 5, 6],
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .expect("Failed to create state transaction 2");
 
-    let tx3 = create_state_transaction(
+    let tx3_id = create_state_transaction(
         &pool,
-        StateTransactionParams {
-            transaction_type: "deal_closeout".to_string(),
-            transaction_data: vec![7, 8, 9],
-            user_id: Some(uuid::Uuid::new_v4()),
-            deal_id: Some(uuid::Uuid::new_v4()),
-            originator_company_id: None,
-            investor_company_id: None,
-            collateral_id: None,
-        },
+        "deal_closeout",
+        &[7, 8, 9],
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .expect("Failed to create state transaction 3");
@@ -74,15 +68,15 @@ async fn test_batch_records_state_transaction_ids() {
 
     // Verify the IDs match (order matters - FIFO by created_at, id)
     assert!(
-        batch.state_transaction_ids.contains(&tx1.id),
+        batch.state_transaction_ids.contains(&tx1_id),
         "Batch should contain tx1"
     );
     assert!(
-        batch.state_transaction_ids.contains(&tx2.id),
+        batch.state_transaction_ids.contains(&tx2_id),
         "Batch should contain tx2"
     );
     assert!(
-        batch.state_transaction_ids.contains(&tx3.id),
+        batch.state_transaction_ids.contains(&tx3_id),
         "Batch should contain tx3"
     );
 
@@ -96,22 +90,21 @@ async fn test_batch_records_state_transaction_ids() {
 #[tokio::test]
 async fn test_batch_state_roots_updated_on_ads_commit() {
     // Initialize test database
-    let pool = init_test_db_with_migrations()
+    let test_db = TestDatabase::new()
         .await
         .expect("Failed to initialize test database");
+    let pool = test_db.pool.clone();
 
     // Create a state transaction
-    let _tx = create_state_transaction(
+    let _tx_id = create_state_transaction(
         &pool,
-        StateTransactionParams {
-            transaction_type: "deal_origination".to_string(),
-            transaction_data: vec![1, 2, 3],
-            user_id: Some(uuid::Uuid::new_v4()),
-            deal_id: Some(uuid::Uuid::new_v4()),
-            originator_company_id: Some(uuid::Uuid::new_v4()),
-            investor_company_id: Some(uuid::Uuid::new_v4()),
-            collateral_id: None,
-        },
+        "deal_origination",
+        &[1, 2, 3],
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .expect("Failed to create state transaction");
@@ -178,22 +171,21 @@ async fn test_batch_state_roots_updated_on_ads_commit() {
 #[tokio::test]
 async fn test_sequential_batches_link_state_roots() {
     // Initialize test database
-    let pool = init_test_db_with_migrations()
+    let test_db = TestDatabase::new()
         .await
         .expect("Failed to initialize test database");
+    let pool = test_db.pool.clone();
 
     // Create batch 1
-    let _tx1 = create_state_transaction(
+    let _tx1_id = create_state_transaction(
         &pool,
-        StateTransactionParams {
-            transaction_type: "deal_origination".to_string(),
-            transaction_data: vec![1],
-            user_id: Some(uuid::Uuid::new_v4()),
-            deal_id: Some(uuid::Uuid::new_v4()),
-            originator_company_id: Some(uuid::Uuid::new_v4()),
-            investor_company_id: Some(uuid::Uuid::new_v4()),
-            collateral_id: None,
-        },
+        "deal_origination",
+        &[1],
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .expect("Failed to create tx1");
@@ -209,20 +201,10 @@ async fn test_sequential_batches_link_state_roots() {
         .expect("Failed to store ADS commit for batch1");
 
     // Create batch 2
-    let _tx2 = create_state_transaction(
-        &pool,
-        StateTransactionParams {
-            transaction_type: "deal_payment".to_string(),
-            transaction_data: vec![2],
-            user_id: Some(uuid::Uuid::new_v4()),
-            deal_id: Some(uuid::Uuid::new_v4()),
-            originator_company_id: None,
-            investor_company_id: None,
-            collateral_id: None,
-        },
-    )
-    .await
-    .expect("Failed to create tx2");
+    let _tx2_id =
+        create_state_transaction(&pool, "deal_payment", &[2], None, None, None, None, None)
+            .await
+            .expect("Failed to create tx2");
 
     let batch2 = create_batch_from_state_transactions(&pool, 10)
         .await
@@ -243,15 +225,23 @@ async fn test_sequential_batches_link_state_roots() {
         .expect("Failed to get batch2");
 
     // Verify batch2's previous_state_root equals batch1's final_state_root
+    let batch1_final_root = batch1_final
+        .final_state_root
+        .as_ref()
+        .expect("Batch 1 final_state_root should be set");
+    let batch2_prev_root = batch2_final
+        .previous_state_root
+        .as_ref()
+        .expect("Batch 2 previous_state_root should be set");
+
     assert_eq!(
-        batch2_final.previous_state_root.unwrap(),
-        batch1_final.final_state_root.unwrap(),
+        batch2_prev_root, batch1_final_root,
         "Batch 2's previous_state_root should equal batch 1's final_state_root"
     );
 
     println!(
         "✅ Sequential batches linked: batch1.final=0x{} → batch2.prev=0x{}",
-        hex::encode(&batch1_final.final_state_root.unwrap()),
-        hex::encode(&batch2_final.previous_state_root.unwrap())
+        hex::encode(batch1_final_root),
+        hex::encode(batch2_prev_root)
     );
 }
