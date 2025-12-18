@@ -882,11 +882,6 @@ pub async fn delete_user_endpoint(
     Ok(Json(response))
 }
 
-// DEPRECATED: Old balance endpoints removed - now using consolidated balance endpoints from balance.rs
-// New endpoints:
-// - GET /api/v1/user/{address}/balance -> balance::get_balance_by_address_endpoint
-// - GET /api/v1/user/{user_id}/balance -> balance::get_balance_by_user_id_endpoint
-
 /// Parse user ID string to UUID
 fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
     uuid::Uuid::parse_str(user_id).map_err(|_| {
