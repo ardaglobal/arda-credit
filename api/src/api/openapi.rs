@@ -164,12 +164,10 @@ pub use crate::handlers::{
     CreateAccountFinancialTransactionRequest,
     // Deal types
     CreateDealRequest,
-    DealAuditTrailResponse,
     DealDetailsResponse,
     DealListingResponse,
     DealPaymentHistoryResponse,
     DealStatsResponse,
-    DealTransactionEvent,
     DealTransferResponse,
     DealTransferValidationResponse,
     DeleteDealResponse,
@@ -317,9 +315,6 @@ fn default_limit() -> u32 {
         crate::handlers::deals::deals::record_deal_payment_endpoint,
         crate::handlers::deals::deals::get_payment_details_endpoint,
         crate::handlers::deals::deals::get_deal_payment_history_endpoint,
-        crate::handlers::deals::deals::get_deal_audit_trail_endpoint,
-        // NEW: Enhanced audit trail with proofs
-        crate::handlers::deals::deals::get_deal_audit_trail_with_proofs_endpoint,
         // NEW: Make Payment endpoint
         crate::handlers::deals::deals::make_payment_endpoint,
         // NEW: Closeout endpoint
@@ -352,7 +347,6 @@ fn default_limit() -> u32 {
         // removed as collateral detection tables were dropped in migration 060
         crate::handlers::taxonomy::collateral::get_collateral_by_custom_id_handler,
         crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler,
-        crate::handlers::taxonomy::collateral::get_collateral_audit_trail_handler,
 
         // Internal endpoints
         crate::handlers::taxonomy::detection::receive_detection_result,
@@ -623,15 +617,6 @@ fn default_limit() -> u32 {
         ListDealsResponse,
         DealDetailsResponse,
         DealPaymentHistoryResponse,
-    DealAuditTrailResponse,
-    DealTransactionEvent,
-    // NEW: Enhanced audit trail with proofs types
-    crate::handlers::deals::deals::EnhancedDealAuditTrailResponse,
-    crate::handlers::deals::deals::BatchWithTransactions,
-    crate::handlers::deals::deals::ProofMetadata,
-    crate::handlers::deals::deals::MerkleRootInfo,
-    crate::handlers::deals::deals::ProofDataInfo,
-    crate::handlers::deals::deals::UnbatchedTransaction,
         DealStatsResponse,
         PaymentDetailsResponse,
         PaymentResponse,
