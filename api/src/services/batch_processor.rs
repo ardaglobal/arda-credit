@@ -382,8 +382,8 @@ impl BackgroundBatchProcessor {
         let has_proven_state = sqlx::query_scalar!(
             r#"
             SELECT EXISTS(
-                SELECT 1 FROM proof_batches 
-                WHERE proof_status = 'proven' 
+                SELECT 1 FROM proof_batches
+                WHERE proof_status = 'proven'
                   AND superseded_at IS NULL
             ) as "exists!"
             "#

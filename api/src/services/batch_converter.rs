@@ -211,6 +211,42 @@ fn convert_state_transaction_to_zkvm(
     deal_tx: &DealTransaction,
     deal_company_lookup: &HashMap<uuid::Uuid, (uuid::Uuid, Option<uuid::Uuid>)>,
 ) -> Result<DealTransaction, String> {
+    // Backward compatibility: older UserRegistration transactions stored JSON bytes in metadata,
+    // but zkVM expects metadata[0] = 1/2/3 (investor/originator/admin).
+    let mut deal_tx = deal_tx.clone();
+    if deal_tx.transaction_type == TransactionType::UserRegistration {
+        let first = deal_tx.metadata.as_bytes()[0];
+        if !matches!(first, 1 | 2 | 3) {
+            // Try to parse legacy JSON string from metadata bytes
+            let raw = deal_tx
+                .metadata
+                .as_bytes()
+                .iter()
+                .copied()
+                .take_while(|b| *b != 0)
+                .collect::<Vec<u8>>();
+            if let Ok(s) = String::from_utf8(raw) {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+                    if let Some(user_type) = v
+                        .get("user_type")
+                        .and_then(|x| x.as_str())
+                        .map(|x| x.to_lowercase())
+                    {
+                        let b = match user_type.as_str() {
+                            "investor" => 1u8,
+                            "originator" => 2u8,
+                            "admin" => 3u8,
+                            _ => 0u8,
+                        };
+                        if matches!(b, 1 | 2 | 3) {
+                            deal_tx.metadata = MetadataArray::from_bytes(&[b]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // The DealTransaction already has all the correct hashed IDs
     // We just need to verify company IDs for deal transactions if we have a lookup
 
