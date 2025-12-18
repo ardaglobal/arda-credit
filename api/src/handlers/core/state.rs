@@ -135,8 +135,8 @@ pub struct BatchListResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct BatchInfo {
     pub id: i32,
-    pub previous_counter_value: i64,
-    pub final_counter_value: i64,
+    pub previous_state_root: Option<String>, // 0x-prefixed hex (32 bytes)
+    pub final_state_root: Option<String>,    // 0x-prefixed hex (32 bytes)
     pub transaction_count: usize,
     pub proof_status: String,
     pub sindri_proof_id: Option<String>,
@@ -338,9 +338,15 @@ pub async fn get_batches_endpoint(
                 .into_iter()
                 .map(|b| BatchInfo {
                     id: b.id,
-                    previous_counter_value: b.previous_counter_value,
-                    final_counter_value: b.final_counter_value,
-                    transaction_count: b.transaction_ids.len(),
+                    previous_state_root: b
+                        .previous_state_root
+                        .as_ref()
+                        .map(|r| format!("0x{}", hex::encode(r))),
+                    final_state_root: b
+                        .final_state_root
+                        .as_ref()
+                        .map(|r| format!("0x{}", hex::encode(r))),
+                    transaction_count: b.state_transaction_ids.len(),
                     proof_status: b.proof_status,
                     sindri_proof_id: b.sindri_proof_id,
                     created_at: b.created_at,
@@ -408,9 +414,15 @@ pub async fn get_batch_details_endpoint(
 
             let response = BatchInfo {
                 id: batch.id,
-                previous_counter_value: batch.previous_counter_value,
-                final_counter_value: batch.final_counter_value,
-                transaction_count: batch.transaction_ids.len(),
+                previous_state_root: batch
+                    .previous_state_root
+                    .as_ref()
+                    .map(|r| format!("0x{}", hex::encode(r))),
+                final_state_root: batch
+                    .final_state_root
+                    .as_ref()
+                    .map(|r| format!("0x{}", hex::encode(r))),
+                transaction_count: batch.state_transaction_ids.len(),
                 proof_status: batch.proof_status.clone(),
                 sindri_proof_id: batch.sindri_proof_id,
                 created_at: batch.created_at,

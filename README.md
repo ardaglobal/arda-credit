@@ -57,11 +57,18 @@ Public Data (Verifiable):
 
 ## Requirements
 
+### Software
 - [Rust](https://rustup.rs/) toolchain
 - [SP1](https://docs.succinct.xyz/docs/sp1/getting-started/install) zkVM
 - [Foundry](https://book.getfoundry.sh/getting-started/installation) for smart contracts
 - [Docker](https://docs.docker.com/get-docker/) for database
 - [Node.js](https://nodejs.org/) for Sindri CLI
+
+### Hardware
+- **Recommended**: 16-core CPU for local development
+  - Local Core proving is CPU-intensive and benefits from multi-core processors
+  - Configure CPU usage via `SP1_LOCAL_PROVER_THREADS` (default: 10 cores)
+  - Example: `SP1_LOCAL_PROVER_THREADS=12 make server` to use 12 cores
 
 ## Quick Start
 

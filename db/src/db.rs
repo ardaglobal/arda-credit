@@ -72,6 +72,7 @@ pub struct ProofBatch {
     pub previous_counter_value: i64,
     pub final_counter_value: i64,
     pub transaction_ids: Vec<i32>,
+    pub state_transaction_ids: Vec<uuid::Uuid>, // NEW: UUID[] for state transaction membership
     pub sindri_proof_id: Option<String>,
     pub proof_status: String, // pending, proven, failed
     pub created_at: DateTime<Utc>,
@@ -86,6 +87,9 @@ pub struct ProofBatch {
     pub posted_to_contract: bool, // NOT NULL DEFAULT FALSE in database
     pub posted_to_contract_at: Option<DateTime<Utc>>,
     pub contract_tx_hash: Option<String>,
+    // State roots (merkle roots before/after batch application)
+    pub previous_state_root: Option<Vec<u8>>, // NEW: 32-byte merkle root before batch
+    pub final_state_root: Option<Vec<u8>>,    // NEW: 32-byte merkle root after batch
 }
 
 /// Proof data structure for self-sufficient contract submission
@@ -2009,21 +2013,23 @@ pub async fn create_batch_from_state_transactions(
         .await?
         .unwrap_or(0);
 
-    // Step 3: Create the batch
+    // Step 3: Create the batch with state_transaction_ids
     let batch_row = sqlx::query!(
         r#"
         INSERT INTO proof_batches (
             previous_counter_value,
             final_counter_value,
             transaction_ids,
+            state_transaction_ids,
             proof_status
         )
-        VALUES ($1, $2, $3, 'pending')
+        VALUES ($1, $2, $3, $4, 'pending')
         RETURNING id, created_at
         "#,
         counter_value,
         counter_value, // State transactions don't modify counter
-        &[] as &[i32] // Empty array (state transactions tracked by state_transactions.included_in_batch_id)
+        &[] as &[i32], // Empty array (legacy field)
+        &selected_ids  // NEW: UUID[] of state transactions in this batch
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -2146,10 +2152,11 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
     let row = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at,
+               state_transaction_ids, sindri_proof_id, proof_status, created_at, proven_at,
                proof_bytes, public_values, verifying_key,
                proof_size_bytes, public_values_size_bytes, stored_at,
-               posted_to_contract, posted_to_contract_at, contract_tx_hash
+               posted_to_contract, posted_to_contract_at, contract_tx_hash,
+               previous_state_root, final_state_root
         FROM proof_batches
         WHERE id = $1
         ",
@@ -2163,6 +2170,7 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
         previous_counter_value: row.previous_counter_value,
         final_counter_value: row.final_counter_value,
         transaction_ids: row.transaction_ids,
+        state_transaction_ids: row.state_transaction_ids,
         sindri_proof_id: row.sindri_proof_id,
         proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
         created_at: row.created_at.unwrap_or_else(|| Utc::now()),
@@ -2176,6 +2184,8 @@ pub async fn get_batch_by_id(pool: &PgPool, batch_id: i32) -> Result<ProofBatch,
         posted_to_contract: row.posted_to_contract,
         posted_to_contract_at: row.posted_to_contract_at,
         contract_tx_hash: row.contract_tx_hash,
+        previous_state_root: row.previous_state_root,
+        final_state_root: row.final_state_root,
     };
 
     debug!(
@@ -2205,7 +2215,9 @@ pub async fn get_all_batches(
     let rows = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at
+               state_transaction_ids, sindri_proof_id, proof_status, created_at, proven_at,
+               posted_to_contract, posted_to_contract_at, contract_tx_hash,
+               previous_state_root, final_state_root
         FROM proof_batches
         ORDER BY id DESC
         LIMIT $1
@@ -2222,6 +2234,7 @@ pub async fn get_all_batches(
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
             transaction_ids: row.transaction_ids,
+            state_transaction_ids: row.state_transaction_ids,
             sindri_proof_id: row.sindri_proof_id,
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
@@ -2232,9 +2245,11 @@ pub async fn get_all_batches(
             proof_size_bytes: None,
             public_values_size_bytes: None,
             stored_at: None,
-            posted_to_contract: false, // NOT NULL DEFAULT FALSE
-            posted_to_contract_at: None,
-            contract_tx_hash: None,
+            posted_to_contract: row.posted_to_contract,
+            posted_to_contract_at: row.posted_to_contract_at,
+            contract_tx_hash: row.contract_tx_hash,
+            previous_state_root: row.previous_state_root,
+            final_state_root: row.final_state_root,
         })
         .collect();
 
@@ -2510,7 +2525,7 @@ pub async fn get_current_state(pool: &PgPool) -> Result<CounterState, sqlx::Erro
 // ADS/MERKLE TREE FUNCTIONS
 // ============================================================================
 
-/// Store Merkle root for a batch
+/// Store Merkle root for a batch and update proof_batches state roots
 ///
 /// # Errors
 /// Returns error if database operation fails
@@ -2541,11 +2556,53 @@ pub async fn store_ads_state_commit(
     let commit = AdsStateCommit {
         id: row.id,
         batch_id: row.batch_id,
-        merkle_root: row.merkle_root,
+        merkle_root: row.merkle_root.clone(),
         created_at: row.created_at.unwrap_or_else(|| Utc::now()),
     };
 
     debug!("ADS state commit stored: id={}", commit.id);
+
+    // Update proof_batches with state roots
+    // Get previous batch's final_state_root for previous_state_root
+    let prev_root = sqlx::query!(
+        r"
+        SELECT final_state_root
+        FROM proof_batches
+        WHERE id < $1
+        ORDER BY id DESC
+        LIMIT 1
+        ",
+        batch_id
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    let previous_state_root = prev_root
+        .and_then(|r| r.final_state_root)
+        .unwrap_or_else(|| vec![0u8; 32]); // Genesis: all zeros
+
+    // Update the batch with both roots
+    sqlx::query!(
+        r"
+        UPDATE proof_batches
+        SET previous_state_root = $1,
+            final_state_root = $2
+        WHERE id = $3
+        ",
+        &previous_state_root,
+        merkle_root,
+        batch_id
+    )
+    .execute(pool)
+    .await?;
+
+    debug!(
+        "Updated batch {} with roots: prev=0x{}, final=0x{}",
+        batch_id,
+        hex::encode(&previous_state_root),
+        hex::encode(merkle_root)
+    );
+
     Ok(commit)
 }
 
@@ -2568,45 +2625,50 @@ pub async fn get_contract_submission_data(
     // Get batch details
     let batch = get_batch_by_id(pool, batch_id).await?;
 
-    // Get previous and new Merkle roots
-    let prev_root = if batch.previous_counter_value == 0 {
-        // Genesis state - use empty root
-        "0x0000000000000000000000000000000000000000000000000000000000000000".to_string()
+    // Use stored state roots directly (NEW)
+    // Fallback to ads_state_commits if roots aren't yet populated (legacy batches)
+    let prev_root = if let Some(root) = &batch.previous_state_root {
+        format!("0x{}", hex::encode(root))
     } else {
-        // Get previous batch's Merkle root
+        // Legacy fallback: try to derive from prior batch's final root
         let prev_row = sqlx::query!(
             r"
-            SELECT ads.merkle_root
-            FROM proof_batches pb
-            JOIN ads_state_commits ads ON pb.id = ads.batch_id
-            WHERE pb.final_counter_value = $1 AND pb.proof_status = 'proven'
-            ORDER BY pb.id DESC
+            SELECT final_state_root
+            FROM proof_batches
+            WHERE id < $1
+            ORDER BY id DESC
             LIMIT 1
             ",
-            batch.previous_counter_value
+            batch_id
         )
         .fetch_optional(pool)
         .await?;
 
-        match prev_row {
-            Some(row) => format!("0x{}", hex::encode(row.merkle_root)),
+        match prev_row.and_then(|r| r.final_state_root) {
+            Some(root) => format!("0x{}", hex::encode(root)),
             None => {
                 "0x0000000000000000000000000000000000000000000000000000000000000000".to_string()
             }
         }
     };
 
-    // Get new Merkle root
-    let new_row = sqlx::query!(
-        "SELECT merkle_root FROM ads_state_commits WHERE batch_id = $1",
-        batch_id
-    )
-    .fetch_optional(pool)
-    .await?;
+    // Use stored final_state_root directly (NEW)
+    // Fallback to ads_state_commits if not yet populated (legacy batches)
+    let new_root = if let Some(root) = &batch.final_state_root {
+        format!("0x{}", hex::encode(root))
+    } else {
+        // Legacy fallback: get from ads_state_commits
+        let new_row = sqlx::query!(
+            "SELECT merkle_root FROM ads_state_commits WHERE batch_id = $1",
+            batch_id
+        )
+        .fetch_optional(pool)
+        .await?;
 
-    let new_root = match new_row {
-        Some(row) => format!("0x{}", hex::encode(row.merkle_root)),
-        None => return Err(sqlx::Error::RowNotFound),
+        match new_row {
+            Some(row) => format!("0x{}", hex::encode(row.merkle_root)),
+            None => return Err(sqlx::Error::RowNotFound),
+        }
     };
 
     // Get transaction amounts for the batch
@@ -2649,7 +2711,9 @@ pub async fn get_proven_unposted_batches(
     let rows = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at
+               state_transaction_ids, sindri_proof_id, proof_status, created_at, proven_at,
+               posted_to_contract, posted_to_contract_at, contract_tx_hash,
+               previous_state_root, final_state_root
         FROM proof_batches
         WHERE proof_status = 'proven'
           AND posted_to_contract = FALSE
@@ -2669,6 +2733,7 @@ pub async fn get_proven_unposted_batches(
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
             transaction_ids: row.transaction_ids,
+            state_transaction_ids: row.state_transaction_ids,
             sindri_proof_id: row.sindri_proof_id,
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
@@ -2679,9 +2744,11 @@ pub async fn get_proven_unposted_batches(
             proof_size_bytes: None,
             public_values_size_bytes: None,
             stored_at: None,
-            posted_to_contract: false, // NOT NULL DEFAULT FALSE
-            posted_to_contract_at: None,
-            contract_tx_hash: None,
+            posted_to_contract: row.posted_to_contract,
+            posted_to_contract_at: row.posted_to_contract_at,
+            contract_tx_hash: row.contract_tx_hash,
+            previous_state_root: row.previous_state_root,
+            final_state_root: row.final_state_root,
         })
         .collect();
 
@@ -2735,7 +2802,7 @@ pub async fn mark_batch_posted_to_contract_with_tx_hash(
         UPDATE proof_batches
         SET posted_to_contract = TRUE,
             posted_to_contract_at = NOW(),
-            transaction_hash = $2
+            contract_tx_hash = $2
         WHERE id = $1 AND posted_to_contract = FALSE
         ",
         batch_id,
@@ -2768,7 +2835,9 @@ pub async fn get_potential_stuck_batches(
     let records = sqlx::query!(
         r"
         SELECT id, previous_counter_value, final_counter_value, transaction_ids,
-               sindri_proof_id, proof_status, created_at, proven_at
+               state_transaction_ids, sindri_proof_id, proof_status, created_at, proven_at,
+               posted_to_contract, posted_to_contract_at, contract_tx_hash,
+               previous_state_root, final_state_root
         FROM proof_batches
         WHERE proof_status = 'proven'
           AND posted_to_contract = FALSE
@@ -2790,6 +2859,7 @@ pub async fn get_potential_stuck_batches(
             previous_counter_value: row.previous_counter_value,
             final_counter_value: row.final_counter_value,
             transaction_ids: row.transaction_ids,
+            state_transaction_ids: row.state_transaction_ids,
             sindri_proof_id: row.sindri_proof_id,
             proof_status: row.proof_status.unwrap_or_else(|| "pending".to_string()),
             created_at: row.created_at.unwrap_or_else(|| Utc::now()),
@@ -2800,9 +2870,11 @@ pub async fn get_potential_stuck_batches(
             proof_size_bytes: None,
             public_values_size_bytes: None,
             stored_at: None,
-            posted_to_contract: false, // NOT NULL DEFAULT FALSE
-            posted_to_contract_at: None,
-            contract_tx_hash: None,
+            posted_to_contract: row.posted_to_contract,
+            posted_to_contract_at: row.posted_to_contract_at,
+            contract_tx_hash: row.contract_tx_hash,
+            previous_state_root: row.previous_state_root,
+            final_state_root: row.final_state_root,
         })
         .collect();
 

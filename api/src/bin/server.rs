@@ -13,6 +13,67 @@ use arda_credit_db::init_db;
 use clap::Parser;
 use tracing::{error, info};
 
+/// Configure the Rayon thread pool for SP1 local proving
+///
+/// This function reads the `SP1_LOCAL_PROVER_THREADS` environment variable
+/// (defaults to 10) and configures the global Rayon thread pool to cap CPU
+/// usage during local Core proving. This keeps the API server responsive
+/// during proof generation.
+///
+/// The thread count is clamped to the number of available logical cores.
+fn configure_prover_thread_pool() {
+    use std::env;
+    use std::thread::available_parallelism;
+
+    // Read config from environment or use default
+    const DEFAULT_THREADS: usize = 10;
+    let requested_threads = env::var("SP1_LOCAL_PROVER_THREADS")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_THREADS);
+
+    // Get available parallelism (logical cores)
+    let available_cores = available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(DEFAULT_THREADS);
+
+    // Clamp to available cores and enforce minimum of 1
+    let num_threads = requested_threads.clamp(1, available_cores);
+
+    // Log if we're clamping
+    if requested_threads > available_cores {
+        eprintln!(
+            "⚠️  SP1_LOCAL_PROVER_THREADS={} exceeds available cores ({}), clamping to {}",
+            requested_threads, available_cores, num_threads
+        );
+    } else if requested_threads < 1 {
+        eprintln!(
+            "⚠️  SP1_LOCAL_PROVER_THREADS={} is invalid, using minimum of 1",
+            requested_threads
+        );
+    }
+
+    // Configure global Rayon thread pool
+    match rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build_global()
+    {
+        Ok(()) => {
+            eprintln!(
+                "✅ Configured SP1 local prover: {} threads (available cores: {})",
+                num_threads, available_cores
+            );
+        }
+        Err(e) => {
+            // Global pool already initialized - this is non-fatal
+            eprintln!(
+                "ℹ️  Rayon thread pool already initialized ({}), continuing with existing config",
+                e
+            );
+        }
+    }
+}
+
 /// Command line arguments for the server
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -51,6 +112,9 @@ struct Args {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Load environment variables from .env file if present
     dotenv::dotenv().ok();
+
+    // Configure Rayon thread pool for SP1 local proving BEFORE any proving starts
+    configure_prover_thread_pool();
 
     // Initialize complete tracing setup with OpenTelemetry integration
     init_tracing().map_err(|e| {

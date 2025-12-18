@@ -61,6 +61,7 @@ metrics                     = "0.24"
 metrics-exporter-prometheus = "0.18"
 metrics-util                = "0.20"
 prometheus                  = "0.14.0"
+rayon                       = "1.10"
 
 # AWS S3 and document storage dependencies
 aws-config  = "1.8"
