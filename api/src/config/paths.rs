@@ -682,16 +682,6 @@ pub fn deals_by_user_id_path(user_id: &str) -> String {
     replace_param(DEALS_BY_USER_ID, "user_id", user_id)
 }
 
-/// Build deal audit trail path with deal_id parameter
-pub fn deal_audit_trail_path(deal_id: &str) -> String {
-    replace_param(DEAL_AUDIT_TRAIL, "deal_id", deal_id)
-}
-
-/// Build enhanced deal audit trail with proofs path with deal_id parameter
-pub fn deal_audit_trail_with_proofs_path(deal_id: &str) -> String {
-    replace_param(DEAL_AUDIT_TRAIL_WITH_PROOFS, "deal_id", deal_id)
-}
-
 /// Build deal lifecycle summary path with deal_id parameter
 pub fn deal_lifecycle_summary_path(deal_id: &str) -> String {
     replace_param(DEAL_LIFECYCLE_SUMMARY, "deal_id", deal_id)
@@ -956,11 +946,6 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
             method: "GET".to_string(),
             path: DEALS_STATS.to_string(),
             description: "Get loan statistics".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: DEAL_AUDIT_TRAIL.to_string(),
-            description: "Get loan audit trail".to_string(),
         },
         crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
