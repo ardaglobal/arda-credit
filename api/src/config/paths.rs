@@ -200,12 +200,6 @@ pub const COMPANY_DEALS: &str = api_path!("/company/{company_id}/deals");
 /// Draft deals by company ID - get all draft deals for a company
 pub const COMPANY_DRAFT_DEALS: &str = api_path!("/company/{company_id}/deals/draft");
 
-/// Deal audit trail - was LOAN_AUDIT_TRAIL
-pub const DEAL_AUDIT_TRAIL: &str = api_path!("/deal/{deal_id}/audit-trail");
-
-/// Enhanced deal audit trail with proof information
-pub const DEAL_AUDIT_TRAIL_WITH_PROOFS: &str = api_path!("/deal/{deal_id}/audit-trail-with-proofs");
-
 /// Deal lifecycle summary - was LOAN_LIFECYCLE_SUMMARY
 pub const DEAL_LIFECYCLE_SUMMARY: &str = api_path!("/deal/{deal_id}/lifecycle-summary");
 
@@ -688,16 +682,6 @@ pub fn deals_by_user_id_path(user_id: &str) -> String {
     replace_param(DEALS_BY_USER_ID, "user_id", user_id)
 }
 
-/// Build deal audit trail path with deal_id parameter
-pub fn deal_audit_trail_path(deal_id: &str) -> String {
-    replace_param(DEAL_AUDIT_TRAIL, "deal_id", deal_id)
-}
-
-/// Build enhanced deal audit trail with proofs path with deal_id parameter
-pub fn deal_audit_trail_with_proofs_path(deal_id: &str) -> String {
-    replace_param(DEAL_AUDIT_TRAIL_WITH_PROOFS, "deal_id", deal_id)
-}
-
 /// Build deal lifecycle summary path with deal_id parameter
 pub fn deal_lifecycle_summary_path(deal_id: &str) -> String {
     replace_param(DEAL_LIFECYCLE_SUMMARY, "deal_id", deal_id)
@@ -962,11 +946,6 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
             method: "GET".to_string(),
             path: DEALS_STATS.to_string(),
             description: "Get loan statistics".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: DEAL_AUDIT_TRAIL.to_string(),
-            description: "Get loan audit trail".to_string(),
         },
         crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),

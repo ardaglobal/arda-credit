@@ -13,6 +13,7 @@
 // pub mod integration;
 
 pub mod openapi;
+pub mod openapi_prune;
 pub mod router;
 pub mod server;
 
