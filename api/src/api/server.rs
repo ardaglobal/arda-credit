@@ -811,10 +811,6 @@ pub fn create_new_router(state: ApiState) -> Router<ApiState> {
             crate::config::paths::STATE_TRANSACTIONS,
             get(crate::handlers::core::state::list_state_transactions_endpoint),
         )
-        .route(
-            crate::config::paths::STATE_BATCHES,
-            post(crate::handlers::core::state::create_batch_endpoint),
-        )
         // Admin endpoints from admin_handlers.rs
         .route(
             crate::config::paths::ADMIN_KYC_PENDING,

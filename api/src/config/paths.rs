@@ -390,80 +390,22 @@ pub const USER_FINANCIAL_SUMMARY: &str = api_path!("/user/{user_id}/financial/su
 pub const USER_POOL_FINANCIAL: &str = api_path!("/user/{user_id}/financial/pools");
 
 // ============================================================================
-// STATE MANAGEMENT PATHS (transactions, batches, proofs)
+// STATE MANAGEMENT PATHS
 // ============================================================================
 
-/// Current state
-pub const STATE_CURRENT: &str = api_path!("/state/current");
-
-/// State summary (comprehensive overview)
-pub const STATE_SUMMARY: &str = api_path!("/state/summary");
-
-/// State history
-pub const STATE_HISTORY: &str = api_path!("/state/history");
-
-// State Transaction Operations
 /// List state transactions with flexible filtering (GET)
 /// Supports filtering by pending status, batch ID, transaction types, UUIDs, etc.
 pub const STATE_TRANSACTIONS: &str = api_path!("/state/transactions");
 
-// Batch Operations
-/// Batch operations root (list batches, create batch)
+/// Batch operations root (list batches)
 pub const STATE_BATCHES: &str = api_path!("/state/batches");
 
-/// Get specific batch
-pub const STATE_BATCH_BY_ID: &str = api_path!("/state/batch/{batch_id}");
-
-/// Update batch proof
-pub const STATE_BATCH_PROOF: &str = api_path!("/state/batch/{batch_id}/proof");
-
-/// Batch trigger
-pub const STATE_BATCHES_TRIGGER: &str = api_path!("/state/batches/trigger");
-
-/// Batch processor statistics
-pub const STATE_BATCHES_STATS: &str = api_path!("/state/batches/stats");
-
-/// Contract data for batch
-pub const STATE_CONTRACT: &str = api_path!("/state/{batch_id}/contract");
-
-/// Create batch from loan transactions
-pub const STATE_BATCH_CREATE: &str = api_path!("/state/batch/create");
-
-/// Get loan batch details
-pub const STATE_LOAN_BATCH_BY_ID: &str = api_path!("/state/loan-batch/{batch_id}");
-
-/// Get pending loan transactions ready for batching
-pub const STATE_BATCH_PENDING: &str = api_path!("/state/batch/pending");
-
-// Payment Operations
+// Payment Operations (deal payments routed here)
 /// Record payment
 pub const STATE_PAYMENTS: &str = api_path!("/state/payments");
 
 /// Get payment details
 pub const STATE_PAYMENT_BY_ID: &str = api_path!("/state/payment/{transaction_id}");
-
-// Proof Operations
-/// Generate loan operation proof
-pub const STATE_PROOFS_LOAN_OPERATION: &str = api_path!("/state/proofs/loan-operation");
-
-/// Generate loan payment proof
-pub const STATE_PROOFS_DEAL_PAYMENT: &str =
-    api_path!("/state/proofs/loan-payment/{user_id}/{loan_id}/{payment_id}/{batch_id}");
-
-/// Verify proof
-pub const STATE_PROOFS_VERIFY: &str = api_path!("/state/proofs/verify");
-
-/// Generate proof report
-pub const STATE_PROOFS_REPORT: &str = api_path!("/state/proofs/report");
-
-/// Batch verify proofs
-pub const STATE_PROOFS_BATCH_VERIFY: &str = api_path!("/state/proofs/batch-verify");
-
-/// Generate transaction inclusion proof
-pub const STATE_PROOF: &str = api_path!("/state/proof/{transaction_type}/{transaction_id}");
-
-/// Verify transaction inclusion
-pub const STATE_VERIFY: &str = api_path!("/state/verify");
 
 // ============================================================================
 // CONTRACT CONFIGURATION PATHS
@@ -687,12 +629,6 @@ pub const COLLATERAL_DETECTION_RESULT: &str = api_path!("/internal/collateral/{i
 // TRANSACTION HISTORY PATHS
 // ============================================================================
 
-/// Get comprehensive transaction history across all operations
-pub const TRANSACTION_HISTORY: &str = api_path!("/transactions/history");
-
-/// Get transaction history for a specific pool
-pub const POOL_TRANSACTION_HISTORY: &str = api_path!("/pools/{pool_id}/transaction-history");
-
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
@@ -771,48 +707,9 @@ pub fn deal_lifecycle_summary_path(deal_id: &str) -> String {
 }
 
 // State Management Helper Functions
-/// Build batch path with batch_id parameter
-pub fn batch_path(batch_id: i32) -> String {
-    replace_param(STATE_BATCH_BY_ID, "batch_id", &batch_id.to_string())
-}
-
-/// Build deal batch path with batch_id parameter
-pub fn deal_batch_path(batch_id: i32) -> String {
-    replace_param(STATE_LOAN_BATCH_BY_ID, "batch_id", &batch_id.to_string())
-}
-
-/// Build batch proof path with batch_id parameter
-pub fn batch_proof_path(batch_id: i32) -> String {
-    replace_param(STATE_BATCH_PROOF, "batch_id", &batch_id.to_string())
-}
-
-/// Build state contract path with batch_id parameter
-pub fn state_contract_path(batch_id: i32) -> String {
-    replace_param(STATE_CONTRACT, "batch_id", &batch_id.to_string())
-}
-
 /// Build payment path with transaction_id parameter
 pub fn payment_path(transaction_id: &str) -> String {
     replace_param(STATE_PAYMENT_BY_ID, "transaction_id", transaction_id)
-}
-
-/// Build deal payment proof path with parameters
-pub fn deal_payment_proof_path(
-    user_id: &str,
-    deal_id: &str,
-    payment_id: &str,
-    batch_id: i32,
-) -> String {
-    let path = replace_param(STATE_PROOFS_DEAL_PAYMENT, "user_id", user_id);
-    let path = replace_param(&path, "deal_id", deal_id);
-    let path = replace_param(&path, "payment_id", payment_id);
-    replace_param(&path, "batch_id", &batch_id.to_string())
-}
-
-/// Build transaction proof path with parameters
-pub fn transaction_proof_path(transaction_type: &str, transaction_id: &str) -> String {
-    let path = replace_param(STATE_PROOF, "transaction_type", transaction_type);
-    replace_param(&path, "transaction_id", transaction_id)
 }
 
 /// Generate user balance by address path
@@ -967,11 +864,6 @@ pub fn user_pool_financial_path(user_id: &str) -> String {
 // TRANSACTION HISTORY PATH HELPERS
 // ============================================================================
 
-/// Build pool transaction history path with pool_id parameter
-pub fn pool_transaction_history_path(pool_id: &str) -> String {
-    replace_param(POOL_TRANSACTION_HISTORY, "pool_id", pool_id)
-}
-
 // ============================================================================
 // PATH LISTS FOR DOCUMENTATION
 // ============================================================================
@@ -1089,21 +981,11 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
             path: DEAL_LIFECYCLE_SUMMARY.to_string(),
             description: "Get loan lifecycle summary".to_string(),
         },
-        // State Management - Core State
+        // State Management - Contract Configuration
         crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
-            path: STATE_CURRENT.to_string(),
-            description: "Get current system state".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: STATE_SUMMARY.to_string(),
-            description: "Get comprehensive state summary with loan and user stats".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: STATE_HISTORY.to_string(),
-            description: "Get state transition history".to_string(),
+            path: CONTRACT_CONFIG.to_string(),
+            description: "Get Arda contract configuration".to_string(),
         },
         // State Management - Transactions
         crate::handlers::core::health::EndpointInfo {
@@ -1115,94 +997,12 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
         crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
             path: STATE_BATCHES.to_string(),
-            description: "List batches".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_BATCHES.to_string(),
-            description: "Create new batch from pending transactions".to_string(),
+            description: "List all batches".to_string(),
         },
         crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
-            path: STATE_BATCH_BY_ID.to_string(),
-            description: "Get batch details by ID".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_BATCH_PROOF.to_string(),
-            description: "Update batch with ZK proof".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_BATCHES_TRIGGER.to_string(),
-            description: "Manually trigger batch processing".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: STATE_BATCHES_STATS.to_string(),
-            description: "Get batch processor statistics".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_BATCH_CREATE.to_string(),
-            description: "Create batch from loan transactions".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: STATE_LOAN_BATCH_BY_ID.to_string(),
-            description: "Get loan batch details by ID".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: STATE_BATCH_PENDING.to_string(),
-            description: "Get pending loan transactions ready for batching".to_string(),
-        },
-        // State Management - Payments
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_PAYMENTS.to_string(),
-            description: "Record loan payment".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: STATE_PAYMENT_BY_ID.to_string(),
-            description: "Get payment details".to_string(),
-        },
-        // State Management - Proofs
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: STATE_PROOF.to_string(),
-            description: "Generate transaction inclusion proof".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_VERIFY.to_string(),
-            description: "Verify transaction inclusion".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_PROOFS_LOAN_OPERATION.to_string(),
-            description: "Generate loan operation proof".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: STATE_PROOFS_DEAL_PAYMENT.to_string(),
-            description: "Generate loan payment proof".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_PROOFS_VERIFY.to_string(),
-            description: "Verify loan proof".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_PROOFS_REPORT.to_string(),
-            description: "Generate proof report".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_PROOFS_BATCH_VERIFY.to_string(),
-            description: "Batch verify proofs".to_string(),
+            path: "/api/v1/state/batches/{batch_id}".to_string(),
+            description: "Get batch details by ID (includes contract data)".to_string(),
         },
         // Financial Transaction Endpoints
         crate::handlers::core::health::EndpointInfo {

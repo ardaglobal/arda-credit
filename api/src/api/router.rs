@@ -21,7 +21,6 @@ use crate::handlers::{
     get_account_financial_transactions,
     // Magic Link Auth
     get_current_user,
-    get_transaction_history,
     get_user_financial_summary,
     get_user_financial_transactions,
     logout_endpoint,
@@ -252,32 +251,11 @@ pub fn create_router(state: ApiState) -> Router {
         // Batch operations
         .route(
             paths::STATE_BATCHES,
-            post(crate::handlers::core::state::create_batch_endpoint),
-        )
-        .route(
-            paths::STATE_BATCHES,
             get(crate::handlers::core::state::get_batches_endpoint),
         )
         .route(
-            paths::STATE_BATCH_BY_ID,
+            "/api/v1/state/batches/{batch_id}",
             get(crate::handlers::core::state::get_batch_details_endpoint),
-        )
-        .route(
-            paths::STATE_BATCH_PROOF,
-            post(crate::handlers::core::state::update_batch_proof_endpoint),
-        )
-        .route(
-            paths::STATE_BATCHES_TRIGGER,
-            post(crate::handlers::core::state::trigger_batch_endpoint),
-        )
-        // State operations
-        .route(
-            paths::STATE_CURRENT,
-            get(crate::handlers::core::state::get_current_state_endpoint),
-        )
-        .route(
-            paths::STATE_CONTRACT,
-            get(crate::handlers::core::state::get_contract_submission_data_endpoint),
         )
         // ========================================================================
         // LOAN PROCESSING ENDPOINTS
@@ -382,10 +360,6 @@ pub fn create_router(state: ApiState) -> Router {
             paths::USER_FINANCIAL_SUMMARY,
             get(get_user_financial_summary),
         )
-        // ========================================================================
-        // TRANSACTION HISTORY ENDPOINTS
-        // ========================================================================
-        .route(paths::TRANSACTION_HISTORY, get(get_transaction_history))
         // ========================================================================
         // DEAL MANAGEMENT ENDPOINTS (converted from LOAN MANAGEMENT)
         // ========================================================================

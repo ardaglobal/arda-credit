@@ -155,21 +155,15 @@ pub use crate::handlers::{
     ApproveWithdrawalRequest,
     BatchInfo,
     BatchListResponse,
-    BatchProcessorStatsResponse,
     BulkKycApprovalRequest,
     BulkKycApprovalResponse,
     BulkOperationResponse,
     // Core types
     ContractConfigQuery,
     ContractConfigResponse,
-    ContractSubmissionData,
     CreateAccountFinancialTransactionRequest,
-    CreateBatchRequest,
-    CreateBatchResponse,
     // Deal types
     CreateDealRequest,
-    CurrentStateResponse,
-    DateRange,
     DealAuditTrailResponse,
     DealDetailsResponse,
     DealListingResponse,
@@ -194,7 +188,6 @@ pub use crate::handlers::{
     ListPendingKycResponse,
     MarketplaceDealResponse,
     PaginatedFinancialTransactionsResponse,
-    PaginationInfo,
     PaymentDetailsResponse,
     PaymentResponse,
     PlatformMetricsResponse,
@@ -208,13 +201,8 @@ pub use crate::handlers::{
     StateTransactionsResponse,
     SubmitKycRequest,
     SubmitKycResponse,
-    TransactionHistoryItem,
-    TransactionHistoryResponse,
-    TransactionSummary,
     TransferDealOwnershipRequest,
-    TriggerBatchResponse,
     UnifiedFinancialTransactionResponse,
-    UpdateBatchProofRequest,
 
     UpdateDealRequest,
     UpdateDealResponse,
@@ -321,14 +309,8 @@ fn default_limit() -> u32 {
 
         // State Management endpoints
         crate::handlers::core::state::list_state_transactions_endpoint,
-        crate::handlers::core::state::create_batch_endpoint,
         crate::handlers::core::state::get_batches_endpoint,
-        crate::handlers::core::state::get_current_state_endpoint,
-        crate::handlers::core::state::get_batch_endpoint,
         crate::handlers::core::state::get_batch_details_endpoint,
-        crate::handlers::core::state::get_contract_submission_data_endpoint,
-        crate::handlers::core::state::update_batch_proof_endpoint,
-        crate::handlers::core::state::trigger_batch_endpoint,
 
         // Deal Management endpoints (consolidated - includes marketplace and transfer operations)
         crate::handlers::deals::deals::create_deal_endpoint,
@@ -408,8 +390,6 @@ fn default_limit() -> u32 {
         crate::handlers::finance::transactions::get_user_financial_transactions,
         crate::handlers::finance::transactions::get_user_financial_summary,
 
-        // Transaction History endpoints
-        crate::handlers::finance::transaction_history::get_transaction_history,
 
         // Company Management endpoints
         crate::handlers::companies::companies::register_company_endpoint,
@@ -705,17 +685,10 @@ fn default_limit() -> u32 {
         // State management types
         BatchInfo,
         BatchListResponse,
-        BatchProcessorStatsResponse,
-        ContractSubmissionData,
-        CreateBatchRequest,
-        CreateBatchResponse,
-        CurrentStateResponse,
         StateTransactionItem,
         StateTransactionsPagination,
         StateTransactionsQuery,
         StateTransactionsResponse,
-        TriggerBatchResponse,
-        UpdateBatchProofRequest,
 
         // User types
         ListIdentitiesQuery,
