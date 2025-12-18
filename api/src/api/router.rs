@@ -932,16 +932,26 @@ pub fn create_router(state: ApiState) -> Router {
 // ============================================================================
 
 /// Get the OpenAPI specification as JSON
+///
+/// Returns the full OpenAPI spec with all components pruned to only include
+/// schemas that are actually referenced by the API endpoints.
 pub fn get_openapi_spec() -> utoipa::openapi::OpenApi {
-    ApiDoc::openapi()
+    let mut spec = ApiDoc::openapi();
+    crate::api::openapi_prune::prune_components_to_references(&mut spec);
+    spec
 }
 
 /// Axum handler for serving the OpenAPI specification as JSON
 pub async fn get_openapi_spec_handler() -> Json<utoipa::openapi::OpenApi> {
-    Json(ApiDoc::openapi())
+    Json(get_openapi_spec())
 }
 
 /// Filter OpenAPI specification by specific tags (paths, tags, and schemas)
+///
+/// This function filters the OpenAPI specification to only include:
+/// - Paths that have operations with the specified tags
+/// - Tags that are in the allowed list
+/// - Schemas that are actually referenced by the filtered paths (computed via transitive closure)
 fn filter_openapi_by_tags(
     mut spec: utoipa::openapi::OpenApi,
     allowed_tags: &[&str],
@@ -971,140 +981,13 @@ fn filter_openapi_by_tags(
 
     spec.paths.paths = filtered_paths;
 
-    // Filter schemas based on category to keep individual files small
-    if let Some(components) = spec.components.as_mut() {
-        let original_schemas = components.schemas.clone();
-        components.schemas.clear();
-
-        // Define schema patterns for each category to minimize size
-        let schema_patterns = match allowed_tags {
-            tags if tags.contains(&"Auth") => vec![
-                "MagicLink",
-                "Auth",
-                "Login",
-                "Register",
-                "Invite",
-                "Verify",
-                "UserType",
-                "User",
-            ],
-            tags if tags.contains(&"Users") => vec![
-                "User",
-                "Identity",
-                "Kyc",
-                "Balance",
-                "Profile",
-                "Transaction",
-                "Address",
-            ],
-            tags if tags.contains(&"Companies") => vec![
-                "Company",
-                "Membership",
-                "Team",
-                "Wallet",
-                "Kyb",
-                "Investor",
-                "Permission",
-                "Invitation",
-            ],
-            tags if tags.contains(&"Deals") => vec![
-                "Deal",
-                "Loan",
-                "Marketplace",
-                "Transfer",
-                "Payment",
-                "Listing",
-                "Create",
-                "Update",
-                "List",
-            ],
-            tags if tags.contains(&"Admin") => vec![
-                "Admin",
-                "Kyc",
-                "Bulk",
-                "Platform",
-                "Statistics",
-                "Withdrawal",
-                "Pending",
-            ],
-            tags if tags.contains(&"Payments") => vec![
-                "Payment",
-                "Withdrawal",
-                "Transaction",
-                "Financial",
-                "Balance",
-                "Initiate",
-            ],
-            tags if tags.contains(&"State") => vec![
-                "State",
-                "Batch",
-                "Transaction",
-                "Contract",
-                "Proof",
-                "Current",
-                "Trigger",
-            ],
-            tags if tags.contains(&"Metrics") => {
-                vec!["Metrics", "Market", "Pie", "Chart", "Value", "Refresh"]
-            }
-            tags if tags.contains(&"Loan Tape") => {
-                vec!["LoanTape", "Loan", "Tape", "BulkLoan", "ListLoan"]
-            }
-            tags if tags.contains(&"Collateral") => vec![
-                "Collateral",
-                "Match",
-                "Duplicate",
-                "ErrorResponse",
-                "DeleteResponse",
-                "BatchOperation",
-            ],
-            tags if tags.contains(&"Internal") => {
-                vec!["Internal", "Detection", "Collateral", "ErrorResponse"]
-            }
-            tags if tags.contains(&"Dev") => vec!["Faucet", "Network", "Health", "Info"],
-            _ => vec![
-                "Credit",
-                "Fee",
-                "Legal",
-                "Security",
-                "Ucc",
-                "Account",
-                "Guaranty",
-                "Assignment",
-                "Participation",
-                "Ssi",
-                "Secondary",
-                "Taxonomy",
-                "Delete",
-                "Paginated",
-                "Batch",
-            ], // Taxonomy catch-all
-        };
-
-        // Only include schemas that match the category patterns
-        for (name, schema) in &original_schemas {
-            if schema_patterns.iter().any(|pattern| {
-                name.contains(pattern) || name.to_lowercase().contains(&pattern.to_lowercase())
-            }) {
-                components.schemas.insert(name.clone(), schema.clone());
-            }
-        }
-
-        // Always include common/base schemas if they exist in original
-        let common_schemas = ["PaginationParams", "ApiError", "ErrorResponse", "UserType"];
-        for schema_name in common_schemas {
-            if let Some(schema) = original_schemas.get(schema_name) {
-                components
-                    .schemas
-                    .insert(schema_name.to_string(), schema.clone());
-            }
-        }
-    }
-
     // Filter tags to only include the allowed ones
     if let Some(ref mut tags) = spec.tags {
         tags.retain(|tag| allowed_tags.contains(&tag.name.as_str()));
     }
+
+    // Prune components to only include schemas/parameters actually referenced by the filtered paths
+    crate::api::openapi_prune::prune_components_to_references(&mut spec);
 
     spec
 }
@@ -1248,4 +1131,196 @@ async fn metrics_health_handler(
     });
 
     (status, axum::Json(response_body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test that State spec only includes schemas referenced by State endpoints
+    #[test]
+    fn test_state_spec_contains_only_referenced_schemas() {
+        let spec = filter_openapi_by_tags(ApiDoc::openapi(), &["State"]);
+
+        // Get the component schemas
+        let schemas = spec
+            .components
+            .as_ref()
+            .expect("Components should exist")
+            .schemas
+            .keys()
+            .map(|k| k.as_str())
+            .collect::<Vec<_>>();
+
+        // Expected schemas that should be present (referenced by State endpoints)
+        // Note: Query parameter types (StateTransactionsQuery, ContractConfigQuery)
+        // use IntoParams and are not included in components.schemas
+        let expected_schemas = vec![
+            "StateTransactionsResponse",
+            "StateTransactionItem",
+            "StateTransactionsPagination",
+            "BatchListResponse",
+            "BatchInfo",
+            "ContractConfigResponse",
+        ];
+
+        for expected in &expected_schemas {
+            assert!(
+                schemas.contains(expected),
+                "Expected schema '{}' to be present in State spec, but it was not. Found schemas: {:?}",
+                expected,
+                schemas
+            );
+        }
+
+        // Schemas that should NOT be present (unrelated taxonomy batch schemas)
+        let forbidden_schemas = vec![
+            "BatchCreateFeeLettersRequest",
+            "BatchCreateLegalOpinionsRequest",
+            "BatchCreateSecurityAgreementsRequest",
+            "BatchCreateUccFinancingStatementsRequest",
+            "BatchCreateAccountControlAgreementsRequest",
+            "BatchCreateGuarantiesRequest",
+            "BatchCreateAssignmentAssumptionAgreementsRequest",
+            "BatchCreateParticipationAgreementsRequest",
+            "BatchCreateSsiRecordsRequest",
+            "BatchCreateSecondaryTradesRequest",
+            "CreateUccFinancingStatementApiRequest",
+            "UccFinancingStatementResponse",
+        ];
+
+        for forbidden in &forbidden_schemas {
+            assert!(
+                !schemas.contains(forbidden),
+                "Forbidden schema '{}' should NOT be present in State spec, but it was found. This indicates the old pattern-based filtering is still active.",
+                forbidden
+            );
+        }
+
+        println!(
+            "✅ State spec contains {} schemas (all referenced)",
+            schemas.len()
+        );
+    }
+
+    /// Test that all category specs are properly pruned
+    #[test]
+    fn test_all_category_specs_are_pruned() {
+        let categories = vec![
+            ("Auth", &["Auth"] as &[&str]),
+            ("Users", &["Users"]),
+            ("State", &["State"]),
+            ("Deals", &["Deals"]),
+            ("Payments", &["Payments"]),
+        ];
+
+        for (name, tags) in categories {
+            let spec = filter_openapi_by_tags(ApiDoc::openapi(), tags);
+            let schema_count = spec
+                .components
+                .as_ref()
+                .map(|c| c.schemas.len())
+                .unwrap_or(0);
+
+            // Each category spec should have fewer schemas than the full spec
+            let full_spec = ApiDoc::openapi();
+            let full_schema_count = full_spec
+                .components
+                .as_ref()
+                .map(|c| c.schemas.len())
+                .unwrap_or(0);
+
+            assert!(
+                schema_count < full_schema_count,
+                "{} spec should have fewer schemas than full spec (has {}, full has {})",
+                name,
+                schema_count,
+                full_schema_count
+            );
+
+            println!(
+                "✅ {} spec has {} schemas (pruned from {})",
+                name, schema_count, full_schema_count
+            );
+        }
+    }
+
+    /// Test that the main OpenAPI spec is also pruned
+    #[test]
+    fn test_main_spec_is_pruned() {
+        let unpruned_spec = ApiDoc::openapi();
+        let pruned_spec = get_openapi_spec();
+
+        let unpruned_count = unpruned_spec
+            .components
+            .as_ref()
+            .map(|c| c.schemas.len())
+            .unwrap_or(0);
+
+        let pruned_count = pruned_spec
+            .components
+            .as_ref()
+            .map(|c| c.schemas.len())
+            .unwrap_or(0);
+
+        // Pruned spec should have equal or fewer schemas
+        assert!(
+            pruned_count <= unpruned_count,
+            "Pruned spec should have <= schemas than unpruned (pruned: {}, unpruned: {})",
+            pruned_count,
+            unpruned_count
+        );
+
+        println!(
+            "✅ Main spec has {} schemas (from {} before pruning)",
+            pruned_count, unpruned_count
+        );
+    }
+
+    /// Identify unused OpenAPI schemas that should be removed from ApiDoc registration
+    #[test]
+    #[ignore] // Run manually with: cargo test find_unused_openapi_schemas -- --ignored --show-output
+    fn find_unused_openapi_schemas() {
+        let unpruned_spec = ApiDoc::openapi();
+        let pruned_spec = get_openapi_spec();
+
+        let original_schemas: std::collections::HashSet<String> = unpruned_spec
+            .components
+            .as_ref()
+            .map(|c| c.schemas.keys().cloned().collect())
+            .unwrap_or_default();
+
+        let referenced_schemas: std::collections::HashSet<String> = pruned_spec
+            .components
+            .as_ref()
+            .map(|c| c.schemas.keys().cloned().collect())
+            .unwrap_or_default();
+
+        let unused: Vec<String> = original_schemas
+            .difference(&referenced_schemas)
+            .cloned()
+            .collect();
+
+        if unused.is_empty() {
+            println!(
+                "✅ No unused schemas found - all {} registered schemas are referenced!",
+                original_schemas.len()
+            );
+        } else {
+            println!(
+                "📋 Found {} unused schemas (out of {} total):",
+                unused.len(),
+                original_schemas.len()
+            );
+            println!();
+            for schema_name in &unused {
+                println!("  - {}", schema_name);
+            }
+            println!();
+            println!("These schemas can be removed from:");
+            println!("  1. api/src/api/openapi.rs - components(schemas(...)) list");
+            println!("  2. api/src/api/openapi.rs - pub use statements (if present)");
+            println!("  3. Their original DTO/type definition files");
+        }
+    }
 }
