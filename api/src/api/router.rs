@@ -334,10 +334,6 @@ pub fn create_router(state: ApiState) -> Router {
             paths::USER_BALANCE_BY_ID,
             get(crate::handlers::users::balance::get_balance_by_user_id_endpoint),
         )
-        .route(
-            paths::USER_TRANSACTIONS_BY_ID,
-            get(crate::handlers::users::users::get_user_transactions_endpoint),
-        )
         // ========================================================================
         // WITHDRAWAL MANAGEMENT ENDPOINTS
         // ========================================================================

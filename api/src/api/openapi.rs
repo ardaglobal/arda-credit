@@ -223,7 +223,6 @@ pub use crate::handlers::{
     UpdateKycStatusRequest,
     UpdateUserRequest,
     UserDetailsResponse,
-    UserTransactionsResponse,
     ValidateDealTransferRequest,
     ValidateInviteCodeResponse,
 };
@@ -311,7 +310,6 @@ fn default_limit() -> u32 {
         crate::handlers::users::users::delete_user_endpoint,
         crate::handlers::users::balance::get_balance_by_address_endpoint,
         crate::handlers::users::balance::get_balance_by_user_id_endpoint,
-        crate::handlers::users::users::get_user_transactions_endpoint,
         crate::handlers::users::users::submit_kyc_endpoint,
         crate::handlers::users::users::update_kyc_status_endpoint,
 
@@ -727,7 +725,6 @@ fn default_limit() -> u32 {
         SubmitKycRequest,
         SubmitKycResponse,
         UpdateKycStatusRequest,
-        UserTransactionsResponse,
 
         // Consolidated Balance types
         AddressBalance,
