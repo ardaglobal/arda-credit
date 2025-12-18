@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            id, name, collateral_type,\n            description, address, custom_id, double_pledged,\n            has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\", created_by, metadata,\n            has_detection as \"has_detection!\", detection_count as \"detection_count!\", last_detection_at, detection_status\n        FROM collateral\n        ORDER BY created_at\n        ",
+  "query": "\n        SELECT\n            id, name, collateral_type,\n            description, address, custom_id, double_pledged,\n            has_potential_duplicates,\n            created_at as \"created_at!\", updated_at as \"updated_at!\", created_by, metadata,\n            has_detection as \"has_detection!\", detection_count as \"detection_count!\", last_detection_at, detection_status\n        FROM collateral\n        ORDER BY created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -106,5 +106,5 @@
       true
     ]
   },
-  "hash": "c5da2ec4d874fef13217faece671215a2cb8260c1267eebfb157c1f773705742"
+  "hash": "c04bcc1c6cc544566fb5bf0a10ae9f19b4bb03391cf148874b160fadf40e67e5"
 }

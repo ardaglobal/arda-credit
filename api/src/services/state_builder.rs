@@ -76,11 +76,11 @@ pub async fn build_global_loan_state_with_mode(
 async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, String> {
     info!("🔨 Building empty GlobalLoanState with users and companies");
 
-    // Query all users
+    // Query all users (for observability only in FromGenesis mode)
     let db_users = sqlx::query_as!(
         DbUser,
         r#"
-        SELECT 
+        SELECT
             id, user_type, email, kyc_status,
             kyc_submitted_at, kyc_verified_at,
             kyc_investor_type as "kyc_investor_type: _",
@@ -97,12 +97,19 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
 
     info!("✅ Loaded {} users from database", db_users.len());
 
-    // Convert DB users to zkVM users
-    let mut users = HashMap::new();
-    for db_user in &db_users {
-        let user = convert_db_user_to_zkvm(db_user)?;
+    // IMPORTANT (FromGenesis):
+    // We MUST start from an empty user map and let UserRegistration transactions create users.
+    // Otherwise we preload "current DB state" and then replay UserRegistration, causing
+    // DuplicateUser inside the zkVM (confirmed by debug.ndjson overlap evidence).
+    let users: HashMap<[u8; 32], User> = HashMap::new();
 
-        users.insert(user.user_id, user);
+    // Keep a small sample of DB user hashes for debugging/observability (not inserted into state).
+    let mut user_id_prefixes: Vec<String> = Vec::new();
+    for db_user in &db_users {
+        if user_id_prefixes.len() < 5 {
+            let user_id_hash = hash_uuid(&db_user.id);
+            user_id_prefixes.push(format!("0x{}", hex::encode(&user_id_hash[..8])));
+        }
     }
 
     // For genesis mode, companies will be created via CompanyRegistration transactions
@@ -164,8 +171,8 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
     let db_deals = sqlx::query_as!(
         DbDeal,
         r#"
-        SELECT 
-            id, originator_id, investor_id, borrower_id, 
+        SELECT
+            id, originator_id, investor_id, borrower_id,
             NULL::text as "borrower_legal_name?",
             principal_amount, outstanding_balance, interest_rate_bps,
             deal_status as "deal_status!", originated_at as "originated_at!", maturity_date,
@@ -194,7 +201,7 @@ async fn build_empty_state_with_users(pool: &PgPool) -> Result<GlobalLoanState, 
     let db_collateral = sqlx::query_as!(
         DbCollateral,
         r#"
-        SELECT 
+        SELECT
             id, name, collateral_type,
             description, address, custom_id, double_pledged,
             has_potential_duplicates,
@@ -311,11 +318,11 @@ async fn load_latest_state_snapshot(pool: &PgPool) -> Result<GlobalLoanState, St
     // Find latest proven, non-superseded batch
     let latest_batch = sqlx::query!(
         r#"
-        SELECT id 
-        FROM proof_batches 
-        WHERE proof_status = 'proven' 
+        SELECT id
+        FROM proof_batches
+        WHERE proof_status = 'proven'
           AND superseded_at IS NULL
-        ORDER BY id DESC 
+        ORDER BY id DESC
         LIMIT 1
         "#
     )
@@ -348,7 +355,7 @@ async fn load_state_up_to_batch(pool: &PgPool, batch_id: i32) -> Result<GlobalLo
     let state_transactions = sqlx::query_as!(
         arda_credit_db::StateTransaction,
         r#"
-        SELECT 
+        SELECT
             id,
             transaction_type,
             transaction_data,
@@ -360,9 +367,9 @@ async fn load_state_up_to_batch(pool: &PgPool, batch_id: i32) -> Result<GlobalLo
             included_in_batch_id,
             created_at as "created_at!",
             updated_at as "updated_at!"
-        FROM state_transactions 
-        WHERE included_in_batch_id IS NOT NULL 
-          AND included_in_batch_id <= $1 
+        FROM state_transactions
+        WHERE included_in_batch_id IS NOT NULL
+          AND included_in_batch_id <= $1
         ORDER BY included_in_batch_id ASC, created_at ASC
         "#,
         batch_id
@@ -536,7 +543,7 @@ async fn build_balance_state_from_companies(
         let balance_row = sqlx::query!(
             r#"
             SELECT COALESCE(SUM(
-                CASE 
+                CASE
                     WHEN aft.transaction_type IN ('DEPOSIT', 'deposit', 'credit_line_repayment') THEN aft.amount
                     WHEN aft.transaction_type IN ('WITHDRAWAL', 'withdrawal', 'credit_line_drawdown') THEN -aft.amount
                     ELSE 0

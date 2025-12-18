@@ -394,16 +394,8 @@ impl TransactionRecordingService {
             .map(|d| d.as_secs())
             .unwrap_or(0);
 
-        // Encode metadata
-        let metadata_array = if let Some(meta) = metadata {
-            // Serialize metadata JSON to bytes
-            let metadata_bytes = serde_json::to_string(&meta)
-                .unwrap_or_else(|_| "{}".to_string())
-                .into_bytes();
-            MetadataArray::from_bytes(&metadata_bytes)
-        } else {
-            MetadataArray::empty()
-        };
+        // Encode metadata for zkVM (IMPORTANT: certain transaction types expect byte-level encoding)
+        let metadata_array = encode_metadata_for_zkvm(transaction_type, metadata.as_ref())?;
 
         // Create DealTransaction
         let deal_transaction = DealTransaction {
@@ -475,14 +467,8 @@ impl TransactionRecordingService {
                 .unwrap_or(0);
 
             // Encode metadata
-            let metadata_array = if let Some(meta) = &request.metadata {
-                let metadata_bytes = serde_json::to_string(meta)
-                    .unwrap_or_else(|_| "{}".to_string())
-                    .into_bytes();
-                MetadataArray::from_bytes(&metadata_bytes)
-            } else {
-                MetadataArray::empty()
-            };
+            let metadata_array =
+                encode_metadata_for_zkvm(request.transaction_type, request.metadata.as_ref())?;
 
             // Create DealTransaction
             let deal_transaction = DealTransaction {
@@ -536,6 +522,73 @@ impl TransactionRecordingService {
             .increment(transaction_ids.len() as u64);
 
         Ok(transaction_ids)
+    }
+}
+
+fn encode_metadata_for_zkvm(
+    transaction_type: arda_credit_lib::TransactionType,
+    metadata: Option<&serde_json::Value>,
+) -> Result<MetadataArray, DbError> {
+    use arda_credit_lib::TransactionType;
+    use serde_json::Value;
+
+    match transaction_type {
+        // UserRegistration is interpreted inside the zkVM by reading metadata[0] as user_type:
+        // 1=Investor, 2=Originator, 3=Admin (see `lib/src/user.rs`).
+        TransactionType::UserRegistration => {
+            let Some(meta) = metadata else {
+                return Err(DbError::ValidationError(
+                    "UserRegistration requires metadata.user_type".to_string(),
+                ));
+            };
+
+            let user_type_val = match meta {
+                Value::Object(map) => map.get("user_type"),
+                _ => None,
+            };
+
+            let user_type_byte: u8 = match user_type_val {
+                Some(Value::String(s)) => match s.to_lowercase().as_str() {
+                    "investor" => 1,
+                    "originator" => 2,
+                    "admin" => 3,
+                    other => {
+                        return Err(DbError::ValidationError(format!(
+                            "Invalid user_type for UserRegistration: {}",
+                            other
+                        )));
+                    }
+                },
+                Some(Value::Number(n)) => n
+                    .as_u64()
+                    .and_then(|v| u8::try_from(v).ok())
+                    .filter(|v| matches!(*v, 1 | 2 | 3))
+                    .ok_or_else(|| {
+                        DbError::ValidationError(
+                            "Invalid numeric user_type for UserRegistration".to_string(),
+                        )
+                    })?,
+                _ => {
+                    return Err(DbError::ValidationError(
+                        "UserRegistration requires metadata.user_type as string (investor|originator|admin)"
+                            .to_string(),
+                    ));
+                }
+            };
+
+            Ok(MetadataArray::from_bytes(&[user_type_byte]))
+        }
+        _ => {
+            // Default: serialize JSON to bytes (legacy behavior). Truncates/pads to 64 bytes.
+            if let Some(meta) = metadata {
+                let metadata_bytes = serde_json::to_string(meta)
+                    .unwrap_or_else(|_| "{}".to_string())
+                    .into_bytes();
+                Ok(MetadataArray::from_bytes(&metadata_bytes))
+            } else {
+                Ok(MetadataArray::empty())
+            }
+        }
     }
 }
 

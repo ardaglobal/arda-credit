@@ -63,3 +63,4 @@ baml-service/yarn-error.log
 
 *.xlsx
 *.csv
+*.ndjson

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            id,\n            transaction_type,\n            transaction_data,\n            user_id,\n            deal_id,\n            originator_company_id,\n            investor_company_id,\n            collateral_id,\n            included_in_batch_id,\n            created_at as \"created_at!\",\n            updated_at as \"updated_at!\"\n        FROM state_transactions \n        WHERE included_in_batch_id IS NOT NULL \n          AND included_in_batch_id <= $1 \n        ORDER BY included_in_batch_id ASC, created_at ASC\n        ",
+  "query": "\n        SELECT\n            id,\n            transaction_type,\n            transaction_data,\n            user_id,\n            deal_id,\n            originator_company_id,\n            investor_company_id,\n            collateral_id,\n            included_in_batch_id,\n            created_at as \"created_at!\",\n            updated_at as \"updated_at!\"\n        FROM state_transactions\n        WHERE included_in_batch_id IS NOT NULL\n          AND included_in_batch_id <= $1\n        ORDER BY included_in_batch_id ASC, created_at ASC\n        ",
   "describe": {
     "columns": [
       {
@@ -78,5 +78,5 @@
       false
     ]
   },
-  "hash": "f8538aef07c603ab788bfe9e1680954df4ea43037de378f976befd8802ea7dae"
+  "hash": "90ef9e578d8d38e2a1f2dc76e7bc3ce760fb12298049c03a2afd1e4bfe7ec256"
 }

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            id, originator_id, investor_id, borrower_id, \n            NULL::text as \"borrower_legal_name?\",\n            principal_amount, outstanding_balance, interest_rate_bps,\n            deal_status as \"deal_status!\", originated_at as \"originated_at!\", maturity_date,\n            created_at as \"created_at!\", updated_at as \"updated_at!\", custom_deal_id, status as \"status!\", industry, document_ids,\n            title, description, risk_level, asset_class, region, minimum_investment,\n            payment_frequency, collateral_type, collateral_value, ltv_ratio,\n            credit_score, dscr, state_transition_hash, proof_included as \"proof_included!\", collateral_id\n        FROM deals\n        ORDER BY originated_at\n        ",
+  "query": "\n        SELECT\n            id, originator_id, investor_id, borrower_id,\n            NULL::text as \"borrower_legal_name?\",\n            principal_amount, outstanding_balance, interest_rate_bps,\n            deal_status as \"deal_status!\", originated_at as \"originated_at!\", maturity_date,\n            created_at as \"created_at!\", updated_at as \"updated_at!\", custom_deal_id, status as \"status!\", industry, document_ids,\n            title, description, risk_level, asset_class, region, minimum_investment,\n            payment_frequency, collateral_type, collateral_value, ltv_ratio,\n            credit_score, dscr, state_transition_hash, proof_included as \"proof_included!\", collateral_id\n        FROM deals\n        ORDER BY originated_at\n        ",
   "describe": {
     "columns": [
       {
@@ -202,5 +202,5 @@
       true
     ]
   },
-  "hash": "6d00297462e2ce678d474e28a727931b2b56af5b39d66f94a80948201960e038"
+  "hash": "be9ee760bfe72bd5c33861af3e1921fcd15ad26ac22a68a2767ff909874af838"
 }

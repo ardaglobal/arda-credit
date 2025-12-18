@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        SELECT \n            id, user_type, email, kyc_status,\n            kyc_submitted_at, kyc_verified_at,\n            kyc_investor_type as \"kyc_investor_type: _\",\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            last_login_at, email_verified, email_verification_token,\n            first_name, last_name, jurisdiction, wallet_address\n        FROM users\n        ORDER BY created_at\n        ",
+  "query": "\n        SELECT\n            id, user_type, email, kyc_status,\n            kyc_submitted_at, kyc_verified_at,\n            kyc_investor_type as \"kyc_investor_type: _\",\n            created_at as \"created_at!\", updated_at as \"updated_at!\",\n            last_login_at, email_verified, email_verification_token,\n            first_name, last_name, jurisdiction, wallet_address\n        FROM users\n        ORDER BY created_at\n        ",
   "describe": {
     "columns": [
       {
@@ -117,5 +117,5 @@
       true
     ]
   },
-  "hash": "3d4fe7ce1c1d825ff0290198719559307b95f76abcc292490b0786398c34ea67"
+  "hash": "6a642d1e41caa40d209f65b7fb123a77921aebf94fcb857e828ec1107838e9e1"
 }
