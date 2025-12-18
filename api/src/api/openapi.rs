@@ -197,22 +197,20 @@ pub use crate::handlers::{
     PaginationInfo,
     PaymentDetailsResponse,
     PaymentResponse,
-    PendingTransactionsResponse,
     PlatformMetricsResponse,
     RecordDealPaymentRequest,
     RegisterUserRequest,
     RegisterUserResponse,
     RejectWithdrawalRequest,
+    StateTransactionItem,
+    StateTransactionsPagination,
+    StateTransactionsQuery,
+    StateTransactionsResponse,
     SubmitKycRequest,
     SubmitKycResponse,
-    SubmitTransactionRequest,
-    SubmitTransactionResponse,
     TransactionHistoryItem,
     TransactionHistoryResponse,
-    TransactionInfo,
     TransactionSummary,
-    TransactionUpdateEvent,
-    TransactionUpdatesQuery,
     TransferDealOwnershipRequest,
     TriggerBatchResponse,
     UnifiedFinancialTransactionResponse,
@@ -322,8 +320,7 @@ fn default_limit() -> u32 {
         crate::handlers::users::admin::get_platform_metrics_endpoint,
 
         // State Management endpoints
-        crate::handlers::core::state::submit_transaction_endpoint,
-        crate::handlers::core::state::get_pending_transactions_endpoint,
+        crate::handlers::core::state::list_state_transactions_endpoint,
         crate::handlers::core::state::create_batch_endpoint,
         crate::handlers::core::state::get_batches_endpoint,
         crate::handlers::core::state::get_current_state_endpoint,
@@ -448,7 +445,6 @@ fn default_limit() -> u32 {
 
         // Contract configuration endpoints
         crate::handlers::core::contract::get_contract_config,
-        crate::handlers::core::contract::get_transaction_updates,
 
         // Taxonomy endpoints - Credit Agreements
         crate::handlers::taxonomy::credit_agreements::list_credit_agreements_handler,
@@ -714,10 +710,10 @@ fn default_limit() -> u32 {
         CreateBatchRequest,
         CreateBatchResponse,
         CurrentStateResponse,
-        PendingTransactionsResponse,
-        SubmitTransactionRequest,
-        SubmitTransactionResponse,
-        TransactionInfo,
+        StateTransactionItem,
+        StateTransactionsPagination,
+        StateTransactionsQuery,
+        StateTransactionsResponse,
         TriggerBatchResponse,
         UpdateBatchProofRequest,
 
@@ -756,8 +752,6 @@ fn default_limit() -> u32 {
         // Contract configuration types
         ContractConfigResponse,
         ContractConfigQuery,
-        TransactionUpdateEvent,
-        TransactionUpdatesQuery,
 
         // Magic Link Authentication schemas (NEW)
         MagicLinkRequest,

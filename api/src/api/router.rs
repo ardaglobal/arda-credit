@@ -244,14 +244,10 @@ pub fn create_router(state: ApiState) -> Router {
             paths::INVITE_CODE_VALIDATE,
             post(crate::handlers::auth::authentication::validate_invite_code_endpoint),
         )
-        // Transaction operations
+        // State transaction operations
         .route(
             paths::STATE_TRANSACTIONS,
-            post(crate::handlers::core::state::submit_transaction_endpoint),
-        )
-        .route(
-            paths::STATE_TRANSACTIONS_PENDING,
-            get(crate::handlers::core::state::get_pending_transactions_endpoint),
+            get(crate::handlers::core::state::list_state_transactions_endpoint),
         )
         // Batch operations
         .route(
@@ -508,10 +504,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::CONTRACT_CONFIG,
             get(crate::handlers::core::contract::get_contract_config),
-        )
-        .route(
-            paths::TRANSACTION_UPDATES_SSE,
-            get(crate::handlers::core::contract::get_transaction_updates),
         )
         // ========================================================================
         // ADDITIONAL ADMIN WITHDRAWAL ENDPOINTS (using path constants)

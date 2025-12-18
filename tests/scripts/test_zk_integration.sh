@@ -1,6 +1,6 @@
 #!/bin/bash
 # End-to-End zkVM Integration Test
-# Tests: API → deal_transactions → batch → proof flow
+# Tests: API → state_transactions → batch → proof flow
 #
 # Prerequisites:
 # - Database running (make up)
@@ -52,9 +52,9 @@ echo "Step 1: Verify Initial State"
 echo "======================================"
 echo ""
 
-run_query "Pending deal transactions (should start at 0)" \
+run_query "Pending state transactions (should start at 0)" \
   "SELECT COUNT(*) as pending_count 
-   FROM deal_transactions 
+   FROM state_transactions 
    WHERE included_in_batch_id IS NULL;"
 
 run_query "Total batches" \
@@ -86,9 +86,8 @@ run_query "Latest user_registration transaction" \
     transaction_type, 
     included_in_batch_id, 
     created_at,
-    user_id,
-    (metadata->>'email')::text as email
-   FROM deal_transactions 
+    user_id
+   FROM state_transactions 
    WHERE transaction_type = 'user_registration' 
    ORDER BY created_at DESC LIMIT 1;"
 
@@ -98,7 +97,7 @@ echo "======================================"
 echo ""
 
 PENDING_COUNT=$(psql "$DATABASE_URL" -t -c \
-  "SELECT COUNT(*) FROM deal_transactions WHERE included_in_batch_id IS NULL;")
+  "SELECT COUNT(*) FROM state_transactions WHERE included_in_batch_id IS NULL;")
 
 echo -e "${GREEN}✅ Pending transactions: $PENDING_COUNT${NC}"
 echo ""
@@ -140,19 +139,19 @@ echo ""
 
 run_query "Check if transaction was batched" \
   "SELECT 
-    dt.id,
-    dt.transaction_type,
-    dt.included_in_batch_id,
-    dt.created_at as tx_created,
+    st.id,
+    st.transaction_type,
+    st.included_in_batch_id,
+    st.created_at as tx_created,
     pb.proof_status,
     pb.created_at as batch_created
-   FROM deal_transactions dt
-   LEFT JOIN proof_batches pb ON dt.included_in_batch_id = pb.id
-   WHERE dt.transaction_type = 'user_registration'
-   ORDER BY dt.created_at DESC LIMIT 3;"
+   FROM state_transactions st
+   LEFT JOIN proof_batches pb ON st.included_in_batch_id = pb.id
+   WHERE st.transaction_type = 'user_registration'
+   ORDER BY st.created_at DESC LIMIT 3;"
 
 BATCHED_COUNT=$(psql "$DATABASE_URL" -t -c \
-  "SELECT COUNT(*) FROM deal_transactions 
+  "SELECT COUNT(*) FROM state_transactions 
    WHERE transaction_type = 'user_registration' 
    AND included_in_batch_id IS NOT NULL;")
 
@@ -206,13 +205,13 @@ echo "Summary"
 echo "======================================"
 echo ""
 
-TOTAL_DEAL_TXS=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM deal_transactions;")
-BATCHED_TXS=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM deal_transactions WHERE included_in_batch_id IS NOT NULL;")
-PENDING_TXS=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM deal_transactions WHERE included_in_batch_id IS NULL;")
+TOTAL_STATE_TXS=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM state_transactions;")
+BATCHED_TXS=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM state_transactions WHERE included_in_batch_id IS NOT NULL;")
+PENDING_TXS=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM state_transactions WHERE included_in_batch_id IS NULL;")
 TOTAL_BATCHES=$(psql "$DATABASE_URL" -t -c "SELECT COUNT(*) FROM proof_batches;")
 
 echo "📊 Transaction Statistics:"
-echo "   Total deal transactions: $TOTAL_DEAL_TXS"
+echo "   Total state transactions: $TOTAL_STATE_TXS"
 echo "   Batched: $BATCHED_TXS"
 echo "   Pending: $PENDING_TXS"
 echo "   Total batches: $TOTAL_BATCHES"

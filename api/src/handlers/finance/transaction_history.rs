@@ -293,11 +293,7 @@ async fn get_deal_state_transactions(
         FROM state_transactions st
         LEFT JOIN deals d ON st.deal_id = d.id
         LEFT JOIN users u ON st.user_id = u.id
-        WHERE st.transaction_type IN (
-            'deal_origination',
-            'deal_payment',
-            'deal_closeout'
-        )
+        WHERE st.transaction_type LIKE 'deal_%'
         "#,
     );
 
@@ -328,10 +324,12 @@ async fn get_deal_state_transactions(
     for row in rows {
         let transaction_type: String = row.get("transaction_type");
         let created_at: DateTime<Utc> = row.get("created_at");
-        
+
         // Use principal_amount for deal transactions
         // Note: For more accurate payment amounts, we would need to deserialize transaction_data
-        let amount = row.get::<Option<rust_decimal::Decimal>, _>("principal_amount").unwrap_or_default();
+        let amount = row
+            .get::<Option<rust_decimal::Decimal>, _>("principal_amount")
+            .unwrap_or_default();
 
         transactions.push(TransactionHistoryItem {
             id: row.get::<Uuid, _>("id").to_string(),
@@ -539,7 +537,7 @@ async fn get_total_transaction_count(
     // Count deal state transactions
     if should_include_transaction_type(&query.transaction_type, "deal") {
         let count = sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM state_transactions WHERE transaction_type IN ('deal_origination', 'deal_payment', 'deal_closeout')"
+            "SELECT COUNT(*) FROM state_transactions WHERE transaction_type LIKE 'deal_%'",
         )
         .fetch_one(pool)
         .await?;

@@ -402,12 +402,10 @@ pub const STATE_SUMMARY: &str = api_path!("/state/summary");
 /// State history
 pub const STATE_HISTORY: &str = api_path!("/state/history");
 
-// Transaction Operations
-/// Submit transaction
+// State Transaction Operations
+/// List state transactions with flexible filtering (GET)
+/// Supports filtering by pending status, batch ID, transaction types, UUIDs, etc.
 pub const STATE_TRANSACTIONS: &str = api_path!("/state/transactions");
-
-/// Get pending transactions
-pub const STATE_TRANSACTIONS_PENDING: &str = api_path!("/state/transactions/pending");
 
 // Batch Operations
 /// Batch operations root (list batches, create batch)
@@ -473,9 +471,6 @@ pub const STATE_VERIFY: &str = api_path!("/state/verify");
 
 /// Get Arda contract configuration (address, network details)
 pub const CONTRACT_CONFIG: &str = api_path!("/contract/config");
-
-/// Get real-time transaction updates via Server-Sent Events (SSE)
-pub const TRANSACTION_UPDATES_SSE: &str = api_path!("/transactions/updates");
 
 // ============================================================================
 // METRICS PATHS
@@ -1112,14 +1107,9 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
         },
         // State Management - Transactions
         crate::handlers::core::health::EndpointInfo {
-            method: "POST".to_string(),
-            path: STATE_TRANSACTIONS.to_string(),
-            description: "Submit a new transaction".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
             method: "GET".to_string(),
-            path: STATE_TRANSACTIONS_PENDING.to_string(),
-            description: "Get pending transactions".to_string(),
+            path: STATE_TRANSACTIONS.to_string(),
+            description: "List state transactions with flexible filtering".to_string(),
         },
         // State Management - Batches
         crate::handlers::core::health::EndpointInfo {
@@ -1344,12 +1334,6 @@ pub fn get_all_endpoints() -> Vec<crate::handlers::core::health::EndpointInfo> {
             method: "GET".to_string(),
             path: CONTRACT_CONFIG.to_string(),
             description: "Get Arda contract configuration (address, network details)".to_string(),
-        },
-        crate::handlers::core::health::EndpointInfo {
-            method: "GET".to_string(),
-            path: TRANSACTION_UPDATES_SSE.to_string(),
-            description: "Get real-time transaction updates via Server-Sent Events (SSE)"
-                .to_string(),
         },
     ]
 }

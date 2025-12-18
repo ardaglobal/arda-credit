@@ -48,6 +48,23 @@ pub struct StateTransaction {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Filter parameters for listing state transactions
+#[derive(Debug, Clone, Default)]
+pub struct StateTransactionFilters {
+    pub pending: Option<bool>,
+    pub batch_id: Option<i32>,
+    pub transaction_types: Option<Vec<String>>,
+    pub user_id: Option<uuid::Uuid>,
+    pub deal_id: Option<uuid::Uuid>,
+    pub originator_company_id: Option<uuid::Uuid>,
+    pub investor_company_id: Option<uuid::Uuid>,
+    pub company_id: Option<uuid::Uuid>, // Convenience: matches originator OR investor
+    pub collateral_id: Option<uuid::Uuid>,
+    pub limit: i64,
+    pub offset: i64,
+    pub order_desc: bool,
+}
+
 /// Batch of transactions with ZK proof
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProofBatch {
@@ -983,11 +1000,12 @@ async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 
 /// Get pending deal transactions for zkVM batch processing
 ///
-/// DEPRECATED: This function queries the old deal_transactions table which has been dropped.
-/// Use get_pending_state_transactions() instead.
+/// DEPRECATED: This function is a legacy wrapper that queries state_transactions
+/// and converts to DealTransactionDb format. Use get_pending_state_transactions() instead.
 ///
-/// This function queries the deal_transactions table for transactions that haven't
-/// been included in a batch yet (included_in_batch_id IS NULL).
+/// This function queries the state_transactions table for transactions that haven't
+/// been included in a batch yet (included_in_batch_id IS NULL) and converts them
+/// to the legacy DealTransactionDb format for backward compatibility.
 ///
 /// # Arguments
 /// * `pool` - Database connection pool
@@ -1000,7 +1018,7 @@ async fn run_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 /// Returns error if database operation fails
 #[instrument(
     skip(pool),
-    fields(operation = "select", table = "deal_transactions", layer = "database"),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
     level = "info"
 )]
 pub async fn get_pending_deal_transactions(
@@ -1079,6 +1097,123 @@ pub async fn get_pending_deal_transactions(
 // ============================================================================
 // STATE TRANSACTION FUNCTIONS (New Consolidated API)
 // ============================================================================
+
+/// List state transactions with flexible filtering
+///
+/// This is the primary query function for the state_transactions table, supporting
+/// all common filter combinations with optimal indexed queries.
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `filters` - Filter parameters (pending, batch_id, types, UUIDs, pagination, order)
+///
+/// # Returns
+/// Vector of StateTransaction structs matching the filters
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool, filters),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn list_state_transactions(
+    pool: &PgPool,
+    filters: StateTransactionFilters,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    use sqlx::QueryBuilder;
+
+    debug!(
+        "Listing state transactions: pending={:?}, types={:?}, limit={}, offset={}",
+        filters.pending, filters.transaction_types, filters.limit, filters.offset
+    );
+
+    let mut query_builder = QueryBuilder::new(
+        "SELECT id, transaction_type, transaction_data, user_id, deal_id, \
+         originator_company_id, investor_company_id, collateral_id, \
+         included_in_batch_id, created_at, updated_at \
+         FROM state_transactions WHERE 1=1",
+    );
+
+    // Apply pending filter
+    if let Some(pending) = filters.pending {
+        if pending {
+            query_builder.push(" AND included_in_batch_id IS NULL");
+        } else {
+            query_builder.push(" AND included_in_batch_id IS NOT NULL");
+        }
+    }
+
+    // Apply batch_id filter
+    if let Some(batch_id) = filters.batch_id {
+        query_builder.push(" AND included_in_batch_id = ");
+        query_builder.push_bind(batch_id);
+    }
+
+    // Apply transaction_types filter
+    if let Some(types) = filters.transaction_types {
+        query_builder.push(" AND transaction_type = ANY(");
+        query_builder.push_bind(types);
+        query_builder.push(")");
+    }
+
+    // Apply UUID filters
+    if let Some(user_id) = filters.user_id {
+        query_builder.push(" AND user_id = ");
+        query_builder.push_bind(user_id);
+    }
+
+    if let Some(deal_id) = filters.deal_id {
+        query_builder.push(" AND deal_id = ");
+        query_builder.push_bind(deal_id);
+    }
+
+    if let Some(collateral_id) = filters.collateral_id {
+        query_builder.push(" AND collateral_id = ");
+        query_builder.push_bind(collateral_id);
+    }
+
+    // Apply company_id filter (convenience: originator OR investor)
+    if let Some(company_id) = filters.company_id {
+        query_builder.push(" AND (originator_company_id = ");
+        query_builder.push_bind(company_id);
+        query_builder.push(" OR investor_company_id = ");
+        query_builder.push_bind(company_id);
+        query_builder.push(")");
+    } else {
+        // Apply individual company filters only if company_id not specified
+        if let Some(originator_id) = filters.originator_company_id {
+            query_builder.push(" AND originator_company_id = ");
+            query_builder.push_bind(originator_id);
+        }
+
+        if let Some(investor_id) = filters.investor_company_id {
+            query_builder.push(" AND investor_company_id = ");
+            query_builder.push_bind(investor_id);
+        }
+    }
+
+    // Apply ordering
+    if filters.order_desc {
+        query_builder.push(" ORDER BY created_at DESC, id DESC");
+    } else {
+        query_builder.push(" ORDER BY created_at ASC, id ASC");
+    }
+
+    // Apply pagination
+    query_builder.push(" LIMIT ");
+    query_builder.push_bind(filters.limit);
+    query_builder.push(" OFFSET ");
+    query_builder.push_bind(filters.offset);
+
+    let rows = query_builder
+        .build_query_as::<StateTransaction>()
+        .fetch_all(pool)
+        .await?;
+
+    debug!("Found {} state transactions", rows.len());
+    Ok(rows)
+}
 
 /// Get pending state transactions for zkVM batch processing
 ///
@@ -1493,6 +1628,128 @@ pub async fn get_company_state_transactions(
     Ok(rows)
 }
 
+/// Get all state transactions for a specific originator company (FAST - uses indexed column)
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `originator_company_id` - Originator company UUID to query
+/// * `limit` - Optional limit on number of transactions (defaults to 1000)
+///
+/// # Returns
+/// Vector of StateTransaction structs where company is the originator
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_originator_state_transactions(
+    pool: &PgPool,
+    originator_company_id: uuid::Uuid,
+    limit: Option<i64>,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    let limit = limit.unwrap_or(1000);
+    debug!(
+        "Getting state transactions for originator company {} (limit: {})",
+        originator_company_id, limit
+    );
+
+    let rows = sqlx::query_as!(
+        StateTransaction,
+        r#"
+        SELECT 
+            id,
+            transaction_type,
+            transaction_data,
+            user_id,
+            deal_id,
+            originator_company_id,
+            investor_company_id,
+            collateral_id,
+            included_in_batch_id,
+            created_at as "created_at!",
+            updated_at as "updated_at!"
+        FROM state_transactions
+        WHERE originator_company_id = $1
+        ORDER BY created_at ASC, id ASC
+        LIMIT $2
+        "#,
+        originator_company_id,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!(
+        "Found {} state transactions for originator company",
+        rows.len()
+    );
+    Ok(rows)
+}
+
+/// Get all state transactions for a specific investor company (FAST - uses indexed column)
+///
+/// # Arguments
+/// * `pool` - Database connection pool
+/// * `investor_company_id` - Investor company UUID to query
+/// * `limit` - Optional limit on number of transactions (defaults to 1000)
+///
+/// # Returns
+/// Vector of StateTransaction structs where company is the investor
+///
+/// # Errors
+/// Returns error if database operation fails
+#[instrument(
+    skip(pool),
+    fields(operation = "select", table = "state_transactions", layer = "database"),
+    level = "info"
+)]
+pub async fn get_investor_state_transactions(
+    pool: &PgPool,
+    investor_company_id: uuid::Uuid,
+    limit: Option<i64>,
+) -> Result<Vec<StateTransaction>, sqlx::Error> {
+    let limit = limit.unwrap_or(1000);
+    debug!(
+        "Getting state transactions for investor company {} (limit: {})",
+        investor_company_id, limit
+    );
+
+    let rows = sqlx::query_as!(
+        StateTransaction,
+        r#"
+        SELECT 
+            id,
+            transaction_type,
+            transaction_data,
+            user_id,
+            deal_id,
+            originator_company_id,
+            investor_company_id,
+            collateral_id,
+            included_in_batch_id,
+            created_at as "created_at!",
+            updated_at as "updated_at!"
+        FROM state_transactions
+        WHERE investor_company_id = $1
+        ORDER BY created_at ASC, id ASC
+        LIMIT $2
+        "#,
+        investor_company_id,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+
+    debug!(
+        "Found {} state transactions for investor company",
+        rows.len()
+    );
+    Ok(rows)
+}
+
 /// Get all state transactions for a specific collateral (FAST - uses indexed collateral_id column)
 ///
 /// # Arguments
@@ -1857,7 +2114,7 @@ pub async fn create_batch(
 #[instrument(
     skip(pool),
     fields(
-        operation = "create_batch_deal_transactions",
+        operation = "create_batch_from_state_transactions",
         table = "proof_batches",
         layer = "database"
     ),

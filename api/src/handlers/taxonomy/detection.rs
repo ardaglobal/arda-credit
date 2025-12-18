@@ -199,7 +199,7 @@ pub async fn receive_detection_result(
         );
     }
 
-    // Record detection update in deal_transactions for zkVM proof generation
+    // Record detection update in state_transactions for zkVM proof generation
     if let Err(e) = state
         .transaction_recording
         .record_transaction_with_metadata(
@@ -221,7 +221,7 @@ pub async fn receive_detection_result(
         .await
     {
         warn!(
-            "Failed to record detection update in deal_transactions for zkVM: {}",
+            "Failed to record detection update in state_transactions for zkVM: {}",
             e
         );
         // Log but don't fail - detection result was already stored

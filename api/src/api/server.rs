@@ -809,11 +809,7 @@ pub fn create_new_router(state: ApiState) -> Router<ApiState> {
         // State management endpoints from state_handlers.rs
         .route(
             crate::config::paths::STATE_TRANSACTIONS,
-            post(crate::handlers::core::state::submit_transaction_endpoint),
-        )
-        .route(
-            crate::config::paths::STATE_TRANSACTIONS_PENDING,
-            get(crate::handlers::core::state::get_pending_transactions_endpoint),
+            get(crate::handlers::core::state::list_state_transactions_endpoint),
         )
         .route(
             crate::config::paths::STATE_BATCHES,
