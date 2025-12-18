@@ -189,29 +189,6 @@ pub struct UpdateKycStatusRequest {
 
 // UserBalanceResponse removed - now using consolidated balance response types from balance.rs
 
-/// Response for user transaction history
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct UserTransactionsResponse {
-    pub transactions: Vec<DepositTransactionInfo>,
-    pub total_count: usize,
-}
-
-/// Deposit transaction information
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct DepositTransactionInfo {
-    pub id: i32,
-    pub user_address: String,
-    pub amount: String,
-    pub deposit_amount_usdc: Option<String>,
-    pub transaction_hash: String,
-    pub status: String, // pending, confirmed, processed, failed
-    pub confirmation_count: i32,
-    pub required_confirmations: i32,
-    pub block_number: i64,
-    pub created_at: Option<DateTime<Utc>>,
-    pub processed_at: Option<DateTime<Utc>>,
-}
-
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -909,92 +886,6 @@ pub async fn delete_user_endpoint(
 // New endpoints:
 // - GET /api/v1/user/{address}/balance -> balance::get_balance_by_address_endpoint
 // - GET /api/v1/user/{user_id}/balance -> balance::get_balance_by_user_id_endpoint
-
-/// Get user transactions by user ID
-#[utoipa::path(
-    get,
-    path = "/api/v1/user/{user_id}/transactions",
-    responses(
-        (status = 200, description = "User transactions retrieved successfully", body = UserTransactionsResponse),
-        (status = 404, description = "User not found"),
-        (status = 500, description = "Internal server error")
-    ),
-    params(
-        ("user_id" = String, Path, description = "User ID (UUID)")
-    ),
-    tag = "Users"
-)]
-#[instrument(skip(state), level = "info")]
-pub async fn get_user_transactions_endpoint(
-    Path(user_id): Path<String>,
-    State(state): State<ApiState>,
-) -> Result<Json<UserTransactionsResponse>, (StatusCode, String)> {
-    info!("🔍 API: Getting user transactions by ID: {}", user_id);
-
-    let user_uuid = parse_user_id(&user_id)?;
-
-    // First get user details to get wallet address
-    match get_identity_by_id(&state.pool, user_uuid).await {
-        Ok(Some(identity)) => {
-            if let Some(wallet_address) = &identity.wallet_address {
-                match get_deposits_by_user_address(&state.pool, wallet_address).await {
-                    Ok(deposits) => {
-                        let transaction_infos: Vec<DepositTransactionInfo> = deposits
-                            .into_iter()
-                            .map(|deposit| DepositTransactionInfo {
-                                id: deposit.id,
-                                user_address: deposit.user_address,
-                                amount: deposit.amount.to_string(),
-                                deposit_amount_usdc: deposit
-                                    .deposit_amount_usdc
-                                    .map(|d| d.to_string()),
-                                transaction_hash: deposit.transaction_hash,
-                                status: deposit.status,
-                                confirmation_count: deposit.confirmation_count,
-                                required_confirmations: deposit.required_confirmations,
-                                block_number: deposit.block_number,
-                                created_at: deposit.created_at,
-                                processed_at: deposit.processed_at,
-                            })
-                            .collect();
-
-                        let response = UserTransactionsResponse {
-                            total_count: transaction_infos.len(),
-                            transactions: transaction_infos,
-                        };
-
-                        info!("✅ API: User transactions retrieved successfully");
-                        Ok(Json(response))
-                    }
-                    Err(e) => {
-                        error!("❌ API: Failed to get user transactions: {}", e);
-                        Err((
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            "Failed to retrieve user transactions".to_string(),
-                        ))
-                    }
-                }
-            } else {
-                warn!("⚠️ API: User has no wallet address set: {}", user_id);
-                Err((
-                    StatusCode::BAD_REQUEST,
-                    "User has no wallet address set".to_string(),
-                ))
-            }
-        }
-        Ok(None) => {
-            warn!("⚠️ API: User not found: {}", user_id);
-            Err((StatusCode::NOT_FOUND, "User not found".to_string()))
-        }
-        Err(e) => {
-            error!("❌ API: Failed to get user identity: {}", e);
-            Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to retrieve user".to_string(),
-            ))
-        }
-    }
-}
 
 /// Parse user ID string to UUID
 fn parse_user_id(user_id: &str) -> Result<uuid::Uuid, (StatusCode, String)> {

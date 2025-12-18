@@ -742,7 +742,7 @@ pub async fn delete_collateral_handler(
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "Collateral",
-    security(("bearer" = []))
+    security()
 )]
 #[instrument(skip(state, headers))]
 pub async fn create_collateral_batch_handler(
@@ -753,9 +753,7 @@ pub async fn create_collateral_batch_handler(
     info!("Creating collateral batch with {} items", requests.len());
 
     let current_user = extract_current_user(&headers);
-    let user = current_user
-        .as_ref()
-        .ok_or_else(|| internal_error("extract_current_user", "User not authenticated"))?;
+    let user_id = current_user.as_ref().map(|u| u.id);
 
     let db_requests: Vec<DbCreateRequest> = requests
         .into_iter()
@@ -766,7 +764,7 @@ pub async fn create_collateral_batch_handler(
             address: req.address,
             custom_id: req.custom_id,
             metadata: req.metadata,
-            created_by: Some(user.id),
+            created_by: user_id,
         })
         .collect();
 
@@ -776,28 +774,70 @@ pub async fn create_collateral_batch_handler(
 
     let successful_ids: Vec<String> = results.iter().map(|c| c.id.to_string()).collect();
 
-    // Publish CollateralCreated events for each item in batch (fire-and-forget)
-    if let Some(publisher) = &state.event_publisher {
+    // Record transactions and publish events (only if user is authenticated)
+    if let Some(user) = current_user.as_ref() {
+        // Record CollateralCreation transactions for zkVM
         for collateral in &results {
-            let event = crate::events::CollateralEvent::CollateralCreated {
-                event_id: uuid::Uuid::new_v4(),
-                timestamp: chrono::Utc::now(),
-                collateral: crate::events::CollateralPayload {
-                    id: collateral.id,
-                    name: collateral.name.clone(),
-                    collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
-                    address: collateral.address.clone(),
-                    custom_id: collateral.custom_id.clone(),
-                    description: collateral.description.clone(),
-                },
-            };
-            let publisher = publisher.clone();
-            tokio::spawn(async move {
-                if let Err(e) = publisher.publish_collateral(event).await {
-                    tracing::warn!("Failed to publish CollateralCreated event in batch: {}", e);
+            let metadata = Some(serde_json::json!({
+                "collateral_type": collateral.collateral_type.clone().unwrap_or_default(),
+                "name": collateral.name.clone(),
+                "address": collateral.address.clone(),
+                "custom_id": collateral.custom_id.clone(),
+                "created_by": user.id.to_string(),
+            }));
+
+            let tx_result = state
+                .transaction_recording
+                .record_transaction_with_metadata(
+                    arda_credit_lib::TransactionType::CollateralCreation,
+                    user.id,
+                    None, // No deal_id yet (not associated)
+                    rust_decimal::Decimal::ZERO,
+                    metadata,
+                    None,                // originator_company_id
+                    None,                // investor_company_id
+                    Some(collateral.id), // collateral_id
+                )
+                .await;
+
+            match tx_result {
+                Ok(tx_id) => {
+                    info!(
+                        "Recorded CollateralCreation transaction {} for collateral {}",
+                        tx_id, collateral.id
+                    );
                 }
-            });
+                Err(e) => {
+                    tracing::error!("Failed to record collateral creation transaction: {}", e);
+                }
+            }
         }
+
+        // Publish CollateralCreated events for each item in batch (fire-and-forget)
+        if let Some(publisher) = &state.event_publisher {
+            for collateral in &results {
+                let event = crate::events::CollateralEvent::CollateralCreated {
+                    event_id: uuid::Uuid::new_v4(),
+                    timestamp: chrono::Utc::now(),
+                    collateral: crate::events::CollateralPayload {
+                        id: collateral.id,
+                        name: collateral.name.clone(),
+                        collateral_type: collateral.collateral_type.clone().unwrap_or_default(),
+                        address: collateral.address.clone(),
+                        custom_id: collateral.custom_id.clone(),
+                        description: collateral.description.clone(),
+                    },
+                };
+                let publisher = publisher.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = publisher.publish_collateral(event).await {
+                        tracing::warn!("Failed to publish CollateralCreated event in batch: {}", e);
+                    }
+                });
+            }
+        }
+    } else {
+        info!("Skipping transaction recording and event publishing for anonymous collateral batch creation");
     }
 
     let response = BatchOperationResponse {

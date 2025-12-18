@@ -107,10 +107,6 @@ pub async fn get_withdrawal_status_endpoint(
     }
 }
 
-// DEPRECATED: Old available balance endpoint removed - now using consolidated balance endpoints:
-// - GET /api/v1/user/{address}/balance -> balance::get_balance_by_address_endpoint
-// - GET /api/v1/user/{user_id}/balance -> balance::get_balance_by_user_id_endpoint
-
 /// Get user's withdrawal history
 #[utoipa::path(
     get,

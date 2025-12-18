@@ -77,9 +77,6 @@ pub const USER_BALANCE_BY_ADDRESS: &str = api_path!("/address/{address}/balance"
 /// Consolidated balance endpoint by user ID  
 pub const USER_BALANCE_BY_ID: &str = api_path!("/user/{user_id}/balance");
 
-/// User transactions by user ID
-pub const USER_TRANSACTIONS_BY_ID: &str = api_path!("/user/{user_id}/transactions");
-
 /// Transaction by hash
 pub const TRANSACTION_BY_HASH: &str = api_path!("/transactions/{tx_hash}");
 
@@ -720,11 +717,6 @@ pub fn user_balance_by_address_path(address: &str) -> String {
 /// Generate user balance by ID path
 pub fn user_balance_by_id_path(user_id: &str) -> String {
     replace_param(USER_BALANCE_BY_ID, "user_id", user_id)
-}
-
-/// Generate user transactions by ID path
-pub fn user_transactions_by_id_path(user_id: &str) -> String {
-    replace_param(USER_TRANSACTIONS_BY_ID, "user_id", user_id)
 }
 
 // Withdrawal Management Helper Functions
