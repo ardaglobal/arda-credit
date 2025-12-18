@@ -200,12 +200,6 @@ pub const COMPANY_DEALS: &str = api_path!("/company/{company_id}/deals");
 /// Draft deals by company ID - get all draft deals for a company
 pub const COMPANY_DRAFT_DEALS: &str = api_path!("/company/{company_id}/deals/draft");
 
-/// Deal audit trail - was LOAN_AUDIT_TRAIL
-pub const DEAL_AUDIT_TRAIL: &str = api_path!("/deal/{deal_id}/audit-trail");
-
-/// Enhanced deal audit trail with proof information
-pub const DEAL_AUDIT_TRAIL_WITH_PROOFS: &str = api_path!("/deal/{deal_id}/audit-trail-with-proofs");
-
 /// Deal lifecycle summary - was LOAN_LIFECYCLE_SUMMARY
 pub const DEAL_LIFECYCLE_SUMMARY: &str = api_path!("/deal/{deal_id}/lifecycle-summary");
 

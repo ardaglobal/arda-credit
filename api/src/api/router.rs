@@ -444,14 +444,6 @@ pub fn create_router(state: ApiState) -> Router {
             paths::DEAL_PAYMENTS,
             get(crate::handlers::deals::deals::get_deal_payment_history_endpoint),
         )
-        .route(
-            paths::DEAL_AUDIT_TRAIL,
-            get(crate::handlers::deals::deals::get_deal_audit_trail_endpoint),
-        )
-        .route(
-            paths::DEAL_AUDIT_TRAIL_WITH_PROOFS,
-            get(crate::handlers::deals::deals::get_deal_audit_trail_with_proofs_endpoint),
-        )
         // ========================================================================
         // LOAN TAPE ENDPOINTS
         // ========================================================================
@@ -879,10 +871,6 @@ pub fn create_router(state: ApiState) -> Router {
         .route(
             paths::COLLATERAL_BY_DEAL_ID,
             get(crate::handlers::taxonomy::collateral::get_collateral_by_deal_id_handler),
-        )
-        .route(
-            "/api/v1/collateral/{id}/audit-trail",
-            get(crate::handlers::taxonomy::collateral::get_collateral_audit_trail_handler),
         )
         // NEW: Association endpoints
         .route(
