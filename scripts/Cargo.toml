@@ -13,7 +13,7 @@ name = "test_collateral_intel"
 path = "test_collateral_intel.rs"
 
 [dependencies]
-base64             = "0.21"
+base64             = "0.22"
 bincode            = { workspace = true, features = [ "serde" ] }
 chrono             = { workspace = true, features = [ "serde" ] }
 clap               = "4.5"
