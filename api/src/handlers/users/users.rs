@@ -20,10 +20,10 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::config::types::{ApiState, UserType};
 use arda_credit_db::{
-    create_investor_profile, get_deposits_by_user_address, get_identity_by_id,
-    get_investor_profile_by_user_id, get_invite_code_info, register_or_reregister_user,
-    submit_kyc_data, update_identity_profile, update_kyc_status, use_invite_code,
-    CreateInvestorProfileRequest, InvestorProfile, RegisterResult, User,
+    create_investor_profile, get_identity_by_id, get_investor_profile_by_user_id,
+    get_invite_code_info, register_or_reregister_user, submit_kyc_data, update_identity_profile,
+    update_kyc_status, use_invite_code, CreateInvestorProfileRequest, InvestorProfile,
+    RegisterResult, User,
 };
 use arda_credit_lib::TransactionType;
 use serde_json::json;
@@ -343,7 +343,7 @@ pub async fn register_user_endpoint(
             }
 
             // NEW: Record transaction for zkVM
-            let tx_id = match state
+            match state
                 .transaction_recording
                 .record_transaction_with_metadata(
                     TransactionType::UserRegistration,
@@ -362,7 +362,6 @@ pub async fn register_user_endpoint(
             {
                 Ok(tx_id) => {
                     info!("✅ Recorded UserRegistration transaction: {}", tx_id);
-                    tx_id
                 }
                 Err(e) => {
                     error!("❌ Failed to record user registration transaction: {}", e);
@@ -373,7 +372,7 @@ pub async fn register_user_endpoint(
                         format!("User created but transaction recording failed: {}", e),
                     ));
                 }
-            };
+            }
 
             // Record function execution time
             let duration = start_time.elapsed();
@@ -428,7 +427,7 @@ pub async fn register_user_endpoint(
             }
 
             // NEW: Record transaction for zkVM (also for re-registered users)
-            let tx_id = match state
+            match state
                 .transaction_recording
                 .record_transaction_with_metadata(
                     TransactionType::UserRegistration,
@@ -451,7 +450,6 @@ pub async fn register_user_endpoint(
                         "✅ Recorded UserRegistration transaction for re-registered user: {}",
                         tx_id
                     );
-                    tx_id
                 }
                 Err(e) => {
                     error!(
@@ -464,7 +462,7 @@ pub async fn register_user_endpoint(
                         format!("User re-registered but transaction recording failed: {}", e),
                     ));
                 }
-            };
+            }
 
             // Record function execution time for re-registration
             let duration = start_time.elapsed();

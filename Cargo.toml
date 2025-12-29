@@ -75,5 +75,5 @@ validator   = "0.20"
 # Using succinct versions to match SP1 zkVM dependencies
 p3-baby-bear = "0.2.3-succinct"
 p3-field     = "0.2.3-succinct"
-p3-poseidon2 = "0.4.1"
+p3-poseidon2 = "0.2.3-succinct"
 p3-symmetric = "0.2.3-succinct"

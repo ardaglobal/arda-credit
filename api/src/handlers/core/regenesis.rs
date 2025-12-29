@@ -10,7 +10,6 @@
 //! - Populate script execution
 //! - Manual admin-triggered state reset
 
-use axum::{http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tracing::{info, instrument};

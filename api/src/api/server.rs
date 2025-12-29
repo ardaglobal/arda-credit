@@ -498,9 +498,10 @@ impl ApiServer {
             .layer(RequestBodyLimitLayer::new(
                 self.config.max_request_size_bytes,
             ))
-            .layer(TimeoutLayer::new(Duration::from_secs(
-                self.config.request_timeout_seconds,
-            )));
+            .layer(TimeoutLayer::with_status_code(
+                StatusCode::REQUEST_TIMEOUT,
+                Duration::from_secs(self.config.request_timeout_seconds),
+            ));
 
         if self.config.enable_compression {
             router = router.layer(CompressionLayer::new());

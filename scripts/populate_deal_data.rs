@@ -53,7 +53,6 @@ use db::{
     create_identity, create_state_transaction, get_identity_by_email, init_db_with_url, list_deals,
     Collateral, Deal, User,
 };
-use lib::hash_uuid;
 use rand::{seq::SliceRandom, thread_rng, Rng};
 use reqwest::Client;
 use rust_decimal::prelude::ToPrimitive;
@@ -672,7 +671,7 @@ async fn create_deal_transaction_record(
     user_id: Option<Uuid>, // Optional for script-generated deals
     amount: Decimal,
     created_at: chrono::DateTime<Utc>,
-    payment_id: Option<Uuid>,
+    _payment_id: Option<Uuid>,
     originator_id: Option<Uuid>, // For deal_origination: the originator company user
     investor_id: Option<Uuid>,   // For deal_origination: the investor company user
 ) -> Result<(), sqlx::Error> {
@@ -1247,9 +1246,8 @@ async fn trigger_regenesis_reset(pool: &sqlx::PgPool) -> Result<(), Box<dyn std:
     // have timestamps from their originated_at dates, so StateRegenesis must be
     // older to appear first in the sorted batch.
     // zkVM validation requires timestamps >= 946684800 (Jan 1, 2000)
-    let min_valid_timestamp = chrono::NaiveDateTime::from_timestamp_opt(946_684_800, 0)
-        .expect("Valid minimum timestamp")
-        .and_utc();
+    let min_valid_timestamp = chrono::DateTime::from_timestamp(946_684_800, 0)
+        .expect("Valid minimum timestamp");
 
     use lib::{DealTransaction, MetadataArray, TransactionType};
 

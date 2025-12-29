@@ -17,9 +17,9 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::config::types::ApiConfig;
 use alloy_primitives::{Bytes, FixedBytes};
 use arda_credit_db::{
-    get_batch_proof_data, get_contract_submission_data, get_pending_state_transactions,
-    get_proven_unposted_batches, mark_batch_posted_to_contract_with_tx_hash,
-    store_batch_proof_data, update_batch_proof, IndexedMerkleTreeADS,
+    get_batch_proof_data, get_contract_submission_data, get_proven_unposted_batches,
+    mark_batch_posted_to_contract_with_tx_hash, store_batch_proof_data, update_batch_proof,
+    IndexedMerkleTreeADS,
 };
 use arda_credit_lib::proof::{generate_batch_proof, BatchProofGenerationRequest, ProofSystem};
 use ethereum_client::{Config as EthConfig, EthereumClient};

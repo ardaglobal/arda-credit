@@ -69,10 +69,12 @@
 //! - [zkVM Architecture](../../docs/zk/architecture.md)
 //! - [Implementation Plan](../../docs/zk/IMPLEMENTATION_PLAN.md)
 
-use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
+
+#[cfg(test)]
+use sha2::{Digest, Sha256};
 
 use arda_credit_db::DbError;
 use arda_credit_lib::{DealTransaction, MetadataArray};
@@ -129,15 +131,11 @@ impl TransactionRecordingService {
     ///
     /// # Returns
     /// A 32-byte hash as Vec<u8>
+    #[cfg(test)]
     fn hash_uuid(uuid: &Uuid) -> Vec<u8> {
         let mut hasher = Sha256::new();
         hasher.update(uuid.as_bytes());
         hasher.finalize().to_vec()
-    }
-
-    /// Hash an optional UUID, returning None if input is None
-    fn hash_optional_uuid(uuid: Option<&Uuid>) -> Option<Vec<u8>> {
-        uuid.map(Self::hash_uuid)
     }
 
     /// Record a transaction for zkVM batch processing

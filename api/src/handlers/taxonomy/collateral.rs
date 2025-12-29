@@ -14,8 +14,8 @@ use uuid::Uuid;
 
 use arda_credit_db::{
     create_collateral, create_collateral_batch, delete_collateral, get_collateral_by_custom_id,
-    get_collateral_by_deal_id, get_collateral_by_id, get_collateral_transaction_history,
-    list_collateral, update_collateral, Collateral, CreateCollateralRequest as DbCreateRequest,
+    get_collateral_by_deal_id, get_collateral_by_id, list_collateral, update_collateral,
+    Collateral, CreateCollateralRequest as DbCreateRequest,
     UpdateCollateralRequest as DbUpdateRequest,
 };
 use arda_credit_lib::TransactionType;
@@ -175,35 +175,6 @@ fn collateral_to_response(collateral: Collateral) -> CollateralResponse {
         deal_count: None,
         deal_ids: None,
         is_double_pledged: None,
-        has_detection: Some(collateral.has_detection),
-        detection_count: Some(collateral.detection_count),
-        last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
-        detection_status: collateral.detection_status,
-    }
-}
-
-fn collateral_with_deals_to_response(
-    collateral: Collateral,
-    deal_ids: Vec<uuid::Uuid>,
-) -> CollateralResponse {
-    let deal_count = deal_ids.len() as i64;
-    let is_double_pledged = deal_count > 1;
-
-    CollateralResponse {
-        id: collateral.id.to_string(),
-        name: collateral.name,
-        collateral_type: collateral.collateral_type,
-        description: collateral.description,
-        address: collateral.address,
-        custom_id: collateral.custom_id,
-        double_pledged: collateral.double_pledged.map(|u| u.to_string()),
-        has_potential_duplicates: collateral.has_potential_duplicates,
-        created_at: collateral.created_at.to_rfc3339(),
-        updated_at: collateral.updated_at.to_rfc3339(),
-        metadata: collateral.metadata,
-        deal_count: Some(deal_count),
-        deal_ids: Some(deal_ids.iter().map(|id| id.to_string()).collect()),
-        is_double_pledged: Some(is_double_pledged),
         has_detection: Some(collateral.has_detection),
         detection_count: Some(collateral.detection_count),
         last_detection_at: collateral.last_detection_at.map(|dt| dt.to_rfc3339()),
@@ -604,18 +575,6 @@ pub async fn update_collateral_handler(
 
     // Record update transaction for audit trail if there are changes
     if !changes.is_empty() {
-        let changes_json = serde_json::json!(changes
-            .iter()
-            .map(|c| {
-                serde_json::json!({
-                    c.field_name.clone(): {
-                        "old": c.old_value.clone(),
-                        "new": c.new_value.clone()
-                    }
-                })
-            })
-            .collect::<Vec<_>>());
-
         // Record update transaction for zkVM
         let metadata = Some(serde_json::json!({
             "collateral_type": collateral.collateral_type.clone(),

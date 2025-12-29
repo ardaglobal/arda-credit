@@ -11,7 +11,6 @@ use sindri::integrations::sp1_v5::SP1ProofInfo;
 use sindri::{client::SindriClient, JobStatus, ProofInfoResponse, ProofInput};
 use sp1_sdk::{HashableKey, SP1Stdin};
 use std::convert::TryInto;
-use std::path::PathBuf;
 use std::time::Duration;
 use thiserror::Error;
 use tracing::{error, info, warn};
@@ -118,17 +117,6 @@ pub enum ProofError {
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-}
-
-/// A fixture that can be used to test the verification of SP1 zkVM proofs inside Solidity.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SP1ArithmeticProofFixture {
-    pub initial_balance: i32,
-    pub final_balance: i32,
-    pub vkey: String,
-    pub public_values: String,
-    pub proof: String,
 }
 
 /// Generate a batch proof using the appropriate prover based on SERVER_ENVIRONMENT
@@ -700,107 +688,6 @@ pub async fn verify_sindri_proof(
     })
 }
 
-/// Create EVM-compatible fixture from Sindri proof for Solidity testing
-#[allow(clippy::cognitive_complexity)]
-async fn create_evm_fixture(
-    proof_info: &ProofInfoResponse,
-    initial_balance: i32,
-    _transactions: &[i32],
-    final_balance: i32,
-    system: ProofSystem,
-) -> Result<(), ProofError> {
-    const MAX_ATTEMPTS: u32 = 60; // 5 minutes with 5-second intervals
-
-    info!(
-        "🔧 Generating EVM fixture for {} proof...",
-        system.to_sindri_scheme().to_uppercase()
-    );
-
-    // Wait for proof to be ready if it's still processing
-    let client = SindriClient::default();
-    let mut current_proof = proof_info.clone();
-
-    // Poll until proof is ready (with timeout)
-    let mut attempts = 0;
-
-    while current_proof.status != JobStatus::Ready && attempts < MAX_ATTEMPTS {
-        if current_proof.status == JobStatus::Failed {
-            return Err(ProofError::FixtureGenerationError(format!(
-                "Sindri proof generation failed: {:?}",
-                current_proof.error
-            )));
-        }
-
-        info!(
-            "⏳ Waiting for proof to be ready... (attempt {}/{})",
-            attempts + 1,
-            MAX_ATTEMPTS
-        );
-        tokio::time::sleep(Duration::from_secs(5)).await;
-
-        current_proof = client
-            .get_proof(&proof_info.proof_id, None, None, Some(true))
-            .await
-            .map_err(|e| ProofError::SindriError(e.to_string()))?;
-        attempts += 1;
-    }
-
-    if current_proof.status != JobStatus::Ready {
-        return Err(ProofError::FixtureGenerationError(
-            "Timeout waiting for Sindri proof to be ready".to_string(),
-        ));
-    }
-
-    info!("✅ Sindri proof is ready, extracting EVM-compatible data...");
-
-    // Extract SP1 proof data from Sindri response
-    let sp1_proof = current_proof
-        .to_sp1_proof_with_public()
-        .map_err(|e| ProofError::FixtureGenerationError(e.to_string()))?;
-    let verification_key = current_proof
-        .get_sp1_verifying_key()
-        .map_err(|e| ProofError::FixtureGenerationError(e.to_string()))?;
-
-    // Create the fixture using batch processing format
-    let fixture = SP1ArithmeticProofFixture {
-        initial_balance,
-        final_balance,
-        vkey: verification_key.bytes32(),
-        public_values: format!("0x{}", hex::encode(sp1_proof.public_values.as_slice())),
-        proof: format!("0x{}", hex::encode(sp1_proof.bytes())),
-    };
-
-    // Create fixtures directory and save the fixture
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| {
-            ProofError::FixtureGenerationError("Failed to get parent directory".to_string())
-        })?
-        .join("contracts/src/fixtures");
-
-    std::fs::create_dir_all(&fixture_path).map_err(|e| {
-        ProofError::FixtureGenerationError(format!("Failed to create fixtures directory: {e}"))
-    })?;
-
-    let filename = format!("{}-fixture.json", system.to_sindri_scheme());
-    let fixture_file = fixture_path.join(&filename);
-
-    std::fs::write(&fixture_file, serde_json::to_string_pretty(&fixture)?).map_err(|e| {
-        ProofError::FixtureGenerationError(format!("Failed to write fixture file: {e}"))
-    })?;
-
-    info!("✅ EVM fixture saved to: {}", fixture_file.display());
-    info!("🔑 Verification Key: {}", fixture.vkey);
-    info!("📊 Public Values: {}", fixture.public_values);
-    info!(
-        "🔒 Proof Bytes: {}...{}",
-        &fixture.proof[..42],
-        &fixture.proof[fixture.proof.len() - 6..]
-    );
-
-    Ok(())
-}
-
 /// Get proof information from Sindri
 ///
 /// # Errors
@@ -909,106 +796,6 @@ pub struct SindriProofData {
     pub proof_bytes: Vec<u8>,
     pub public_values: Vec<u8>,
     pub verifying_key: Vec<u8>,
-}
-
-/// Create EVM-compatible fixture from Sindri proof for batch processing
-#[allow(clippy::cognitive_complexity)]
-async fn create_batch_evm_fixture(
-    proof_info: &ProofInfoResponse,
-    initial_balance: i32,
-    _transactions: &[i32],
-    final_balance: i32,
-    system: ProofSystem,
-) -> Result<(), ProofError> {
-    const MAX_ATTEMPTS: u32 = 60; // 5 minutes with 5-second intervals
-    info!(
-        "🔧 Generating batch EVM fixture for {} proof...",
-        system.to_sindri_scheme().to_uppercase()
-    );
-
-    // Wait for proof to be ready if it's still processing
-    let client = SindriClient::default();
-    let mut current_proof = proof_info.clone();
-
-    // Poll until proof is ready (with timeout)
-    let mut attempts = 0;
-
-    while current_proof.status != JobStatus::Ready && attempts < MAX_ATTEMPTS {
-        if current_proof.status == JobStatus::Failed {
-            return Err(ProofError::FixtureGenerationError(format!(
-                "Sindri proof generation failed: {:?}",
-                current_proof.error
-            )));
-        }
-
-        info!(
-            "⏳ Waiting for proof to be ready... (attempt {}/{})",
-            attempts + 1,
-            MAX_ATTEMPTS
-        );
-        tokio::time::sleep(Duration::from_secs(5)).await;
-
-        current_proof = client
-            .get_proof(&proof_info.proof_id, None, None, Some(true))
-            .await
-            .map_err(|e| ProofError::SindriError(e.to_string()))?;
-        attempts += 1;
-    }
-
-    if current_proof.status != JobStatus::Ready {
-        return Err(ProofError::FixtureGenerationError(
-            "Timeout waiting for Sindri proof to be ready".to_string(),
-        ));
-    }
-
-    info!("✅ Sindri proof is ready, extracting EVM-compatible data...");
-
-    // Extract SP1 proof data from Sindri response
-    let sp1_proof = current_proof
-        .to_sp1_proof_with_public()
-        .map_err(|e| ProofError::FixtureGenerationError(e.to_string()))?;
-    let verification_key = current_proof
-        .get_sp1_verifying_key()
-        .map_err(|e| ProofError::FixtureGenerationError(e.to_string()))?;
-
-    // Create the batch fixture using the unified format
-    let fixture = SP1ArithmeticProofFixture {
-        initial_balance,
-        final_balance,
-        vkey: verification_key.bytes32(),
-        public_values: format!("0x{}", hex::encode(sp1_proof.public_values.as_slice())),
-        proof: format!("0x{}", hex::encode(sp1_proof.bytes())),
-    };
-
-    // Create fixtures directory and save the fixture
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or_else(|| {
-            ProofError::FixtureGenerationError("Failed to get parent directory".to_string())
-        })?
-        .join("contracts/src/fixtures");
-
-    std::fs::create_dir_all(&fixture_path).map_err(|e| {
-        ProofError::FixtureGenerationError(format!("Failed to create fixtures directory: {e}"))
-    })?;
-
-    let filename = format!("batch-{}-fixture.json", system.to_sindri_scheme());
-    let fixture_file = fixture_path.join(&filename);
-
-    std::fs::write(&fixture_file, serde_json::to_string_pretty(&fixture)?).map_err(|e| {
-        ProofError::FixtureGenerationError(format!("Failed to write fixture file: {e}"))
-    })?;
-
-    info!("✅ Batch EVM fixture saved to: {}", fixture_file.display());
-    info!("🔑 Verification Key: {}", fixture.vkey);
-    info!("📊 Public Values: {}", fixture.public_values);
-    info!(
-        "🔒 Proof Bytes: {}...{}",
-        &fixture.proof[..42],
-        &fixture.proof[fixture.proof.len() - 6..]
-    );
-
-    Ok(())
 }
 
 /// Wait for a proof to be ready with timeout

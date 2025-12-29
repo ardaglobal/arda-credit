@@ -11,36 +11,11 @@
 //! - Build metadata from JSON fields
 //! - Construct complete `DealBatch` with proper ordering
 
-use arda_credit_db::StateTransaction;
-use arda_credit_lib::{hash_uuid, DealBatch, DealTransaction, MetadataArray, TransactionType};
+use arda_credit_lib::{DealBatch, DealTransaction, MetadataArray, TransactionType};
 use bincode;
 use chrono::Utc;
-use rust_decimal::prelude::ToPrimitive;
 use sqlx::PgPool;
-use std::collections::HashMap;
 use tracing::{info, instrument};
-
-/// Query deals to build a lookup map of deal_id → (originator_company_id, investor_company_id)
-async fn build_deal_company_lookup(
-    pool: &PgPool,
-) -> Result<HashMap<uuid::Uuid, (uuid::Uuid, Option<uuid::Uuid>)>, String> {
-    let deals = sqlx::query!(
-        r#"
-        SELECT id, originator_id, investor_id
-        FROM deals
-        "#
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| format!("Failed to query deals: {}", e))?;
-
-    let mut lookup = HashMap::new();
-    for deal in deals {
-        lookup.insert(deal.id, (deal.originator_id, deal.investor_id));
-    }
-
-    Ok(lookup)
-}
 
 /// Convert database batch to zkVM `DealBatch` format
 ///
@@ -113,9 +88,6 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
         batch_id
     );
 
-    // Build deal → company lookup map
-    let deal_company_lookup = build_deal_company_lookup(pool).await?;
-
     // Deserialize transaction_data and convert to zkVM transactions
     let mut zkvm_transactions = Vec::new();
     for state_tx in &state_transactions {
@@ -127,7 +99,7 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
         .map_err(|e| format!("Failed to deserialize transaction {}: {}", state_tx.id, e))?;
 
         // Convert to zkVM format
-        let zkvm_tx = convert_state_transaction_to_zkvm(&state_tx, &deal_tx, &deal_company_lookup)?;
+        let zkvm_tx = convert_state_transaction_to_zkvm(&deal_tx)?;
         zkvm_transactions.push(zkvm_tx);
     }
 
@@ -204,13 +176,7 @@ pub async fn convert_to_deal_batch(pool: &PgPool, batch_id: i32) -> Result<DealB
 /// Convert state transaction (with deserialized DealTransaction) to zkVM transaction
 ///
 /// The DealTransaction already contains all hashed IDs, so we can use them directly.
-/// Company IDs are already in the DealTransaction, but we verify they're correct
-/// using the deal_company_lookup if available.
-fn convert_state_transaction_to_zkvm(
-    state_tx: &StateTransaction,
-    deal_tx: &DealTransaction,
-    deal_company_lookup: &HashMap<uuid::Uuid, (uuid::Uuid, Option<uuid::Uuid>)>,
-) -> Result<DealTransaction, String> {
+fn convert_state_transaction_to_zkvm(deal_tx: &DealTransaction) -> Result<DealTransaction, String> {
     // Backward compatibility: older UserRegistration transactions stored JSON bytes in metadata,
     // but zkVM expects metadata[0] = 1/2/3 (investor/originator/admin).
     let mut deal_tx = deal_tx.clone();
@@ -292,36 +258,36 @@ fn convert_state_transaction_to_zkvm(
     })
 }
 
-/// Parse transaction type string to enum
-fn parse_transaction_type(type_str: &str) -> Result<TransactionType, String> {
-    match type_str {
-        "user_registration" => Ok(TransactionType::UserRegistration),
-        "kyc_submission" => Ok(TransactionType::KycSubmission),
-        "kyc_verification" => Ok(TransactionType::KycVerification),
-        "deal_origination" | "loan_origination" => Ok(TransactionType::DealOrigination),
-        "deal_payment" | "loan_payment" => Ok(TransactionType::DealPayment),
-        "deal_closeout" | "loan_closeout" => Ok(TransactionType::DealCloseout),
-        "user_deposit" => Ok(TransactionType::UserDeposit),
-        "user_withdrawal" => Ok(TransactionType::UserWithdrawal),
-        "investor_registration" => Ok(TransactionType::InvestorRegistration),
-        "admin_registration" => Ok(TransactionType::AdminRegistration),
-        "verify_document" => Ok(TransactionType::VerifyDocument),
-        "collateral_creation" => Ok(TransactionType::CollateralCreation),
-        "collateral_update" => Ok(TransactionType::CollateralUpdate),
-        "collateral_deal_association" => Ok(TransactionType::CollateralDealAssociation),
-        "collateral_deal_disassociation" => Ok(TransactionType::CollateralDealDisassociation),
-        "collateral_detection_request" => Ok(TransactionType::CollateralDetectionRequest),
-        "collateral_detection_update" => Ok(TransactionType::CollateralDetectionUpdate),
-        "state_regenesis" => Ok(TransactionType::StateRegenesis),
-        "company_registration" => Ok(TransactionType::CompanyRegistration),
-        "company_update" => Ok(TransactionType::CompanyUpdate),
-        other => Err(format!("Unknown transaction type: {}", other)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Parse transaction type string to enum (test helper)
+    fn parse_transaction_type(type_str: &str) -> Result<TransactionType, String> {
+        match type_str {
+            "user_registration" => Ok(TransactionType::UserRegistration),
+            "kyc_submission" => Ok(TransactionType::KycSubmission),
+            "kyc_verification" => Ok(TransactionType::KycVerification),
+            "deal_origination" | "loan_origination" => Ok(TransactionType::DealOrigination),
+            "deal_payment" | "loan_payment" => Ok(TransactionType::DealPayment),
+            "deal_closeout" | "loan_closeout" => Ok(TransactionType::DealCloseout),
+            "user_deposit" => Ok(TransactionType::UserDeposit),
+            "user_withdrawal" => Ok(TransactionType::UserWithdrawal),
+            "investor_registration" => Ok(TransactionType::InvestorRegistration),
+            "admin_registration" => Ok(TransactionType::AdminRegistration),
+            "verify_document" => Ok(TransactionType::VerifyDocument),
+            "collateral_creation" => Ok(TransactionType::CollateralCreation),
+            "collateral_update" => Ok(TransactionType::CollateralUpdate),
+            "collateral_deal_association" => Ok(TransactionType::CollateralDealAssociation),
+            "collateral_deal_disassociation" => Ok(TransactionType::CollateralDealDisassociation),
+            "collateral_detection_request" => Ok(TransactionType::CollateralDetectionRequest),
+            "collateral_detection_update" => Ok(TransactionType::CollateralDetectionUpdate),
+            "state_regenesis" => Ok(TransactionType::StateRegenesis),
+            "company_registration" => Ok(TransactionType::CompanyRegistration),
+            "company_update" => Ok(TransactionType::CompanyUpdate),
+            other => Err(format!("Unknown transaction type: {}", other)),
+        }
+    }
 
     #[test]
     fn test_parse_transaction_type() {

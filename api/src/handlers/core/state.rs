@@ -13,7 +13,6 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 use serde::{Deserialize, Serialize};
-use sqlx::Error as SqlxError;
 use tracing::{error, info, instrument, warn};
 use utoipa::{IntoParams, ToSchema};
 
@@ -22,10 +21,7 @@ extern crate hex;
 use crate::config::types::ApiState;
 
 // Use Axum's built-in response types for Axum 0.8 compatibility
-use arda_credit_db::{
-    get_all_batches, get_batch_by_id, get_contract_submission_data, get_current_state,
-    store_ads_state_commit, update_batch_proof,
-};
+use arda_credit_db::{get_all_batches, get_batch_by_id, get_contract_submission_data};
 
 // ============================================================================
 // STATE TRANSACTION TYPES

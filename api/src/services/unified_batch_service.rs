@@ -14,8 +14,6 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
 use arda_credit_db::{
-    create_batch_from_state_transactions,
-    get_pending_state_transactions,
     processing::IncomingTransaction, // Legacy type for backward compatibility
     store_ads_state_commit,
     AuthenticatedDataStructure,
@@ -26,7 +24,6 @@ use arda_credit_db::{
     StateTransition,
 };
 use chrono;
-use rust_decimal::prelude::ToPrimitive;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
