@@ -82,7 +82,7 @@ aws-config    = { workspace = true }
 aws-sdk-sesv2 = "1.101"
 
 # Email template support
-askama = "0.14"
+askama = "0.15"
 
 # Session management dependencies
 axum-extra = { version = "0.12", features = [ "cookie" ] }
