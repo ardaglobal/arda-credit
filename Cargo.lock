@@ -4806,7 +4806,7 @@ dependencies = [
  "p3-baby-bear",
  "p3-field 0.2.3-succinct",
  "p3-poseidon2 0.4.1",
- "p3-symmetric 0.2.3-succinct",
+ "p3-symmetric 0.4.1",
  "rand 0.8.5",
  "rust_decimal",
  "serde",
