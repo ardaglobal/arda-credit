@@ -22,6 +22,7 @@ ignore = [
     "RUSTSEC-2025-0012", # backoff unmaintained
     "RUSTSEC-2025-0119", # number_prefix unmaintained (via indicatif in sp1-sdk)
     "RUSTSEC-2025-0134", # rustls-pemfile unmaintained (via reqwest/tonic in sp1-sdk)
+    "RUSTSEC-2025-0137", # ruint reciprocal_mg10 unsoundness (via alloy-primitives in sp1-sdk)
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories
