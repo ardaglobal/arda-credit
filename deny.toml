@@ -66,10 +66,7 @@ allow = [
 confidence-threshold = 0.8
 # Allow 1 or more licenses on a per-crate basis, so that particular licenses
 # aren't accepted for every possible crate as with the normal allow list
-exceptions = [
-    # Allow LGPL-3.0-or-later for downloader crate
-    { allow = [ "LGPL-3.0-or-later" ], name = "downloader" },
-]
+exceptions = []
 
 # Some crates don't have (easily) machine readable licensing information,
 # adding a clarification entry for it allows you to manually specify the
@@ -114,8 +111,6 @@ highlight = "all"
 #]
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
-    # Skip duplicate base64 versions from SP1/AWS dependencies
-    { name = "base64", version = "=0.21.7" },
     # Skip additional duplicates from transitive dependencies
     { name = "core-foundation", version = "=0.9.4" },
     { name = "derive_more", version = "=1.0.0" },
