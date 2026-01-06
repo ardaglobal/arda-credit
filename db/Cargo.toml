@@ -58,7 +58,7 @@ url         = { workspace = true }
 # Dependencies provided by lib crate
 
 [dev-dependencies]
-tempfile           = "3.21"
+tempfile           = "3.24"
 tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
 uuid               = { workspace = true, features = [ "v4" ] }
