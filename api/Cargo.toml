@@ -79,7 +79,7 @@ validator    = { workspace = true, features = [ "derive" ] }    # Email validati
 
 # AWS SES Integration
 aws-config    = { workspace = true }
-aws-sdk-sesv2 = "1.101"
+aws-sdk-sesv2 = "1.103"
 
 # Email template support
 askama = "0.15"
