@@ -8,11 +8,10 @@
 //! - Off-chain database processing (db/src/ads/)
 //! - zkVM execution (program/src/main.rs via lib/src/zkvm_ads.rs)
 
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-use p3_field::{AbstractField, PrimeField64};
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use p3_baby_bear::{default_babybear_poseidon2_16, BabyBear};
+use p3_field::integers::QuotientMap;
+use p3_field::{PrimeCharacteristicRing, PrimeField64};
 use p3_symmetric::Permutation;
-use rand::{rngs::StdRng, SeedableRng};
 
 /// BabyBear field modulus: 2^31 - 2^27 + 1 = 2013265921
 const BABYBEAR_MODULUS: u64 = 2013265921;
@@ -29,14 +28,14 @@ fn to_field(value: i64) -> BabyBear {
     let unsigned = value.unsigned_abs();
     // Reduce modulo BabyBear field modulus
     let reduced = unsigned % BABYBEAR_MODULUS;
-    BabyBear::from_canonical_u64(reduced)
+    BabyBear::from_int(reduced)
 }
 
 /// Convert an optional i64 to a BabyBear field element
 fn to_field_opt(value: Option<i64>) -> BabyBear {
     match value {
         Some(v) => to_field(v),
-        None => BabyBear::zero(),
+        None => BabyBear::ZERO,
     }
 }
 
@@ -55,33 +54,20 @@ pub fn hash_leaf_poseidon(value: i64, next_index: Option<i64>, next_value: i64) 
     let next_value_field = to_field(next_value);
 
     // Create input state for Poseidon
-    let mut state = [BabyBear::zero(); POSEIDON_WIDTH];
+    let mut state = [BabyBear::ZERO; POSEIDON_WIDTH];
     state[0] = value_field;
     state[1] = next_index_field;
     state[2] = next_value_field;
 
-    // Apply Poseidon2 permutation with correct generic parameters
-    // Poseidon2<F, MdsLight, Diffusion, WIDTH, D>
-    // Use new_from_rng_128 for automatic round number calculation
-    let mut rng = StdRng::seed_from_u64(0); // Deterministic seed for consistency
-    let poseidon = Poseidon2::<
-        BabyBear,
-        Poseidon2ExternalMatrixGeneral,
-        DiffusionMatrixBabyBear,
-        POSEIDON_WIDTH,
-        7,
-    >::new_from_rng_128(
-        Poseidon2ExternalMatrixGeneral,
-        DiffusionMatrixBabyBear,
-        &mut rng,
-    );
+    // Apply Poseidon2 permutation (p3 0.4.x BabyBear-specific instance, width 16)
+    let poseidon = default_babybear_poseidon2_16();
     poseidon.permute_mut(&mut state);
 
     // Convert first 8 field elements to 32 bytes (4 bytes each)
     // BabyBear elements are 31-bit values, so we use canonical u32 representation
     let mut result = [0u8; 32];
     for (i, &element) in state[..8].iter().enumerate() {
-        let value_u32 = element.as_canonical_u64() as u32;
+        let value_u32: u32 = element.as_canonical_u64() as u32;
         result[i * 4..(i + 1) * 4].copy_from_slice(&value_u32.to_le_bytes());
     }
 
@@ -98,7 +84,7 @@ pub fn hash_leaf_poseidon(value: i64, next_index: Option<i64>, next_value: i64) 
 pub fn hash_internal_poseidon(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
     // Convert 32-byte inputs to field elements
     // We'll use 8 field elements from each (4 bytes each)
-    let mut state = [BabyBear::zero(); POSEIDON_WIDTH];
+    let mut state = [BabyBear::ZERO; POSEIDON_WIDTH];
 
     // Load left hash into first 8 positions
     for i in 0..8 {
@@ -109,7 +95,7 @@ pub fn hash_internal_poseidon(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
             left[i * 4 + 3],
         ];
         let value = u32::from_le_bytes(bytes) as u64;
-        state[i] = BabyBear::from_canonical_u64(value % BABYBEAR_MODULUS);
+        state[i] = BabyBear::from_int(value % BABYBEAR_MODULUS);
     }
 
     // Load right hash into last 8 positions
@@ -121,28 +107,17 @@ pub fn hash_internal_poseidon(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
             right[i * 4 + 3],
         ];
         let value = u32::from_le_bytes(bytes) as u64;
-        state[8 + i] = BabyBear::from_canonical_u64(value % BABYBEAR_MODULUS);
+        state[8 + i] = BabyBear::from_int(value % BABYBEAR_MODULUS);
     }
 
-    // Apply Poseidon2 permutation with correct generic parameters
-    let mut rng = StdRng::seed_from_u64(0); // Deterministic seed for consistency
-    let poseidon = Poseidon2::<
-        BabyBear,
-        Poseidon2ExternalMatrixGeneral,
-        DiffusionMatrixBabyBear,
-        POSEIDON_WIDTH,
-        7,
-    >::new_from_rng_128(
-        Poseidon2ExternalMatrixGeneral,
-        DiffusionMatrixBabyBear,
-        &mut rng,
-    );
+    // Apply Poseidon2 permutation (p3 0.4.x BabyBear-specific instance, width 16)
+    let poseidon = default_babybear_poseidon2_16();
     poseidon.permute_mut(&mut state);
 
     // Convert first 8 field elements back to 32 bytes
     let mut result = [0u8; 32];
     for (i, &element) in state[..8].iter().enumerate() {
-        let value_u32 = element.as_canonical_u64() as u32;
+        let value_u32: u32 = element.as_canonical_u64() as u32;
         result[i * 4..(i + 1) * 4].copy_from_slice(&value_u32.to_le_bytes());
     }
 

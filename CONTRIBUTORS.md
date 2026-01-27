@@ -41,7 +41,7 @@ make fmt                           # Format code (Rust + YAML + GitHub Actions)
 make lint                          # Lint code (Rust + YAML + GitHub Actions + Security)
 make test                          # Run all tests with database
 make cover                         # Generate code coverage report
-make deny                          # Security audit dependencies
+make deny                          # Security audit dependencies (install/update: cargo install --locked cargo-deny)
 ```
 
 #### Smart Contracts
