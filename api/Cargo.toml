@@ -74,7 +74,7 @@ tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 reqwest = { workspace = true, features = [ "json" ] }
 
 # Authentication dependencies
-jsonwebtoken = { version = "10.2", features = [ "aws_lc_rs" ] } # JWT token generation/validation
+jsonwebtoken = { version = "10.3", features = [ "aws_lc_rs" ] } # JWT token generation/validation
 validator    = { workspace = true, features = [ "derive" ] }    # Email validation
 
 # AWS SES Integration
