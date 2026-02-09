@@ -13,7 +13,7 @@ serde_json      = { workspace = true }
 thiserror       = { workspace = true }
 
 # Additional dependencies for loan types
-blake3       = "1.5"                # For nullifier generation consistency
+blake3       = "1.8"                # For nullifier generation consistency
 rust_decimal = { workspace = true }
 sha2         = { workspace = true }
 uuid         = { workspace = true }
