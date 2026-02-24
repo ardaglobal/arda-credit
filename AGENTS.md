@@ -472,3 +472,32 @@ See the [`docs/`](docs/) directory for detailed information:
 - **Proof verification** - On-chain via ARDA contract
 
 See `docs/README.md` for complete documentation hub.
+
+## Cursor Cloud specific instructions
+
+### Service Overview
+
+| Service | How to Start | Port |
+|---------|-------------|------|
+| PostgreSQL | `docker compose up postgres -d` | 5432 |
+| Anvil (local Ethereum) | `COMPOSE_PROFILES=local docker compose up -d` | 8545 |
+| API Server | `cargo run --release --bin server -- --cors` | 8080 |
+
+### Non-obvious gotchas
+
+- **Rust toolchain mismatch**: The `rust-toolchain.toml` specifies 1.88.0, but some dependencies in `Cargo.lock` (e.g., `async-graphql`, `asynk-strim`) may require 1.89.0+. Override with `RUSTUP_TOOLCHAIN=1.89.0` if needed, and ensure components (`clippy`, `rustfmt`, `llvm-tools`, `rustc-dev`) are installed on the override toolchain.
+- **C++ compiler**: SP1 crate (`sp1-core-machine`) requires g++ headers. Set `CXX=g++` to avoid clang `<cassert>` errors. Also ensure `libstdc++.so` symlink exists at `/usr/lib/x86_64-linux-gnu/libstdc++.so` (link to `/usr/lib/gcc/x86_64-linux-gnu/13/libstdc++.so` if missing).
+- **SP1 program build**: The `lib` crate embeds `build/program` via `include_bytes!`. You must run `cd program && cargo prove build --output-directory ../build` before building the workspace. Install SP1 toolchain via `sp1up --version 5.2.4`.
+- **SQLx offline cache**: The `.sqlx/` directory must contain query cache files. Generate with `DATABASE_URL="postgresql://postgres:password@localhost:5432/arda_credit_db" cargo sqlx prepare --workspace` (requires running PostgreSQL with migrations applied).
+- **Docker in nested containers**: This cloud VM requires `fuse-overlayfs` storage driver and `iptables-legacy`. See the Docker setup section in the system prompt for exact commands.
+- **Email debug mode**: Set `EMAIL_DEBUG_MODE=true` in `.env` to bypass AWS SES. Magic link tokens are logged to the server console.
+- **Contract deployment**: Use `SERVER_ENVIRONMENT=local make deploy-contracts` after `make up`. The deployment JSON is saved to `contracts/deployments/local-deployment.json`.
+- **OOM on release builds**: The release build of the API server is memory-intensive. Use `CARGO_BUILD_JOBS=2` if you hit OOM errors during linking.
+
+### Quick reference commands
+
+All standard development commands are documented in `CLAUDE.md` and `Makefile`. Key ones:
+- **Lint**: `make lint-rust` (runs `cargo fmt --check`, `taplo fmt --check`, `cargo clippy`)
+- **Test**: `cargo test --features db/test-utils -- --test-threads=1` (requires running PostgreSQL)
+- **Forge test**: `cd contracts && forge test`
+- **Health check**: `curl http://0.0.0.0:8080/health`
