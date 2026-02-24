@@ -44,8 +44,8 @@ sp1-sdk            = { workspace = true }
 sqlx               = { workspace = true, features = [ "chrono", "ipnetwork", "postgres", "uuid" ] }
 
 # API framework dependencies
-async-graphql = { version = "7.1", features = [ "chrono" ] }
-async-graphql-axum = "7.1"
+async-graphql = { version = "7.0", features = [ "chrono" ] }
+async-graphql-axum = "7.0"
 async-stream = "0.3"
 async-trait = "0.1"
 axum = { workspace = true, features = [ "multipart", "ws" ] }
@@ -82,7 +82,7 @@ aws-config    = { workspace = true }
 aws-sdk-sesv2 = "1.101"
 
 # Email template support
-askama = "0.15"
+askama = "0.14"
 
 # Session management dependencies
 axum-extra = { version = "0.12", features = [ "cookie" ] }
@@ -124,7 +124,7 @@ rayon                       = { workspace = true }
 
 axum-test          = "18.2.1"
 futures            = { workspace = true, features = [ "async-await" ] }
-tempfile           = "3.24"
+tempfile           = "3.21"
 tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
 uuid               = { workspace = true, features = [ "v4" ] }
