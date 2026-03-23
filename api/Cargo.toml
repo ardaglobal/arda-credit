@@ -44,8 +44,8 @@ sp1-sdk            = { workspace = true }
 sqlx               = { workspace = true, features = [ "chrono", "ipnetwork", "postgres", "uuid" ] }
 
 # API framework dependencies
-async-graphql = { version = "7.1", features = [ "chrono" ] }
-async-graphql-axum = "7.1"
+async-graphql = { version = "7.2", features = [ "chrono" ] }
+async-graphql-axum = "7.2"
 async-stream = "0.3"
 async-trait = "0.1"
 axum = { workspace = true, features = [ "multipart", "ws" ] }
@@ -74,7 +74,7 @@ tracing-subscriber = { workspace = true, features = [ "env-filter" ] }
 reqwest = { workspace = true, features = [ "json" ] }
 
 # Authentication dependencies
-jsonwebtoken = { version = "10.2", features = [ "aws_lc_rs" ] } # JWT token generation/validation
+jsonwebtoken = { version = "10.3", features = [ "aws_lc_rs" ] } # JWT token generation/validation
 validator    = { workspace = true, features = [ "derive" ] }    # Email validation
 
 # AWS SES Integration
@@ -92,11 +92,11 @@ time = "0.3"
 
 # OpenTelemetry dependencies (compatible versions)
 opentelemetry                      = { version = "0.31.0", features = [ "trace" ] }
-opentelemetry-otlp                 = { version = "0.31.0", features = [ "trace" ] }
+opentelemetry-otlp                 = { version = "0.31.1", features = [ "trace" ] }
 opentelemetry-semantic-conventions = { version = "0.31.0" }
 opentelemetry_sdk                  = { version = "0.31.0", features = [ "rt-tokio" ] }
-tonic                              = { version = "0.14.1", features = [ "tls-native-roots" ] }
-tracing-opentelemetry              = { version = "0.32.0" }
+tonic                              = { version = "0.14.5", features = [ "tls-native-roots" ] }
+tracing-opentelemetry              = { version = "0.32.1" }
 
 # Middleware dependencies
 blake3 = "1"
@@ -124,7 +124,7 @@ rayon                       = { workspace = true }
 
 axum-test          = "18.2.1"
 futures            = { workspace = true, features = [ "async-await" ] }
-tempfile           = "3.24"
+tempfile           = "3.27"
 tracing-subscriber = { workspace = true }
 tracing-test       = "0.2"
 uuid               = { workspace = true, features = [ "v4" ] }
